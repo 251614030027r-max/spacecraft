@@ -1,0 +1,519 @@
+{
+  "schema_version": 3,
+  "algorithm": "pure_sac",
+  "deterministic": true,
+  "episodes": 10,
+  "base_seed": 20288000,
+  "environment": {
+    "dt_s": 0.1,
+    "max_time_s": 200.0,
+    "max_distance_m": 30.0,
+    "shell_inner_m": 2.0,
+    "shell_outer_m": 10.0,
+    "max_relative_attitude_rad": 1.3089969389957472,
+    "inertial_velocity_component_limit_m_s": 0.125,
+    "relative_angular_velocity_component_limit_rad_s": 0.03,
+    "target_tumble_scale": 0.5,
+    "curriculum_enabled": false,
+    "curriculum_start_step": 300000,
+    "curriculum_end_step": 1300000,
+    "curriculum_rehearsal_end_step": 1400000,
+    "curriculum_rotation_fraction": 0.45,
+    "curriculum_frontier_width": 0.2,
+    "curriculum_rehearsal_probability": 0.2,
+    "curriculum_final_probability": 0.75,
+    "target_tumble_increment": 0.05,
+    "initial_shell_inner_m": 1.0,
+    "initial_shell_outer_m": 3.0,
+    "initial_max_relative_attitude_rad": 0.5235987755982988,
+    "initial_inertial_velocity_component_limit_m_s": 0.05,
+    "initial_target_tumble_scale": 0.25,
+    "observation_attitude_scale_rad": 1.0471975511965976,
+    "observation_distance_scale_m": 10.0,
+    "observation_angular_velocity_scale_rad_s": 0.03,
+    "observation_velocity_scale_m_s": 0.5,
+    "observation_softsign_limit": 10.0,
+    "max_force_per_axis_n": 5.0,
+    "max_torque_per_axis_nm": 0.6,
+    "storage_characteristic_length_m": 0.4482671036630004,
+    "storage_time_constant_s": 30.0,
+    "barrier_epsilon": 1e-06,
+    "success_thresholds": {
+      "attitude_rad": 0.2617993877991494,
+      "angular_velocity_rad_s": 0.03,
+      "position_m": 0.5,
+      "translational_velocity_m_s": 0.1
+    },
+    "completion_required_steps": 5,
+    "include_j2": true,
+    "solver_rtol": 1e-07,
+    "solver_atol": 1e-09,
+    "cache_target_trajectory": true,
+    "phase2_enabled": true,
+    "phase2_mission_enabled": true,
+    "phase2_training_mode": "phase1_pretrain",
+    "phase2_mission": {
+      "gate_position_target_m": [
+        -8.0,
+        0.0,
+        0.0
+      ],
+      "gate_position_tolerance_m": 1.0,
+      "gate_attitude_tolerance_rad": 0.5235987755982988,
+      "gate_speed_tolerance_m_s": 0.2,
+      "gate_angular_velocity_tolerance_rad_s": 0.03,
+      "initial_distance_min_m": 12.0,
+      "initial_distance_max_m": 18.0,
+      "initial_direction_half_angle_rad": 0.9599310885968813,
+      "initial_attitude_limit_rad": 0.7853981633974483,
+      "initial_speed_limit_m_s": 0.2,
+      "initial_angular_velocity_component_limit_rad_s": 0.02,
+      "phase1_speed_limit_m_s": 0.5,
+      "premature_entry_distance_m": 6.0,
+      "gate_reward": 5.0,
+      "final_success_reward": 20.0,
+      "terminal_constraint_failure_penalty": -10.0,
+      "phase1_failure_penalty": -10.0,
+      "catastrophic_failure_penalty": -15.0
+    },
+    "phase2_task": {
+      "port_position_target_m": [
+        -1.5,
+        0.0,
+        0.0
+      ],
+      "desired_position_target_m": [
+        -3.0,
+        0.0,
+        0.0
+      ],
+      "approach_axis_target": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "camera_boresight_chaser": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "corridor_half_angle_rad": 0.6108652381980153,
+      "fov_half_angle_rad": 0.8726646259971648,
+      "total_speed_limit_m_s": 0.35,
+      "closing_speed_min_m_s": 0.08,
+      "closing_speed_slope_per_s": 0.04,
+      "closing_speed_max_m_s": 0.3,
+      "completion_position_m": 0.25,
+      "completion_attitude_rad": 0.17453292519943295,
+      "completion_speed_m_s": 0.05,
+      "completion_angular_velocity_rad_s": 0.02,
+      "completion_hold_s": 1.0,
+      "constraint_tolerance": 1e-09
+    },
+    "phase2_target_tumble_scale": 0.2,
+    "phase2_axial_remaining_min_m": 3.0,
+    "phase2_axial_remaining_max_m": 7.0,
+    "phase2_max_relative_attitude_rad": 1.0471975511965976,
+    "phase2_near_boundary_probability": 0.25,
+    "phase2_initial_total_speed_limit_m_s": 0.35,
+    "phase2_initial_relative_angular_velocity_limit_rad_s": 0.03,
+    "phase2_maximum_interior_radial_fraction": 0.75,
+    "phase2_minimum_fov_margin_rad": 0.0,
+    "phase2_warmup_steps": 0,
+    "phase2_warmup_task": {
+      "port_position_target_m": [
+        -1.5,
+        0.0,
+        0.0
+      ],
+      "desired_position_target_m": [
+        -3.0,
+        0.0,
+        0.0
+      ],
+      "approach_axis_target": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "camera_boresight_chaser": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "corridor_half_angle_rad": 0.7853981633974483,
+      "fov_half_angle_rad": 1.0471975511965976,
+      "total_speed_limit_m_s": 0.35,
+      "closing_speed_min_m_s": 0.08,
+      "closing_speed_slope_per_s": 0.04,
+      "closing_speed_max_m_s": 0.3,
+      "completion_position_m": 0.25,
+      "completion_attitude_rad": 0.17453292519943295,
+      "completion_speed_m_s": 0.05,
+      "completion_angular_velocity_rad_s": 0.02,
+      "completion_hold_s": 1.0,
+      "constraint_tolerance": 1e-09
+    },
+    "phase2_warmup_tumble_scale": 0.18,
+    "phase2_warmup_axial_remaining_min_m": 2.0,
+    "phase2_warmup_axial_remaining_max_m": 4.0,
+    "phase2_warmup_max_relative_attitude_rad": 0.6108652381980153,
+    "phase2_warmup_near_boundary_probability": 0.0,
+    "phase2_warmup_initial_total_speed_limit_m_s": 0.15,
+    "phase2_warmup_initial_relative_angular_velocity_limit_rad_s": 0.018,
+    "phase2_warmup_maximum_interior_radial_fraction": 0.65,
+    "phase2_warmup_minimum_fov_margin_rad": 0.08726646259971647,
+    "phase2_observation_schema": "phase2_mission_v1_24d",
+    "phase2_observation_target_angular_velocity_scale_rad_s": 0.05,
+    "phase2_distance_failure_penalty": -20.0
+  },
+  "rates": {
+    "episode_completion": 0.0,
+    "gate_acquisition": 0.0,
+    "final_completion": 0.0,
+    "constraint_success": 1.0
+  },
+  "episode_records": [
+    {
+      "episode": 0,
+      "seed": 20288000,
+      "completed": false,
+      "gate_reached": false,
+      "final_completed": false,
+      "constraint_success": true,
+      "first_violation": {
+        "time_s": 2.3000000000000003,
+        "type": "total_speed_margin_m_s",
+        "margin": -0.002504939319834254
+      },
+      "minimum_margins": {
+        "corridor_axial_margin_m": 14.18075683619827,
+        "corridor_lateral_margin_m": -1.3399700295559054,
+        "fov_margin_rad": 0.38889747596569546,
+        "total_speed_margin_m_s": -0.1524880775724815,
+        "closing_speed_margin_m_s": 0.12259899936461308
+      },
+      "minimum_position_error_m": 15.284706014149979,
+      "final_position_error_m": 17.370798330669093,
+      "final_attitude_error_rad": 0.3924195808111438,
+      "final_speed_m_s": 0.5024880775724815,
+      "final_angular_velocity_rad_s": 0.12804564242872057,
+      "force_impulse_n_s": 61.491021411866,
+      "torque_impulse_nm_s": 4.820683458803658,
+      "action_saturation_fraction": 0.26666666666666666,
+      "full_control_cycle_runtime_s": {
+        "mean": 0.005599363529387012,
+        "std": 0.00034280556904206993,
+        "min": 0.005414500001279521,
+        "max": 0.00799150000057125
+      }
+    },
+    {
+      "episode": 1,
+      "seed": 20288001,
+      "completed": false,
+      "gate_reached": false,
+      "final_completed": false,
+      "constraint_success": true,
+      "first_violation": {
+        "time_s": 2.8000000000000003,
+        "type": "fov_margin_rad",
+        "margin": -0.0008486601992809817
+      },
+      "minimum_margins": {
+        "corridor_axial_margin_m": 11.999940707348287,
+        "corridor_lateral_margin_m": 2.227158417642894,
+        "fov_margin_rad": -1.4807278889354767,
+        "total_speed_margin_m_s": -0.15587267643377778,
+        "closing_speed_margin_m_s": 0.27612348574972556
+      },
+      "minimum_position_error_m": 11.132828842055915,
+      "final_position_error_m": 16.65591663447958,
+      "final_attitude_error_rad": 1.8684476734923372,
+      "final_speed_m_s": 0.5058726764337778,
+      "final_angular_velocity_rad_s": 0.22303808554310794,
+      "force_impulse_n_s": 181.7043444801046,
+      "torque_impulse_nm_s": 18.356702023853344,
+      "action_saturation_fraction": 0.36891385767790263,
+      "full_control_cycle_runtime_s": {
+        "mean": 0.005992691760272809,
+        "std": 0.00038964595650593467,
+        "min": 0.005432799998743576,
+        "max": 0.007874799999626703
+      }
+    },
+    {
+      "episode": 2,
+      "seed": 20288002,
+      "completed": false,
+      "gate_reached": false,
+      "final_completed": false,
+      "constraint_success": true,
+      "first_violation": {
+        "time_s": 2.4000000000000004,
+        "type": "total_speed_margin_m_s",
+        "margin": -0.0030873476735701066
+      },
+      "minimum_margins": {
+        "corridor_axial_margin_m": 14.090045844204724,
+        "corridor_lateral_margin_m": 1.3066081149700501,
+        "fov_margin_rad": -2.2146137080466857,
+        "total_speed_margin_m_s": -0.15229782331745756,
+        "closing_speed_margin_m_s": 0.2810728932275706
+      },
+      "minimum_position_error_m": 14.362037944655354,
+      "final_position_error_m": 21.692962800271374,
+      "final_attitude_error_rad": 2.920309442675883,
+      "final_speed_m_s": 0.5022978233174575,
+      "final_angular_velocity_rad_s": 0.1004212058109381,
+      "force_impulse_n_s": 492.90516241019463,
+      "torque_impulse_nm_s": 37.66953393296001,
+      "action_saturation_fraction": 0.1685872812633376,
+      "full_control_cycle_runtime_s": {
+        "mean": 0.006270475160024981,
+        "std": 0.0002356892664634953,
+        "min": 0.0058898000006593065,
+        "max": 0.008231399999203859
+      }
+    },
+    {
+      "episode": 3,
+      "seed": 20288003,
+      "completed": false,
+      "gate_reached": false,
+      "final_completed": false,
+      "constraint_success": true,
+      "first_violation": {
+        "time_s": 2.3000000000000003,
+        "type": "corridor_lateral_margin_m",
+        "margin": -0.024449770257335857
+      },
+      "minimum_margins": {
+        "corridor_axial_margin_m": 2.3851986080408096,
+        "corridor_lateral_margin_m": -9.110671083941883,
+        "fov_margin_rad": -2.161774798011175,
+        "total_speed_margin_m_s": -0.15059873030630455,
+        "closing_speed_margin_m_s": -0.2122659644384275
+      },
+      "minimum_position_error_m": 7.679653789136634,
+      "final_position_error_m": 10.817085365947348,
+      "final_attitude_error_rad": 1.9969342597892004,
+      "final_speed_m_s": 0.5005987303063045,
+      "final_angular_velocity_rad_s": 0.7743168683523427,
+      "force_impulse_n_s": 450.1927832300378,
+      "torque_impulse_nm_s": 43.89266845203136,
+      "action_saturation_fraction": 0.39318303811057437,
+      "full_control_cycle_runtime_s": {
+        "mean": 0.006463141867974212,
+        "std": 0.0002817285217402209,
+        "min": 0.006073099999412079,
+        "max": 0.00937300000077812
+      }
+    },
+    {
+      "episode": 4,
+      "seed": 20288004,
+      "completed": false,
+      "gate_reached": false,
+      "final_completed": false,
+      "constraint_success": true,
+      "first_violation": {
+        "time_s": 0.1,
+        "type": "fov_margin_rad",
+        "margin": -0.10953765917129454
+      },
+      "minimum_margins": {
+        "corridor_axial_margin_m": 12.342330690473318,
+        "corridor_lateral_margin_m": 2.3213933720214186,
+        "fov_margin_rad": -0.2523204705740719,
+        "total_speed_margin_m_s": -0.15025369682714884,
+        "closing_speed_margin_m_s": 0.07229876026327539
+      },
+      "minimum_position_error_m": 11.484663511100086,
+      "final_position_error_m": 11.484663511100086,
+      "final_attitude_error_rad": 1.4940455381118989,
+      "final_speed_m_s": 0.5002536968271488,
+      "final_angular_velocity_rad_s": 0.229411603622701,
+      "force_impulse_n_s": 86.3848180087663,
+      "torque_impulse_nm_s": 8.139234221249563,
+      "action_saturation_fraction": 0.13675213675213677,
+      "full_control_cycle_runtime_s": {
+        "mean": 0.006490719230674959,
+        "std": 0.0003343600252415486,
+        "min": 0.006121700000221608,
+        "max": 0.010109699998793076
+      }
+    },
+    {
+      "episode": 5,
+      "seed": 20288005,
+      "completed": false,
+      "gate_reached": false,
+      "final_completed": false,
+      "constraint_success": true,
+      "first_violation": {
+        "time_s": 0.1,
+        "type": "corridor_lateral_margin_m",
+        "margin": -0.16595437248153555
+      },
+      "minimum_margins": {
+        "corridor_axial_margin_m": 9.443203542381525,
+        "corridor_lateral_margin_m": -7.298244497790378,
+        "fov_margin_rad": -1.7934853165896776,
+        "total_speed_margin_m_s": -0.1519160978444214,
+        "closing_speed_margin_m_s": -0.14843737384735867
+      },
+      "minimum_position_error_m": 10.437151473214161,
+      "final_position_error_m": 16.892011172462762,
+      "final_attitude_error_rad": 2.290540273491965,
+      "final_speed_m_s": 0.5019160978444214,
+      "final_angular_velocity_rad_s": 0.10501139965850467,
+      "force_impulse_n_s": 271.91197277304747,
+      "torque_impulse_nm_s": 27.61697481537098,
+      "action_saturation_fraction": 0.14724310776942356,
+      "full_control_cycle_runtime_s": {
+        "mean": 0.006684774436097425,
+        "std": 0.0009943787089801352,
+        "min": 0.005521900000530877,
+        "max": 0.013557500000388245
+      }
+    },
+    {
+      "episode": 6,
+      "seed": 20288006,
+      "completed": false,
+      "gate_reached": false,
+      "final_completed": false,
+      "constraint_success": true,
+      "first_violation": {
+        "time_s": 3.9000000000000004,
+        "type": "total_speed_margin_m_s",
+        "margin": -0.002854181127046773
+      },
+      "minimum_margins": {
+        "corridor_axial_margin_m": 10.072372846771032,
+        "corridor_lateral_margin_m": -4.194104119490807,
+        "fov_margin_rad": -0.013478748685387454,
+        "total_speed_margin_m_s": -0.1506084689690914,
+        "closing_speed_margin_m_s": 0.0565299731364641
+      },
+      "minimum_position_error_m": 12.37686818420084,
+      "final_position_error_m": 14.142836436953349,
+      "final_attitude_error_rad": 1.0141159977773742,
+      "final_speed_m_s": 0.5006084689690914,
+      "final_angular_velocity_rad_s": 0.15117948953196114,
+      "force_impulse_n_s": 152.14194848196152,
+      "torque_impulse_nm_s": 19.457795566821353,
+      "action_saturation_fraction": 0.20389461626575028,
+      "full_control_cycle_runtime_s": {
+        "mean": 0.0063921841924842165,
+        "std": 0.00035281196374706617,
+        "min": 0.006144799999674433,
+        "max": 0.01203439999881084
+      }
+    },
+    {
+      "episode": 7,
+      "seed": 20288007,
+      "completed": false,
+      "gate_reached": false,
+      "final_completed": false,
+      "constraint_success": true,
+      "first_violation": {
+        "time_s": 2.4000000000000004,
+        "type": "total_speed_margin_m_s",
+        "margin": -0.0016308379426713815
+      },
+      "minimum_margins": {
+        "corridor_axial_margin_m": 9.163121271878481,
+        "corridor_lateral_margin_m": -6.468239556872851,
+        "fov_margin_rad": -0.986252994496385,
+        "total_speed_margin_m_s": -0.15213029416183788,
+        "closing_speed_margin_m_s": -0.03741345582403338
+      },
+      "minimum_position_error_m": 12.136531311408445,
+      "final_position_error_m": 14.990973545354654,
+      "final_attitude_error_rad": 1.8507268554219762,
+      "final_speed_m_s": 0.5021302941618379,
+      "final_angular_velocity_rad_s": 0.16242494249409503,
+      "force_impulse_n_s": 137.25929072009495,
+      "torque_impulse_nm_s": 10.333880391782607,
+      "action_saturation_fraction": 0.34543761638733705,
+      "full_control_cycle_runtime_s": {
+        "mean": 0.006441978771022785,
+        "std": 0.0002558259719165733,
+        "min": 0.006105500000558095,
+        "max": 0.008149400000547757
+      }
+    },
+    {
+      "episode": 8,
+      "seed": 20288008,
+      "completed": false,
+      "gate_reached": false,
+      "final_completed": false,
+      "constraint_success": true,
+      "first_violation": {
+        "time_s": 5.0,
+        "type": "total_speed_margin_m_s",
+        "margin": -0.0010972851001446182
+      },
+      "minimum_margins": {
+        "corridor_axial_margin_m": 14.95514583028853,
+        "corridor_lateral_margin_m": 5.072514872614744,
+        "fov_margin_rad": 0.31930661229800383,
+        "total_speed_margin_m_s": -0.15090420725228415,
+        "closing_speed_margin_m_s": 0.2633557684013824
+      },
+      "minimum_position_error_m": 14.238650511926847,
+      "final_position_error_m": 15.014963291541074,
+      "final_attitude_error_rad": 1.1363482817274537,
+      "final_speed_m_s": 0.5009042072522841,
+      "final_angular_velocity_rad_s": 0.1460786396705108,
+      "force_impulse_n_s": 88.06228163583845,
+      "torque_impulse_nm_s": 8.729574012181903,
+      "action_saturation_fraction": 0.10869565217391304,
+      "full_control_cycle_runtime_s": {
+        "mean": 0.006426166847869235,
+        "std": 0.00017821308251249107,
+        "min": 0.006137899999885121,
+        "max": 0.007894100001067272
+      }
+    },
+    {
+      "episode": 9,
+      "seed": 20288009,
+      "completed": false,
+      "gate_reached": false,
+      "final_completed": false,
+      "constraint_success": true,
+      "first_violation": {
+        "time_s": 0.1,
+        "type": "corridor_lateral_margin_m",
+        "margin": -5.253926575718151
+      },
+      "minimum_margins": {
+        "corridor_axial_margin_m": 6.598765513859689,
+        "corridor_lateral_margin_m": -8.069280372296264,
+        "fov_margin_rad": -1.127486281078761,
+        "total_speed_margin_m_s": -0.15359197696722593,
+        "closing_speed_margin_m_s": -0.16775065726415683
+      },
+      "minimum_position_error_m": 13.675820691547056,
+      "final_position_error_m": 13.675820691547056,
+      "final_attitude_error_rad": 1.1826528346028602,
+      "final_speed_m_s": 0.5035919769672259,
+      "final_angular_velocity_rad_s": 0.10482097519500887,
+      "force_impulse_n_s": 118.54332469947512,
+      "torque_impulse_nm_s": 10.71919470372246,
+      "action_saturation_fraction": 0.2382297551789077,
+      "full_control_cycle_runtime_s": {
+        "mean": 0.0065043203389725255,
+        "std": 0.0002587471205534241,
+        "min": 0.006128299999545561,
+        "max": 0.007689600000958308
+      }
+    }
+  ],
+  "training_step": 250000
+}

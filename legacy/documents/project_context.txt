@@ -1,0 +1,4780 @@
+Project Context (Selected Files):
+The following content is a compilation of specific source files.
+
+
+==================================================
+==== FILE_PATH: docs\PAPER_FACTS.md ====
+==================================================
+
+# 哈工大核心论文事实表
+
+本文件中的页码均指 `哈工大.pdf` 的 PDF 页码。内容分为“原文明示事实”和“原文未说明/存在矛盾”，防止把工程推测写成论文事实。
+
+## 1. 任务与信息假设
+
+- 任务：追踪星自主接近快速翻滚目标星。
+- 论文假定追踪星能够获取自身和目标星的位姿信息（PDF p.2）。
+- 系统是 SE(3) 上的姿态-轨道统一六自由度刚体模型。
+- 策略控制包含控制力和控制力矩；目标星需要传播，不是静止目标。
+
+## 2. 坐标系与状态约定
+
+- 地心惯性系：`L(x_I,y_I,z_I)`。
+- 追踪星本体系：`B_c(x_c,y_c,z_c)`。
+- 目标星本体系：`B_t(x_t,y_t,z_t)`。
+- `R` 把本体系坐标映射到参考系，`p` 在参考系表达。
+- twist 顺序：`xi=[omega;v]`；`omega` 和 `v` 均在本体系表达。
+- 相对构型：`T_r=T_t^{-1}T_c`，即目标星到追踪星的相对构型。
+
+## 3. SE(3) 动力学
+
+- 运动学：论文 Eqs. (4)-(5)。
+- 本体系动力学：Eq. (6)，包含刚体耦合项、重力梯度、控制输入、外扰和 J2。
+- 论文给出 `mu=398600.44 km^3/s^2`、`R_e=6378 km`，没有给出 J2 数值。
+- 每个环境动作间隔为 0.1 s，使用 RK45 积分。
+- 论文的轨道状态使用 km/km/s，但控制力使用 N；代码必须统一转换为 SI 单位。
+
+## 4. 策略状态
+
+原始相对量 `R_r,p_r,omega_r,v_r` 合计 18 个标量，最终策略输入为 12 维：
+
+```text
+s = [Phi/pi,
+     rho/d_max,
+     omega_r/omega_rand,
+     2.5 v_r/v_max]
+```
+
+- `Phi` 是 SO(3) 对数映射得到的旋转向量。
+- `rho=S(Phi)^{-1}p_r`。
+- 后文给出 `d_max=30 m`。
+- `omega_rand` 与随机初始角速度范围相关，但具体用法没有完全写清。
+- `v_max` 只给出含义，没有给数值。
+
+## 5. 动作、饱和和扰动
+
+- 任务要求六维连续动作。
+- 论文广义力采用 `[tau;P]` 顺序。
+- 控制力逐分量限制：`[-1,1] N`。
+- 控制力矩逐分量限制：`[-0.6,0.6] N m`。
+- 追踪星外扰：
+
+```text
+tau_d = 0.006 [sin(0.2t)+3,
+               2cos(0.2t+5),
+               sin(0.2t)-2] N m
+
+P_d = 0.01 [3cos(0.2t)+1,
+            2cos(0.2t),
+            cos(0.2t+16)] N
+```
+
+## 6. 奖励函数
+
+PDF p.5, Eqs. (28)-(31)：
+
+```text
+R = R_shaping + R_ic + R_terminal
+R_shaping = G(s_t,a_t) - G(s_{t-1},a_{t-1})
+G = -atan(||Phi_t|| + ||rho_t|| + 0.1||omega_t|| + 0.1||v_t||)
+R_ic = -clip(10 * sum_{k=1}^{30} ||s_{t-k}||, 0, 0.2)
+R_terminal = +40（完成），-40（失败）
+```
+
+注意：虽然势函数写成 `G(s_t,a_t)`，展开式中实际没有动作项。原文没有说明回合开始后不足 30 个历史状态时如何处理，也没有明确“完成”的联合判断逻辑。
+
+## 7. 初始场景和不确定性
+
+目标星：
+
+```text
+R_t(0) = I
+p_t(0) = [3722.5784, 3446.4789, 4465.6026] km
+xi_t(0) = [0.05, 0.2, 0.0, 5.4785, 5.3628, 0.4279]^T
+m_t = 225 kg
+J_t = [[42.7,-0.4,-0.6],[-0.4,40.3,-0.5],[-0.6,-0.5,37.9]] kg m^2
+```
+
+物理一致的单位解释是：前三项角速度为 rad/s，后三项轨道速度为 km/s。论文正文把这两个单位的顺序写反。
+
+追踪星每回合随机参数：
+
+```text
+R_c in SO(3)                                  # 未给随机分布
+p_c = p_t + Delta p, Delta p_i~U(-0.15,0.15) # 论文位置单位为 km
+omega_ci~U(-0.2,0.2)
+v_c = R_c^T R_t v_t + Delta v
+Delta v_i~U(-0.002,0.002)                    # km/s
+m_c = 106 + Delta m kg, Delta m~U(-10,10)
+J_c = [[20.3,-0.3,-0.2],[-0.3,19.9,-0.1],[-0.2,-0.1,23.7]] + Delta J I3
+Delta J~U(-1,0) kg m^2
+```
+
+`Delta p_i~U(-0.15,0.15) km` 与 `d_max=30 m` 明显冲突。若三个分量独立均匀采样且没有拒绝采样，只有约 0.4189% 的样本落在 30 m 球内，约 99.5811% 会从失败范围外开始。
+
+## 8. 终止与评价
+
+- 失败：相对距离超过 30 m，或 200 s 内没有完成交会。
+- 0.1 s 步长下，200 s 对应 2000 个动作步。
+- Monte Carlo 评价阈值：
+  - 姿态误差 `0.174 rad`；
+  - 角速度误差 `0.087 rad/s`；
+  - 位置误差 `0.3 m`；
+  - 平移速度误差 `0.1 m/s`。
+- 论文分别报告姿态和位置成功率，没有明确说明训练终止是否要求四项同时满足以及是否需要持续若干步。
+
+## 9. 传统 SMC 对照
+
+PDF p.7, Eqs. (48)-(49)：
+
+```text
+S = [theta; beta] + 0.01[omega;v]
+u = -I S - 0.01 sig(S)
+```
+
+全文没有定义 `theta`、`beta` 和 `sig` 的具体计算；只能推测 `theta/beta` 与前文 `Phi/rho` 对应。未补齐前，代码只能标为“解释版 SMC”，不能称为原文精确复现。
+
+## 10. 网络和训练超参数
+
+| 算法 | 隐藏层 | 激活函数 |
+|---|---|---|
+| PPO | 512, 512, 512, 512 | tanh |
+| TD3 | 256, 256, 256, 256 | ReLU |
+| SAC | 256, 256, 256, 256 | ReLU |
+
+### PPO
+
+| 参数 | 数值 | 参数 | 数值 |
+|---|---:|---|---:|
+| batch_size | 32 | learning_rate | 1.56e-4 |
+| gamma | 0.98 | n_epochs | 5 |
+| vf_coef | 0.37 | gae_lambda | 0.92 |
+| clip_range | 0.3 | ent_coef | 9.89e-6 |
+| n_steps | 512 | max_grad_norm | 5.0 |
+
+### TD3
+
+| 参数 | 数值 | 参数 | 数值 |
+|---|---:|---|---:|
+| batch_size | 32 | buffer_size | 100000 |
+| gamma | 0.95 | gradient_steps | 32 |
+| learning_rate | 5.11e-4 | noise_std | 0.204 |
+| tau | 0.02 | train_freq | 8 |
+
+### SAC
+
+| 参数 | 数值 | 参数 | 数值 |
+|---|---:|---|---:|
+| batch_size | 32 | buffer_size | 100000 |
+| gamma | 0.95 | gradient_steps | 32 |
+| learning_rate | 2.73e-4 | learning_starts | 20000 |
+| tau | 0.005 | train_freq | 4 |
+
+- 三种算法均训练 1200 万步。
+- 论文使用 RTX 3090 Ti 和 PyTorch 2.3.0。
+- 报告训练时间：PPO 9.24 h、TD3 11.07 h、SAC 21.79 h。
+
+## 11. 论文报告的参考结果
+
+1000 次 Monte Carlo：
+
+| 控制器 | 姿态成功率 | 位置成功率 |
+|---|---:|---:|
+| SMC | 55.0% | 55.5% |
+| PPO | 77.0% | 77.0% |
+| TD3 | 72.2% | 100.0% |
+| SAC | 99.9% | 99.3% |
+
+这些数值只是论文对照目标，**不是 DRL2 已经运行得到的结果**。Table III 的完整终端误差以论文原表为准，当前活动复现规范不重复抄录；Fig. 12 的“控制消耗”计算公式没有给出，因此现阶段不能声称复现该图。
+
+
+==================================================
+==== FILE_PATH: dynamics\constants.py ====
+==================================================
+
+"""论文数值常量及明确记录的行业常用补充值。"""
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class EarthConstants:
+    """全部采用 SI 单位。"""
+
+    mu: float
+    equatorial_radius: float
+    j2: float
+
+
+# 论文明确给出 mu=398600.44 km^3/s^2 和 Re=6378 km，但漏报 J2。
+# J2 使用常见的无量纲地球带谐系数；该替代已写入 DEVIATION_LOG.md。
+PAPER_EARTH = EarthConstants(
+    mu=398600.44e9,
+    equatorial_radius=6378.0e3,
+    j2=1.08262668e-3,
+)
+
+PAPER_CONTROL_DT = 0.1
+PAPER_MAX_TIME = 200.0
+PAPER_MAX_DISTANCE = 30.0
+PAPER_MAX_FORCE = 1.0
+PAPER_MAX_TORQUE = 0.6
+
+
+==================================================
+==== FILE_PATH: dynamics\disturbance.py ====
+==================================================
+
+"""核心论文 Eqs. (46)-(47) 的追踪星外扰。"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from .types import GeneralizedForce
+
+
+def paper_chaser_disturbance(time_seconds: float) -> GeneralizedForce:
+    time_seconds = float(time_seconds)
+    torque = 0.006 * np.array(
+        [
+            np.sin(0.2 * time_seconds) + 3.0,
+            2.0 * np.cos(0.2 * time_seconds + 5.0),
+            np.sin(0.2 * time_seconds) - 2.0,
+        ],
+        dtype=np.float64,
+    )
+    force = 0.01 * np.array(
+        [
+            3.0 * np.cos(0.2 * time_seconds) + 1.0,
+            2.0 * np.cos(0.2 * time_seconds),
+            np.cos(0.2 * time_seconds + 16.0),
+        ],
+        dtype=np.float64,
+    )
+    return GeneralizedForce(torque, force)
+
+
+def zero_disturbance(_: float) -> GeneralizedForce:
+    return GeneralizedForce.zeros()
+
+
+==================================================
+==== FILE_PATH: dynamics\gravity.py ====
+==================================================
+
+"""核心论文 Eqs. (7)-(9) 的重力、重力梯度和 J2。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
+
+from .constants import PAPER_EARTH, EarthConstants
+from .lie import hat3
+from .types import GeneralizedForce, SpacecraftParameters, SpacecraftState
+
+
+FloatArray = NDArray[np.float64]
+SecondMomentMode = Literal["standard_minus", "paper_plus"]
+
+
+@dataclass(frozen=True)
+class GravityOptions:
+    include_central: bool = True
+    include_second_moment: bool = True
+    include_j2: bool = True
+    second_moment_mode: SecondMomentMode = "standard_minus"
+
+
+def second_moment_from_inertia(
+    inertia: ArrayLike,
+    mode: SecondMomentMode = "standard_minus",
+) -> FloatArray:
+    """由转动惯量生成 Eq. (8) 中的二阶矩矩阵。
+
+    ``standard_minus`` 是刚体惯量与二阶矩的标准关系；``paper_plus``
+    严格保留论文印刷的加号，专用于敏感性对照。
+    """
+
+    value = np.asarray(inertia, dtype=np.float64)
+    if value.shape != (3, 3):
+        raise ValueError("inertia 必须为 shape=(3,3)")
+    base = 0.5 * np.trace(value) * np.eye(3)
+    if mode == "standard_minus":
+        return base - value
+    if mode == "paper_plus":
+        return base + value
+    raise ValueError(f"未知 second_moment_mode: {mode}")
+
+
+def _validate_orbit(rotation: ArrayLike, position: ArrayLike) -> tuple[FloatArray, FloatArray, float]:
+    r = np.asarray(rotation, dtype=np.float64)
+    p = np.asarray(position, dtype=np.float64)
+    if r.shape != (3, 3) or p.shape != (3,):
+        raise ValueError("rotation/position 的 shape 必须分别为 (3,3)/(3,)")
+    radius = float(np.linalg.norm(p))
+    if radius <= 1.0:
+        raise ValueError("ECI 位置半径过小，不能计算地球重力")
+    return r, p, radius
+
+
+def gravity_gradient_torque(
+    rotation: ArrayLike,
+    position: ArrayLike,
+    inertia: ArrayLike,
+    earth: EarthConstants = PAPER_EARTH,
+) -> FloatArray:
+    rotation, position, radius = _validate_orbit(rotation, position)
+    inertia = np.asarray(inertia, dtype=np.float64)
+    position_body = rotation.T @ position
+    return 3.0 * earth.mu / radius**5 * (
+        hat3(position_body) @ inertia @ position_body
+    )
+
+
+def central_and_second_moment_force(
+    rotation: ArrayLike,
+    position: ArrayLike,
+    mass: float,
+    inertia: ArrayLike,
+    earth: EarthConstants = PAPER_EARTH,
+    *,
+    include_second_moment: bool = True,
+    second_moment_mode: SecondMomentMode = "standard_minus",
+) -> FloatArray:
+    rotation, position, radius = _validate_orbit(rotation, position)
+    position_body = rotation.T @ position
+    force = -earth.mu * float(mass) / radius**3 * position_body
+    if include_second_moment:
+        moment = second_moment_from_inertia(inertia, second_moment_mode)
+        quadratic = float(position_body @ moment @ position_body)
+        force = (
+            force
+            - 3.0 * earth.mu / radius**5 * (moment @ position_body)
+            + 7.5 * earth.mu * quadratic / radius**7 * position_body
+        )
+    return force
+
+
+def j2_force_body(
+    rotation: ArrayLike,
+    position: ArrayLike,
+    mass: float,
+    earth: EarthConstants = PAPER_EARTH,
+) -> FloatArray:
+    rotation, position, radius = _validate_orbit(rotation, position)
+    x, y, z = position
+    z_ratio = z * z / (radius * radius)
+    inertial_shape = np.array(
+        [x * (1.0 - 5.0 * z_ratio), y * (1.0 - 5.0 * z_ratio), z * (3.0 - 5.0 * z_ratio)],
+        dtype=np.float64,
+    )
+    coefficient = (
+        -1.5
+        * earth.mu
+        * float(mass)
+        * earth.j2
+        * earth.equatorial_radius**2
+        / radius**5
+    )
+    return coefficient * (rotation.T @ inertial_shape)
+
+
+def gravity_wrench(
+    state: SpacecraftState,
+    parameters: SpacecraftParameters,
+    options: GravityOptions = GravityOptions(),
+    earth: EarthConstants = PAPER_EARTH,
+) -> GeneralizedForce:
+    if not options.include_central:
+        return GeneralizedForce.zeros()
+    torque = gravity_gradient_torque(
+        state.rotation,
+        state.position,
+        parameters.inertia,
+        earth,
+    )
+    force = central_and_second_moment_force(
+        state.rotation,
+        state.position,
+        parameters.mass,
+        parameters.inertia,
+        earth,
+        include_second_moment=options.include_second_moment,
+        second_moment_mode=options.second_moment_mode,
+    )
+    if options.include_j2:
+        force += j2_force_body(
+            state.rotation,
+            state.position,
+            parameters.mass,
+            earth,
+        )
+    return GeneralizedForce(torque, force)
+
+
+==================================================
+==== FILE_PATH: dynamics\integrator.py ====
+==================================================
+
+"""按论文说明使用 RK45 逐控制步传播绝对 SE(3) 状态。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable
+
+import numpy as np
+from scipy.integrate import solve_ivp
+
+from .disturbance import zero_disturbance
+from .gravity import GravityOptions
+from .spacecraft import pack_derivative, pack_state, state_derivative, unpack_state
+from .types import GeneralizedForce, SpacecraftParameters, SpacecraftState
+
+
+ControlLaw = Callable[[float, SpacecraftState], GeneralizedForce]
+DisturbanceLaw = Callable[[float], GeneralizedForce]
+
+
+@dataclass(frozen=True)
+class RK45Settings:
+    rtol: float = 1e-9
+    atol: float = 1e-11
+    max_step: float | None = None
+
+
+@dataclass(frozen=True)
+class IntegrationDiagnostics:
+    nfev: int
+    njev: int
+    status: int
+    message: str
+
+
+def _as_control_law(
+    control: GeneralizedForce | ControlLaw,
+) -> ControlLaw:
+    if isinstance(control, GeneralizedForce):
+        return lambda _time, _state: control
+    if callable(control):
+        return control
+    raise TypeError("control 必须是 GeneralizedForce 或可调用控制律")
+
+
+def propagate_rk45(
+    state: SpacecraftState,
+    parameters: SpacecraftParameters,
+    time_seconds: float,
+    duration: float,
+    *,
+    control: GeneralizedForce | ControlLaw | None = None,
+    disturbance: DisturbanceLaw = zero_disturbance,
+    gravity_options: GravityOptions = GravityOptions(),
+    settings: RK45Settings = RK45Settings(),
+) -> tuple[SpacecraftState, IntegrationDiagnostics]:
+    if duration <= 0.0:
+        raise ValueError("duration 必须为正数")
+    control_law = _as_control_law(control or GeneralizedForce.zeros())
+    t0 = float(time_seconds)
+    t1 = t0 + float(duration)
+
+    def rhs(current_time: float, packed: np.ndarray) -> np.ndarray:
+        current_state = unpack_state(packed)
+        derivative = state_derivative(
+            current_state,
+            parameters,
+            control_law(current_time, current_state),
+            disturbance(current_time),
+            gravity_options,
+        )
+        return pack_derivative(derivative)
+
+    max_step = duration if settings.max_step is None else settings.max_step
+    solution = solve_ivp(
+        rhs,
+        (t0, t1),
+        pack_state(state),
+        method="RK45",
+        rtol=settings.rtol,
+        atol=settings.atol,
+        max_step=max_step,
+        t_eval=[t1],
+    )
+    if not solution.success or solution.y.shape[1] != 1:
+        raise RuntimeError(f"RK45 传播失败: {solution.message}")
+    propagated = unpack_state(solution.y[:, -1], project_rotation=True)
+    diagnostics = IntegrationDiagnostics(
+        nfev=int(solution.nfev),
+        njev=int(solution.njev),
+        status=int(solution.status),
+        message=str(solution.message),
+    )
+    return propagated, diagnostics
+
+
+==================================================
+==== FILE_PATH: dynamics\lie.py ====
+==================================================
+
+"""SO(3)/SE(3) 基础运算。
+
+全项目 twist 顺序固定为 ``xi=[omega; v]``，与核心论文 Eq. (3) 一致。
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
+
+
+FloatArray = NDArray[np.float64]
+_SMALL_ANGLE = 1e-8
+_NEAR_PI = 1e-6
+
+
+def _as_vector(value: ArrayLike, size: int, name: str) -> FloatArray:
+    array = np.asarray(value, dtype=np.float64)
+    if array.shape != (size,):
+        raise ValueError(f"{name} 必须为 shape=({size},)，实际为 {array.shape}")
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} 含有非有限数")
+    return array
+
+
+def hat3(vector: ArrayLike) -> FloatArray:
+    x, y, z = _as_vector(vector, 3, "vector")
+    return np.array(
+        [[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]],
+        dtype=np.float64,
+    )
+
+
+def vee3(matrix: ArrayLike) -> FloatArray:
+    value = np.asarray(matrix, dtype=np.float64)
+    if value.shape != (3, 3):
+        raise ValueError("matrix 必须为 shape=(3,3)")
+    return np.array([value[2, 1], value[0, 2], value[1, 0]], dtype=np.float64)
+
+
+def hat6(twist: ArrayLike) -> FloatArray:
+    xi = _as_vector(twist, 6, "twist")
+    result = np.zeros((4, 4), dtype=np.float64)
+    result[:3, :3] = hat3(xi[:3])
+    result[:3, 3] = xi[3:]
+    return result
+
+
+def vee6(matrix: ArrayLike) -> FloatArray:
+    value = np.asarray(matrix, dtype=np.float64)
+    if value.shape != (4, 4):
+        raise ValueError("matrix 必须为 shape=(4,4)")
+    return np.concatenate((vee3(value[:3, :3]), value[:3, 3]))
+
+
+def project_to_so3(matrix: ArrayLike) -> FloatArray:
+    value = np.asarray(matrix, dtype=np.float64)
+    if value.shape != (3, 3):
+        raise ValueError("matrix 必须为 shape=(3,3)")
+    u, _, vt = np.linalg.svd(value)
+    rotation = u @ vt
+    if np.linalg.det(rotation) < 0.0:
+        u[:, -1] *= -1.0
+        rotation = u @ vt
+    return rotation
+
+
+def is_so3(matrix: ArrayLike, atol: float = 1e-9) -> bool:
+    value = np.asarray(matrix, dtype=np.float64)
+    return bool(
+        value.shape == (3, 3)
+        and np.allclose(value.T @ value, np.eye(3), atol=atol)
+        and np.isclose(np.linalg.det(value), 1.0, atol=atol)
+    )
+
+
+def so3_exp(rotation_vector: ArrayLike) -> FloatArray:
+    phi = _as_vector(rotation_vector, 3, "rotation_vector")
+    theta = float(np.linalg.norm(phi))
+    phi_hat = hat3(phi)
+    if theta < _SMALL_ANGLE:
+        theta2 = theta * theta
+        a = 1.0 - theta2 / 6.0 + theta2 * theta2 / 120.0
+        b = 0.5 - theta2 / 24.0 + theta2 * theta2 / 720.0
+    else:
+        a = np.sin(theta) / theta
+        b = (1.0 - np.cos(theta)) / (theta * theta)
+    return np.eye(3) + a * phi_hat + b * (phi_hat @ phi_hat)
+
+
+def _axis_near_pi(rotation: FloatArray) -> FloatArray:
+    diagonal = np.diag(rotation)
+    index = int(np.argmax(diagonal))
+    axis = np.zeros(3, dtype=np.float64)
+    value = max(0.0, 0.5 * (diagonal[index] + 1.0))
+    axis[index] = np.sqrt(value)
+    if axis[index] < 1e-8:
+        eigenvalues, eigenvectors = np.linalg.eig(rotation)
+        axis = np.real(eigenvectors[:, int(np.argmin(np.abs(eigenvalues - 1.0)))])
+    else:
+        j, k = [item for item in range(3) if item != index]
+        axis[j] = (rotation[index, j] + rotation[j, index]) / (4.0 * axis[index])
+        axis[k] = (rotation[index, k] + rotation[k, index]) / (4.0 * axis[index])
+    norm = float(np.linalg.norm(axis))
+    if norm < 1e-12:
+        raise ValueError("接近 pi 的旋转轴提取失败")
+    axis /= norm
+    skew_hint = vee3(rotation - rotation.T)
+    if np.linalg.norm(skew_hint) > 1e-10 and float(axis @ skew_hint) < 0.0:
+        axis *= -1.0
+    return axis
+
+
+def so3_log(rotation: ArrayLike, *, project: bool = False) -> FloatArray:
+    value = np.asarray(rotation, dtype=np.float64)
+    if value.shape != (3, 3):
+        raise ValueError("rotation 必须为 shape=(3,3)")
+    if project:
+        value = project_to_so3(value)
+    elif not is_so3(value, atol=1e-7):
+        raise ValueError("rotation 不是有效 SO(3) 矩阵")
+    cosine = float(np.clip(0.5 * (np.trace(value) - 1.0), -1.0, 1.0))
+    theta = float(np.arccos(cosine))
+    if theta < _SMALL_ANGLE:
+        return 0.5 * vee3(value - value.T)
+    if np.pi - theta < _NEAR_PI:
+        return theta * _axis_near_pi(value)
+    return theta / (2.0 * np.sin(theta)) * vee3(value - value.T)
+
+
+def left_jacobian_so3(rotation_vector: ArrayLike) -> FloatArray:
+    phi = _as_vector(rotation_vector, 3, "rotation_vector")
+    theta = float(np.linalg.norm(phi))
+    phi_hat = hat3(phi)
+    if theta < _SMALL_ANGLE:
+        theta2 = theta * theta
+        b = 0.5 - theta2 / 24.0 + theta2 * theta2 / 720.0
+        c = 1.0 / 6.0 - theta2 / 120.0 + theta2 * theta2 / 5040.0
+    else:
+        b = (1.0 - np.cos(theta)) / (theta * theta)
+        c = (theta - np.sin(theta)) / (theta * theta * theta)
+    return np.eye(3) + b * phi_hat + c * (phi_hat @ phi_hat)
+
+
+def left_jacobian_so3_inv(rotation_vector: ArrayLike) -> FloatArray:
+    phi = _as_vector(rotation_vector, 3, "rotation_vector")
+    theta = float(np.linalg.norm(phi))
+    phi_hat = hat3(phi)
+    if theta < _SMALL_ANGLE:
+        coefficient = 1.0 / 12.0 + theta * theta / 720.0
+    else:
+        half = 0.5 * theta
+        coefficient = 1.0 / (theta * theta) - np.cos(half) / (
+            2.0 * theta * np.sin(half)
+        )
+    return np.eye(3) - 0.5 * phi_hat + coefficient * (phi_hat @ phi_hat)
+
+
+def make_transform(rotation: ArrayLike, position: ArrayLike) -> FloatArray:
+    r = np.asarray(rotation, dtype=np.float64)
+    p = _as_vector(position, 3, "position")
+    if r.shape != (3, 3):
+        raise ValueError("rotation 必须为 shape=(3,3)")
+    result = np.eye(4, dtype=np.float64)
+    result[:3, :3] = r
+    result[:3, 3] = p
+    return result
+
+
+def split_transform(transform: ArrayLike) -> tuple[FloatArray, FloatArray]:
+    value = np.asarray(transform, dtype=np.float64)
+    if value.shape != (4, 4):
+        raise ValueError("transform 必须为 shape=(4,4)")
+    return value[:3, :3].copy(), value[:3, 3].copy()
+
+
+def inverse_transform(transform: ArrayLike) -> FloatArray:
+    rotation, position = split_transform(transform)
+    return make_transform(rotation.T, -rotation.T @ position)
+
+
+def se3_exp(exponential_coordinates: ArrayLike) -> FloatArray:
+    eta = _as_vector(exponential_coordinates, 6, "exponential_coordinates")
+    phi, rho = eta[:3], eta[3:]
+    return make_transform(so3_exp(phi), left_jacobian_so3(phi) @ rho)
+
+
+def se3_log(transform: ArrayLike, *, project: bool = False) -> FloatArray:
+    rotation, position = split_transform(transform)
+    phi = so3_log(rotation, project=project)
+    rho = left_jacobian_so3_inv(phi) @ position
+    return np.concatenate((phi, rho))
+
+
+def adjoint(transform: ArrayLike) -> FloatArray:
+    rotation, position = split_transform(transform)
+    result = np.zeros((6, 6), dtype=np.float64)
+    result[:3, :3] = rotation
+    result[3:, :3] = hat3(position) @ rotation
+    result[3:, 3:] = rotation
+    return result
+
+
+def ad6(twist: ArrayLike) -> FloatArray:
+    xi = _as_vector(twist, 6, "twist")
+    result = np.zeros((6, 6), dtype=np.float64)
+    result[:3, :3] = hat3(xi[:3])
+    result[3:, :3] = hat3(xi[3:])
+    result[3:, 3:] = hat3(xi[:3])
+    return result
+
+
+def coad6_paper(twist: ArrayLike) -> FloatArray:
+    """返回核心论文 Eq. (10)-(11) 所需矩阵。
+
+    论文把它记作 ``ad*``，但为与 Eq. (6) 的负陀螺耦合项一致，
+    数值上必须取 ``ad(xi).T``。部分教材把 ``-ad.T`` 称为 coadjoint；
+    因此函数名明确带 ``paper``，禁止混淆符号约定。
+    """
+
+    return ad6(twist).T
+
+
+==================================================
+==== FILE_PATH: dynamics\relative.py ====
+==================================================
+
+"""目标星与追踪星的相对 SE(3) 状态。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+from numpy.typing import NDArray
+
+from .lie import adjoint, inverse_transform, make_transform, se3_log
+from .types import SpacecraftState
+
+
+FloatArray = NDArray[np.float64]
+
+
+@dataclass(frozen=True)
+class RelativeState:
+    transform: FloatArray
+    twist: FloatArray
+
+    @property
+    def rotation(self) -> FloatArray:
+        return self.transform[:3, :3]
+
+    @property
+    def position(self) -> FloatArray:
+        return self.transform[:3, 3]
+
+    @property
+    def omega(self) -> FloatArray:
+        return self.twist[:3]
+
+    @property
+    def velocity(self) -> FloatArray:
+        return self.twist[3:]
+
+    @property
+    def exponential_coordinates(self) -> FloatArray:
+        return se3_log(self.transform, project=True)
+
+
+def state_transform(state: SpacecraftState) -> FloatArray:
+    return make_transform(state.rotation, state.position)
+
+
+def relative_state(target: SpacecraftState, chaser: SpacecraftState) -> RelativeState:
+    """实现经过推导修正的论文 Eq. (12)。"""
+
+    target_transform = state_transform(target)
+    chaser_transform = state_transform(chaser)
+    relative_transform = inverse_transform(target_transform) @ chaser_transform
+    relative_twist = chaser.twist - adjoint(
+        inverse_transform(relative_transform)
+    ) @ target.twist
+    return RelativeState(relative_transform, relative_twist)
+
+
+==================================================
+==== FILE_PATH: dynamics\spacecraft.py ====
+==================================================
+
+"""核心论文 Eqs. (4)-(6)、(10)-(11) 的单星动力学。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
+
+from .gravity import GravityOptions, gravity_wrench
+from .lie import coad6_paper, hat3, project_to_so3
+from .types import GeneralizedForce, SpacecraftParameters, SpacecraftState
+
+
+FloatArray = NDArray[np.float64]
+
+
+@dataclass
+class StateDerivative:
+    rotation: FloatArray
+    position: FloatArray
+    omega: FloatArray
+    velocity: FloatArray
+
+
+def body_dynamics_rhs(
+    state: SpacecraftState,
+    parameters: SpacecraftParameters,
+    applied_wrench: GeneralizedForce,
+) -> tuple[FloatArray, FloatArray]:
+    """直接实现论文 Eq. (6)。"""
+
+    angular_rhs = (
+        -np.cross(state.omega, parameters.inertia @ state.omega)
+        + applied_wrench.torque
+    )
+    omega_dot = np.linalg.solve(parameters.inertia, angular_rhs)
+    velocity_dot = -np.cross(state.omega, state.velocity) + (
+        applied_wrench.force / parameters.mass
+    )
+    return omega_dot, velocity_dot
+
+
+def momentum_dynamics_rhs(
+    state: SpacecraftState,
+    parameters: SpacecraftParameters,
+    applied_wrench: GeneralizedForce,
+) -> FloatArray:
+    """实现论文 Eq. (11)，用于与 Eq. (6) 逐项交叉验证。"""
+
+    inertia6 = parameters.generalized_inertia
+    momentum_rhs = coad6_paper(state.twist) @ (inertia6 @ state.twist)
+    momentum_rhs += applied_wrench.vector
+    return np.linalg.solve(inertia6, momentum_rhs)
+
+
+def state_derivative(
+    state: SpacecraftState,
+    parameters: SpacecraftParameters,
+    control: GeneralizedForce,
+    disturbance: GeneralizedForce,
+    gravity_options: GravityOptions = GravityOptions(),
+) -> StateDerivative:
+    total = gravity_wrench(state, parameters, gravity_options) + control + disturbance
+    omega_dot, velocity_dot = body_dynamics_rhs(state, parameters, total)
+    return StateDerivative(
+        rotation=state.rotation @ hat3(state.omega),
+        position=state.rotation @ state.velocity,
+        omega=omega_dot,
+        velocity=velocity_dot,
+    )
+
+
+def pack_state(state: SpacecraftState) -> FloatArray:
+    return np.concatenate(
+        (
+            state.rotation.reshape(9),
+            state.position,
+            state.omega,
+            state.velocity,
+        )
+    )
+
+
+def unpack_state(value: ArrayLike, *, project_rotation: bool = False) -> SpacecraftState:
+    array = np.asarray(value, dtype=np.float64)
+    if array.shape != (18,):
+        raise ValueError("积分状态必须为 shape=(18,)")
+    rotation = array[:9].reshape(3, 3)
+    if project_rotation:
+        rotation = project_to_so3(rotation)
+    return SpacecraftState(rotation, array[9:12], array[12:15], array[15:18])
+
+
+def pack_derivative(derivative: StateDerivative) -> FloatArray:
+    return np.concatenate(
+        (
+            derivative.rotation.reshape(9),
+            derivative.position,
+            derivative.omega,
+            derivative.velocity,
+        )
+    )
+
+
+==================================================
+==== FILE_PATH: dynamics\types.py ====
+==================================================
+
+"""动力学层的显式数据结构，定义动力学层中最基本的三类数据对象：航天器状态、航天器物理参数、六维广义力。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
+
+
+FloatArray = NDArray[np.float64]
+
+
+def _vector3(value: ArrayLike, name: str) -> FloatArray:
+    array = np.asarray(value, dtype=np.float64)
+    if array.shape != (3,):
+        raise ValueError(f"{name} 必须是 shape=(3,)；实际为 {array.shape}")
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} 含有非有限数")
+    return array.copy()
+
+
+def _matrix3(value: ArrayLike, name: str) -> FloatArray:
+    array = np.asarray(value, dtype=np.float64)
+    if array.shape != (3, 3):
+        raise ValueError(f"{name} 必须是 shape=(3,3)；实际为 {array.shape}")
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} 含有非有限数")
+    return array.copy()
+
+
+@dataclass
+class SpacecraftState:
+    """单航天器绝对状态；速度均在本体系表达，位置在 ECI 表达。"""
+
+    rotation: FloatArray
+    position: FloatArray
+    omega: FloatArray
+    velocity: FloatArray
+
+    def __post_init__(self) -> None:
+        self.rotation = _matrix3(self.rotation, "rotation")
+        self.position = _vector3(self.position, "position")
+        self.omega = _vector3(self.omega, "omega")
+        self.velocity = _vector3(self.velocity, "velocity")
+
+    @property
+    def twist(self) -> FloatArray:
+        return np.concatenate((self.omega, self.velocity))
+
+    def copy(self) -> "SpacecraftState":
+        return SpacecraftState(
+            self.rotation.copy(),
+            self.position.copy(),
+            self.omega.copy(),
+            self.velocity.copy(),
+        )
+
+
+@dataclass
+class SpacecraftParameters:
+    mass: float
+    inertia: FloatArray
+
+    def __post_init__(self) -> None:
+        self.mass = float(self.mass)
+        self.inertia = _matrix3(self.inertia, "inertia")
+        if not np.isfinite(self.mass) or self.mass <= 0.0:
+            raise ValueError("mass 必须为有限正数")
+        if not np.allclose(self.inertia, self.inertia.T, atol=1e-12):
+            raise ValueError("inertia 必须对称")
+        if np.min(np.linalg.eigvalsh(self.inertia)) <= 0.0:
+            raise ValueError("inertia 必须正定")
+
+    @property
+    def generalized_inertia(self) -> FloatArray:
+        result = np.zeros((6, 6), dtype=np.float64)
+        result[:3, :3] = self.inertia
+        result[3:, 3:] = self.mass * np.eye(3)
+        return result
+
+
+@dataclass
+class GeneralizedForce:
+    """顺序固定为 [torque; force]，两者都在本体系表达。"""
+
+    torque: FloatArray
+    force: FloatArray
+
+    def __post_init__(self) -> None:
+        self.torque = _vector3(self.torque, "torque")
+        self.force = _vector3(self.force, "force")
+
+    @classmethod
+    def zeros(cls) -> "GeneralizedForce":
+        return cls(np.zeros(3), np.zeros(3))
+
+    @classmethod
+    def from_vector(cls, value: ArrayLike) -> "GeneralizedForce":
+        array = np.asarray(value, dtype=np.float64)
+        if array.shape != (6,):
+            raise ValueError("广义力必须是 shape=(6,)，顺序为 [torque; force]")
+        return cls(array[:3], array[3:])
+
+    @property
+    def vector(self) -> FloatArray:
+        return np.concatenate((self.torque, self.force))
+
+    def __add__(self, other: "GeneralizedForce") -> "GeneralizedForce":
+        if not isinstance(other, GeneralizedForce):
+            return NotImplemented
+        return GeneralizedForce(self.torque + other.torque, self.force + other.force)
+
+
+==================================================
+==== FILE_PATH: dynamics\__init__.py ====
+==================================================
+
+"""哈工大 SE(3) 交会复现的动力学基础包。"""
+
+from .constants import PAPER_EARTH, EarthConstants
+from .lie import (
+    adjoint,
+    coad6_paper,
+    hat3,
+    hat6,
+    inverse_transform,
+    left_jacobian_so3,
+    left_jacobian_so3_inv,
+    make_transform,
+    project_to_so3,
+    se3_exp,
+    se3_log,
+    so3_exp,
+    so3_log,
+    vee3,
+    vee6,
+)
+from .types import GeneralizedForce, SpacecraftParameters, SpacecraftState
+
+__all__ = [
+    "PAPER_EARTH",
+    "EarthConstants",
+    "GeneralizedForce",
+    "SpacecraftParameters",
+    "SpacecraftState",
+    "adjoint",
+    "coad6_paper",
+    "hat3",
+    "hat6",
+    "inverse_transform",
+    "left_jacobian_so3",
+    "left_jacobian_so3_inv",
+    "make_transform",
+    "project_to_so3",
+    "se3_exp",
+    "se3_log",
+    "so3_exp",
+    "so3_log",
+    "vee3",
+    "vee6",
+]
+
+
+==================================================
+==== FILE_PATH: env\action.py ====
+==================================================
+
+"""六维归一化动作与论文物理执行器范围之间的映射。"""
+
+from __future__ import annotations
+
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
+
+from dynamics.constants import PAPER_MAX_FORCE, PAPER_MAX_TORQUE
+from dynamics.types import GeneralizedForce
+
+
+FloatArray = NDArray[np.float64]
+
+
+def normalized_to_wrench(action: ArrayLike) -> GeneralizedForce:
+    value = np.asarray(action, dtype=np.float64)
+    if value.shape != (6,):
+        raise ValueError("action 必须为 shape=(6,)，顺序为 [torque;force]")
+    if not np.all(np.isfinite(value)):
+        raise ValueError("action 含有非有限数")
+    clipped = np.clip(value, -1.0, 1.0)
+    return GeneralizedForce(
+        torque=PAPER_MAX_TORQUE * clipped[:3],
+        force=PAPER_MAX_FORCE * clipped[3:],
+    )
+
+
+def wrench_to_normalized(wrench: GeneralizedForce) -> FloatArray:
+    normalized = np.concatenate(
+        (wrench.torque / PAPER_MAX_TORQUE, wrench.force / PAPER_MAX_FORCE)
+    )
+    return np.clip(normalized, -1.0, 1.0)
+
+
+==================================================
+==== FILE_PATH: env\observation.py ====
+==================================================
+
+"""论文 Eqs. (23)-(27) 的状态螺旋映射。"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+import numpy as np
+
+from dynamics.relative import RelativeState
+
+
+ObservationClipMode = Literal["hard", "softsign"]
+
+
+def build_observation(
+    relative: RelativeState,
+    *,
+    distance_scale: float,
+    omega_scale: float,
+    velocity_scale: float,
+    attitude_scale: float = np.pi,
+    clip: float | None = None,
+    clip_mode: ObservationClipMode = "hard",
+) -> np.ndarray:
+    if min(attitude_scale, distance_scale, omega_scale, velocity_scale) <= 0.0:
+        raise ValueError("四个观测归一化尺度必须为正数")
+    exponential = relative.exponential_coordinates
+    phi, rho = exponential[:3], exponential[3:]
+    observation = np.concatenate(
+        (
+            phi / attitude_scale,
+            rho / distance_scale,
+            relative.omega / omega_scale,
+            2.5 * relative.velocity / velocity_scale,
+        )
+    )
+    if clip_mode not in ("hard", "softsign"):
+        raise ValueError(f"unknown observation clip mode: {clip_mode}")
+    if clip is not None:
+        if clip <= 0.0:
+            raise ValueError("观测限幅必须为正数")
+        if clip_mode == "hard":
+            observation = np.clip(observation, -clip, clip)
+        else:
+            # Strictly monotone and invertible on (-clip, clip): unlike hard
+            # clipping, distinct far-field states remain distinguishable.
+            observation = clip * observation / (clip + np.abs(observation))
+    return observation.astype(np.float32)
+
+
+==================================================
+==== FILE_PATH: env\reward.py ====
+==================================================
+
+"""Paper reward and the validated physical stable-flow reward."""
+
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass
+from typing import Literal, Protocol
+
+import numpy as np
+from numpy.typing import ArrayLike
+
+from dynamics.relative import RelativeState
+from env.termination import SuccessThresholds
+
+
+RewardUnitMode = Literal["paper_km", "si_literal"]
+FailureTerminalMode = Literal[
+    "paper_literal",
+    "remaining_horizon_compensated",
+    "fixed_penalty",
+    "barrier_only",
+]
+RewardMode = Literal[
+    "paper_equations",
+    "se3_stable_flow_v1",
+    "se3_stable_flow_log_v2",
+    "se3_stable_flow_log_v3",
+    "se3_physical_storage_v4",
+]
+MAX_INTEGRAL_PENALTY_PER_STEP = 0.2
+
+
+@dataclass(frozen=True)
+class RewardBreakdown:
+    mode: RewardMode
+    shaping: float
+    integral_compensation: float
+    terminal: float
+    integral_argument: float | None
+    integral_saturated: bool | None
+    failure_horizon_adjustment: float
+    stable_flow_energy: float | None = None
+    stable_flow_potential: float | None = None
+    actuation_penalty: float = 0.0
+
+    @property
+    def total(self) -> float:
+        return (
+            self.shaping
+            + self.integral_compensation
+            + self.actuation_penalty
+            + self.terminal
+        )
+
+    @property
+    def progress(self) -> float:
+        return self.shaping
+
+    @property
+    def state_penalty(self) -> float:
+        return self.integral_compensation
+
+
+class RewardCalculator(Protocol):
+    max_dense_penalty_per_step: float
+
+    def reset(self, initial_observation: ArrayLike, relative: RelativeState) -> None: ...
+
+    def compute(
+        self,
+        current_observation: ArrayLike,
+        relative: RelativeState,
+        *,
+        completed: bool,
+        failed: bool,
+        failure_horizon_adjustment: float = 0.0,
+        normalized_action: ArrayLike | None = None,
+    ) -> RewardBreakdown: ...
+
+
+def _validate_transition(
+    observation: ArrayLike,
+    *,
+    completed: bool,
+    failed: bool,
+    failure_horizon_adjustment: float,
+) -> np.ndarray:
+    if completed and failed:
+        raise ValueError("completed and failed cannot both be True")
+    if failure_horizon_adjustment > 0.0:
+        raise ValueError("failure_horizon_adjustment must be non-positive")
+    if not failed and failure_horizon_adjustment != 0.0:
+        raise ValueError("failure horizon adjustment requires failed=True")
+    result = np.asarray(observation, dtype=np.float64)
+    if result.shape != (12,):
+        raise ValueError("observation must have shape=(12,)")
+    return result
+
+
+class HITReward:
+    """Literal implementation of the published shaping, integral and terminal terms."""
+
+    max_dense_penalty_per_step = MAX_INTEGRAL_PENALTY_PER_STEP
+
+    def __init__(
+        self,
+        history_length: int = 30,
+        *,
+        unit_mode: RewardUnitMode = "paper_km",
+    ) -> None:
+        if history_length <= 0:
+            raise ValueError("history_length must be positive")
+        if unit_mode not in ("paper_km", "si_literal"):
+            raise ValueError(f"unknown reward unit mode: {unit_mode}")
+        self.history_length = int(history_length)
+        self.unit_mode = unit_mode
+        self._history: deque[np.ndarray] = deque(maxlen=self.history_length)
+        self._previous_potential: float | None = None
+
+    @staticmethod
+    def potential(
+        relative: RelativeState,
+        unit_mode: RewardUnitMode = "paper_km",
+    ) -> float:
+        coordinates = relative.exponential_coordinates
+        if unit_mode == "paper_km":
+            position_scale = velocity_scale = 1.0e-3
+        elif unit_mode == "si_literal":
+            position_scale = velocity_scale = 1.0
+        else:
+            raise ValueError(f"unknown reward unit mode: {unit_mode}")
+        value = (
+            np.linalg.norm(coordinates[:3])
+            + position_scale * np.linalg.norm(coordinates[3:])
+            + 0.1 * np.linalg.norm(relative.omega)
+            + 0.1 * velocity_scale * np.linalg.norm(relative.velocity)
+        )
+        return -float(np.arctan(value))
+
+    @property
+    def history_size(self) -> int:
+        return len(self._history)
+
+    def reset(self, initial_observation: ArrayLike, relative: RelativeState) -> None:
+        observation = np.asarray(initial_observation, dtype=np.float64)
+        if observation.shape != (12,):
+            raise ValueError("initial_observation must have shape=(12,)")
+        self._history.clear()
+        self._history.append(observation.copy())
+        self._previous_potential = self.potential(relative, self.unit_mode)
+
+    def compute(
+        self,
+        current_observation: ArrayLike,
+        relative: RelativeState,
+        *,
+        completed: bool,
+        failed: bool,
+        failure_horizon_adjustment: float = 0.0,
+        normalized_action: ArrayLike | None = None,
+    ) -> RewardBreakdown:
+        del normalized_action
+        if self._previous_potential is None:
+            raise RuntimeError("reset() must be called before reward computation")
+        observation = _validate_transition(
+            current_observation,
+            completed=completed,
+            failed=failed,
+            failure_horizon_adjustment=failure_horizon_adjustment,
+        )
+        current_potential = self.potential(relative, self.unit_mode)
+        shaping = current_potential - self._previous_potential
+        integral_argument = 10.0 * sum(
+            float(np.linalg.norm(item)) for item in self._history
+        )
+        integral = -float(
+            np.clip(integral_argument, 0.0, MAX_INTEGRAL_PENALTY_PER_STEP)
+        )
+        terminal = 40.0 if completed else (
+            -40.0 + failure_horizon_adjustment if failed else 0.0
+        )
+        self._history.append(observation.copy())
+        self._previous_potential = current_potential
+        return RewardBreakdown(
+            mode="paper_equations",
+            shaping=shaping,
+            integral_compensation=integral,
+            terminal=terminal,
+            integral_argument=integral_argument,
+            integral_saturated=integral_argument >= MAX_INTEGRAL_PENALTY_PER_STEP,
+            failure_horizon_adjustment=failure_horizon_adjustment,
+        )
+
+
+class SE3StableFlowRewardV1:
+    """Bounded energy of a physical first-order SE(3) stable flow.
+
+    ``ell`` is the nominal chaser radius of gyration and ``tau`` is the desired
+    physical convergence time.  The reward has no fitted channel weights or
+    arbitrary terminal bonus:
+
+    ``V = ||[ell*phi, rho]||^2 + tau^2 ||[ell*(omega + phi/tau), v + rho/tau]||^2``
+    ``r = -V / (ell^2 + V)``.
+    """
+
+    reward_mode: RewardMode = "se3_stable_flow_v1"
+    max_dense_penalty_per_step = 1.0
+
+    def __init__(
+        self,
+        *,
+        characteristic_length_m: float,
+        time_constant_s: float,
+        reward_scale: float = 1.0,
+    ) -> None:
+        if (
+            characteristic_length_m <= 0.0
+            or time_constant_s <= 0.0
+            or reward_scale <= 0.0
+        ):
+            raise ValueError("stable-flow physical scales must be positive")
+        self.characteristic_length_m = float(characteristic_length_m)
+        self.time_constant_s = float(time_constant_s)
+        self.reward_scale = float(reward_scale)
+        self.max_dense_penalty_per_step = self.reward_scale
+
+    def energy(self, relative: RelativeState) -> float:
+        coordinates = relative.exponential_coordinates
+        phi, rho = coordinates[:3], coordinates[3:]
+        ell = self.characteristic_length_m
+        tau = self.time_constant_s
+        pose_displacement = np.concatenate((ell * phi, rho))
+        flow_residual = np.concatenate(
+            (ell * (relative.omega + phi / tau), relative.velocity + rho / tau)
+        )
+        return float(
+            pose_displacement @ pose_displacement
+            + tau * tau * (flow_residual @ flow_residual)
+        )
+
+    def bounded_cost(self, relative: RelativeState) -> float:
+        energy = self.energy(relative)
+        return float(
+            energy / (self.characteristic_length_m**2 + energy)
+        )
+
+    def reset(self, initial_observation: ArrayLike, relative: RelativeState) -> None:
+        observation = np.asarray(initial_observation, dtype=np.float64)
+        if observation.shape != (12,):
+            raise ValueError("initial_observation must have shape=(12,)")
+        if not np.isfinite(self.energy(relative)):
+            raise ValueError("initial stable-flow energy must be finite")
+
+    def compute(
+        self,
+        current_observation: ArrayLike,
+        relative: RelativeState,
+        *,
+        completed: bool,
+        failed: bool,
+        failure_horizon_adjustment: float = 0.0,
+        normalized_action: ArrayLike | None = None,
+    ) -> RewardBreakdown:
+        del normalized_action
+        _validate_transition(
+            current_observation,
+            completed=completed,
+            failed=failed,
+            failure_horizon_adjustment=failure_horizon_adjustment,
+        )
+        energy = self.energy(relative)
+        if not np.isfinite(energy):
+            raise ValueError("stable-flow energy must be finite")
+        return RewardBreakdown(
+            mode=self.reward_mode,
+            shaping=0.0,
+            integral_compensation=-self.reward_scale * self.bounded_cost(relative),
+            terminal=failure_horizon_adjustment,
+            integral_argument=None,
+            integral_saturated=None,
+            failure_horizon_adjustment=failure_horizon_adjustment,
+            stable_flow_energy=energy,
+        )
+
+
+class SE3StableFlowLogRewardV2(SE3StableFlowRewardV1):
+    """Log-compressed stable-flow energy for the 30 m operating domain.
+
+    V1 is deliberately sharp near the validated one-metre baseline but becomes
+    almost flat at tens of metres.  V2 retains exactly the same physical energy
+    and replaces only its compression map:
+
+    ``c = min(log1p(V / ell^2) / log_cap, 1)`` and ``r = -c``.
+
+    The bounded unit range preserves the existing remaining-horizon failure
+    compensation while maintaining useful variation over the broad domain.
+    """
+
+    reward_mode: RewardMode = "se3_stable_flow_log_v2"
+    max_dense_penalty_per_step = 1.0
+
+    def __init__(
+        self,
+        *,
+        characteristic_length_m: float,
+        time_constant_s: float,
+        log_cap: float,
+        reward_scale: float = 1.0,
+    ) -> None:
+        super().__init__(
+            characteristic_length_m=characteristic_length_m,
+            time_constant_s=time_constant_s,
+            reward_scale=reward_scale,
+        )
+        if log_cap <= 0.0:
+            raise ValueError("stable-flow log cap must be positive")
+        self.log_cap = float(log_cap)
+
+    def bounded_cost(self, relative: RelativeState) -> float:
+        normalized_energy = self.energy(relative) / self.characteristic_length_m**2
+        return float(min(np.log1p(normalized_energy) / self.log_cap, 1.0))
+
+
+class SE3StableFlowLogRewardV3(SE3StableFlowRewardV1):
+    """Non-saturating log-energy cost for broad-domain recovery training.
+
+    V2 intentionally caps the compressed energy at one so that its maximum
+    episode cost is known.  In the 30 m run, a divergent policy drove the
+    twist high enough to spend nearly every transition at that cap.  Combined
+    with remaining-horizon compensation, this made most failed episodes return
+    approximately the same value and removed the learning signal.
+
+    V3 keeps the same physical energy and logarithmic compression, but does
+    not hard-cap it.  It must be paired with ``fixed_penalty`` termination,
+    rather than remaining-horizon compensation.  This preserves ordering among
+    high-energy trajectories while making distance failure uniformly worse than
+    successful completion.
+    """
+
+    reward_mode: RewardMode = "se3_stable_flow_log_v3"
+    max_dense_penalty_per_step = float("inf")
+
+    def __init__(
+        self,
+        *,
+        characteristic_length_m: float,
+        time_constant_s: float,
+        log_cap: float,
+        reward_scale: float = 1.0,
+    ) -> None:
+        super().__init__(
+            characteristic_length_m=characteristic_length_m,
+            time_constant_s=time_constant_s,
+            reward_scale=reward_scale,
+        )
+        if log_cap <= 0.0:
+            raise ValueError("stable-flow log cap must be positive")
+        self.log_cap = float(log_cap)
+        self.max_dense_penalty_per_step = float("inf")
+
+    def bounded_cost(self, relative: RelativeState) -> float:
+        normalized_energy = self.energy(relative) / self.characteristic_length_m**2
+        return float(np.log1p(normalized_energy) / self.log_cap)
+
+
+class SE3PhysicalStorageRewardV4(SE3StableFlowRewardV1):
+    """SE(3) storage-function reward with safety and actuator-energy terms.
+
+    The sole state potential is the sum of (i) a logarithmically normalized
+    stable-flow storage energy and (ii) a reciprocal-distance safety barrier:
+
+    ``Psi = log(1 + V / ell^2) - log(1 - (d / d_max)^2)``.
+
+    Its three reward terms are physically interpretable: storage dissipation
+    ``Psi_prev - Psi``, time-integrated storage ``-(dt/tau) Psi``, and
+    normalized actuator-energy proxy ``-(dt/tau) mean(a_i^2)``.  A numerical
+    barrier floor merely keeps the value finite exactly at the distance limit;
+    there is no fitted progress multiplier, terminal bonus, or fixed failure
+    penalty.
+    """
+
+    reward_mode: RewardMode = "se3_physical_storage_v4"
+    max_dense_penalty_per_step = float("inf")
+
+    def __init__(
+        self,
+        *,
+        characteristic_length_m: float,
+        time_constant_s: float,
+        time_step_s: float,
+        max_distance_m: float,
+        barrier_epsilon: float = 1.0e-6,
+    ) -> None:
+        super().__init__(
+            characteristic_length_m=characteristic_length_m,
+            time_constant_s=time_constant_s,
+        )
+        if time_step_s <= 0.0 or max_distance_m <= 0.0:
+            raise ValueError("time step and maximum distance must be positive")
+        if not 0.0 < barrier_epsilon < 1.0:
+            raise ValueError("barrier_epsilon must lie in (0, 1)")
+        self.time_step_s = float(time_step_s)
+        self.max_distance_m = float(max_distance_m)
+        self.barrier_epsilon = float(barrier_epsilon)
+        self.step_weight = self.time_step_s / self.time_constant_s
+        self._previous_storage: float | None = None
+        self.max_dense_penalty_per_step = float("inf")
+
+    def safety_barrier(self, relative: RelativeState) -> float:
+        ratio = float(np.linalg.norm(relative.position)) / self.max_distance_m
+        remaining_margin = max(1.0 - ratio * ratio, self.barrier_epsilon)
+        return -float(np.log(remaining_margin))
+
+    def storage(self, relative: RelativeState) -> float:
+        normalized_energy = self.energy(relative) / self.characteristic_length_m**2
+        return float(np.log1p(normalized_energy) + self.safety_barrier(relative))
+
+    def reset(self, initial_observation: ArrayLike, relative: RelativeState) -> None:
+        observation = np.asarray(initial_observation, dtype=np.float64)
+        if observation.shape != (12,):
+            raise ValueError("initial_observation must have shape=(12,)")
+        initial_storage = self.storage(relative)
+        if not np.isfinite(initial_storage):
+            raise ValueError("initial physical storage must be finite")
+        self._previous_storage = initial_storage
+
+    def compute(
+        self,
+        current_observation: ArrayLike,
+        relative: RelativeState,
+        *,
+        completed: bool,
+        failed: bool,
+        failure_horizon_adjustment: float = 0.0,
+        normalized_action: ArrayLike | None = None,
+    ) -> RewardBreakdown:
+        if self._previous_storage is None:
+            raise RuntimeError("reset() must be called before reward computation")
+        _validate_transition(
+            current_observation,
+            completed=completed,
+            failed=failed,
+            failure_horizon_adjustment=failure_horizon_adjustment,
+        )
+        action = np.zeros(6, dtype=np.float64) if normalized_action is None else np.asarray(normalized_action, dtype=np.float64)
+        if action.shape != (6,) or not np.all(np.isfinite(action)):
+            raise ValueError("normalized_action must be a finite shape=(6,) vector")
+        storage = self.storage(relative)
+        if not np.isfinite(storage):
+            raise ValueError("physical storage must be finite")
+        effort = float(np.mean(np.clip(action, -1.0, 1.0) ** 2))
+        dissipation = self._previous_storage - storage
+        running_storage = -self.step_weight * storage
+        actuation_penalty = -self.step_weight * effort
+        self._previous_storage = storage
+        return RewardBreakdown(
+            mode=self.reward_mode,
+            shaping=dissipation,
+            integral_compensation=running_storage,
+            terminal=failure_horizon_adjustment,
+            integral_argument=None,
+            integral_saturated=None,
+            failure_horizon_adjustment=failure_horizon_adjustment,
+            stable_flow_energy=self.energy(relative),
+            stable_flow_potential=storage,
+            actuation_penalty=actuation_penalty,
+        )
+
+
+def build_reward_calculator(
+    mode: RewardMode,
+    *,
+    history_length: int,
+    unit_mode: RewardUnitMode,
+    distance_scale: float,
+    omega_scale: float,
+    velocity_scale: float,
+    success_thresholds: SuccessThresholds,
+    stable_flow_characteristic_length_m: float,
+    stable_flow_time_constant_s: float,
+    stable_flow_log_cap: float,
+    stable_flow_reward_scale: float,
+    time_step_s: float,
+    max_distance_m: float,
+    stable_flow_barrier_epsilon: float,
+) -> RewardCalculator:
+    del distance_scale, omega_scale, velocity_scale, success_thresholds
+    if mode == "paper_equations":
+        return HITReward(history_length, unit_mode=unit_mode)
+    if mode == "se3_stable_flow_v1":
+        return SE3StableFlowRewardV1(
+            characteristic_length_m=stable_flow_characteristic_length_m,
+            time_constant_s=stable_flow_time_constant_s,
+            reward_scale=stable_flow_reward_scale,
+        )
+    if mode == "se3_stable_flow_log_v2":
+        return SE3StableFlowLogRewardV2(
+            characteristic_length_m=stable_flow_characteristic_length_m,
+            time_constant_s=stable_flow_time_constant_s,
+            log_cap=stable_flow_log_cap,
+            reward_scale=stable_flow_reward_scale,
+        )
+    if mode == "se3_stable_flow_log_v3":
+        return SE3StableFlowLogRewardV3(
+            characteristic_length_m=stable_flow_characteristic_length_m,
+            time_constant_s=stable_flow_time_constant_s,
+            log_cap=stable_flow_log_cap,
+            reward_scale=stable_flow_reward_scale,
+        )
+    if mode == "se3_physical_storage_v4":
+        return SE3PhysicalStorageRewardV4(
+            characteristic_length_m=stable_flow_characteristic_length_m,
+            time_constant_s=stable_flow_time_constant_s,
+            time_step_s=time_step_s,
+            max_distance_m=max_distance_m,
+            barrier_epsilon=stable_flow_barrier_epsilon,
+        )
+    raise ValueError(f"unknown reward mode: {mode}")
+
+
+==================================================
+==== FILE_PATH: env\scenarios.py ====
+==================================================
+
+"""论文场景初值、翻滚目标和每回合模型不确定性。"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+import numpy as np
+from numpy.random import Generator
+
+from dynamics.types import SpacecraftParameters, SpacecraftState
+
+
+InitialPositionMode = Literal[
+    "bounded_15m",
+    "curriculum_mixture_local_to_bounded_15m",
+    "curriculum_shell_local_to_wide",
+    "nominal_shell_0p5_1m",
+    "paper_literal_150m",
+    "paper_cube_reject_30m",
+]
+InitialOrientationMode = Literal[
+    "curriculum_relative_20deg_to_haar",
+    "haar_uniform_so3",
+    "relative_axis_angle_20deg",
+]
+InitialAngularVelocityMode = Literal[
+    "curriculum_relative_0p03_to_paper_0p2",
+    "paper_uniform_0p2",
+    "relative_twist_0p03",
+]
+InitialVelocityMode = Literal[
+    "rationalized_2mmps",
+    "rationalized_relative_twist_2mmps",
+    "paper_literal_2mps",
+]
+
+TARGET_INERTIA = np.array(
+    [[42.7, -0.4, -0.6], [-0.4, 40.3, -0.5], [-0.6, -0.5, 37.9]],
+    dtype=np.float64,
+)
+CHASER_NOMINAL_INERTIA = np.array(
+    [[20.3, -0.3, -0.2], [-0.3, 19.9, -0.1], [-0.2, -0.1, 23.7]],
+    dtype=np.float64,
+)
+
+
+def paper_target_initial_state() -> SpacecraftState:
+    return SpacecraftState(
+        rotation=np.eye(3),
+        position=1e3 * np.array([3722.5784, 3446.4789, 4465.6026]),
+        omega=np.array([0.05, 0.2, 0.0]),
+        velocity=1e3 * np.array([5.4785, 5.3628, 0.4279]),
+    )
+
+
+def paper_target_parameters() -> SpacecraftParameters:
+    return SpacecraftParameters(225.0, TARGET_INERTIA)
+
+
+def sample_uniform_so3(rng: Generator) -> np.ndarray:
+    """通过高斯矩阵 QR 分解生成 Haar 均匀 SO(3)，不使用四元数状态。"""
+
+    matrix = rng.normal(size=(3, 3))
+    q, r = np.linalg.qr(matrix)
+    signs = np.sign(np.diag(r))
+    signs[signs == 0.0] = 1.0
+    q = q @ np.diag(signs)
+    if np.linalg.det(q) < 0.0:
+        q[:, 0] *= -1.0
+    return q
+
+
+def sample_relative_rotation(
+    rng: Generator,
+    mode: InitialOrientationMode,
+    *,
+    curriculum_progress: float = 1.0,
+) -> np.ndarray:
+    if mode == "curriculum_relative_20deg_to_haar":
+        progress = float(np.clip(curriculum_progress, 0.0, 1.0))
+        if progress <= 0.0:
+            mode = "relative_axis_angle_20deg"
+        elif progress >= 1.0:
+            mode = "haar_uniform_so3"
+        else:
+            mode = (
+                "haar_uniform_so3"
+                if rng.random() < progress
+                else "relative_axis_angle_20deg"
+            )
+    if mode == "haar_uniform_so3":
+        return sample_uniform_so3(rng)
+    if mode == "relative_axis_angle_20deg":
+        axis = rng.normal(size=3)
+        axis /= np.linalg.norm(axis)
+        angle = rng.uniform(0.0, np.deg2rad(20.0))
+        axis_cross = np.array(
+            [
+                [0.0, -axis[2], axis[1]],
+                [axis[2], 0.0, -axis[0]],
+                [-axis[1], axis[0], 0.0],
+            ],
+            dtype=np.float64,
+        )
+        return (
+            np.eye(3)
+            + np.sin(angle) * axis_cross
+            + (1.0 - np.cos(angle)) * (axis_cross @ axis_cross)
+        )
+    raise ValueError(f"未知 initial_orientation_mode: {mode}")
+
+
+def sample_relative_position(
+    rng: Generator,
+    mode: InitialPositionMode,
+    *,
+    curriculum_progress: float = 1.0,
+) -> np.ndarray:
+    if mode == "bounded_15m":
+        return rng.uniform(-15.0, 15.0, size=3)
+    if mode == "curriculum_mixture_local_to_bounded_15m":
+        progress = float(np.clip(curriculum_progress, 0.0, 1.0))
+        if progress >= 1.0 or (progress > 0.0 and rng.random() < progress):
+            return rng.uniform(-15.0, 15.0, size=3)
+        direction = rng.normal(size=3)
+        direction /= np.linalg.norm(direction)
+        radius = rng.uniform(0.5**3, 1.0**3) ** (1.0 / 3.0)
+        return radius * direction
+    if mode == "curriculum_shell_local_to_wide":
+        progress = float(np.clip(curriculum_progress, 0.0, 1.0))
+        inner = (1.0 - progress) * 0.32 + progress * 0.5
+        outer = (1.0 - progress) * 0.45 + progress * 1.0
+        direction = rng.normal(size=3)
+        direction /= np.linalg.norm(direction)
+        radius = rng.uniform(inner**3, outer**3) ** (1.0 / 3.0)
+        return radius * direction
+    if mode == "nominal_shell_0p5_1m":
+        direction = rng.normal(size=3)
+        direction /= np.linalg.norm(direction)
+        # 体积均匀球壳，避免把大量样本集中在内边界。
+        radius = rng.uniform(0.5**3, 1.0**3) ** (1.0 / 3.0)
+        return radius * direction
+    if mode == "paper_literal_150m":
+        return rng.uniform(-150.0, 150.0, size=3)
+    if mode == "paper_cube_reject_30m":
+        for _ in range(10000):
+            sample = rng.uniform(-150.0, 150.0, size=3)
+            if np.linalg.norm(sample) <= 30.0:
+                return sample
+        raise RuntimeError("30 m 球内拒绝采样在 10000 次内未成功")
+    raise ValueError(f"未知 initial_position_mode: {mode}")
+
+
+def sample_relative_velocity_increment(
+    rng: Generator,
+    mode: InitialVelocityMode,
+) -> np.ndarray:
+    """采样论文速度公式中的 Delta v，内部统一使用 m/s。
+
+    ``paper_literal_2mps`` 严格按 ``0.002 km/s`` 换算；
+    ``rationalized_2mmps`` 将论文数值解释为 ``0.002 m/s``，用于
+    30 m 近距离、1 N 推力条件下的可训练合理化基线。
+    """
+
+    if mode in ("rationalized_2mmps", "rationalized_relative_twist_2mmps"):
+        return rng.uniform(-0.002, 0.002, size=3)
+    if mode == "paper_literal_2mps":
+        return rng.uniform(-2.0, 2.0, size=3)
+    raise ValueError(f"未知 initial_velocity_mode: {mode}")
+
+
+def sample_chaser_parameters(
+    rng: Generator,
+    *,
+    include_uncertainty: bool = True,
+) -> SpacecraftParameters:
+    if include_uncertainty:
+        delta_mass = float(rng.uniform(-10.0, 10.0))
+        delta_inertia = float(rng.uniform(-1.0, 0.0))
+    else:
+        delta_mass = 0.0
+        delta_inertia = 0.0
+    return SpacecraftParameters(
+        mass=106.0 + delta_mass,
+        inertia=CHASER_NOMINAL_INERTIA + delta_inertia * np.eye(3),
+    )
+
+
+def sample_chaser_initial_state(
+    rng: Generator,
+    target: SpacecraftState,
+    *,
+    position_mode: InitialPositionMode = "bounded_15m",
+    velocity_mode: InitialVelocityMode = "rationalized_2mmps",
+    orientation_mode: InitialOrientationMode = "haar_uniform_so3",
+    angular_velocity_mode: InitialAngularVelocityMode = "paper_uniform_0p2",
+    curriculum_progress: float = 1.0,
+) -> SpacecraftState:
+    relative_rotation = sample_relative_rotation(
+        rng,
+        orientation_mode,
+        curriculum_progress=curriculum_progress,
+    )
+    rotation = target.rotation @ relative_rotation
+    delta_position = sample_relative_position(
+        rng,
+        position_mode,
+        curriculum_progress=curriculum_progress,
+    )
+    delta_velocity = sample_relative_velocity_increment(rng, velocity_mode)
+    relative_position = target.rotation.T @ delta_position
+    if velocity_mode == "rationalized_relative_twist_2mmps":
+        # 策略观测的是 xi_r = xi_c - Ad_(T_r^-1) xi_t。若仅令两质心的
+        # 惯性速度接近，目标翻滚产生的 omega_t x p_r 项仍会把初始 v_r
+        # 放大到 m/s 量级；本分支显式令观测中的 v_r 等于 Delta v。
+        velocity = relative_rotation.T @ (
+            target.velocity + np.cross(target.omega, relative_position)
+        ) + delta_velocity
+    else:
+        # 保留论文公式 vc=Rc^T Rt vt+Delta v 及旧合理化分支，供偏差对照。
+        velocity = rotation.T @ target.rotation @ target.velocity + delta_velocity
+    if angular_velocity_mode == "curriculum_relative_0p03_to_paper_0p2":
+        progress = float(np.clip(curriculum_progress, 0.0, 1.0))
+        if progress <= 0.0:
+            angular_velocity_mode = "relative_twist_0p03"
+        elif progress >= 1.0:
+            angular_velocity_mode = "paper_uniform_0p2"
+        else:
+            angular_velocity_mode = (
+                "paper_uniform_0p2"
+                if rng.random() < progress
+                else "relative_twist_0p03"
+            )
+    if angular_velocity_mode == "paper_uniform_0p2":
+        omega = rng.uniform(-0.2, 0.2, size=3)
+    elif angular_velocity_mode == "relative_twist_0p03":
+        omega = relative_rotation.T @ target.omega + rng.uniform(
+            -0.03, 0.03, size=3
+        )
+    else:
+        raise ValueError(
+            f"未知 initial_angular_velocity_mode: {angular_velocity_mode}"
+        )
+    return SpacecraftState(
+        rotation=rotation,
+        position=target.position + delta_position,
+        omega=omega,
+        velocity=velocity,
+    )
+
+
+==================================================
+==== FILE_PATH: env\se3_sar_env.py ====
+==================================================
+
+"""哈工大翻滚目标交会的独立 Gymnasium 环境。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from functools import lru_cache
+
+import gymnasium as gym
+import numpy as np
+from gymnasium import spaces
+
+from dynamics.constants import PAPER_CONTROL_DT, PAPER_MAX_DISTANCE, PAPER_MAX_TIME
+from dynamics.disturbance import paper_chaser_disturbance, zero_disturbance
+from dynamics.gravity import GravityOptions, SecondMomentMode
+from dynamics.integrator import IntegrationDiagnostics, RK45Settings, propagate_rk45
+from dynamics.relative import RelativeState, relative_state
+from dynamics.types import GeneralizedForce, SpacecraftParameters, SpacecraftState
+from env.action import normalized_to_wrench
+from env.observation import ObservationClipMode, build_observation
+from env.reward import (
+    FailureTerminalMode,
+    RewardBreakdown,
+    RewardMode,
+    RewardUnitMode,
+    build_reward_calculator,
+)
+from env.scenarios import (
+    InitialAngularVelocityMode,
+    InitialOrientationMode,
+    InitialPositionMode,
+    InitialVelocityMode,
+    paper_target_initial_state,
+    paper_target_parameters,
+    sample_chaser_initial_state,
+    sample_chaser_parameters,
+)
+from env.termination import (
+    ErrorMetrics,
+    SuccessThresholds,
+    compute_error_metrics,
+    failure_flags,
+)
+
+
+@dataclass(frozen=True)
+class SE3SAREnvConfig:
+    dt: float = PAPER_CONTROL_DT
+    max_time: float = PAPER_MAX_TIME
+    max_distance: float = PAPER_MAX_DISTANCE
+    omega_scale: float = 0.2
+    # 论文漏报 v_max。结合5000样本统计与 Fig. 3 的箱线范围，默认取10 m/s。
+    velocity_scale: float = 10.0
+    observation_attitude_scale: float = np.pi
+    observation_distance_scale: float | None = None
+    observation_clip: float | None = None
+    observation_clip_mode: ObservationClipMode = "hard"
+    position_mode: InitialPositionMode = "bounded_15m"
+    curriculum_start_steps: int = 0
+    curriculum_steps: int = 0
+    velocity_mode: InitialVelocityMode = "rationalized_2mmps"
+    angular_velocity_mode: InitialAngularVelocityMode = "paper_uniform_0p2"
+    reward_mode: RewardMode = "paper_equations"
+    reward_unit_mode: RewardUnitMode = "paper_km"
+    # sqrt(trace(J_c)/(3*m_c)): nominal chaser radius of gyration.
+    stable_flow_characteristic_length_m: float = 0.4482671036630004
+    # L-1: at 0.45 m this requests 0.0045 m/s^2, about 48% of 1 N / 106 kg.
+    stable_flow_time_constant_s: float = 10.0
+    stable_flow_log_cap: float = 10.0
+    stable_flow_reward_scale: float = 1.0
+    stable_flow_barrier_epsilon: float = 1.0e-6
+    failure_terminal_mode: FailureTerminalMode = "paper_literal"
+    failure_terminal_penalty: float = 0.0
+    orientation_sampling: InitialOrientationMode = "haar_uniform_so3"
+    second_moment_mode: SecondMomentMode = "standard_minus"
+    include_j2: bool = True
+    include_chaser_disturbance: bool = True
+    include_uncertainty: bool = True
+    solver_rtol: float = 1e-9
+    solver_atol: float = 1e-11
+    success_thresholds: SuccessThresholds = field(default_factory=SuccessThresholds)
+    completion_required_steps: int = 1
+    reward_history_length: int = 30
+    cache_default_target_trajectory: bool = False
+
+
+# 保留旧名字，避免阶段 2 检查脚本和外部引用突然失效。
+Stage2EnvConfig = SE3SAREnvConfig
+
+
+@lru_cache(maxsize=8)
+def _cached_default_target_trajectory(
+    max_time: float,
+    dt: float,
+    include_j2: bool,
+    second_moment_mode: SecondMomentMode,
+    solver_rtol: float,
+    solver_atol: float,
+) -> tuple[SpacecraftState, ...]:
+    """Precompute the deterministic uncontrolled paper target exactly once."""
+
+    state = paper_target_initial_state()
+    parameters = paper_target_parameters()
+    gravity_options = GravityOptions(
+        include_central=True,
+        include_second_moment=True,
+        include_j2=include_j2,
+        second_moment_mode=second_moment_mode,
+    )
+    settings = RK45Settings(rtol=solver_rtol, atol=solver_atol, max_step=dt)
+    maximum_steps = int(np.ceil(max_time / dt - 1e-12))
+    states = [state.copy()]
+    for step in range(maximum_steps):
+        state, _ = propagate_rk45(
+            state,
+            parameters,
+            step * dt,
+            dt,
+            control=GeneralizedForce.zeros(),
+            disturbance=zero_disturbance,
+            gravity_options=gravity_options,
+            settings=settings,
+        )
+        states.append(state.copy())
+    return tuple(states)
+
+
+class SE3SAREnv(gym.Env[np.ndarray, np.ndarray]):
+    metadata = {"render_modes": []}
+
+    def __init__(self, config: SE3SAREnvConfig | None = None) -> None:
+        super().__init__()
+        self.config = config or SE3SAREnvConfig()
+        resolved_distance_scale = (
+            self.config.max_distance
+            if self.config.observation_distance_scale is None
+            else self.config.observation_distance_scale
+        )
+        if min(
+            self.config.observation_attitude_scale,
+            resolved_distance_scale,
+            self.config.omega_scale,
+            self.config.velocity_scale,
+        ) <= 0.0:
+            raise ValueError("observation scales must be positive")
+        if (
+            self.config.observation_clip is not None
+            and self.config.observation_clip <= 0
+        ):
+            raise ValueError("observation_clip must be positive")
+        if self.config.observation_clip_mode not in ("hard", "softsign"):
+            raise ValueError(
+                f"unknown observation_clip_mode: {self.config.observation_clip_mode}"
+            )
+        if not 0.0 < self.config.stable_flow_barrier_epsilon < 1.0:
+            raise ValueError("stable_flow_barrier_epsilon must lie in (0, 1)")
+        if self.config.orientation_sampling not in (
+            "curriculum_relative_20deg_to_haar",
+            "haar_uniform_so3",
+            "relative_axis_angle_20deg",
+        ):
+            raise ValueError(
+                f"未知 orientation_sampling: {self.config.orientation_sampling}"
+            )
+        if self.config.completion_required_steps <= 0:
+            raise ValueError("completion_required_steps 必须为正整数")
+        if self.config.curriculum_start_steps < 0:
+            raise ValueError("curriculum_start_steps 必须大于等于0")
+        if self.config.curriculum_steps < 0:
+            raise ValueError("curriculum_steps 必须大于等于0")
+        if (
+            self.config.position_mode
+            in (
+                "curriculum_mixture_local_to_bounded_15m",
+                "curriculum_shell_local_to_wide",
+            )
+            and self.config.curriculum_steps <= self.config.curriculum_start_steps
+        ):
+            raise ValueError(
+                "连续初值课程要求 curriculum_steps 大于 curriculum_start_steps"
+            )
+        if self.config.failure_terminal_mode not in (
+            "paper_literal",
+            "remaining_horizon_compensated",
+            "fixed_penalty",
+            "barrier_only",
+        ):
+            raise ValueError(
+                f"未知 failure_terminal_mode: {self.config.failure_terminal_mode}"
+            )
+        if (
+            self.config.failure_terminal_mode == "fixed_penalty"
+            and self.config.failure_terminal_penalty <= 0.0
+        ):
+            raise ValueError("fixed_penalty requires failure_terminal_penalty > 0")
+        if (
+            self.config.reward_mode == "se3_stable_flow_log_v3"
+            and self.config.failure_terminal_mode == "remaining_horizon_compensated"
+        ):
+            raise ValueError(
+                "se3_stable_flow_log_v3 requires fixed_penalty or paper_literal"
+            )
+        if (
+            self.config.reward_mode == "se3_physical_storage_v4"
+            and self.config.failure_terminal_mode != "barrier_only"
+        ):
+            raise ValueError(
+                "se3_physical_storage_v4 requires barrier_only termination"
+            )
+        self.action_space = spaces.Box(-1.0, 1.0, shape=(6,), dtype=np.float32)
+        observation_bound = (
+            np.inf
+            if self.config.observation_clip is None
+            else self.config.observation_clip
+        )
+        # full 保留论文未报告全局硬上限的语义；诊断配置可显式设置数值限幅。
+        self.observation_space = spaces.Box(
+            low=-observation_bound,
+            high=observation_bound,
+            shape=(12,),
+            dtype=np.float32,
+        )
+        self.target_state: SpacecraftState | None = None
+        self.chaser_state: SpacecraftState | None = None
+        self.target_parameters: SpacecraftParameters | None = None
+        self.chaser_parameters: SpacecraftParameters | None = None
+        self.relative: RelativeState | None = None
+        self.time_seconds = 0.0
+        self.step_count = 0
+        self.total_transition_count = 0
+        self._position_mode_used: str = self.config.position_mode
+        self._velocity_mode_used: str = self.config.velocity_mode
+        self._curriculum_progress_used: float | None = None
+        self._completion_streak = 0
+        self._use_cached_default_target = False
+        self._reward = build_reward_calculator(
+            self.config.reward_mode,
+            history_length=self.config.reward_history_length,
+            unit_mode=self.config.reward_unit_mode,
+            distance_scale=self.config.max_distance,
+            omega_scale=self.config.omega_scale,
+            velocity_scale=self.config.velocity_scale,
+            success_thresholds=self.config.success_thresholds,
+            stable_flow_characteristic_length_m=(
+                self.config.stable_flow_characteristic_length_m
+            ),
+            stable_flow_time_constant_s=self.config.stable_flow_time_constant_s,
+            stable_flow_log_cap=self.config.stable_flow_log_cap,
+            stable_flow_reward_scale=self.config.stable_flow_reward_scale,
+            time_step_s=self.config.dt,
+            max_distance_m=self.config.max_distance,
+            stable_flow_barrier_epsilon=self.config.stable_flow_barrier_epsilon,
+        )
+        self._gravity_options = GravityOptions(
+            include_central=True,
+            include_second_moment=True,
+            include_j2=self.config.include_j2,
+            second_moment_mode=self.config.second_moment_mode,
+        )
+        self._solver_settings = RK45Settings(
+            rtol=self.config.solver_rtol,
+            atol=self.config.solver_atol,
+            max_step=self.config.dt,
+        )
+        self._default_target_trajectory = (
+            _cached_default_target_trajectory(
+                self.config.max_time,
+                self.config.dt,
+                self.config.include_j2,
+                self.config.second_moment_mode,
+                self.config.solver_rtol,
+                self.config.solver_atol,
+            )
+            if self.config.cache_default_target_trajectory
+            else None
+        )
+
+    def _require_state(self) -> None:
+        if any(
+            item is None
+            for item in (
+                self.target_state,
+                self.chaser_state,
+                self.target_parameters,
+                self.chaser_parameters,
+                self.relative,
+            )
+        ):
+            raise RuntimeError("必须先调用 reset()")
+
+    def _observation(self) -> np.ndarray:
+        self._require_state()
+        assert self.relative is not None
+        return build_observation(
+            self.relative,
+            attitude_scale=self.config.observation_attitude_scale,
+            distance_scale=(
+                self.config.max_distance
+                if self.config.observation_distance_scale is None
+                else self.config.observation_distance_scale
+            ),
+            omega_scale=self.config.omega_scale,
+            velocity_scale=self.config.velocity_scale,
+            clip=self.config.observation_clip,
+            clip_mode=self.config.observation_clip_mode,
+        )
+
+    @staticmethod
+    def scale_action(action: np.ndarray) -> GeneralizedForce:
+        return normalized_to_wrench(action)
+
+    def reset(
+        self,
+        *,
+        seed: int | None = None,
+        options: dict | None = None,
+    ) -> tuple[np.ndarray, dict]:
+        super().reset(seed=seed)
+        options = options or {}
+        position_mode = options.get("position_mode", self.config.position_mode)
+        velocity_mode = options.get("velocity_mode", self.config.velocity_mode)
+        self._position_mode_used = position_mode
+        self._velocity_mode_used = velocity_mode
+        curriculum_progress = None
+        if position_mode in (
+            "curriculum_mixture_local_to_bounded_15m",
+            "curriculum_shell_local_to_wide",
+        ):
+            curriculum_progress = float(
+                np.clip(
+                    (
+                        self.total_transition_count
+                        - self.config.curriculum_start_steps
+                    )
+                    / (
+                        self.config.curriculum_steps
+                        - self.config.curriculum_start_steps
+                    ),
+                    0.0,
+                    1.0,
+                )
+            )
+        self._curriculum_progress_used = curriculum_progress
+        supplied_target = options.get("target_state")
+        supplied_target_parameters = options.get("target_parameters")
+        self._use_cached_default_target = bool(
+            self._default_target_trajectory is not None
+            and supplied_target is None
+            and supplied_target_parameters is None
+        )
+        if self._use_cached_default_target:
+            assert self._default_target_trajectory is not None
+            self.target_state = self._default_target_trajectory[0].copy()
+            self.target_parameters = paper_target_parameters()
+        else:
+            self.target_state = (
+                supplied_target.copy()
+                if supplied_target is not None
+                else paper_target_initial_state()
+            )
+            self.target_parameters = (
+                supplied_target_parameters
+                if supplied_target_parameters is not None
+                else paper_target_parameters()
+            )
+        supplied_chaser = options.get("chaser_state")
+        self.chaser_state = (
+            supplied_chaser.copy()
+            if supplied_chaser is not None
+            else sample_chaser_initial_state(
+                self.np_random,
+                self.target_state,
+                position_mode=position_mode,
+                velocity_mode=velocity_mode,
+                orientation_mode=self.config.orientation_sampling,
+                angular_velocity_mode=self.config.angular_velocity_mode,
+                curriculum_progress=(
+                    1.0 if curriculum_progress is None else curriculum_progress
+                ),
+            )
+        )
+        supplied_chaser_parameters = options.get("chaser_parameters")
+        self.chaser_parameters = (
+            supplied_chaser_parameters
+            if supplied_chaser_parameters is not None
+            else sample_chaser_parameters(
+                self.np_random,
+                include_uncertainty=self.config.include_uncertainty,
+            )
+        )
+        self.relative = relative_state(self.target_state, self.chaser_state)
+        self.time_seconds = 0.0
+        self.step_count = 0
+        self._completion_streak = 0
+        observation = self._observation()
+        self._reward.reset(observation, self.relative)
+        metrics = compute_error_metrics(
+            self.relative, self.config.success_thresholds
+        )
+        info = self._info(
+            metrics=metrics,
+            reward=None,
+            target_nfev=0,
+            chaser_nfev=0,
+        )
+        return observation, info
+
+    def _info(
+        self,
+        *,
+        metrics: ErrorMetrics,
+        reward: RewardBreakdown | None,
+        target_nfev: int,
+        chaser_nfev: int,
+    ) -> dict:
+        self._require_state()
+        assert self.chaser_parameters is not None
+        info = {
+            "time_seconds": self.time_seconds,
+            "step_count": self.step_count,
+            "relative_distance_m": metrics.direct_relative_distance_m,
+            "attitude_error_rad": metrics.attitude_rad,
+            "angular_velocity_error_rad_s": metrics.angular_velocity_rad_s,
+            "position_error_m": metrics.position_m,
+            "translational_velocity_error_m_s": metrics.translational_velocity_m_s,
+            "attitude_success": metrics.attitude_success,
+            "position_success": metrics.position_success,
+            "joint_success": metrics.joint_success,
+            "completion_streak": self._completion_streak,
+            "chaser_mass_kg": self.chaser_parameters.mass,
+            "chaser_inertia_kg_m2": self.chaser_parameters.inertia.copy(),
+            "target_nfev": target_nfev,
+            "chaser_nfev": chaser_nfev,
+            "position_mode": self._position_mode_used,
+            "curriculum_progress": self._curriculum_progress_used,
+            "curriculum_start_steps": self.config.curriculum_start_steps,
+            "curriculum_steps": self.config.curriculum_steps,
+            "velocity_mode": self._velocity_mode_used,
+            "angular_velocity_mode": self.config.angular_velocity_mode,
+            "orientation_sampling": self.config.orientation_sampling,
+            "reward_mode": self.config.reward_mode,
+            "reward_unit_mode": self.config.reward_unit_mode,
+            "stable_flow_characteristic_length_m": (
+                self.config.stable_flow_characteristic_length_m
+            ),
+            "stable_flow_time_constant_s": self.config.stable_flow_time_constant_s,
+            "stable_flow_log_cap": self.config.stable_flow_log_cap,
+            "stable_flow_reward_scale": self.config.stable_flow_reward_scale,
+            "stable_flow_barrier_epsilon": self.config.stable_flow_barrier_epsilon,
+            "failure_terminal_mode": self.config.failure_terminal_mode,
+            "failure_terminal_penalty": self.config.failure_terminal_penalty,
+            "second_moment_mode": self.config.second_moment_mode,
+            "velocity_scale": self.config.velocity_scale,
+            "observation_attitude_scale": self.config.observation_attitude_scale,
+            "observation_distance_scale": (
+                self.config.max_distance
+                if self.config.observation_distance_scale is None
+                else self.config.observation_distance_scale
+            ),
+            "observation_clip": self.config.observation_clip,
+            "observation_clip_mode": self.config.observation_clip_mode,
+            "cached_default_target_trajectory": self._use_cached_default_target,
+        }
+        if reward is not None:
+            info.update(
+                reward_shaping=reward.shaping,
+                reward_progress=reward.progress,
+                reward_state_penalty=reward.state_penalty,
+                reward_terminal=reward.terminal,
+                reward_actuation_penalty=reward.actuation_penalty,
+                reward_failure_horizon_adjustment=reward.failure_horizon_adjustment,
+            )
+            if reward.stable_flow_energy is not None:
+                info["reward_stable_flow_energy"] = reward.stable_flow_energy
+            if reward.stable_flow_potential is not None:
+                info["reward_stable_flow_potential"] = reward.stable_flow_potential
+            if reward.integral_argument is not None:
+                info.update(
+                    reward_integral=reward.integral_compensation,
+                    reward_integral_argument=reward.integral_argument,
+                    reward_integral_saturated=reward.integral_saturated,
+                )
+        return info
+
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
+        self._require_state()
+        assert self.target_state is not None
+        assert self.chaser_state is not None
+        assert self.target_parameters is not None
+        assert self.chaser_parameters is not None
+        control = self.scale_action(action)
+        if self._use_cached_default_target:
+            assert self._default_target_trajectory is not None
+            target_next = self._default_target_trajectory[self.step_count + 1].copy()
+            target_diag = IntegrationDiagnostics(
+                nfev=0,
+                njev=0,
+                status=0,
+                message="cached default target trajectory",
+            )
+        else:
+            target_next, target_diag = propagate_rk45(
+                self.target_state,
+                self.target_parameters,
+                self.time_seconds,
+                self.config.dt,
+                control=GeneralizedForce.zeros(),
+                disturbance=zero_disturbance,
+                gravity_options=self._gravity_options,
+                settings=self._solver_settings,
+            )
+        chaser_disturbance = (
+            paper_chaser_disturbance
+            if self.config.include_chaser_disturbance
+            else zero_disturbance
+        )
+        chaser_next, chaser_diag = propagate_rk45(
+            self.chaser_state,
+            self.chaser_parameters,
+            self.time_seconds,
+            self.config.dt,
+            control=control,
+            disturbance=chaser_disturbance,
+            gravity_options=self._gravity_options,
+            settings=self._solver_settings,
+        )
+        self.target_state = target_next
+        self.chaser_state = chaser_next
+        self.step_count += 1
+        self.total_transition_count += 1
+        self.time_seconds = self.step_count * self.config.dt
+        self.relative = relative_state(target_next, chaser_next)
+        observation = self._observation()
+        metrics = compute_error_metrics(
+            self.relative, self.config.success_thresholds
+        )
+        if metrics.joint_success:
+            self._completion_streak += 1
+        else:
+            self._completion_streak = 0
+        completed = self._completion_streak >= self.config.completion_required_steps
+        failures = failure_flags(
+            self.relative,
+            self.time_seconds,
+            max_distance_m=self.config.max_distance,
+            max_time_s=self.config.max_time,
+            completed=completed,
+        )
+        failure_horizon_adjustment = 0.0
+        if (
+            failures.distance_failure
+            and self.config.failure_terminal_mode == "remaining_horizon_compensated"
+        ):
+            maximum_steps = int(np.ceil(self.config.max_time / self.config.dt - 1e-12))
+            remaining_steps = max(0, maximum_steps - self.step_count)
+            failure_horizon_adjustment = (
+                -self._reward.max_dense_penalty_per_step * remaining_steps
+            )
+        elif (
+            failures.distance_failure
+            and self.config.failure_terminal_mode == "fixed_penalty"
+        ):
+            failure_horizon_adjustment = -self.config.failure_terminal_penalty
+        breakdown = self._reward.compute(
+            observation,
+            self.relative,
+            completed=completed,
+            failed=failures.failed,
+            failure_horizon_adjustment=failure_horizon_adjustment,
+            normalized_action=action,
+        )
+        # 超出空间安全边界属于 MDP 终止；达到时间上限属于 Gymnasium 截断。
+        terminated = bool(completed or failures.distance_failure)
+        truncated = bool(failures.time_failure)
+        info = self._info(
+            metrics=metrics,
+            reward=breakdown,
+            target_nfev=target_diag.nfev,
+            chaser_nfev=chaser_diag.nfev,
+        )
+        info["completed"] = bool(completed)
+        info["distance_failure"] = failures.distance_failure
+        info["time_failure"] = failures.time_failure
+        return observation, breakdown.total, terminated, truncated, info
+
+
+==================================================
+==== FILE_PATH: env\termination.py ====
+==================================================
+
+"""论文失败条件与评价阈值的显式实现。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+from dynamics.relative import RelativeState
+
+
+@dataclass(frozen=True)
+class SuccessThresholds:
+    attitude_rad: float = 0.174
+    angular_velocity_rad_s: float = 0.087
+    position_m: float = 0.3
+    translational_velocity_m_s: float = 0.1
+
+
+@dataclass(frozen=True)
+class ErrorMetrics:
+    attitude_rad: float
+    angular_velocity_rad_s: float
+    position_m: float
+    translational_velocity_m_s: float
+    direct_relative_distance_m: float
+    attitude_success: bool
+    position_success: bool
+    joint_success: bool
+
+
+@dataclass(frozen=True)
+class FailureFlags:
+    distance_failure: bool
+    time_failure: bool
+
+    @property
+    def failed(self) -> bool:
+        return self.distance_failure or self.time_failure
+
+
+def compute_error_metrics(
+    relative: RelativeState,
+    thresholds: SuccessThresholds = SuccessThresholds(),
+) -> ErrorMetrics:
+    coordinates = relative.exponential_coordinates
+    attitude_error = float(np.linalg.norm(coordinates[:3]))
+    # 论文 p.9 用 beta 表示 position error；与 Eq. (26) 及 SMC Eq. (48)
+    # 一致，默认解释为 SE(3) 对数坐标 rho，而非直接 p_r。
+    position_error = float(np.linalg.norm(coordinates[3:]))
+    angular_error = float(np.linalg.norm(relative.omega))
+    velocity_error = float(np.linalg.norm(relative.velocity))
+    distance = float(np.linalg.norm(relative.position))
+    attitude_success = (
+        attitude_error <= thresholds.attitude_rad
+        and angular_error <= thresholds.angular_velocity_rad_s
+    )
+    position_success = (
+        position_error <= thresholds.position_m
+        and velocity_error <= thresholds.translational_velocity_m_s
+    )
+    return ErrorMetrics(
+        attitude_rad=attitude_error,
+        angular_velocity_rad_s=angular_error,
+        position_m=position_error,
+        translational_velocity_m_s=velocity_error,
+        direct_relative_distance_m=distance,
+        attitude_success=attitude_success,
+        position_success=position_success,
+        joint_success=attitude_success and position_success,
+    )
+
+
+def failure_flags(
+    relative: RelativeState,
+    time_seconds: float,
+    *,
+    max_distance_m: float,
+    max_time_s: float,
+    completed: bool,
+) -> FailureFlags:
+    distance_failure = float(np.linalg.norm(relative.position)) > max_distance_m
+    time_failure = float(time_seconds) >= max_time_s and not completed
+    return FailureFlags(bool(distance_failure), bool(time_failure))
+
+
+==================================================
+==== FILE_PATH: env\__init__.py ====
+==================================================
+
+"""哈工大 SE3SAREnv 的独立 Gymnasium 实现。"""
+
+from .se3_sar_env import SE3SAREnv, SE3SAREnvConfig, Stage2EnvConfig
+
+__all__ = ["SE3SAREnv", "SE3SAREnvConfig", "Stage2EnvConfig"]
+
+
+==================================================
+==== FILE_PATH: tests\test_action.py ====
+==================================================
+
+import numpy as np
+
+from env.action import normalized_to_wrench, wrench_to_normalized
+
+
+def test_normalized_action_clips_to_paper_limits() -> None:
+    wrench = normalized_to_wrench(np.array([2.0, -2.0, 0.5, 2.0, -2.0, 0.25]))
+    assert np.allclose(wrench.torque, np.array([0.6, -0.6, 0.3]))
+    assert np.allclose(wrench.force, np.array([1.0, -1.0, 0.25]))
+
+
+def test_action_wrench_roundtrip_inside_limits() -> None:
+    action = np.array([0.2, -0.4, 0.8, -0.5, 0.25, 1.0])
+    assert np.allclose(wrench_to_normalized(normalized_to_wrench(action)), action)
+
+
+==================================================
+==== FILE_PATH: tests\test_env.py ====
+==================================================
+
+import numpy as np
+import pytest
+from gymnasium.utils.env_checker import check_env
+
+from dynamics.lie import is_so3
+from dynamics.lie import se3_exp
+from dynamics.relative import RelativeState
+from env.observation import build_observation
+from env.scenarios import paper_target_initial_state, paper_target_parameters
+from env.se3_sar_env import SE3SAREnv, SE3SAREnvConfig
+from train.train import environment_config_for_profile
+
+
+def _deterministic_config(**kwargs) -> SE3SAREnvConfig:
+    defaults = dict(
+        include_chaser_disturbance=False,
+        include_uncertainty=False,
+        include_j2=False,
+    )
+    defaults.update(kwargs)
+    return SE3SAREnvConfig(**defaults)
+
+
+def test_env_passes_gymnasium_checker() -> None:
+    check_env(SE3SAREnv(_deterministic_config()), skip_render_check=True)
+
+
+def test_paper_reference_default_is_literal_and_reproducible() -> None:
+    env = SE3SAREnv(_deterministic_config())
+    first, info = env.reset(seed=1234)
+    second, _ = env.reset(seed=1234)
+    assert np.array_equal(first, second)
+    assert info["reward_mode"] == "paper_equations"
+    assert info["failure_terminal_mode"] == "paper_literal"
+    assert info["relative_distance_m"] <= 30.0
+
+
+def test_nominal_curriculum_uses_lifetime_transition_count() -> None:
+    config = environment_config_for_profile("nominal_capture_curriculum")
+    env = SE3SAREnv(config)
+    _, initial = env.reset(seed=11)
+    assert initial["curriculum_progress"] == pytest.approx(0.0)
+    assert 0.32 <= initial["relative_distance_m"] <= 0.45
+    env.total_transition_count = 87_500
+    _, middle = env.reset(seed=12)
+    assert middle["curriculum_progress"] == pytest.approx(0.5)
+    assert 0.41 <= middle["relative_distance_m"] <= 0.725
+    env.total_transition_count = 125_000
+    _, final = env.reset(seed=13)
+    assert final["curriculum_progress"] == pytest.approx(1.0)
+    assert 0.5 <= final["relative_distance_m"] <= 1.0
+
+
+def test_nominal_one_step_is_finite_and_reports_stable_energy() -> None:
+    env = SE3SAREnv(environment_config_for_profile("nominal_capture_wide"))
+    env.reset(seed=7)
+    observation, reward, terminated, truncated, info = env.step(np.zeros(6, dtype=np.float32))
+    assert observation.shape == (12,)
+    assert np.all(np.isfinite(observation))
+    assert np.isfinite(reward)
+    assert isinstance(terminated, bool) and isinstance(truncated, bool)
+    assert np.isfinite(info["reward_stable_flow_energy"])
+    assert is_so3(env.target_state.rotation, atol=1e-12)
+    assert is_so3(env.chaser_state.rotation, atol=1e-12)
+
+
+def test_fast_near_paper_profile_reaches_full_difficulty_and_steps() -> None:
+    config = environment_config_for_profile("near_paper_fast_curriculum")
+    env = SE3SAREnv(config)
+    env.total_transition_count = config.curriculum_steps
+    _, initial = env.reset(seed=20260805)
+    assert initial["curriculum_progress"] == pytest.approx(1.0)
+    assert initial["relative_distance_m"] < config.max_distance
+    assert initial["orientation_sampling"] == "curriculum_relative_20deg_to_haar"
+    assert initial["angular_velocity_mode"] == "curriculum_relative_0p03_to_paper_0p2"
+    assert initial["reward_mode"] == "se3_stable_flow_log_v2"
+    assert config.include_chaser_disturbance and config.include_uncertainty
+    observation, reward, terminated, truncated, info = env.step(
+        np.zeros(6, dtype=np.float32)
+    )
+    assert np.all(np.isfinite(observation)) and np.isfinite(reward)
+    assert isinstance(terminated, bool) and isinstance(truncated, bool)
+    assert 96.0 <= info["chaser_mass_kg"] <= 116.0
+
+
+def test_fixed_failure_penalty_is_applied_once_on_distance_termination() -> None:
+    env = SE3SAREnv(
+        _deterministic_config(
+            max_distance=0.1,
+            position_mode="nominal_shell_0p5_1m",
+            reward_mode="se3_stable_flow_log_v3",
+            stable_flow_time_constant_s=30.0,
+            stable_flow_reward_scale=0.05,
+            failure_terminal_mode="fixed_penalty",
+            failure_terminal_penalty=7.0,
+        )
+    )
+    env.reset(seed=9)
+    _, reward, terminated, truncated, info = env.step(np.zeros(6, dtype=np.float32))
+    assert terminated and not truncated and info["distance_failure"]
+    assert info["reward_failure_horizon_adjustment"] == pytest.approx(-7.0)
+    assert reward < -7.0
+
+
+def test_cached_default_target_is_numerically_identical_to_direct_rk45() -> None:
+    direct = SE3SAREnv(_deterministic_config(max_time=2.0))
+    cached = SE3SAREnv(
+        _deterministic_config(
+            max_time=2.0,
+            cache_default_target_trajectory=True,
+        )
+    )
+    direct_observation, direct_info = direct.reset(seed=314)
+    cached_observation, cached_info = cached.reset(seed=314)
+    assert not direct_info["cached_default_target_trajectory"]
+    assert cached_info["cached_default_target_trajectory"]
+    assert np.array_equal(direct_observation, cached_observation)
+    action = np.array([0.2, -0.1, 0.3, -0.4, 0.5, -0.2], dtype=np.float32)
+    for _ in range(12):
+        direct_observation, direct_reward, direct_terminated, direct_truncated, direct_info = direct.step(action)
+        cached_observation, cached_reward, cached_terminated, cached_truncated, cached_info = cached.step(action)
+        assert np.allclose(cached.target_state.rotation, direct.target_state.rotation, atol=1e-13)
+        assert np.allclose(cached.target_state.position, direct.target_state.position, atol=1e-9)
+        assert np.allclose(cached_observation, direct_observation, atol=1e-7)
+        assert cached_reward == pytest.approx(direct_reward, abs=1e-12)
+        assert (cached_terminated, cached_truncated) == (direct_terminated, direct_truncated)
+        assert cached_info["target_nfev"] == 0
+        assert direct_info["target_nfev"] > 0
+
+
+def test_joint_success_still_uses_all_four_physical_thresholds() -> None:
+    env = SE3SAREnv(_deterministic_config())
+    state = paper_target_initial_state()
+    parameters = paper_target_parameters()
+    env.reset(
+        seed=1,
+        options={
+            "target_state": state,
+            "chaser_state": state,
+            "target_parameters": parameters,
+            "chaser_parameters": parameters,
+        },
+    )
+    _, _, terminated, truncated, info = env.step(np.zeros(6, dtype=np.float32))
+    assert terminated and not truncated
+    assert info["completed"] and info["joint_success"]
+
+
+def test_softsign_observation_preserves_far_field_ordering() -> None:
+    relative = RelativeState(
+        se3_exp(np.array([2.0, -2.0, 1.0, 45.0, -30.0, 15.0])),
+        np.array([2.0, -2.0, 1.0, 8.0, -6.0, 4.0]),
+    )
+    kwargs = dict(
+        attitude_scale=0.174,
+        distance_scale=0.3,
+        omega_scale=0.087,
+        velocity_scale=0.25,
+    )
+    raw = build_observation(relative, **kwargs)
+    bounded = build_observation(relative, **kwargs, clip=10.0, clip_mode="softsign")
+    assert np.all(np.abs(bounded) < 10.0)
+    assert np.all(np.signbit(bounded) == np.signbit(raw))
+
+
+==================================================
+==== FILE_PATH: tests\test_evaluate_policy.py ====
+==================================================
+
+from dataclasses import asdict
+
+from train.train import environment_config_for_profile
+from eval.evaluate_policy import environment_config_from_manifest, formal_eligibility
+
+
+def test_curriculum_manifest_evaluates_the_final_wide_domain() -> None:
+    config = environment_config_for_profile("nominal_capture_curriculum")
+    restored = environment_config_from_manifest({"environment": asdict(config)})
+    assert restored.position_mode == "nominal_shell_0p5_1m"
+    assert restored.curriculum_start_steps == 0
+    assert restored.curriculum_steps == 0
+    assert restored.reward_mode == "se3_stable_flow_v1"
+
+
+def test_fast_curriculum_manifest_evaluates_only_final_difficulty() -> None:
+    config = environment_config_for_profile("near_paper_fast_curriculum")
+    restored = environment_config_from_manifest({"environment": asdict(config)})
+    assert restored.position_mode == "bounded_15m"
+    assert restored.orientation_sampling == "haar_uniform_so3"
+    assert restored.angular_velocity_mode == "paper_uniform_0p2"
+    assert restored.curriculum_start_steps == 0
+    assert restored.curriculum_steps == 0
+    assert restored.reward_mode == "se3_stable_flow_log_v2"
+
+
+def test_recovery_curriculum_manifest_preserves_v3_final_evaluation() -> None:
+    config = environment_config_for_profile("near_paper_recovery_curriculum")
+    restored = environment_config_from_manifest({"environment": asdict(config)})
+    assert restored.position_mode == "bounded_15m"
+    assert restored.curriculum_start_steps == 0
+    assert restored.curriculum_steps == 0
+    assert restored.reward_mode == "se3_stable_flow_log_v3"
+    assert restored.failure_terminal_mode == "fixed_penalty"
+    assert restored.failure_terminal_penalty == 100.0
+
+
+def test_physical_v4_curriculum_manifest_evaluates_only_final_domain() -> None:
+    config = environment_config_for_profile("near_paper_physical_v4_curriculum")
+    restored = environment_config_from_manifest({"environment": asdict(config)})
+    assert restored.position_mode == "bounded_15m"
+    assert restored.curriculum_start_steps == 0
+    assert restored.curriculum_steps == 0
+    assert restored.reward_mode == "se3_physical_storage_v4"
+    assert restored.failure_terminal_mode == "barrier_only"
+
+
+def test_formal_eligibility_requires_paper_budget_and_monte_carlo() -> None:
+    result = formal_eligibility(
+        "sac",
+        {
+            "profile": "paper",
+            "environment_profile": "full",
+            "actual_model_timesteps": 12_000_000,
+        },
+        episodes=1_000,
+        external_max_steps=None,
+    )
+    assert result["formal_metric_eligible"]
+
+
+==================================================
+==== FILE_PATH: tests\test_gravity.py ====
+==================================================
+
+import numpy as np
+
+from dynamics.constants import PAPER_EARTH
+from dynamics.gravity import (
+    central_and_second_moment_force,
+    gravity_gradient_torque,
+    j2_force_body,
+    second_moment_from_inertia,
+)
+
+
+def test_standard_and_paper_second_moment_modes_are_explicit() -> None:
+    inertia = np.diag([1.0, 2.0, 3.0])
+    assert np.allclose(
+        second_moment_from_inertia(inertia, "standard_minus"),
+        np.diag([2.0, 1.0, 0.0]),
+    )
+    assert np.allclose(
+        second_moment_from_inertia(inertia, "paper_plus"),
+        np.diag([4.0, 5.0, 6.0]),
+    )
+
+
+def test_spherical_inertia_has_zero_gravity_gradient_torque() -> None:
+    torque = gravity_gradient_torque(
+        np.eye(3),
+        np.array([7.0e6, 1.0e6, -2.0e6]),
+        10.0 * np.eye(3),
+    )
+    assert np.allclose(torque, np.zeros(3), atol=1e-18)
+
+
+def test_central_gravity_acceleration_is_mass_independent() -> None:
+    position = np.array([7.0e6, -1.0e6, 2.0e6])
+    inertia = np.eye(3)
+    force1 = central_and_second_moment_force(
+        np.eye(3), position, 100.0, inertia, include_second_moment=False
+    )
+    force2 = central_and_second_moment_force(
+        np.eye(3), position, 250.0, inertia, include_second_moment=False
+    )
+    expected = -PAPER_EARTH.mu * position / np.linalg.norm(position) ** 3
+    assert np.allclose(force1 / 100.0, expected, rtol=1e-14)
+    assert np.allclose(force2 / 250.0, expected, rtol=1e-14)
+
+
+def test_j2_force_is_finite_and_scales_with_mass() -> None:
+    position = np.array([7.0e6, 1.0e6, 2.0e6])
+    force1 = j2_force_body(np.eye(3), position, 100.0)
+    force2 = j2_force_body(np.eye(3), position, 200.0)
+    assert np.all(np.isfinite(force1))
+    assert np.linalg.norm(force1) > 0.0
+    assert np.allclose(force2, 2.0 * force1, rtol=1e-14)
+
+
+==================================================
+==== FILE_PATH: tests\test_integrator.py ====
+==================================================
+
+import numpy as np
+
+from dynamics.gravity import GravityOptions
+from dynamics.integrator import RK45Settings, propagate_rk45
+from dynamics.lie import is_so3, so3_exp
+from dynamics.relative import relative_state
+from dynamics.types import GeneralizedForce, SpacecraftParameters, SpacecraftState
+
+
+NO_GRAVITY = GravityOptions(include_central=False)
+
+
+def test_uncontrolled_linear_motion_without_gravity() -> None:
+    state = SpacecraftState(np.eye(3), np.array([1.0, 2.0, 3.0]), np.zeros(3), np.array([4.0, -2.0, 1.0]))
+    parameters = SpacecraftParameters(100.0, 10.0 * np.eye(3))
+    result, diagnostics = propagate_rk45(
+        state,
+        parameters,
+        0.0,
+        0.5,
+        gravity_options=NO_GRAVITY,
+    )
+    assert np.allclose(result.position, state.position + 0.5 * state.velocity, atol=1e-11)
+    assert np.allclose(result.velocity, state.velocity, atol=1e-12)
+    assert diagnostics.nfev > 0
+
+
+def test_rotation_is_orthogonal_and_matches_constant_spherical_body_rate() -> None:
+    omega = np.array([0.1, -0.2, 0.3])
+    state = SpacecraftState(np.eye(3), np.array([7e6, 0.0, 0.0]), omega, np.zeros(3))
+    parameters = SpacecraftParameters(100.0, 10.0 * np.eye(3))
+    result, _ = propagate_rk45(
+        state,
+        parameters,
+        0.0,
+        1.0,
+        gravity_options=NO_GRAVITY,
+    )
+    assert is_so3(result.rotation, atol=1e-12)
+    assert np.allclose(result.rotation, so3_exp(omega), atol=2e-10)
+
+
+def test_zero_relative_error_remains_equilibrium_for_identical_models() -> None:
+    state = SpacecraftState(
+        np.eye(3),
+        np.array([7.0e6, 1.0e6, 2.0e6]),
+        np.array([0.05, -0.03, 0.02]),
+        np.array([5000.0, 3000.0, -200.0]),
+    )
+    parameters = SpacecraftParameters(120.0, np.diag([20.0, 22.0, 25.0]))
+    a, _ = propagate_rk45(state, parameters, 0.0, 0.1)
+    b, _ = propagate_rk45(state.copy(), parameters, 0.0, 0.1)
+    relative = relative_state(a, b)
+    assert np.allclose(relative.transform, np.eye(4), atol=2e-9)
+    assert np.allclose(relative.twist, np.zeros(6), atol=2e-10)
+
+
+def test_rk45_tolerance_convergence() -> None:
+    state = SpacecraftState(
+        np.eye(3),
+        np.array([7.0e6, 1.0e6, 2.0e6]),
+        np.array([0.1, 0.2, -0.1]),
+        np.array([5000.0, 3000.0, -200.0]),
+    )
+    parameters = SpacecraftParameters(120.0, np.diag([20.0, 22.0, 25.0]))
+    loose, _ = propagate_rk45(
+        state,
+        parameters,
+        0.0,
+        0.1,
+        settings=RK45Settings(rtol=1e-7, atol=1e-9, max_step=0.1),
+    )
+    tight, _ = propagate_rk45(
+        state,
+        parameters,
+        0.0,
+        0.1,
+        settings=RK45Settings(rtol=1e-10, atol=1e-12, max_step=0.05),
+    )
+    assert np.linalg.norm(loose.position - tight.position) < 1e-5
+    assert np.linalg.norm(loose.twist - tight.twist) < 1e-8
+
+
+==================================================
+==== FILE_PATH: tests\test_lie.py ====
+==================================================
+
+import numpy as np
+import pytest
+
+from dynamics.lie import (
+    adjoint,
+    hat3,
+    hat6,
+    inverse_transform,
+    is_so3,
+    left_jacobian_so3,
+    left_jacobian_so3_inv,
+    make_transform,
+    project_to_so3,
+    se3_exp,
+    se3_log,
+    so3_exp,
+    so3_log,
+    vee3,
+    vee6,
+)
+
+
+def test_hat_vee_roundtrip_and_cross_product() -> None:
+    vector = np.array([0.3, -0.4, 1.2])
+    other = np.array([-0.1, 2.0, 0.7])
+    assert np.allclose(vee3(hat3(vector)), vector)
+    assert np.allclose(hat3(vector) @ other, np.cross(vector, other))
+    twist = np.array([0.1, -0.2, 0.3, 4.0, -5.0, 6.0])
+    assert np.allclose(vee6(hat6(twist)), twist)
+
+
+@pytest.mark.parametrize(
+    "rotation_vector",
+    [
+        np.zeros(3),
+        np.array([1e-10, -2e-10, 3e-10]),
+        np.array([0.2, -0.3, 0.4]),
+        (np.pi - 1e-7) * np.array([1.0, 2.0, -1.0]) / np.sqrt(6.0),
+    ],
+)
+def test_so3_exp_log_roundtrip(rotation_vector: np.ndarray) -> None:
+    rotation = so3_exp(rotation_vector)
+    recovered = so3_log(rotation)
+    assert is_so3(rotation, atol=1e-12)
+    assert np.allclose(so3_exp(recovered), rotation, atol=2e-8)
+
+
+def test_left_jacobian_inverse() -> None:
+    for phi in (np.zeros(3), np.array([0.2, -0.4, 0.6]), np.array([2.8, 0.1, -0.2])):
+        product = left_jacobian_so3(phi) @ left_jacobian_so3_inv(phi)
+        assert np.allclose(product, np.eye(3), atol=1e-10)
+
+
+def test_se3_exp_log_roundtrip() -> None:
+    eta = np.array([0.4, -0.2, 0.1, 12.0, -4.0, 2.0])
+    transform = se3_exp(eta)
+    recovered = se3_log(transform)
+    assert np.allclose(recovered, eta, atol=1e-10)
+
+
+def test_adjoint_conjugation_identity() -> None:
+    transform = make_transform(
+        so3_exp(np.array([0.3, -0.2, 0.1])),
+        np.array([4.0, -2.0, 1.0]),
+    )
+    twist = np.array([0.1, 0.2, -0.3, 1.0, 2.0, -1.0])
+    left = hat6(adjoint(transform) @ twist)
+    right = transform @ hat6(twist) @ inverse_transform(transform)
+    assert np.allclose(left, right, atol=1e-12)
+
+
+def test_projection_restores_rotation_matrix() -> None:
+    rotation = so3_exp(np.array([0.2, 0.4, -0.1]))
+    perturbed = rotation.copy()
+    perturbed[0, 0] += 2e-5
+    projected = project_to_so3(perturbed)
+    assert is_so3(projected, atol=1e-12)
+    assert np.linalg.det(projected) == pytest.approx(1.0, abs=1e-12)
+
+
+==================================================
+==== FILE_PATH: tests\test_relative.py ====
+==================================================
+
+import numpy as np
+
+from dynamics.lie import inverse_transform, make_transform, se3_exp, se3_log, so3_exp
+from dynamics.relative import relative_state
+from dynamics.types import SpacecraftState
+
+
+def _state(transform: np.ndarray, twist: np.ndarray) -> SpacecraftState:
+    return SpacecraftState(transform[:3, :3], transform[:3, 3], twist[:3], twist[3:])
+
+
+def test_identical_absolute_states_have_zero_relative_error() -> None:
+    state = SpacecraftState(
+        so3_exp(np.array([0.2, -0.1, 0.3])),
+        np.array([7e6, 2e6, -1e6]),
+        np.array([0.1, 0.2, -0.3]),
+        np.array([5000.0, -2000.0, 300.0]),
+    )
+    relative = relative_state(state, state.copy())
+    # 约 7000 km 的绝对坐标在 T^-1 T 中发生浮点消去，平移残差约 1e-10 m。
+    assert np.allclose(relative.transform, np.eye(4), atol=5e-10)
+    assert np.allclose(relative.twist, np.zeros(6), atol=1e-9)
+
+
+def test_corrected_relative_twist_matches_finite_difference() -> None:
+    target_transform = make_transform(
+        so3_exp(np.array([0.2, -0.1, 0.3])), np.array([10.0, -4.0, 2.0])
+    )
+    chaser_transform = make_transform(
+        so3_exp(np.array([-0.3, 0.15, 0.2])), np.array([13.0, 1.0, -3.0])
+    )
+    target_twist = np.array([0.05, 0.2, 0.01, 2.0, -1.0, 0.5])
+    chaser_twist = np.array([-0.1, 0.04, 0.2, 1.2, 0.3, -0.7])
+    target = _state(target_transform, target_twist)
+    chaser = _state(chaser_transform, chaser_twist)
+    relative = relative_state(target, chaser)
+
+    dt = 1e-7
+    target_next = target_transform @ se3_exp(dt * target_twist)
+    chaser_next = chaser_transform @ se3_exp(dt * chaser_twist)
+    relative_next = inverse_transform(target_next) @ chaser_next
+    body_increment = inverse_transform(relative.transform) @ relative_next
+    finite_difference = se3_log(body_increment, project=True) / dt
+    assert np.allclose(finite_difference, relative.twist, atol=3e-7)
+
+
+==================================================
+==== FILE_PATH: tests\test_reward.py ====
+==================================================
+
+import numpy as np
+import pytest
+
+from dynamics.lie import se3_exp
+from dynamics.relative import RelativeState
+from env.reward import (
+    HITReward,
+    SE3PhysicalStorageRewardV4,
+    SE3StableFlowLogRewardV2,
+    SE3StableFlowLogRewardV3,
+    SE3StableFlowRewardV1,
+)
+
+
+def _relative(eta: np.ndarray, twist: np.ndarray | None = None) -> RelativeState:
+    return RelativeState(
+        se3_exp(eta),
+        np.zeros(6) if twist is None else np.asarray(twist, dtype=float),
+    )
+
+
+def test_paper_potential_matches_reported_kilometre_units() -> None:
+    eta = np.array([0.1, 0.0, 0.0, 0.0, 2.0, 0.0])
+    twist = np.array([0.2, 0.0, 0.0, 3.0, 0.0, 0.0])
+    expected = -np.arctan(0.1 + 0.002 + 0.1 * 0.2 + 0.1 * 0.003)
+    assert HITReward.potential(_relative(eta, twist)) == pytest.approx(expected)
+
+
+def test_paper_reward_uses_reset_observation_and_preserves_terminal_terms() -> None:
+    reward = HITReward(history_length=30)
+    initial = np.zeros(12)
+    initial[0] = 0.01
+    relative = _relative(np.zeros(6))
+    reward.reset(initial, relative)
+    step = reward.compute(np.ones(12), relative, completed=False, failed=False)
+    assert step.shaping == pytest.approx(0.0)
+    assert step.integral_argument == pytest.approx(0.1)
+    assert step.integral_compensation == pytest.approx(-0.1)
+    success = reward.compute(np.zeros(12), relative, completed=True, failed=False)
+    assert success.terminal == pytest.approx(40.0)
+
+
+def test_remaining_horizon_compensation_removes_early_failure_advantage() -> None:
+    relative = _relative(np.zeros(6))
+    observation = np.ones(12)
+    early = HITReward()
+    early.reset(observation, relative)
+    early_total = early.compute(
+        observation,
+        relative,
+        completed=False,
+        failed=True,
+        failure_horizon_adjustment=-1.8,
+    ).total
+    timeout = HITReward()
+    timeout.reset(observation, relative)
+    timeout_total = sum(
+        timeout.compute(
+            observation, relative, completed=False, failed=step == 9
+        ).total
+        for step in range(10)
+    )
+    assert early_total == pytest.approx(timeout_total)
+
+
+def test_stable_flow_has_physical_ordering_and_no_terminal_bonus() -> None:
+    ell, tau = 0.4482671036630004, 10.0
+    reward = SE3StableFlowRewardV1(
+        characteristic_length_m=ell,
+        time_constant_s=tau,
+    )
+    eta = np.array([0.2, 0.0, 0.0, 0.4, 0.0, 0.0])
+    pose_energy = (ell * 0.2) ** 2 + 0.4**2
+    guided = _relative(eta, -eta / tau)
+    stationary = _relative(eta, np.zeros(6))
+    opposite = _relative(eta, eta / tau)
+    assert reward.energy(guided) == pytest.approx(pose_energy)
+    assert reward.energy(stationary) == pytest.approx(2.0 * pose_energy)
+    assert reward.energy(opposite) == pytest.approx(5.0 * pose_energy)
+    reward.reset(np.zeros(12), stationary)
+    result = reward.compute(
+        np.zeros(12), stationary, completed=False, failed=True
+    )
+    assert result.total == pytest.approx(-reward.bounded_cost(stationary))
+    assert result.terminal == 0.0
+
+
+def test_log_stable_flow_retains_far_field_resolution_and_unit_bound() -> None:
+    reward = SE3StableFlowLogRewardV2(
+        characteristic_length_m=0.4482671036630004,
+        time_constant_s=30.0,
+        log_cap=8.0,
+        reward_scale=0.05,
+    )
+    near = _relative(np.array([0.2, 0.0, 0.0, 1.0, 0.0, 0.0]))
+    medium = _relative(np.array([0.2, 0.0, 0.0, 10.0, 0.0, 0.0]))
+    far = _relative(np.array([0.2, 0.0, 0.0, 20.0, 0.0, 0.0]))
+    costs = [reward.bounded_cost(item) for item in (near, medium, far)]
+    assert 0.0 < costs[0] < costs[1] < costs[2] <= 1.0
+    assert costs[2] - costs[1] > 0.05
+    reward.reset(np.zeros(12), far)
+    result = reward.compute(np.zeros(12), far, completed=False, failed=False)
+    assert result.mode == "se3_stable_flow_log_v2"
+    assert reward.max_dense_penalty_per_step == pytest.approx(0.05)
+    assert result.total == pytest.approx(-0.05 * costs[2])
+
+
+def test_log_stable_flow_v3_preserves_divergent_trajectory_ordering() -> None:
+    reward = SE3StableFlowLogRewardV3(
+        characteristic_length_m=0.4482671036630004,
+        time_constant_s=30.0,
+        log_cap=10.0,
+        reward_scale=0.05,
+    )
+    near = _relative(np.array([0.2, 0.0, 0.0, 1.0, 0.0, 0.0]))
+    far = _relative(np.array([0.2, 0.0, 0.0, 20.0, 0.0, 0.0]))
+    divergent = _relative(
+        np.array([0.2, 0.0, 0.0, 20.0, 0.0, 0.0]),
+        np.array([0.0, 0.0, 0.0, 5.0, 0.0, 0.0]),
+    )
+    near_cost, far_cost, divergent_cost = [
+        reward.bounded_cost(item) for item in (near, far, divergent)
+    ]
+    assert 0.0 < near_cost < far_cost < divergent_cost
+    assert divergent_cost > 1.0
+    reward.reset(np.zeros(12), divergent)
+    result = reward.compute(
+        np.zeros(12),
+        divergent,
+        completed=False,
+        failed=True,
+        failure_horizon_adjustment=-100.0,
+    )
+    assert result.total == pytest.approx(-100.0 - 0.05 * divergent_cost)
+
+
+def test_physical_storage_v4_has_three_physical_terms_without_terminal_bonus() -> None:
+    reward = SE3PhysicalStorageRewardV4(
+        characteristic_length_m=0.4482671036630004,
+        time_constant_s=30.0,
+        time_step_s=0.1,
+        max_distance_m=30.0,
+    )
+    near = _relative(np.array([0.1, 0.0, 0.0, 1.0, 0.0, 0.0]))
+    far = _relative(np.array([0.3, 0.0, 0.0, 10.0, 0.0, 0.0]))
+    near_boundary = _relative(np.array([0.1, 0.0, 0.0, 29.99, 0.0, 0.0]))
+    outside_boundary = _relative(np.array([0.1, 0.0, 0.0, 30.1, 0.0, 0.0]))
+    assert reward.storage(near) < reward.storage(far)
+    assert reward.safety_barrier(far) < reward.safety_barrier(near_boundary)
+    assert reward.safety_barrier(near_boundary) < reward.safety_barrier(
+        outside_boundary
+    )
+
+    reward.reset(np.zeros(12), far)
+    approaching = reward.compute(
+        np.zeros(12), near, completed=False, failed=False, normalized_action=np.zeros(6)
+    )
+    assert approaching.shaping > 0.0
+    assert approaching.integral_compensation < 0.0
+    assert approaching.actuation_penalty == pytest.approx(0.0)
+    assert approaching.terminal == pytest.approx(0.0)
+
+    reward.reset(np.zeros(12), near)
+    idle = reward.compute(
+        np.zeros(12), near, completed=False, failed=False, normalized_action=np.zeros(6)
+    )
+    reward.reset(np.zeros(12), near)
+    actuated = reward.compute(
+        np.zeros(12), near, completed=False, failed=False, normalized_action=np.ones(6)
+    )
+    assert actuated.actuation_penalty == pytest.approx(-0.1 / 30.0)
+    assert actuated.total < idle.total
+
+
+==================================================
+==== FILE_PATH: tests\test_scenarios.py ====
+==================================================
+
+import numpy as np
+import pytest
+
+from dynamics.relative import relative_state
+from env.scenarios import (
+    paper_target_initial_state,
+    sample_chaser_initial_state,
+    sample_relative_position,
+    sample_relative_rotation,
+    sample_relative_velocity_increment,
+)
+
+
+def test_velocity_interpretations_are_explicit() -> None:
+    rationalized = sample_relative_velocity_increment(
+        np.random.default_rng(123), "rationalized_2mmps"
+    )
+    literal = sample_relative_velocity_increment(
+        np.random.default_rng(123), "paper_literal_2mps"
+    )
+    assert np.max(np.abs(rationalized)) <= 0.002
+    assert literal == pytest.approx(1000.0 * rationalized)
+
+
+def test_nominal_and_curriculum_position_bounds() -> None:
+    rng = np.random.default_rng(20260805)
+    nominal = np.array(
+        [np.linalg.norm(sample_relative_position(rng, "nominal_shell_0p5_1m")) for _ in range(500)]
+    )
+    assert nominal.min() >= 0.5
+    assert nominal.max() <= 1.0
+    for progress, inner, outer in ((0.0, 0.32, 0.45), (0.5, 0.41, 0.725), (1.0, 0.5, 1.0)):
+        samples = np.array(
+            [
+                np.linalg.norm(
+                    sample_relative_position(
+                        rng,
+                        "curriculum_shell_local_to_wide",
+                        curriculum_progress=progress,
+                    )
+                )
+                for _ in range(300)
+            ]
+        )
+        assert samples.min() >= inner - 1.0e-12
+        assert samples.max() <= outer + 1.0e-12
+
+
+def test_nominal_rotation_and_relative_twist_are_bounded() -> None:
+    rng = np.random.default_rng(20260805)
+    rotations = [sample_relative_rotation(rng, "relative_axis_angle_20deg") for _ in range(300)]
+    angles = np.array(
+        [np.arccos(np.clip(0.5 * (np.trace(item) - 1.0), -1.0, 1.0)) for item in rotations]
+    )
+    assert angles.max() <= np.deg2rad(20.0) + 1.0e-12
+    target = paper_target_initial_state()
+    chaser = sample_chaser_initial_state(
+        np.random.default_rng(17),
+        target,
+        position_mode="nominal_shell_0p5_1m",
+        velocity_mode="rationalized_relative_twist_2mmps",
+        orientation_mode="relative_axis_angle_20deg",
+        angular_velocity_mode="relative_twist_0p03",
+    )
+    relative = relative_state(target, chaser)
+    assert 0.5 <= np.linalg.norm(relative.position) <= 1.0
+    assert np.linalg.norm(relative.velocity) <= np.sqrt(3.0) * 0.002 + 1.0e-9
+    assert np.linalg.norm(relative.omega) <= np.sqrt(3.0) * 0.03 + 1.0e-12
+
+
+def test_fast_curriculum_reaches_the_declared_final_distribution() -> None:
+    target = paper_target_initial_state()
+    local = sample_chaser_initial_state(
+        np.random.default_rng(41),
+        target,
+        position_mode="curriculum_mixture_local_to_bounded_15m",
+        velocity_mode="rationalized_relative_twist_2mmps",
+        orientation_mode="curriculum_relative_20deg_to_haar",
+        angular_velocity_mode="curriculum_relative_0p03_to_paper_0p2",
+        curriculum_progress=0.0,
+    )
+    local_relative = relative_state(target, local)
+    assert 0.5 <= np.linalg.norm(local_relative.position) <= 1.0
+    assert np.linalg.norm(local_relative.exponential_coordinates[:3]) <= np.deg2rad(20.0)
+    assert np.linalg.norm(local_relative.omega) <= np.sqrt(3.0) * 0.03 + 1.0e-12
+
+    final = sample_chaser_initial_state(
+        np.random.default_rng(42),
+        target,
+        position_mode="curriculum_mixture_local_to_bounded_15m",
+        velocity_mode="rationalized_relative_twist_2mmps",
+        orientation_mode="curriculum_relative_20deg_to_haar",
+        angular_velocity_mode="curriculum_relative_0p03_to_paper_0p2",
+        curriculum_progress=1.0,
+    )
+    assert np.max(np.abs(final.position - target.position)) <= 15.0
+    assert np.max(np.abs(final.omega)) <= 0.2
+    assert np.linalg.norm(relative_state(target, final).velocity) <= (
+        np.sqrt(3.0) * 0.002 + 1.0e-9
+    )
+
+
+def test_fast_curriculum_midpoint_mixes_local_and_broad_samples() -> None:
+    rng = np.random.default_rng(20260805)
+    radii = np.array(
+        [
+            np.linalg.norm(
+                sample_relative_position(
+                    rng,
+                    "curriculum_mixture_local_to_bounded_15m",
+                    curriculum_progress=0.5,
+                )
+            )
+            for _ in range(400)
+        ]
+    )
+    assert np.any(radii <= 1.0)
+    assert np.any(radii >= 5.0)
+    assert radii.max() < 30.0
+
+
+==================================================
+==== FILE_PATH: tests\test_spacecraft.py ====
+==================================================
+
+import numpy as np
+
+from dynamics.gravity import GravityOptions
+from dynamics.spacecraft import (
+    body_dynamics_rhs,
+    momentum_dynamics_rhs,
+    state_derivative,
+)
+from dynamics.types import GeneralizedForce, SpacecraftParameters, SpacecraftState
+
+
+def _sample_state_and_parameters() -> tuple[SpacecraftState, SpacecraftParameters]:
+    state = SpacecraftState(
+        np.eye(3),
+        np.array([7.0e6, 1.0e5, -2.0e5]),
+        np.array([0.2, -0.1, 0.3]),
+        np.array([2.0, -1.0, 0.5]),
+    )
+    parameters = SpacecraftParameters(
+        120.0,
+        np.array([[20.0, -0.3, 0.1], [-0.3, 22.0, -0.2], [0.1, -0.2, 25.0]]),
+    )
+    return state, parameters
+
+
+def test_eq6_matches_unified_eq11_sign_convention() -> None:
+    state, parameters = _sample_state_and_parameters()
+    wrench = GeneralizedForce(
+        np.array([0.5, -0.2, 0.1]),
+        np.array([1.0, -2.0, 0.3]),
+    )
+    omega_dot, velocity_dot = body_dynamics_rhs(state, parameters, wrench)
+    unified = momentum_dynamics_rhs(state, parameters, wrench)
+    assert np.allclose(unified[:3], omega_dot, atol=1e-13)
+    assert np.allclose(unified[3:], velocity_dot, atol=1e-13)
+
+
+def test_simple_force_and_torque_response() -> None:
+    state = SpacecraftState(np.eye(3), np.array([7e6, 0.0, 0.0]), np.zeros(3), np.zeros(3))
+    parameters = SpacecraftParameters(100.0, np.diag([2.0, 4.0, 5.0]))
+    wrench = GeneralizedForce(np.array([2.0, 4.0, 5.0]), np.array([100.0, 0.0, -50.0]))
+    omega_dot, velocity_dot = body_dynamics_rhs(state, parameters, wrench)
+    assert np.allclose(omega_dot, np.ones(3))
+    assert np.allclose(velocity_dot, np.array([1.0, 0.0, -0.5]))
+
+
+def test_zero_wrench_stationary_state_is_equilibrium_without_gravity() -> None:
+    state = SpacecraftState(np.eye(3), np.array([7e6, 0.0, 0.0]), np.zeros(3), np.zeros(3))
+    parameters = SpacecraftParameters(100.0, np.diag([2.0, 4.0, 5.0]))
+    derivative = state_derivative(
+        state,
+        parameters,
+        GeneralizedForce.zeros(),
+        GeneralizedForce.zeros(),
+        GravityOptions(include_central=False),
+    )
+    assert np.allclose(derivative.rotation, np.zeros((3, 3)))
+    assert np.allclose(derivative.position, np.zeros(3))
+    assert np.allclose(derivative.omega, np.zeros(3))
+    assert np.allclose(derivative.velocity, np.zeros(3))
+
+
+==================================================
+==== FILE_PATH: tests\test_termination.py ====
+==================================================
+
+import numpy as np
+
+from dynamics.lie import se3_exp
+from dynamics.relative import RelativeState
+from env.termination import compute_error_metrics, failure_flags
+
+
+def _relative(eta: np.ndarray, twist: np.ndarray) -> RelativeState:
+    return RelativeState(se3_exp(eta), np.asarray(twist, dtype=float))
+
+
+def test_four_paper_thresholds_define_joint_success() -> None:
+    relative = _relative(
+        np.array([0.17, 0.0, 0.0, 0.29, 0.0, 0.0]),
+        np.array([0.08, 0.0, 0.0, 0.09, 0.0, 0.0]),
+    )
+    metrics = compute_error_metrics(relative)
+    assert metrics.attitude_success is True
+    assert metrics.position_success is True
+    assert metrics.joint_success is True
+
+
+def test_attitude_and_position_success_remain_separate() -> None:
+    relative = _relative(
+        np.array([0.18, 0.0, 0.0, 0.2, 0.0, 0.0]),
+        np.array([0.01, 0.0, 0.0, 0.01, 0.0, 0.0]),
+    )
+    metrics = compute_error_metrics(relative)
+    assert metrics.attitude_success is False
+    assert metrics.position_success is True
+    assert metrics.joint_success is False
+
+
+def test_distance_and_time_failure_logic() -> None:
+    far = _relative(np.array([0.0, 0.0, 0.0, 31.0, 0.0, 0.0]), np.zeros(6))
+    flags = failure_flags(far, 1.0, max_distance_m=30.0, max_time_s=200.0, completed=False)
+    assert flags.distance_failure is True
+    assert flags.time_failure is False
+    near = _relative(np.zeros(6), np.zeros(6))
+    completed = failure_flags(near, 200.0, max_distance_m=30.0, max_time_s=200.0, completed=True)
+    assert completed.time_failure is False
+    timeout = failure_flags(near, 200.0, max_distance_m=30.0, max_time_s=200.0, completed=False)
+    assert timeout.time_failure is True
+
+
+==================================================
+==== FILE_PATH: tests\test_train_configs.py ====
+==================================================
+
+import json
+import sys
+
+import pytest
+import torch.nn as nn
+
+from train.configs import ALGORITHM_SPECS, build_model_kwargs, effective_hyperparameters
+from train.train import environment_config_for_profile, main, validate_request
+
+
+def test_paper_algorithm_definitions_are_preserved() -> None:
+    assert set(ALGORITHM_SPECS) == {"sac", "ppo", "td3"}
+    assert ALGORITHM_SPECS["sac"].paper_hyperparameters["learning_starts"] == 20_000
+    assert ALGORITHM_SPECS["ppo"].paper_hyperparameters["n_steps"] == 512
+    assert ALGORITHM_SPECS["td3"].paper_hyperparameters["noise_std"] == pytest.approx(0.204)
+
+
+def test_supported_nonpaper_sac_profiles_are_explicit() -> None:
+    paper = effective_hyperparameters("sac", "paper")
+    nominal = effective_hyperparameters("sac", "sac_nominal_baseline")
+    assert nominal["gamma"] == pytest.approx(0.993)
+    assert nominal["gradient_steps"] == 4
+    assert nominal["ent_coef"] == pytest.approx(0.01)
+    assert nominal["batch_size"] == 256
+    assert nominal["learning_starts"] == paper["learning_starts"] == 20_000
+    near_paper = effective_hyperparameters("sac", "sac_near_paper_long")
+    assert near_paper["gamma"] == pytest.approx(0.997)
+    assert near_paper["gradient_steps"] == 2
+    assert near_paper["ent_coef"] == pytest.approx(0.01)
+    assert near_paper["batch_size"] == 256
+    assert effective_hyperparameters("sac", "sac_near_paper_recovery") == near_paper
+    assert effective_hyperparameters("sac", "sac_near_paper_physical_v4") == near_paper
+    with pytest.raises(ValueError, match="SAC-only"):
+        effective_hyperparameters("ppo", "sac_nominal_baseline")
+    with pytest.raises(ValueError, match="SAC-only"):
+        effective_hyperparameters("td3", "sac_near_paper_long")
+
+
+def test_nominal_environment_profiles_have_one_final_domain() -> None:
+    wide = environment_config_for_profile("nominal_capture_wide")
+    curriculum = environment_config_for_profile("nominal_capture_curriculum")
+    assert wide.position_mode == "nominal_shell_0p5_1m"
+    assert curriculum.position_mode == "curriculum_shell_local_to_wide"
+    assert curriculum.curriculum_start_steps == 50_000
+    assert curriculum.curriculum_steps == 125_000
+    for field in curriculum.__dataclass_fields__:
+        if field not in ("position_mode", "curriculum_start_steps", "curriculum_steps"):
+            assert getattr(curriculum, field) == getattr(wide, field)
+    assert wide.reward_mode == "se3_stable_flow_v1"
+    assert wide.failure_terminal_mode == "remaining_horizon_compensated"
+
+
+def test_fast_near_paper_profile_is_one_rapid_joint_curriculum() -> None:
+    config = environment_config_for_profile("near_paper_fast_curriculum")
+    assert config.max_time == pytest.approx(200.0)
+    assert config.position_mode == "curriculum_mixture_local_to_bounded_15m"
+    assert config.curriculum_start_steps == 25_000
+    assert config.curriculum_steps == 250_000
+    assert config.orientation_sampling == "curriculum_relative_20deg_to_haar"
+    assert config.angular_velocity_mode == "curriculum_relative_0p03_to_paper_0p2"
+    assert config.velocity_mode == "rationalized_relative_twist_2mmps"
+    assert config.reward_mode == "se3_stable_flow_log_v2"
+    assert config.stable_flow_time_constant_s == pytest.approx(30.0)
+    assert config.stable_flow_log_cap == pytest.approx(10.0)
+    assert config.stable_flow_reward_scale == pytest.approx(0.05)
+    assert config.completion_required_steps == 5
+    assert config.include_chaser_disturbance and config.include_uncertainty
+    assert config.cache_default_target_trajectory
+    assert config.solver_rtol == pytest.approx(1.0e-7)
+    assert config.solver_atol == pytest.approx(1.0e-9)
+
+
+def test_recovery_near_paper_profile_holds_then_uses_one_joint_ramp() -> None:
+    config = environment_config_for_profile("near_paper_recovery_curriculum")
+    assert config.curriculum_start_steps == 150_000
+    assert config.curriculum_steps == 400_000
+    assert config.reward_mode == "se3_stable_flow_log_v3"
+    assert config.failure_terminal_mode == "fixed_penalty"
+    assert config.failure_terminal_penalty == pytest.approx(100.0)
+    assert config.include_chaser_disturbance and config.include_uncertainty
+
+
+def test_physical_v4_profile_uses_no_arbitrary_failure_penalty() -> None:
+    config = environment_config_for_profile("near_paper_physical_v4_curriculum")
+    assert config.curriculum_start_steps == 150_000
+    assert config.curriculum_steps == 400_000
+    assert config.reward_mode == "se3_physical_storage_v4"
+    assert config.failure_terminal_mode == "barrier_only"
+    assert config.failure_terminal_penalty == pytest.approx(0.0)
+    assert config.stable_flow_barrier_epsilon == pytest.approx(1.0e-6)
+
+
+def test_network_shapes_are_retained() -> None:
+    sac = build_model_kwargs("sac", "smoke", seed=1, device="cpu", tensorboard_log="logs")
+    ppo = build_model_kwargs("ppo", "smoke", seed=1, device="cpu", tensorboard_log="logs")
+    assert sac["policy_kwargs"]["activation_fn"] is nn.ReLU
+    assert sac["policy_kwargs"]["net_arch"] == {"pi": [256] * 4, "qf": [256] * 4}
+    assert ppo["policy_kwargs"]["activation_fn"] is nn.Tanh
+
+
+def test_fresh_training_validation_has_no_external_artifacts(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train.train",
+            "--algorithm", "sac",
+            "--profile", "sac_nominal_baseline",
+            "--env-profile", "nominal_capture_curriculum",
+            "--steps", "1000",
+            "--device", "cpu",
+            "--run-name", "validation_only_cleanup_test",
+            "--validate-only",
+        ],
+    )
+    main()
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["fresh_initialization"] is True
+    assert preview["external_artifacts_loaded"] is False
+    assert preview["environment"]["position_mode"] == "curriculum_shell_local_to_wide"
+
+
+def test_long_cpu_guard_is_explicit() -> None:
+    with pytest.raises(RuntimeError, match="long training"):
+        validate_request(50_001, "cpu", allow_long_cpu=False)
+
+
+==================================================
+==== FILE_PATH: train\callbacks.py ====
+==================================================
+
+"""Passive training diagnostics; this callback never changes the environment."""
+
+from __future__ import annotations
+
+from stable_baselines3.common.callbacks import BaseCallback
+
+
+class EnvironmentDiagnosticsCallback(BaseCallback):
+    def __init__(self) -> None:
+        super().__init__()
+        self._episode_count = 0
+        self._completed_count = 0
+        self._stable_flow_count = 0
+        self._stable_flow_energy_sum = 0.0
+
+    def _on_step(self) -> bool:
+        for info in self.locals.get("infos", []):
+            if "episode" in info:
+                self._episode_count += 1
+                self._completed_count += int(info.get("completed", False))
+            if "reward_stable_flow_energy" in info:
+                self._stable_flow_count += 1
+                self._stable_flow_energy_sum += float(
+                    info["reward_stable_flow_energy"]
+                )
+        return True
+
+    def _on_rollout_end(self) -> None:
+        if self._episode_count:
+            self.logger.record(
+                "diagnostics/completion_fraction",
+                self._completed_count / self._episode_count,
+            )
+        if self._stable_flow_count:
+            self.logger.record(
+                "diagnostics/stable_flow_energy_mean",
+                self._stable_flow_energy_sum / self._stable_flow_count,
+            )
+
+
+==================================================
+==== FILE_PATH: train\configs.py ====
+==================================================
+
+"""Algorithm definitions and the supported training profiles."""
+
+from __future__ import annotations
+
+from copy import deepcopy
+from dataclasses import asdict, dataclass
+from typing import Any, Literal
+
+import numpy as np
+import torch.nn as nn
+from stable_baselines3 import PPO, SAC, TD3
+from stable_baselines3.common.noise import NormalActionNoise
+
+
+AlgorithmName = Literal["sac", "ppo", "td3"]
+TrainingProfile = Literal[
+    "paper",
+    "smoke",
+    "sac_nominal_baseline",
+    "sac_near_paper_long",
+    "sac_near_paper_recovery",
+    "sac_near_paper_physical_v4",
+]
+TRAINING_PROFILES: tuple[TrainingProfile, ...] = (
+    "paper",
+    "smoke",
+    "sac_nominal_baseline",
+    "sac_near_paper_long",
+    "sac_near_paper_recovery",
+    "sac_near_paper_physical_v4",
+)
+
+
+@dataclass(frozen=True)
+class AlgorithmSpec:
+    name: AlgorithmName
+    role: str
+    formal_training: bool
+    paper_total_steps: int
+    network: dict[str, Any]
+    paper_hyperparameters: dict[str, Any]
+    unreported_substitutions: dict[str, Any]
+    smoke_overrides: dict[str, Any]
+
+    def serializable(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+ALGORITHM_SPECS: dict[AlgorithmName, AlgorithmSpec] = {
+    "sac": AlgorithmSpec(
+        name="sac",
+        role="Primary pure-RL baseline and later comparison anchor",
+        formal_training=True,
+        paper_total_steps=12_000_000,
+        network={"activation": "ReLU", "pi": [256] * 4, "qf": [256] * 4},
+        paper_hyperparameters={
+            "batch_size": 32,
+            "buffer_size": 100_000,
+            "gamma": 0.95,
+            "gradient_steps": 32,
+            "learning_rate": 2.73e-4,
+            "learning_starts": 20_000,
+            "tau": 0.005,
+            "train_freq": (4, "step"),
+        },
+        unreported_substitutions={
+            "ent_coef": "auto",
+            "target_entropy": "auto",
+            "target_update_interval": 1,
+            "use_sde": False,
+        },
+        smoke_overrides={
+            "buffer_size": 2_000,
+            "learning_starts": 32,
+            "gradient_steps": 1,
+        },
+    ),
+    "ppo": AlgorithmSpec(
+        name="ppo",
+        role="Paper comparison algorithm",
+        formal_training=True,
+        paper_total_steps=12_000_000,
+        network={"activation": "Tanh", "pi": [512] * 4, "vf": [512] * 4},
+        paper_hyperparameters={
+            "batch_size": 32,
+            "learning_rate": 1.56e-4,
+            "gamma": 0.98,
+            "n_epochs": 5,
+            "vf_coef": 0.37,
+            "gae_lambda": 0.92,
+            "clip_range": 0.3,
+            "ent_coef": 9.89e-6,
+            "n_steps": 512,
+            "max_grad_norm": 5.0,
+        },
+        unreported_substitutions={"normalize_advantage": True},
+        smoke_overrides={"n_steps": 64, "n_epochs": 1},
+    ),
+    "td3": AlgorithmSpec(
+        name="td3",
+        role="Paper comparison algorithm",
+        formal_training=True,
+        paper_total_steps=12_000_000,
+        network={"activation": "ReLU", "pi": [256] * 4, "qf": [256] * 4},
+        paper_hyperparameters={
+            "batch_size": 32,
+            "buffer_size": 100_000,
+            "gamma": 0.95,
+            "gradient_steps": 32,
+            "learning_rate": 5.11e-4,
+            "noise_std": 0.204,
+            "tau": 0.02,
+            "train_freq": (8, "step"),
+        },
+        unreported_substitutions={
+            "learning_starts": 100,
+            "policy_delay": 2,
+            "target_policy_noise": 0.2,
+            "target_noise_clip": 0.5,
+        },
+        smoke_overrides={
+            "buffer_size": 2_000,
+            "learning_starts": 32,
+            "gradient_steps": 1,
+        },
+    ),
+}
+
+
+def get_algorithm_class(name: AlgorithmName):
+    return {"sac": SAC, "ppo": PPO, "td3": TD3}[name]
+
+
+def effective_hyperparameters(
+    name: AlgorithmName, profile: TrainingProfile
+) -> dict[str, Any]:
+    spec = ALGORITHM_SPECS[name]
+    values = deepcopy(spec.paper_hyperparameters)
+    values.pop("noise_std", None)
+    values.update(deepcopy(spec.unreported_substitutions))
+    if profile == "smoke":
+        values.update(deepcopy(spec.smoke_overrides))
+    elif profile == "sac_nominal_baseline":
+        if name != "sac":
+            raise ValueError("sac_nominal_baseline is SAC-only")
+        values.update(
+            gradient_steps=4,
+            gamma=0.993,
+            ent_coef=0.01,
+            batch_size=256,
+        )
+    elif profile in (
+        "sac_near_paper_long",
+        "sac_near_paper_recovery",
+        "sac_near_paper_physical_v4",
+    ):
+        if name != "sac":
+            raise ValueError(f"{profile} is SAC-only")
+        values.update(
+            gradient_steps=2,
+            gamma=0.997,
+            ent_coef=0.01,
+            batch_size=256,
+        )
+    elif profile != "paper":
+        raise ValueError(f"unknown profile: {profile}")
+    if "train_freq" in values:
+        values["train_freq"] = tuple(values["train_freq"])
+    return values
+
+
+def build_model_kwargs(
+    name: AlgorithmName,
+    profile: TrainingProfile,
+    *,
+    seed: int,
+    device: str,
+    tensorboard_log: str,
+    action_dimension: int = 6,
+) -> dict[str, Any]:
+    spec = ALGORITHM_SPECS[name]
+    values = effective_hyperparameters(name, profile)
+    if name == "ppo":
+        policy_kwargs = {
+            "activation_fn": nn.Tanh,
+            "net_arch": {"pi": spec.network["pi"], "vf": spec.network["vf"]},
+        }
+    else:
+        policy_kwargs = {
+            "activation_fn": nn.ReLU,
+            "net_arch": {"pi": spec.network["pi"], "qf": spec.network["qf"]},
+        }
+    if name == "td3":
+        std = float(spec.paper_hyperparameters["noise_std"])
+        values["action_noise"] = NormalActionNoise(
+            mean=np.zeros(action_dimension), sigma=std * np.ones(action_dimension)
+        )
+    return {
+        "policy": "MlpPolicy",
+        "seed": seed,
+        "device": device,
+        "verbose": 1,
+        "tensorboard_log": tensorboard_log,
+        "policy_kwargs": policy_kwargs,
+        **values,
+    }
+
+
+def manifest_configuration(
+    name: AlgorithmName, profile: TrainingProfile
+) -> dict[str, Any]:
+    return {
+        "algorithm_spec": ALGORITHM_SPECS[name].serializable(),
+        "profile": profile,
+        "effective_hyperparameters": {
+            key: list(value) if isinstance(value, tuple) else value
+            for key, value in effective_hyperparameters(name, profile).items()
+        },
+        "profile_note": (
+            "Validated nominal SAC baseline: gamma=0.993, gradient_steps=4, "
+            "ent_coef=0.01, batch_size=256. It is not paper-original training."
+            if profile == "sac_nominal_baseline"
+            else (
+                "Near-paper long-run SAC: one rapid joint curriculum, gamma=0.997, "
+                "gradient_steps=2, ent_coef=0.01, batch_size=256. It is a "
+                "declared rationalized reproduction profile, not paper-literal."
+                if profile == "sac_near_paper_long"
+                else (
+                    "Near-paper recovery SAC: gamma=0.997, gradient_steps=2, "
+                    "ent_coef=0.01, batch_size=256. It uses the v3 "
+                    "non-saturating broad-domain reward and a delayed single "
+                    "joint curriculum ramp after the audited v2 failure."
+                    if profile == "sac_near_paper_recovery"
+                    else (
+                        "Near-paper physical-storage SAC: gamma=0.997, "
+                        "gradient_steps=2, ent_coef=0.01, batch_size=256. "
+                        "It uses the v4 SE(3) storage, safety-barrier and "
+                        "actuator-energy reward."
+                        if profile == "sac_near_paper_physical_v4"
+                        else None
+                    )
+                )
+            )
+        ),
+    }
+
+
+==================================================
+==== FILE_PATH: train\train.py ====
+==================================================
+
+"""Fresh-run training entry point for the SE(3) rendezvous project."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import platform
+import sys
+from dataclasses import asdict
+from datetime import datetime, timezone
+from importlib.metadata import version
+from pathlib import Path
+from typing import Any, Literal
+
+import gymnasium
+import numpy as np
+import stable_baselines3
+import torch
+from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
+from stable_baselines3.common.monitor import Monitor
+
+from env.se3_sar_env import SE3SAREnv, SE3SAREnvConfig
+from train.callbacks import EnvironmentDiagnosticsCallback
+from train.configs import (
+    ALGORITHM_SPECS,
+    AlgorithmName,
+    TRAINING_PROFILES,
+    TrainingProfile,
+    build_model_kwargs,
+    get_algorithm_class,
+    manifest_configuration,
+)
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+EnvironmentProfile = Literal[
+    "full",
+    "near_paper_fast_curriculum",
+    "near_paper_recovery_curriculum",
+    "near_paper_physical_v4_curriculum",
+    "nominal_capture_wide",
+    "nominal_capture_curriculum",
+]
+ENVIRONMENT_PROFILES: tuple[EnvironmentProfile, ...] = (
+    "full",
+    "near_paper_fast_curriculum",
+    "near_paper_recovery_curriculum",
+    "near_paper_physical_v4_curriculum",
+    "nominal_capture_wide",
+    "nominal_capture_curriculum",
+)
+
+
+def nominal_capture_config(*, curriculum: bool) -> SE3SAREnvConfig:
+    return SE3SAREnvConfig(
+        max_time=60.0,
+        position_mode=(
+            "curriculum_shell_local_to_wide"
+            if curriculum
+            else "nominal_shell_0p5_1m"
+        ),
+        curriculum_start_steps=50_000 if curriculum else 0,
+        curriculum_steps=125_000 if curriculum else 0,
+        velocity_mode="rationalized_relative_twist_2mmps",
+        orientation_sampling="relative_axis_angle_20deg",
+        angular_velocity_mode="relative_twist_0p03",
+        observation_attitude_scale=0.174,
+        observation_distance_scale=0.3,
+        observation_clip=10.0,
+        observation_clip_mode="softsign",
+        omega_scale=0.087,
+        velocity_scale=0.25,
+        include_chaser_disturbance=False,
+        include_uncertainty=False,
+        reward_mode="se3_stable_flow_v1",
+        stable_flow_time_constant_s=15.0,
+        failure_terminal_mode="remaining_horizon_compensated",
+    )
+
+
+def near_paper_fast_config() -> SE3SAREnvConfig:
+    """One-run rapid curriculum from the validated domain to broad SE(3)."""
+
+    return SE3SAREnvConfig(
+        max_time=200.0,
+        position_mode="curriculum_mixture_local_to_bounded_15m",
+        curriculum_start_steps=25_000,
+        curriculum_steps=250_000,
+        velocity_mode="rationalized_relative_twist_2mmps",
+        orientation_sampling="curriculum_relative_20deg_to_haar",
+        angular_velocity_mode="curriculum_relative_0p03_to_paper_0p2",
+        observation_attitude_scale=0.174,
+        observation_distance_scale=0.3,
+        observation_clip=10.0,
+        observation_clip_mode="softsign",
+        omega_scale=0.087,
+        velocity_scale=0.25,
+        include_chaser_disturbance=True,
+        include_uncertainty=True,
+        reward_mode="se3_stable_flow_log_v2",
+        stable_flow_time_constant_s=30.0,
+        stable_flow_log_cap=10.0,
+        # 2000 steps * 0.05 = 100 maximum dense episode-cost budget.
+        stable_flow_reward_scale=0.05,
+        failure_terminal_mode="remaining_horizon_compensated",
+        completion_required_steps=5,
+        cache_default_target_trajectory=True,
+        solver_rtol=1.0e-7,
+        solver_atol=1.0e-9,
+    )
+
+
+def near_paper_recovery_config() -> SE3SAREnvConfig:
+    """Recovery candidate after the v2 saturated-return long-run failure.
+
+    This remains a one-run, one-ramp curriculum.  The longer local hold gives
+    SAC substantial post-warm-up data before all three initial-condition axes
+    are jointly mixed toward the final distribution.
+    """
+
+    return SE3SAREnvConfig(
+        max_time=200.0,
+        position_mode="curriculum_mixture_local_to_bounded_15m",
+        curriculum_start_steps=150_000,
+        curriculum_steps=400_000,
+        velocity_mode="rationalized_relative_twist_2mmps",
+        orientation_sampling="curriculum_relative_20deg_to_haar",
+        angular_velocity_mode="curriculum_relative_0p03_to_paper_0p2",
+        observation_attitude_scale=0.174,
+        observation_distance_scale=0.3,
+        observation_clip=10.0,
+        observation_clip_mode="softsign",
+        omega_scale=0.087,
+        velocity_scale=0.25,
+        include_chaser_disturbance=True,
+        include_uncertainty=True,
+        reward_mode="se3_stable_flow_log_v3",
+        stable_flow_time_constant_s=30.0,
+        stable_flow_log_cap=10.0,
+        stable_flow_reward_scale=0.05,
+        failure_terminal_mode="fixed_penalty",
+        failure_terminal_penalty=100.0,
+        completion_required_steps=5,
+        cache_default_target_trajectory=True,
+        solver_rtol=1.0e-7,
+        solver_atol=1.0e-9,
+    )
+
+
+def near_paper_physical_v4_config() -> SE3SAREnvConfig:
+    """One-ramp broad-domain curriculum with the physical v4 storage reward."""
+
+    return SE3SAREnvConfig(
+        max_time=200.0,
+        position_mode="curriculum_mixture_local_to_bounded_15m",
+        curriculum_start_steps=150_000,
+        curriculum_steps=400_000,
+        velocity_mode="rationalized_relative_twist_2mmps",
+        orientation_sampling="curriculum_relative_20deg_to_haar",
+        angular_velocity_mode="curriculum_relative_0p03_to_paper_0p2",
+        observation_attitude_scale=0.174,
+        observation_distance_scale=0.3,
+        observation_clip=10.0,
+        observation_clip_mode="softsign",
+        omega_scale=0.087,
+        velocity_scale=0.25,
+        include_chaser_disturbance=True,
+        include_uncertainty=True,
+        reward_mode="se3_physical_storage_v4",
+        stable_flow_time_constant_s=30.0,
+        stable_flow_barrier_epsilon=1.0e-6,
+        failure_terminal_mode="barrier_only",
+        completion_required_steps=5,
+        cache_default_target_trajectory=True,
+        solver_rtol=1.0e-7,
+        solver_atol=1.0e-9,
+    )
+
+
+def environment_config_for_profile(profile: EnvironmentProfile) -> SE3SAREnvConfig:
+    if profile == "full":
+        return SE3SAREnvConfig()
+    if profile == "near_paper_fast_curriculum":
+        return near_paper_fast_config()
+    if profile == "near_paper_recovery_curriculum":
+        return near_paper_recovery_config()
+    if profile == "near_paper_physical_v4_curriculum":
+        return near_paper_physical_v4_config()
+    if profile == "nominal_capture_wide":
+        return nominal_capture_config(curriculum=False)
+    if profile == "nominal_capture_curriculum":
+        return nominal_capture_config(curriculum=True)
+    raise ValueError(f"unknown environment profile: {profile}")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train a fresh SE(3) DRL policy")
+    parser.add_argument("--algorithm", choices=tuple(ALGORITHM_SPECS), default="sac")
+    parser.add_argument("--profile", choices=TRAINING_PROFILES, default="smoke")
+    parser.add_argument("--env-profile", choices=ENVIRONMENT_PROFILES, default="full")
+    parser.add_argument("--steps", type=int, default=None)
+    parser.add_argument("--seed", type=int, default=20260805)
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    parser.add_argument("--run-name", default=None)
+    parser.add_argument("--checkpoint-freq", type=int, default=0)
+    parser.add_argument("--allow-long-cpu", action="store_true")
+    parser.add_argument("--validate-only", action="store_true")
+    return parser.parse_args()
+
+
+def resolve_device(requested: str) -> str:
+    if requested == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA was requested but is unavailable")
+        return "cuda"
+    return "cuda" if requested == "auto" and torch.cuda.is_available() else "cpu"
+
+
+def json_default(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    raise TypeError(f"not JSON serializable: {type(value)!r}")
+
+
+def write_json(path: Path, data: dict[str, Any]) -> None:
+    path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=json_default),
+        encoding="utf-8",
+    )
+
+
+def package_versions() -> dict[str, Any]:
+    return {
+        "python": platform.python_version(),
+        "numpy": np.__version__,
+        "gymnasium": gymnasium.__version__,
+        "stable_baselines3": stable_baselines3.__version__,
+        "torch": torch.__version__,
+        "tensorboard": version("tensorboard"),
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_version": torch.version.cuda,
+        "platform": platform.platform(),
+    }
+
+
+def make_monitored_env(config: SE3SAREnvConfig, seed: int, monitor_file: Path):
+    env = SE3SAREnv(config)
+    env.reset(seed=seed)
+    return Monitor(
+        env,
+        filename=str(monitor_file),
+        info_keywords=(
+            "completed",
+            "distance_failure",
+            "time_failure",
+            "joint_success",
+            "attitude_success",
+            "position_success",
+        ),
+    )
+
+
+def default_run_name(algorithm: str, profile: str, seed: int) -> str:
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{algorithm}_{profile}_s{seed}_{stamp}"
+
+
+def validate_request(steps: int, device: str, *, allow_long_cpu: bool) -> None:
+    if steps <= 0:
+        raise ValueError("--steps must be positive")
+    if device == "cpu" and steps > 50_000 and not allow_long_cpu:
+        raise RuntimeError("long training requires CUDA or --allow-long-cpu")
+
+
+def main() -> None:
+    args = parse_args()
+    algorithm: AlgorithmName = args.algorithm
+    profile: TrainingProfile = args.profile
+    spec = ALGORITHM_SPECS[algorithm]
+    steps = args.steps if args.steps is not None else (
+        128
+        if profile == "smoke"
+        else 1_000_000
+        if profile in (
+            "sac_near_paper_long",
+            "sac_near_paper_recovery",
+            "sac_near_paper_physical_v4",
+        )
+        else spec.paper_total_steps
+    )
+    device = resolve_device(args.device)
+    validate_request(steps, device, allow_long_cpu=args.allow_long_cpu)
+    if args.checkpoint_freq < 0:
+        raise ValueError("--checkpoint-freq must be non-negative")
+
+    run_name = args.run_name or default_run_name(algorithm, profile, args.seed)
+    model_dir = PROJECT_ROOT / "models" / run_name
+    log_dir = PROJECT_ROOT / "logs" / run_name
+    if model_dir.exists() or log_dir.exists():
+        raise FileExistsError(f"run-name already exists: {run_name}")
+
+    env_profile: EnvironmentProfile = args.env_profile
+    env_config = environment_config_for_profile(env_profile)
+    environment_values = asdict(env_config)
+    preview = {
+        "validation_only": True,
+        "algorithm": algorithm,
+        "profile": profile,
+        "environment_profile": env_profile,
+        "requested_steps": steps,
+        "seed": args.seed,
+        "resolved_device": device,
+        "run_name": run_name,
+        "model_dir": str(model_dir),
+        "log_dir": str(log_dir),
+        "checkpoint_frequency": args.checkpoint_freq,
+        "fresh_initialization": True,
+        "external_artifacts_loaded": False,
+        "environment": environment_values,
+        **manifest_configuration(algorithm, profile),
+    }
+    if args.validate_only:
+        print(json.dumps(preview, ensure_ascii=False, indent=2, default=json_default))
+        return
+
+    model_dir.mkdir(parents=True)
+    log_dir.mkdir(parents=True)
+    manifest_path = log_dir / "manifest.json"
+    manifest: dict[str, Any] = {
+        "schema_version": 2,
+        "status": "running",
+        "run_name": run_name,
+        "algorithm": algorithm,
+        "role": spec.role,
+        "formal_training_enabled": spec.formal_training,
+        "paper_algorithm_profile": profile == "paper",
+        "paper_environment_profile": env_profile == "full",
+        "requested_steps": steps,
+        "seed": args.seed,
+        "requested_device": args.device,
+        "resolved_device": device,
+        "started_at_utc": datetime.now(timezone.utc).isoformat(),
+        "command": [sys.executable, "-m", "train.train", *sys.argv[1:]],
+        "fresh_initialization": True,
+        "external_artifacts_loaded": False,
+        "environment": environment_values,
+        "environment_profile": env_profile,
+        "packages": package_versions(),
+        **manifest_configuration(algorithm, profile),
+    }
+    write_json(manifest_path, manifest)
+
+    env = make_monitored_env(env_config, args.seed, log_dir / "train_monitor.csv")
+    model_class = get_algorithm_class(algorithm)
+    model = model_class(
+        env=env,
+        **build_model_kwargs(
+            algorithm,
+            profile,
+            seed=args.seed,
+            device=device,
+            tensorboard_log=str(log_dir / "tensorboard"),
+        ),
+    )
+    callbacks = [EnvironmentDiagnosticsCallback()]
+    if args.checkpoint_freq:
+        callbacks.append(
+            CheckpointCallback(
+                save_freq=args.checkpoint_freq,
+                save_path=str(model_dir / "checkpoints"),
+                name_prefix=algorithm,
+                save_replay_buffer=False,
+                save_vecnormalize=False,
+                verbose=1,
+            )
+        )
+    try:
+        model.learn(
+            total_timesteps=steps,
+            callback=CallbackList(callbacks),
+            tb_log_name=run_name,
+            progress_bar=False,
+        )
+        final_model = model_dir / "final_model"
+        model.save(str(final_model))
+        manifest.update(
+            status="completed",
+            completed_at_utc=datetime.now(timezone.utc).isoformat(),
+            actual_model_timesteps=int(model.num_timesteps),
+            final_model=str(final_model.with_suffix(".zip")),
+            checkpoint_frequency=args.checkpoint_freq,
+        )
+        write_json(manifest_path, manifest)
+        print(f"Training complete: {final_model.with_suffix('.zip')}")
+    except KeyboardInterrupt:
+        manifest.update(
+            status="interrupted",
+            interrupted_at_utc=datetime.now(timezone.utc).isoformat(),
+            actual_model_timesteps=int(model.num_timesteps),
+        )
+        write_json(manifest_path, manifest)
+        print("Training interrupted; latest checkpoint and manifest preserved.")
+        raise
+    except Exception as exc:
+        manifest.update(
+            status="failed",
+            failed_at_utc=datetime.now(timezone.utc).isoformat(),
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        write_json(manifest_path, manifest)
+        raise
+    finally:
+        env.close()
+
+
+if __name__ == "__main__":
+    main()
+
+
+==================================================
+==== FILE_PATH: train\__init__.py ====
+==================================================
+
+"""阶段 4：纯 DRL 基准的训练入口与配置。"""
+
+from train.configs import ALGORITHM_SPECS, build_model_kwargs, get_algorithm_class
+
+__all__ = ["ALGORITHM_SPECS", "build_model_kwargs", "get_algorithm_class"]
+
+
+==================================================
+==== FILE_PATH: DEVIATION_LOG.md ====
+==================================================
+
+# 当前活动偏差与论文中尚未解决的细节
+
+1. 初始平移速度
+
+论文中印刷的 `0.002 km/s` 等于 2 m/s，
+这一速度与当前 1 N 执行器的控制能力并不匹配。
+
+当前活动训练使用明确声明的 ±2 mm/s 相对 twist；
+论文字面采样方式仍然保留，仅用于审计。
+
+2. 初始位置语义
+
+论文给出的 150 m 立方体初始位置范围，
+与其规定的 30 m 失败边界相冲突。
+
+当前活动最终采样器将每个位置分量限制为 ±15 m，
+并且不声称这是对论文字面配置的直接复现。
+
+3. 奖励聚合方式
+
+论文中的奖励公式及其终止项均被保留，
+但无法根据论文重建图 5 所使用的奖励聚合方式。
+
+v4 是一个单独命名的物理奖励，
+不是为了拟合论文图 5 而进行的奖励缩放。
+
+4. v2/v3 的负面证据
+
+v2 使用了带上限的对数能量和剩余时域补偿，
+导致不同失败轨迹的总回报发生塌缩。
+
+v3 去除了上限，但使用固定终止惩罚，
+并且在 214k 步以前没有学会局部捕获。
+
+两个模式均继续保留并可复现；
+它们的实验产物不得作为新训练的输入。
+
+5. v4 奖励
+
+v4 恰好包含三个核心项：
+
+- SE(3) 储能耗散；
+- 储能的时间积分；
+- 归一化执行器能量。
+
+距离安全势垒属于储能势函数的一部分，
+不是一个独立调节的奖励项。
+
+`epsilon=1e-6` 是在 30 m 硬边界处采用的数值正则化。
+
+6. 课程学习
+
+从 150k 到 400k 的一次联合初始条件扩展，
+仅用于训练采样器。
+
+评估始终使用最终分布采样器。
+
+7. 动力学常数
+
+J2 采用：
+
+`1.08262668e-3`
+
+当前使用的二阶矩项为：
+
+`0.5 trace(J) I - J`
+
+论文没有完整说明这两项。
+
+8. 完成条件语义
+
+论文没有说明联合成功条件需要保持多长时间；
+当前宽域完成条件要求连续保持五步。
+
+9. 计算吞吐量相关设置
+
+确定性的目标星轨迹由同一套 RK45 方程计算后缓存。
+
+宽域积分容差为：
+
+`rtol=1e-7`
+`atol=1e-9`
+
+SAC 每收集四个 transition 执行两次梯度更新。
+
+这些设置都不是论文给出的超参数。
+
+==================================================
+==== FILE_PATH: README.md ====
+==================================================
+
+# DRL2：SE(3) 快速翻滚目标交会基线（README文档更新用中文）
+
+D:\py\DRL2 是唯一处于活动状态的实现目录和实验产物目录。
+D:\py\DRL 仅作为只读参考材料。
+
+## 当前状态
+
+冻结的名义 SAC 基线仍然有效：一次全新启动、训练 300k 个 transition 的实验，
+在最终的 0.5～1.0 m 名义域上取得了 29/30 次确定性策略成功。
+
+这一结果只能证明六自由度 SE(3) 环境具备可学习性，不能证明已经达到论文等价复现。
+
+两次宽域训练尝试仅作为负面证据保留，禁止继续训练或迁移：
+
+- v2 因回报上限和失败回报补偿造成训练失败；
+- v3 在大约 214k 步时由用户中断，当时局部训练成功数为 0。
+
+v3 的 200k checkpoint 在最终域测试中成功率为 0/10，
+在局部诊断测试中成功率为 0/3。
+
+所有相关实验产物继续保留，用于审计；
+任何旧模型或 replay buffer 数据都不得用于初始化新的训练。
+
+## 当前活动物理奖励：v4
+
+v4 是一个独立的、包含三项的 SE(3) 储能函数奖励。
+它不加入经验拟合的进度乘数、终止成功奖励或固定失败惩罚。
+
+V = ||[ell*phi, rho]||^2
+    + tau^2 ||[ell*(omega + phi/tau), v + rho/tau]||^2
+
+Psi = log(1 + V/ell^2)
+      - log(1 - (d/d_max)^2)
+
+r = (Psi_prev - Psi)
+    - (dt/tau) Psi
+    - (dt/tau) mean(a_i^2)
+
+各项含义：
+
+- V：SE(3) 稳定流储能；
+- Psi_prev - Psi：物理储能耗散项；
+  当系统朝期望相对平衡状态运动时，该项立即为正；
+- -(dt/tau) Psi：剩余储能的时间积分，
+  用于鼓励更快完成捕获；
+- -(dt/tau) mean(a_i^2)：执行器能量代理，
+  动作已经按照论文给出的控制力和力矩上限进行归一化。
+
+距离项属于控制势垒势能。
+当相对距离接近 30 m 安全边界时，该项连续增大。
+其中 1e-6 的数值下限只用于避免终止位置出现浮点无穷大。
+
+v4 明确使用 barrier_only 终止模式：
+安全约束通过势垒表示，而不是通过任意设置的终止奖励表示。
+
+状态课程仍采用一次快速扩展：
+
+- 前 150k 个 transition 使用局部初始条件；
+- 之后联合扩展；
+- 到 400k 时达到最终分布：
+  ±15 m 位置范围、
+  Haar 均匀 SO(3) 姿态、
+  ±0.2 rad/s 角速度范围。
+
+J2、外部扰动、参数不确定性、200 s 时间上限，
+以及连续五步同时满足四个阈值的完成条件均保持不变。
+
+## 由用户执行的 v4 测试
+
+首先运行测试：
+
+cd D:\py\DRL2
+& ".\.venv\Scripts\python.exe" -B -m pytest -p no:cacheprovider -q
+
+只读配置检查，不创建实验目录：
+
+& ".\.venv\Scripts\python.exe" -B -m train.train
+  --algorithm sac
+  --profile sac_near_paper_physical_v4
+  --env-profile near_paper_physical_v4_curriculum
+  --steps 200000
+  --seed 20260807
+  --device cuda
+  --run-name near_paper_physical_v4_sac_200k_s20260807
+  --checkpoint-freq 50000
+  --validate-only
+
+全新启动 200k 的物理奖励测试。
+禁止加载先前模型或 replay buffer：
+
+& ".\.venv\Scripts\python.exe" -B -m train.train
+  --algorithm sac
+  --profile sac_near_paper_physical_v4
+  --env-profile near_paper_physical_v4_curriculum
+  --steps 200000
+  --seed 20260807
+  --device cuda
+  --run-name near_paper_physical_v4_sac_200k_s20260807
+  --checkpoint-freq 50000
+
+训练到 150k 时检查 train_monitor.csv：
+
+至少出现一行 completed=True，
+才算达到最低局部学习门槛。
+
+如果到 200k 仍然为 0，则停止并分析，
+不能直接扩大到 1M。
+
+如果通过门槛，则评估 200k checkpoint，
+之后再单独准备完整训练。
+
+REPRODUCTION_SPEC.md 和 DEVIATION_LOG.md
+记录当前允许声称的复现边界以及工程偏差。
+
+==================================================
+==== FILE_PATH: REPRODUCTION_SPEC.md ====
+==================================================
+
+# 当前复现约定（同样以中文形式更新）
+
+## 目标与边界
+
+首先建立一个用于六自由度 SE(3) 快速翻滚目标交会任务的纯 SAC 基线，
+然后在开展任何 MPC 或捕获约束相关工作之前，逐步恢复接近论文的任务难度。
+
+当前目标是在明确声明的最终分布上，实现可靠的多数样本收敛，
+而不是立即复现论文中的 1200 万 transition、1000 次试验指标。
+
+以下内容均被保留：
+
+- SE(3) 位姿与 twist 表达；
+- 耦合刚体动力学；
+- J2 摄动；
+- 目标星翻滚；
+- 有界六轴广义控制力；
+- 外部扰动；
+- 质量和惯量不确定性；
+- 四项成功阈值。
+
+`paper_equations` 配置保持不变，用于审计。
+
+## v4 之前的实验依据
+
+名义 SAC 基线在最终的 0.5～1.0 m 区域中取得了 29/30 次成功。
+
+v2 的 1M 宽域训练在课程完成后成功次数为 0。
+其原因是：带上限的稠密代价与剩余时域补偿共同作用，
+使不同失败轨迹的回报发生塌缩。
+
+v3 训练在大约 214k 步时被中断。
+该版本消除了上述回报塌缩，但没有产生局部成功。
+保存的 200k checkpoint 在最终域确定性评估中为 0/10，
+在局部确定性评估中为 0/3。
+
+v2 和 v3 均不得继续训练，也不得用于迁移。
+
+## v4 物理储能奖励
+
+令：
+
+- `ell` 为追踪星的回转半径；
+- `tau = 30 s`；
+- `phi, rho` 为 SE(3) 指数坐标；
+- `d = ||p_rel||`。
+
+奖励定义为：
+
+V = ||[ell phi, rho]||^2
+    + tau^2 ||[ell(omega + phi/tau), v + rho/tau]||^2
+
+Psi = log(1 + V/ell^2)
+      - log(1 - (d/d_max)^2)
+
+r = (Psi_prev - Psi)
+    - (dt/tau) Psi
+    - (dt/tau) mean(a_i^2)
+
+`Psi` 是一个无量纲的“储能加安全势函数”。
+
+其中：
+
+- 第一项是稳定流能量；
+- 第二项是安全势垒，当相对距离接近 30 m 时快速增大。
+
+三个奖励项分别表示：
+
+- 储能耗散；
+- 残余储能的时间代价；
+- 归一化执行器能量代价。
+
+该奖励中不存在：
+
+- 终止成功奖励；
+- 固定失败惩罚；
+- 奖励裁剪；
+- 学习得到的通道权重；
+- 经验性的进度缩放系数。
+
+当 `d >= d_max` 时，
+势垒项只使用 `epsilon = 1e-6` 的数值下限，
+用于避免浮点数无穷大。
+
+## 当前 v4 测试配置
+
+| 项目 | 数值或设置 |
+|---|---|
+| 初始状态课程 | 前 150k 使用局部 0.5～1.0 m、0～20°、±0.03 rad/s；随后进行一次联合扩展；400k 达到最终域 |
+| 最终域 | 每个位置分量限制在 ±15 m；姿态服从 Haar 均匀 SO(3)；追踪星角速度使用论文的 ±0.2 rad/s；相对 twist 平移部分为 ±2 mm/s |
+| 环境 | 时长 200 s；dt=0.1 s；启用 J2、扰动、质量和惯量不确定性 |
+| 完成条件 | 四项阈值连续满足五步 |
+| 终止奖励 | `barrier_only`；无固定终止奖励 |
+| SAC | gamma=0.997；gradient_steps=2；batch=256；ent_coef=0.01；全新网络和空 replay buffer |
+| 第一阶段门槛 | fresh 200k 测试；每 50k 保存 checkpoint；要求 150k 前至少出现一次局部完成，并且数值保持有限 |
+
+只有通过该门槛后，
+才允许提出一个独立的 1M v4 训练实验。
+
+在此之前：
+
+`formal_metric_eligible=false`
+
+并且不得声称获得了论文等价结果。

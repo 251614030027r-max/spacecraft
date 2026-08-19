@@ -1,0 +1,350 @@
+{
+  "schema_version": 2,
+  "status": "phase2_stopped_early",
+  "started_at_utc": "2026-08-12T03:17:32.602133+00:00",
+  "run_name": "phase2_sac_v2_gamma999_seed260812",
+  "algorithm": "sac",
+  "experiment_mode": "phase2_nominal",
+  "seed": 260812,
+  "device_requested": "auto",
+  "device_resolved": "cuda",
+  "requested_timesteps": 300000,
+  "actual_model_timesteps": 75000,
+  "fresh_initialization": true,
+  "initial_replay_buffer_transitions": 0,
+  "resume_supported": false,
+  "training_environment": {
+    "dt_s": 0.1,
+    "max_time_s": 200.0,
+    "max_distance_m": 30.0,
+    "shell_inner_m": 2.0,
+    "shell_outer_m": 10.0,
+    "max_relative_attitude_rad": 1.3089969389957472,
+    "inertial_velocity_component_limit_m_s": 0.125,
+    "relative_angular_velocity_component_limit_rad_s": 0.03,
+    "target_tumble_scale": 0.25,
+    "curriculum_enabled": false,
+    "curriculum_start_step": 300000,
+    "curriculum_end_step": 1300000,
+    "curriculum_rehearsal_end_step": 1400000,
+    "curriculum_rotation_fraction": 0.45,
+    "curriculum_frontier_width": 0.2,
+    "curriculum_rehearsal_probability": 0.2,
+    "curriculum_final_probability": 0.75,
+    "target_tumble_increment": 0.05,
+    "initial_shell_inner_m": 1.0,
+    "initial_shell_outer_m": 3.0,
+    "initial_max_relative_attitude_rad": 0.5235987755982988,
+    "initial_inertial_velocity_component_limit_m_s": 0.05,
+    "initial_target_tumble_scale": 0.25,
+    "observation_attitude_scale_rad": 0.5235987755982988,
+    "observation_distance_scale_m": 3.0,
+    "observation_angular_velocity_scale_rad_s": 0.05,
+    "observation_velocity_scale_m_s": 0.2,
+    "observation_softsign_limit": 10.0,
+    "max_force_per_axis_n": 5.0,
+    "max_torque_per_axis_nm": 0.6,
+    "storage_characteristic_length_m": 0.4482671036630004,
+    "storage_time_constant_s": 30.0,
+    "barrier_epsilon": 1e-06,
+    "success_thresholds": {
+      "attitude_rad": 0.2617993877991494,
+      "angular_velocity_rad_s": 0.03,
+      "position_m": 0.5,
+      "translational_velocity_m_s": 0.1
+    },
+    "completion_required_steps": 5,
+    "include_j2": true,
+    "solver_rtol": 1e-07,
+    "solver_atol": 1e-09,
+    "cache_target_trajectory": true,
+    "phase2_enabled": true,
+    "phase2_task": {
+      "port_position_target_m": [
+        -1.5,
+        0.0,
+        0.0
+      ],
+      "desired_position_target_m": [
+        -3.0,
+        0.0,
+        0.0
+      ],
+      "approach_axis_target": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "camera_boresight_chaser": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "corridor_half_angle_rad": 0.6108652381980153,
+      "fov_half_angle_rad": 0.8726646259971648,
+      "total_speed_limit_m_s": 0.35,
+      "closing_speed_min_m_s": 0.08,
+      "closing_speed_slope_per_s": 0.04,
+      "closing_speed_max_m_s": 0.3,
+      "completion_position_m": 0.25,
+      "completion_attitude_rad": 0.17453292519943295,
+      "completion_speed_m_s": 0.05,
+      "completion_angular_velocity_rad_s": 0.02,
+      "completion_hold_s": 1.0,
+      "constraint_tolerance": 1e-09
+    },
+    "phase2_target_tumble_scale": 0.25,
+    "phase2_axial_remaining_min_m": 3.0,
+    "phase2_axial_remaining_max_m": 7.0,
+    "phase2_max_relative_attitude_rad": 1.0471975511965976,
+    "phase2_near_boundary_probability": 0.25,
+    "phase2_warmup_steps": 75000,
+    "phase2_warmup_task": {
+      "port_position_target_m": [
+        -1.5,
+        0.0,
+        0.0
+      ],
+      "desired_position_target_m": [
+        -3.0,
+        0.0,
+        0.0
+      ],
+      "approach_axis_target": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "camera_boresight_chaser": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "corridor_half_angle_rad": 1.0471975511965976,
+      "fov_half_angle_rad": 1.3089969389957472,
+      "total_speed_limit_m_s": 0.35,
+      "closing_speed_min_m_s": 0.08,
+      "closing_speed_slope_per_s": 0.04,
+      "closing_speed_max_m_s": 0.3,
+      "completion_position_m": 0.25,
+      "completion_attitude_rad": 0.17453292519943295,
+      "completion_speed_m_s": 0.05,
+      "completion_angular_velocity_rad_s": 0.02,
+      "completion_hold_s": 1.0,
+      "constraint_tolerance": 1e-09
+    },
+    "phase2_warmup_tumble_scale": 0.1,
+    "phase2_warmup_axial_remaining_min_m": 0.5,
+    "phase2_warmup_axial_remaining_max_m": 1.5,
+    "phase2_warmup_max_relative_attitude_rad": 0.2617993877991494,
+    "phase2_warmup_near_boundary_probability": 0.0
+  },
+  "evaluation_environment": {
+    "dt_s": 0.1,
+    "max_time_s": 200.0,
+    "max_distance_m": 30.0,
+    "shell_inner_m": 2.0,
+    "shell_outer_m": 10.0,
+    "max_relative_attitude_rad": 1.3089969389957472,
+    "inertial_velocity_component_limit_m_s": 0.125,
+    "relative_angular_velocity_component_limit_rad_s": 0.03,
+    "target_tumble_scale": 0.25,
+    "curriculum_enabled": false,
+    "curriculum_start_step": 300000,
+    "curriculum_end_step": 1300000,
+    "curriculum_rehearsal_end_step": 1400000,
+    "curriculum_rotation_fraction": 0.45,
+    "curriculum_frontier_width": 0.2,
+    "curriculum_rehearsal_probability": 0.2,
+    "curriculum_final_probability": 0.75,
+    "target_tumble_increment": 0.05,
+    "initial_shell_inner_m": 1.0,
+    "initial_shell_outer_m": 3.0,
+    "initial_max_relative_attitude_rad": 0.5235987755982988,
+    "initial_inertial_velocity_component_limit_m_s": 0.05,
+    "initial_target_tumble_scale": 0.25,
+    "observation_attitude_scale_rad": 0.5235987755982988,
+    "observation_distance_scale_m": 3.0,
+    "observation_angular_velocity_scale_rad_s": 0.05,
+    "observation_velocity_scale_m_s": 0.2,
+    "observation_softsign_limit": 10.0,
+    "max_force_per_axis_n": 5.0,
+    "max_torque_per_axis_nm": 0.6,
+    "storage_characteristic_length_m": 0.4482671036630004,
+    "storage_time_constant_s": 30.0,
+    "barrier_epsilon": 1e-06,
+    "success_thresholds": {
+      "attitude_rad": 0.2617993877991494,
+      "angular_velocity_rad_s": 0.03,
+      "position_m": 0.5,
+      "translational_velocity_m_s": 0.1
+    },
+    "completion_required_steps": 5,
+    "include_j2": true,
+    "solver_rtol": 1e-07,
+    "solver_atol": 1e-09,
+    "cache_target_trajectory": true,
+    "phase2_enabled": true,
+    "phase2_task": {
+      "port_position_target_m": [
+        -1.5,
+        0.0,
+        0.0
+      ],
+      "desired_position_target_m": [
+        -3.0,
+        0.0,
+        0.0
+      ],
+      "approach_axis_target": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "camera_boresight_chaser": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "corridor_half_angle_rad": 0.6108652381980153,
+      "fov_half_angle_rad": 0.8726646259971648,
+      "total_speed_limit_m_s": 0.35,
+      "closing_speed_min_m_s": 0.08,
+      "closing_speed_slope_per_s": 0.04,
+      "closing_speed_max_m_s": 0.3,
+      "completion_position_m": 0.25,
+      "completion_attitude_rad": 0.17453292519943295,
+      "completion_speed_m_s": 0.05,
+      "completion_angular_velocity_rad_s": 0.02,
+      "completion_hold_s": 1.0,
+      "constraint_tolerance": 1e-09
+    },
+    "phase2_target_tumble_scale": 0.25,
+    "phase2_axial_remaining_min_m": 3.0,
+    "phase2_axial_remaining_max_m": 7.0,
+    "phase2_max_relative_attitude_rad": 1.0471975511965976,
+    "phase2_near_boundary_probability": 0.25,
+    "phase2_warmup_steps": 0,
+    "phase2_warmup_task": {
+      "port_position_target_m": [
+        -1.5,
+        0.0,
+        0.0
+      ],
+      "desired_position_target_m": [
+        -3.0,
+        0.0,
+        0.0
+      ],
+      "approach_axis_target": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "camera_boresight_chaser": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "corridor_half_angle_rad": 1.0471975511965976,
+      "fov_half_angle_rad": 1.3089969389957472,
+      "total_speed_limit_m_s": 0.35,
+      "closing_speed_min_m_s": 0.08,
+      "closing_speed_slope_per_s": 0.04,
+      "closing_speed_max_m_s": 0.3,
+      "completion_position_m": 0.25,
+      "completion_attitude_rad": 0.17453292519943295,
+      "completion_speed_m_s": 0.05,
+      "completion_angular_velocity_rad_s": 0.02,
+      "completion_hold_s": 1.0,
+      "constraint_tolerance": 1e-09
+    },
+    "phase2_warmup_tumble_scale": 0.1,
+    "phase2_warmup_axial_remaining_min_m": 0.5,
+    "phase2_warmup_axial_remaining_max_m": 1.5,
+    "phase2_warmup_max_relative_attitude_rad": 0.2617993877991494,
+    "phase2_warmup_near_boundary_probability": 0.0
+  },
+  "hyperparameters": {
+    "learning_rate": 0.0002,
+    "buffer_size": 300000,
+    "learning_starts": 20000,
+    "batch_size": 256,
+    "tau": 0.005,
+    "gamma": 0.999,
+    "train_freq": 4,
+    "gradient_steps": 4,
+    "ent_coef": "auto_0.01",
+    "target_update_interval": 1,
+    "net_arch": [
+      256,
+      256,
+      256,
+      256
+    ],
+    "activation_fn": "ReLU"
+  },
+  "versions": {
+    "python": "3.12.6",
+    "torch": "2.9.1+cu128",
+    "stable_baselines3": "2.7.1",
+    "gymnasium": "1.2.2",
+    "numpy": "2.3.4",
+    "scipy": "1.16.3"
+  },
+  "command": [
+    "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+    "-B",
+    "-m",
+    "train.train",
+    "--phase2",
+    "--steps",
+    "300000",
+    "--seed",
+    "260812",
+    "--device",
+    "auto",
+    "--run-name",
+    "phase2_sac_v2_gamma999_seed260812",
+    "--checkpoint-freq",
+    "25000",
+    "--diagnostic-eval-freq",
+    "50000",
+    "--diagnostic-eval-episodes",
+    "10",
+    "--diagnostic-eval-seed",
+    "20288000"
+  ],
+  "paths": {
+    "model_directory": "D:\\py\\DRL2\\models\\phase2_sac_v2_gamma999_seed260812",
+    "log_directory": "D:\\py\\DRL2\\logs\\phase2_sac_v2_gamma999_seed260812",
+    "monitor": "D:\\py\\DRL2\\logs\\phase2_sac_v2_gamma999_seed260812\\train.monitor.csv",
+    "final_model": "D:\\py\\DRL2\\models\\phase2_sac_v2_gamma999_seed260812\\final_model.zip"
+  },
+  "phase2_nominal_diagnostic": {
+    "stopped_early": false,
+    "stop_reason": null,
+    "checks": []
+  },
+  "phase2_warmup_diagnostic": {
+    "stopped_early": true,
+    "stop_reason": "1 consecutive 300001-step checks had zero completion and distance-failure rate above 0.5",
+    "checks": [
+      {
+        "training_step": 75000,
+        "result": "D:\\py\\DRL2\\logs\\phase2_sac_v2_gamma999_seed260812\\phase2_warmup_candidate_0075000.json",
+        "rates": {
+          "completed": 0.0,
+          "joint_success": 0.0,
+          "distance_failure": 1.0,
+          "time_failure": 0.0,
+          "constraint_success": 0.0
+        },
+        "mean_return": -28.385122103376233,
+        "failure_window": true,
+        "consecutive_failure_windows": 1
+      }
+    ]
+  },
+  "completed_at_utc": "2026-08-12T03:44:18.553181+00:00"
+}

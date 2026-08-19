@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-12T06:57:58.296547+00:00",
+  "eval_freq_steps": 50000,
+  "first_eval_step": 50000,
+  "episodes_per_check": 10,
+  "base_seed": 20298000,
+  "required_failure_windows": 3,
+  "consecutive_failure_windows": 3,
+  "stopped_early": true,
+  "stop_reason": "3 consecutive 50000-step checks had zero completion and distance-failure rate above 0.5",
+  "checks": [
+    {
+      "training_step": 50000,
+      "result": "D:\\py\\DRL2\\logs\\phase2_sac_v2_1_stagea_200k_seed260812\\phase2_stage_a_candidate_0050000.json",
+      "rates": {
+        "completed": 0.0,
+        "joint_success": 0.0,
+        "distance_failure": 1.0,
+        "time_failure": 0.0,
+        "constraint_success": 0.0
+      },
+      "mean_return": -35.807701434396606,
+      "failure_window": true,
+      "consecutive_failure_windows": 1
+    },
+    {
+      "training_step": 100000,
+      "result": "D:\\py\\DRL2\\logs\\phase2_sac_v2_1_stagea_200k_seed260812\\phase2_stage_a_candidate_0100000.json",
+      "rates": {
+        "completed": 0.0,
+        "joint_success": 0.0,
+        "distance_failure": 1.0,
+        "time_failure": 0.0,
+        "constraint_success": 0.0
+      },
+      "mean_return": -42.839077132591854,
+      "failure_window": true,
+      "consecutive_failure_windows": 2
+    },
+    {
+      "training_step": 150000,
+      "result": "D:\\py\\DRL2\\logs\\phase2_sac_v2_1_stagea_200k_seed260812\\phase2_stage_a_candidate_0150000.json",
+      "rates": {
+        "completed": 0.0,
+        "joint_success": 0.0,
+        "distance_failure": 1.0,
+        "time_failure": 0.0,
+        "constraint_success": 0.0
+      },
+      "mean_return": -44.250872586333756,
+      "failure_window": true,
+      "consecutive_failure_windows": 3
+    }
+  ]
+}

@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "episodes_per_group": 2,
+  "teacher": [
+    {
+      "group": "stage_a",
+      "trajectory": 0,
+      "seed": 26090000,
+      "steps": 514,
+      "completed": true,
+      "constraint_success": true,
+      "distance_failure": false,
+      "fallbacks": 0,
+      "command_time_median_s": 0.3073503500017978
+    },
+    {
+      "group": "stage_a",
+      "trajectory": 1,
+      "seed": 26090001,
+      "steps": 633,
+      "completed": true,
+      "constraint_success": true,
+      "distance_failure": false,
+      "fallbacks": 0,
+      "command_time_median_s": 0.30699649999587564
+    },
+    {
+      "group": "nominal_interior",
+      "trajectory": 2,
+      "seed": 26100000,
+      "steps": 1008,
+      "completed": true,
+      "constraint_success": true,
+      "distance_failure": false,
+      "fallbacks": 0,
+      "command_time_median_s": 0.30715609999606386
+    },
+    {
+      "group": "nominal_interior",
+      "trajectory": 3,
+      "seed": 26100001,
+      "steps": 706,
+      "completed": true,
+      "constraint_success": true,
+      "distance_failure": false,
+      "fallbacks": 0,
+      "command_time_median_s": 0.30723650000072666
+    },
+    {
+      "group": "nominal_near_boundary",
+      "trajectory": 4,
+      "seed": 26110000,
+      "steps": 752,
+      "completed": true,
+      "constraint_success": true,
+      "distance_failure": false,
+      "fallbacks": 0,
+      "command_time_median_s": 0.3080715500036604
+    },
+    {
+      "group": "nominal_near_boundary",
+      "trajectory": 5,
+      "seed": 26110001,
+      "steps": 1029,
+      "completed": true,
+      "constraint_success": true,
+      "distance_failure": false,
+      "fallbacks": 0,
+      "command_time_median_s": 0.3079345999940415
+    }
+  ],
+  "teacher_all_completed": true,
+  "teacher_all_constraint_success": true,
+  "teacher_total_fallbacks": 0,
+  "dataset_samples": 4642,
+  "holdout_trajectories": [
+    1,
+    3,
+    5
+  ],
+  "observation_v1": {
+    "device": "cuda",
+    "epochs": 41,
+    "train": {
+      "mse": 0.008597459644079208,
+      "mae": 0.040968894958496094,
+      "axis_mae": [
+        0.017621677368879318,
+        0.039208848029375076,
+        0.025368500500917435,
+        0.05401739478111267,
+        0.06121353060007095,
+        0.04838339611887932
+      ],
+      "samples": 2274,
+      "teacher_saturation_sample_fraction": 0.07299912049252419,
+      "saturated_sample_mae": 0.1982700675725937
+    },
+    "holdout": {
+      "mse": 0.022190209478139877,
+      "mae": 0.0681067556142807,
+      "axis_mae": [
+        0.020172642543911934,
+        0.03994322940707207,
+        0.056343212723731995,
+        0.13909444212913513,
+        0.08894236385822296,
+        0.06414464116096497
+      ],
+      "samples": 2368,
+      "teacher_saturation_sample_fraction": 0.06461148648648649,
+      "saturated_sample_mae": 0.3513188660144806
+    },
+    "closed_loop_stage_a": [
+      {
+        "seed": 26180000,
+        "steps": 867,
+        "completed": false,
+        "constraint_success": false,
+        "distance_failure": true,
+        "time_failure": false,
+        "final_position_error_m": 31.763733155569923,
+        "mean_action_l2": 0.8737468729107163
+      },
+      {
+        "seed": 26180001,
+        "steps": 809,
+        "completed": false,
+        "constraint_success": false,
+        "distance_failure": true,
+        "time_failure": false,
+        "final_position_error_m": 33.03443177403523,
+        "mean_action_l2": 1.0936999047642437
+      },
+      {
+        "seed": 26180002,
+        "steps": 724,
+        "completed": false,
+        "constraint_success": false,
+        "distance_failure": true,
+        "time_failure": false,
+        "final_position_error_m": 29.093722604433836,
+        "mean_action_l2": 0.600533085201162
+      }
+    ]
+  },
+  "observation_v2_1": {
+    "device": "cuda",
+    "epochs": 41,
+    "train": {
+      "mse": 0.0091997180134058,
+      "mae": 0.04015667364001274,
+      "axis_mae": [
+        0.022486653178930283,
+        0.03349989652633667,
+        0.019829513505101204,
+        0.06042519211769104,
+        0.0504530668258667,
+        0.05424570292234421
+      ],
+      "samples": 2274,
+      "teacher_saturation_sample_fraction": 0.07299912049252419,
+      "saturated_sample_mae": 0.21956561505794525
+    },
+    "holdout": {
+      "mse": 0.020733721554279327,
+      "mae": 0.05482928082346916,
+      "axis_mae": [
+        0.028620097786188126,
+        0.02250731736421585,
+        0.049048326909542084,
+        0.10441762953996658,
+        0.0685931146144867,
+        0.05578915402293205
+      ],
+      "samples": 2368,
+      "teacher_saturation_sample_fraction": 0.06461148648648649,
+      "saturated_sample_mae": 0.3719160556793213
+    },
+    "closed_loop_stage_a": [
+      {
+        "seed": 26180000,
+        "steps": 962,
+        "completed": false,
+        "constraint_success": false,
+        "distance_failure": true,
+        "time_failure": false,
+        "final_position_error_m": 32.25155505406251,
+        "mean_action_l2": 0.9573973644981761
+      },
+      {
+        "seed": 26180001,
+        "steps": 531,
+        "completed": false,
+        "constraint_success": false,
+        "distance_failure": true,
+        "time_failure": false,
+        "final_position_error_m": 32.98345014447641,
+        "mean_action_l2": 1.333215823786407
+      },
+      {
+        "seed": 26180002,
+        "steps": 868,
+        "completed": false,
+        "constraint_success": false,
+        "distance_failure": true,
+        "time_failure": false,
+        "final_position_error_m": 31.508747925204215,
+        "mean_action_l2": 0.9364792701835456
+      }
+    ]
+  }
+}

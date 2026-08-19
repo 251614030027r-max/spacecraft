@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "evaluated_at_utc": "2026-08-11T03:09:27.337945+00:00",
+  "training_step": 50000,
+  "episodes": 10,
+  "base_seed": 20288000,
+  "environment": {
+    "dt_s": 0.1,
+    "max_time_s": 200.0,
+    "max_distance_m": 30.0,
+    "shell_inner_m": 1.0,
+    "shell_outer_m": 3.0,
+    "max_relative_attitude_rad": 0.5235987755982988,
+    "inertial_velocity_component_limit_m_s": 0.05,
+    "relative_angular_velocity_component_limit_rad_s": 0.03,
+    "target_tumble_scale": 0.25,
+    "curriculum_enabled": false,
+    "curriculum_start_step": 100000,
+    "curriculum_end_step": 1200000,
+    "curriculum_rehearsal_end_step": 1300000,
+    "curriculum_rotation_fraction": 0.45,
+    "curriculum_frontier_width": 0.2,
+    "curriculum_rehearsal_probability": 0.2,
+    "curriculum_final_probability": 0.75,
+    "target_tumble_increment": 0.05,
+    "initial_shell_inner_m": 1.0,
+    "initial_shell_outer_m": 3.0,
+    "initial_max_relative_attitude_rad": 0.5235987755982988,
+    "initial_inertial_velocity_component_limit_m_s": 0.05,
+    "initial_target_tumble_scale": 0.25,
+    "observation_attitude_scale_rad": 0.5235987755982988,
+    "observation_distance_scale_m": 3.0,
+    "observation_angular_velocity_scale_rad_s": 0.05,
+    "observation_velocity_scale_m_s": 0.2,
+    "observation_softsign_limit": 10.0,
+    "max_force_per_axis_n": 5.0,
+    "max_torque_per_axis_nm": 0.6,
+    "storage_characteristic_length_m": 0.4482671036630004,
+    "storage_time_constant_s": 30.0,
+    "barrier_epsilon": 1e-06,
+    "success_thresholds": {
+      "attitude_rad": 0.2617993877991494,
+      "angular_velocity_rad_s": 0.03,
+      "position_m": 0.5,
+      "translational_velocity_m_s": 0.1
+    },
+    "completion_required_steps": 5,
+    "include_j2": true,
+    "solver_rtol": 1e-07,
+    "solver_atol": 1e-09,
+    "cache_target_trajectory": true
+  },
+  "rates": {
+    "completed": 0.0,
+    "joint_success": 0.0,
+    "distance_failure": 0.9,
+    "time_failure": 0.1
+  },
+  "mean_return": -56.33736185077553,
+  "episode_records": [
+    {
+      "episode": 0,
+      "seed": 20288000,
+      "return": -59.53035574922671,
+      "steps": 1629,
+      "completed": false,
+      "distance_failure": true,
+      "time_failure": false,
+      "joint_success": false
+    },
+    {
+      "episode": 1,
+      "seed": 20288001,
+      "return": -61.45931855546412,
+      "steps": 1686,
+      "completed": false,
+      "distance_failure": true,
+      "time_failure": false,
+      "joint_success": false
+    },
+    {
+      "episode": 2,
+      "seed": 20288002,
+      "return": -56.64583956348798,
+      "steps": 1352,
+      "completed": false,
+      "distance_failure": true,
+      "time_failure": false,
+      "joint_success": false
+    },
+    {
+      "episode": 3,
+      "seed": 20288003,
+      "return": -66.14093879925885,
+      "steps": 1732,
+      "completed": false,
+      "distance_failure": true,
+      "time_failure": false,
+      "joint_success": false
+    },
+    {
+      "episode": 4,
+      "seed": 20288004,
+      "return": -54.061189378014156,
+      "steps": 1372,
+      "completed": false,
+      "distance_failure": true,
+      "time_failure": false,
+      "joint_success": false
+    },
+    {
+      "episode": 5,
+      "seed": 20288005,
+      "return": -49.14084522925693,
+      "steps": 2000,
+      "completed": false,
+      "distance_failure": false,
+      "time_failure": true,
+      "joint_success": false
+    },
+    {
+      "episode": 6,
+      "seed": 20288006,
+      "return": -53.937189887849804,
+      "steps": 1377,
+      "completed": false,
+      "distance_failure": true,
+      "time_failure": false,
+      "joint_success": false
+    },
+    {
+      "episode": 7,
+      "seed": 20288007,
+      "return": -49.446044356698444,
+      "steps": 1313,
+      "completed": false,
+      "distance_failure": true,
+      "time_failure": false,
+      "joint_success": false
+    },
+    {
+      "episode": 8,
+      "seed": 20288008,
+      "return": -63.3036703673112,
+      "steps": 1752,
+      "completed": false,
+      "distance_failure": true,
+      "time_failure": false,
+      "joint_success": false
+    },
+    {
+      "episode": 9,
+      "seed": 20288009,
+      "return": -49.70822662118713,
+      "steps": 1127,
+      "completed": false,
+      "distance_failure": true,
+      "time_failure": false,
+      "joint_success": false
+    }
+  ]
+}

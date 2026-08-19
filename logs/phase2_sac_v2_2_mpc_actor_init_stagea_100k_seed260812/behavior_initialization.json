@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "method": "mpc_actor_mean_behavior_initialization",
+  "dataset": "D:\\py\\DRL2\\logs\\phase2_v2_1_mpc_observation_diagnostic\\teacher_dataset.npz",
+  "seed": 260812,
+  "device": "cuda",
+  "epochs": 49,
+  "maximum_epochs": 400,
+  "patience_epochs": 40,
+  "batch_size": 256,
+  "learning_rate": 0.001,
+  "total_samples": 4642,
+  "trajectories": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "holdout_trajectories": [
+    1,
+    3,
+    5
+  ],
+  "train": {
+    "samples": 2274,
+    "mse": 0.0038520849775522947,
+    "mae": 0.03129519149661064,
+    "axis_mae": [
+      0.012982150539755821,
+      0.021082574501633644,
+      0.012960314750671387,
+      0.03185763955116272,
+      0.06668690592050552,
+      0.04220159724354744
+    ],
+    "teacher_saturation_sample_fraction": 0.07299912049252419,
+    "saturated_sample_mae": 0.11885078996419907
+  },
+  "holdout": {
+    "samples": 2368,
+    "mse": 0.015711328014731407,
+    "mae": 0.046678852289915085,
+    "axis_mae": [
+      0.011386975646018982,
+      0.01792735420167446,
+      0.02126670628786087,
+      0.09827663749456406,
+      0.0806555524468422,
+      0.05056009814143181
+    ],
+    "teacher_saturation_sample_fraction": 0.06461148648648649,
+    "saturated_sample_mae": 0.30802103877067566
+  },
+  "critic_initialized_from_teacher": false,
+  "replay_prefilled": false,
+  "actor_log_std_pretrained": false,
+  "actor_initial_log_std": -2.0,
+  "actor_initial_std": 0.1353352832366127
+}

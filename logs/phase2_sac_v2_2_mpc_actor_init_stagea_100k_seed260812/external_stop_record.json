@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "status": "externally_stopped_after_50000_gate",
+  "last_audited_training_step": 50000,
+  "reason": "The 50k fixed Stage-A evaluation had 0/10 completion, 10/10 distance failure, worse minimum approach and earlier constraint violation than the bounded-observation Pure-SAC 50k control. Continuing to 100k had insufficient information gain.",
+  "recovery": "behavior_initialized_model.zip and sac_50000_steps.zip are retained; this run is diagnostic-only and must not be resumed or treated as a valid policy."
+}
