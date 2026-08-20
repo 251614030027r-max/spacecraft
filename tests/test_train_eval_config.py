@@ -22,7 +22,7 @@ def test_only_one_pure_sac_configuration_is_exposed() -> None:
     assert PURE_SAC.learning_starts == 5_000
     assert PURE_SAC.learning_rate == 1.0e-4
     assert PURE_SAC.tau == 0.001
-    assert PURE_SAC.gradient_steps == 1
+    assert PURE_SAC.gradient_steps == 4
     assert values["ent_coef"] == "auto_0.005"
     assert values["target_entropy"] == -6.0
     assert values["gamma"] == 0.997
