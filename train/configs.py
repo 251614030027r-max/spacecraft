@@ -17,8 +17,8 @@ class PureSACConfig:
     tau: float = 0.001
     gamma: float = 0.997
     train_freq: int = 4
-    gradient_steps: int = 4
-    ent_coef: str | float = "auto_0.005"
+    gradient_steps: int = 1
+    ent_coef: str | float = 0.005
     target_entropy: float = -6.0
     target_update_interval: int = 1
     net_arch: tuple[int, ...] = (256, 256, 256, 256)
