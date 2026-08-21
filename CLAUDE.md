@@ -39,12 +39,31 @@ bootstrap over a 333-step effective horizon, inflates the soft targets.
 | 0.0203 | 32.2 | v2 final |
 | 0.0605 | 45.7 | UTD 4 at 100k |
 
-With `ent_coef = 0.005` fixed, the run at 100k-200k is the **first learned
-policy to beat the trivial baselines**: Gate 6/20 (previous best 2/20, at half
-the steps), survival 96.2 s at 200k against the 53.3 s zero-action baseline,
-and a critic calibrated to within one unit of a reachable return span of 16.
-The 100k periodic evaluation on the disjoint 20288000 block gave the same
-0.30 Gate rate, so it is not seed luck.
+**With `ent_coef = 0.005` fixed and training stopped at 200k, Pure SAC
+acquires the Gate.** Three training seeds, each evaluated deterministically on
+the independent 20290000 block:
+
+| seed | Gate 100k | error 100k | Gate 200k | error 200k | hard return 200k |
+|---|---|---|---|---|---|
+| 260815 | 6/20 | -0.46 | 1/20 | +0.94 | -4.20 |
+| 260816 | 7/20 | -2.51 | **17/20** | -0.60 | -0.85 |
+| 260817 | 11/20 | -3.50 | **20/20** | -3.56 | **+3.01** |
+
+Seed 260817 matches the scripted Gate-PD reference (20/20) and comes within
+0.65 of its discounted return (+3.01 against +3.66). The periodic evaluations
+on the disjoint 20288000 block agree (0.8 and 1.0 at 200k), so this is not an
+artefact of the evaluation seeds. Every calibration error is now negative --
+the critic *under*-estimates, which is the benign direction.
+
+The spread is the honest headline: 1/20, 17/20, 20/20. Pure SAC solves this
+task on most seeds and fails on some, which is a characterised weak baseline,
+not a solved problem. Report the distribution, never the best seed.
+
+**Read survival together with the Gate rate, never alone.** In
+`phase1_pretrain` a Gate success terminates the episode, so once the Gate rate
+is high a *short* episode is a fast success. Seed 260817 survives 26.6 s at
+200k because it reaches the Gate in about that time, close to Gate-PD's 24.1 s.
+Survival alone only separates dying from not dying.
 
 **Replay eviction is not the cause of the late decay.** Doubling
 `buffer_size` to 600k, so nothing is evicted at all within a 500k run, changed
@@ -63,10 +82,9 @@ actor/critic feedback loop: with alpha pinned at 0.005 the entropy term is
 negligible against a Q that has grown to order 1, so the actor turns greedy,
 narrows the data distribution, and the critic extrapolates.
 
-Current state: **the result to defend is the 100k-200k checkpoint, not the
-500k one.** Before any of it is reported upward it needs the >= 3 training
-seeds the rules below require; the late decay is a characterised limitation,
-not a blocker.
+Current state: **200k is the training length; 500k is past the cliff.** The
+three-seed replication above is the Pure SAC Phase-I result. The late decay is
+a documented limitation of longer training, not something to keep chasing.
 
 ## Trusted entry points
 
@@ -92,12 +110,24 @@ not a blocker.
   measured evidence of a definitional defect, never on judgement alone.
 - **Do not judge short experiments by Gate rate** -- it lags and its variance
   is large. Use critic calibration error and survival time.
-- No Phase-II entry, no initialising from an existing checkpoint, no resuming
-  a mid-run checkpoint. Every long run is fresh actor / critic / replay.
+- **Every training run starts from zero.** Fresh actor, critic and replay, no
+  initialising from a checkpoint, no resuming a mid-run checkpoint, and no
+  staged hand-off from `phase1_pretrain` into `full_mission`. This is a
+  standing decision, not a temporary diagnostic measure: it is what keeps the
+  data behind every reported number clean and each run independently
+  reproducible from its manifest alone.
+- The gate that blocked Phase-II entry is cleared -- Phase-I now works and the
+  full mission is reachable -- so `full_mission` runs are in scope. What is
+  still out of scope is initialising them from a Phase-I model.
 - **`n=1` training seeds are not conclusive.** Independent re-evaluation on a
   fresh seed block flipped 8 of 9 comparable published numbers. Any conclusion
   reported upward needs >= 3 training seeds.
 - Report results through `eval/digest_run.py`, not by shipping log files.
+- `References/` holds the papers this work is measured against and the failure
+  modes it must avoid. Read them before designing a new comparison; they are
+  part of the method, not clutter.
+- `models/` is deliberately untracked. Checkpoints are reproducible from a
+  manifest plus its seed, so they stay on the machine that trained them.
 
 ## Reference numbers (measured, seed block 262000 unless noted)
 

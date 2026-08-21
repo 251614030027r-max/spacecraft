@@ -132,6 +132,8 @@ def main() -> None:
             "\nsurvival (training episode length, median per fifth, seconds)\n        "
             + "  ".join(f"{value * args.dt:.1f}" for value in medians)
             + f"   | zero-action baseline {ZERO_ACTION_SURVIVAL_S}"
+            + "\n        (in phase1_pretrain a Gate success ends the episode, so"
+            + " short episodes at a high Gate rate are success, not failure)"
         )
         tail = lengths[-200:]
         print(
