@@ -10,10 +10,18 @@ the single-phase task worth posing.
 
 Nothing established that the task is reachable under those conditions, so this
 module supplies the ground truth, exactly as ``validate_phase2_semantics`` does
-for the two-phase mission. It flies the *same* corridor-aware control law that
-module uses for its terminal leg -- one law for the whole mission, no phase
-switch, no Gate waypoint -- so a failure here means the task is infeasible
-rather than that the reference controller was rebuilt to pass.
+for the two-phase mission. It flies the corridor-aware control law that module
+uses for its terminal leg -- one law for the whole mission, no phase switch, no
+Gate waypoint -- so a failure here means the task is infeasible rather than
+that the reference controller was rebuilt to pass.
+
+That law and the reward's `terminal_desired_velocity` agree pointwise while
+`axial_remaining >= 0` and diverge only past the desired pose, where the
+reward's version commands a retreat and this one commands a hold. The scripted
+controller never overshoots, so this certificate covers the approach and **not**
+the overshoot region -- which is exactly where seeds 260850-260852 died before
+the reward gained its axial restoring term. The 20/20 reachability result is
+unaffected; the two laws are simply no longer identical.
 
 Read-only: no training, no writes outside --output, and --output refuses to
 overwrite.

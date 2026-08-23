@@ -115,9 +115,38 @@ the shared measurement path for all three methods; do not fork it.
 rate cannot separate the three methods -- the scripted controller is already
 20/20, and Pure MPC and the hybrid should both reach it. The candidates that
 do separate them are completion time, force impulse, worst constraint margin,
-and per-step compute. If the hybrid's case turns out to rest on compute, the
-decision period and the MPC call rate become its design core rather than an
-afterthought, and that has to be known before the interface is written.
+and per-step compute. Three of those four cannot be read off the shared path
+today, and all three are cheap to fix; do it before any MPC number is measured,
+or the numbers get re-run:
+
+- **Per-step compute is not comparable.** `evaluate_policy`'s
+  `full_control_cycle_runtime_s` starts its timer before `model.predict` and
+  stops after `env.step`, so it includes the RK45 truth propagation: measured
+  on CPU, `predict` is 1.09 ms against `env.step` at 8.32 ms, so the field
+  over-reports the controller by about 8.6x. The MPC side's `command_time_s`
+  times `controller.command` only. Split the shared path into
+  `controller_time_s` and `environment_step_time_s` before comparing anything.
+- **Completion time is not recorded.** `evaluate_policy`'s episode records
+  carry no step count or episode duration; the three `time_s` fields are all
+  inside sub-structures. `validate_gatefree_semantics` does record `survival_s`
+  and `discounted_return`, so the scripted path and the model path already
+  disagree on what they report. Add both to the shared path.
+- **Force impulse is integrated over the whole episode**, so a policy that dies
+  early scores a smaller one. Report it over completed episodes only, next to
+  completion time.
+
+If the hybrid's case turns out to rest on compute, the decision period and the
+MPC call rate become its design core rather than an afterthought, and that has
+to be known before the interface is written. **But do not assert compute as
+Pure MPC's structural defect until B below is settled**: of the measured
+0.322 s per step, the QP is only 0.027 s -- inside budget. The remaining
+0.295 s is Python-side finite differencing, `linearize_constraint_margins`
+evaluating the geometry 10 times per horizon index across 50 indices, about 500
+`se3_exp` + `compute_task_metrics` calls per control step. Those Jacobians have
+closed forms. An MPC reviewer will call the present number an implementation
+artefact, not a property of MPC, and they will be right. Either derive the
+analytic Jacobians and re-measure, or define the compute column as QP solve
+time, which is also what `References/上海交大.pdf` reports.
 
 ## What each reference is for
 
@@ -127,7 +156,7 @@ afterthought, and that has to be known before the interface is written.
 |---|---|---|
 | `哈工大.pdf` | the SE(3) modelling this work builds on | claim modelling as a contribution against it |
 | `北航.pdf` | constraint handling (approach cone, FOV, saturation); its 0.0173 rad/s target and absent speed cap are what put our regime outside it | |
-| `南航.pdf` | its Limitation 1 -- an LTI prediction model assuming a *moderate* tumbling rate -- is this work's motivation, and `controllers/mpc/prediction.py` already implements the successive re-linearisation it lists as future work | |
+| `南航.pdf` | its Limitation 1 -- an LTI prediction model assuming a *moderate* tumbling rate -- is this work's motivation | claim the layered architecture as novel: 南航 is **already** upper-layer-proposes / lower-layer-filters-for-safety, with deadlock detection on top. What is ours is that the upper layer is *learned* and that the regime is `Lambda > 1`. Concede the pattern, claim the two differences |
 | `北航编队.pdf` | the RL-supplies-a-schedule-to-MPC interface pattern | its impulsive model, which is not comparable |
 | `上海交大.pdf` | the three-way comparison table format (hybrid / pure MPC / pure RL, one row for per-step solve time) | **its method: adapting MPC cost weights online is explicitly ruled out** |
 | `引入死区迟滞...pdf` | nothing -- it is the user's own prior paper | cite it |
@@ -167,9 +196,25 @@ occupy: `References/北航.pdf` has the same corridor and FOV geometry but a
 target at 0.0173 rad/s and *no* speed constraint (`Lambda` undefined; 0.74 if
 ours were applied at their 15 m anchor), and `References/南航.pdf` names
 "tumbling rate is moderate relative to the prediction horizon" as the standing
-assumption of its LTI prediction model and successive re-linearisation as
-future work -- which `controllers/mpc/prediction.py` already implements against
-the RK45 truth.
+assumption of its LTI prediction model, and lists successive re-linearisation
+as future work.
+
+**Do not claim we already implement that.** An earlier version of this file
+did, and it is false as configured. Under `constrained_mpc_nominal_config()`
+(`linearization_source="exact"`, `exact_linearization_refresh_steps=10`),
+`controller.command` assigns the one cached exact Jacobian to *every* index of
+the 50-step horizon and refreshes it only every 10 control steps. That is a
+single LTI model held constant across a 5 s window and rebuilt once a second --
+slower than the per-sampling-period relinearisation 南航 actually performs, and
+squarely inside the failure condition its Limitation 1 describes (the target
+turns 0.206 rad = 11.8 deg within one horizon). The `"local"` path does
+re-linearise along the horizon every 5 indices, but against
+`LocalRelativePredictionModel`, not the RK45 truth. **Re-linearising along the
+horizon against the truth is not implemented on either path.** Either build it
+and measure what it costs -- 50 x 36 truth propagations per control step will
+almost certainly blow the budget, and that number is itself evidence for the
+hybrid -- or state the weaker, true claim: an exact one-step Jacobian per
+refresh.
 
 ## Trusted entry points
 
@@ -416,3 +461,21 @@ change. The scripted controller holds the same leg with 0.66 N sustained.
    config fields, so `asdict(config)` misses them. `train.py` records them under
    the manifest's `reward_settings` -- read the numbers there, not from the
    environment block.
+9. **The target's tumble is a single deterministic realisation.**
+   `env.scenarios.target_initial_state` takes no rng: the attitude is identity
+   and omega is `tumble_scale * TARGET_BASE_TUMBLE_RAD_S`, every episode, every
+   seed. All episode randomness is in the chaser's initial pose and velocity,
+   and `_cached_target_trajectory` then reuses one trajectory per tumble scale.
+   So generalisation across *tumble* -- initial attitude, nutation phase -- has
+   never been tested, the evaluation seed blocks are less independent than they
+   look, and this quietly favours MPC, whose linearisation error never meets a
+   different phase. S1-v2 is frozen so do not change it now; **state it as a
+   limitation in the paper.** Sampling the target attitude and phase is a
+   legitimate later factor, but it must be its own single-factor round, never
+   folded into another change.
+10. `constrained_mpc_nominal_config()` fixes `reference_state` at the desired
+    pose with a 50-step (5 s) horizon. On a ~95 s task from 10-14 m that is a
+    myopic regulator with no path plan, while the scripted 20/20 comes from a
+    corridor-aware guidance law. Give Pure MPC the same reference the reward
+    and the scripted controller use, or the hybrid wins on having a reference
+    rather than on having learned one, and the comparison is unfair.

@@ -4,9 +4,11 @@ Phase-I already has a scripted ground truth (``validate_phase1_semantics``):
 a saturated target-frame PD reaches the Gate 20/20, which is what licenses the
 claim that the Phase-I task itself is clean. Phase-II never had the equivalent,
 and unlike Phase-I it has no guidance law at all -- ``Phase2MissionReward.
-active_desired_velocity`` returns a zero desired velocity once the terminal
-constraints are active, so the observation's velocity channel degrades from a
-tracking error into a raw speed. (An earlier version of this note claimed the
+active_desired_velocity`` returned a zero desired velocity once the terminal
+constraints were active, so the observation's velocity channel degraded from a
+tracking error into a raw speed. (That is history: schema v4 gave the
+constrained leg a corridor-aware guidance law. This module is kept for the
+two-phase task, and the paragraph records why the terminal leg needed one.) (An earlier version of this note claimed the
 closing-speed constraint simultaneously requires the chaser to keep
 approaching. It does not: ``closing_speed_min_m_s`` is the floor of the *upper*
 limit, and nothing anywhere imposes a minimum approach speed.) Nothing in the
