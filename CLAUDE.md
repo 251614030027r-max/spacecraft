@@ -92,6 +92,55 @@ Current state: **200k is the training length; 500k is past the cliff.** The
 three-seed replication above is the Pure SAC Phase-I result. The late decay is
 a documented limitation of longer training, not something to keep chasing.
 
+## Where this stands
+
+Pure SAC on `gate_free` is **closed**: a real weak baseline that completes the
+mission without ever violating a constraint. Do not keep tuning it.
+
+**Pure MPC does not exist on this task.** `controllers/mpc/` is terminal-phase
+only -- `constrained_mpc_nominal_config()` fixes the reference at the desired
+pose and its evidence (`logs/phase2_mpc_v2_clarabel_5seeds.json`, 5/5, zero QP
+fallback) was measured in `terminal_phase_environment_config()`: a 2-10 m
+shell, 100 s, the *old* S1 task, no Gate. None of it transfers. What does
+transfer is the cost: **0.322 s mean per step, 0.433 s p95, against a 0.1 s
+control period** -- 3.2x over budget, and that is Pure MPC's structural defect.
+
+The hybrid does not exist either. It is the actual contribution.
+
+`eval.evaluate_policy.evaluate_model` needs nothing but an object with
+`.predict(obs, deterministic) -> (action, state)`, which a test pins. That is
+the shared measurement path for all three methods; do not fork it.
+
+**Settle the main-table metrics before running MPC, not after.** Completion
+rate cannot separate the three methods -- the scripted controller is already
+20/20, and Pure MPC and the hybrid should both reach it. The candidates that
+do separate them are completion time, force impulse, worst constraint margin,
+and per-step compute. If the hybrid's case turns out to rest on compute, the
+decision period and the MPC call rate become its design core rather than an
+afterthought, and that has to be known before the interface is written.
+
+## What each reference is for
+
+`References/` is part of the method, but each paper has one job:
+
+| paper | use it for | do not |
+|---|---|---|
+| `哈工大.pdf` | the SE(3) modelling this work builds on | claim modelling as a contribution against it |
+| `北航.pdf` | constraint handling (approach cone, FOV, saturation); its 0.0173 rad/s target and absent speed cap are what put our regime outside it | |
+| `南航.pdf` | its Limitation 1 -- an LTI prediction model assuming a *moderate* tumbling rate -- is this work's motivation, and `controllers/mpc/prediction.py` already implements the successive re-linearisation it lists as future work | |
+| `北航编队.pdf` | the RL-supplies-a-schedule-to-MPC interface pattern | its impulsive model, which is not comparable |
+| `上海交大.pdf` | the three-way comparison table format (hybrid / pure MPC / pure RL, one row for per-step solve time) | **its method: adapting MPC cost weights online is explicitly ruled out** |
+| `引入死区迟滞...pdf` | nothing -- it is the user's own prior paper | cite it |
+
+## How the work is run
+
+Long training happens on the user's machine, not here. This session does code
+review, `pytest`, short smoke runs (<= 5k steps) and diagnostic probes; the
+user runs training and pastes `eval/digest_run.py` output back. Deliver code
+changes as a zip preserving repository-relative paths -- this session has no
+push permission, so the user applies and commits. Run the suite as
+`python -B -m pytest -q`; it should be 101 passed.
+
 ## Co-rotation: why this task is not translational rendezvous
 
 The Gate and the desired pose are **body-fixed on a target tumbling at 0.0412
