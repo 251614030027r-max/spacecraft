@@ -245,7 +245,37 @@ baseline first. If a seed plateaus on `time_failure` with no violations and near
 200 s survival, it has reached hover and the horizon is then the binding factor
 -- raising `gamma` or `final_success_reward` becomes the next single factor.
 
-## Pure SAC on `gate_free` (three seeds, 260850-260852, 400k)
+## Pure SAC on `gate_free`: the baseline completes the mission
+
+Seed 260860 at 400k, after the guidance law was given its axial restoring term
+(**one seed so far**; 260861 and 260862 are run but not yet read, and the rule
+that `n=1` is not conclusive applies in full):
+
+| | value |
+|---|---|
+| completion | **7/20** |
+| episodes with no violation | **20/20** |
+| closest approach | 0.10 m median, 0.02 m best |
+| worst margins | axial +1.47, lateral +0.92, FOV +0.31, total speed +0.12, closing +0.06 |
+| remaining failures | `time_failure` 13/20 -- runs to the 200 s cap without completing |
+
+The fix is visible in one number: worst `corridor_axial` went **+0.29 -> +1.47**,
+so the chaser stops at the desired pose instead of overshooting 1.2 m into the
+pinching cone. Every other margin went from grazing to comfortable.
+
+Completion is now blocked by holding all four completion conditions *at once*
+for a full second, not by any one of them -- each is met individually with room
+to spare (position 0.021/0.25, attitude 0.005/0.175, speed 0.000/0.05, angular
+0.000/0.02) and the best hold streak reaches the required 10 steps.
+
+**This is a real weak baseline, not a straw man**, and Pure SAC is closed here.
+Note what it does *not* beat: the scripted controller is 20/20 on the same
+guidance law with a hand-tuned PD. So completion rate will not separate Pure MPC
+from the hybrid -- both should reach 20/20. **The differentiating metrics are
+completion time, force impulse, constraint margin and per-step compute**, and
+that has to be settled before the MPC runs, not after.
+
+## Pure SAC on `gate_free`, before the overshoot fix (three seeds, 260850-260852, 400k)
 
 Completion is 0/20 on every seed at every checkpoint, but the reason moved
 twice, and each move needed a different metric to see:
@@ -326,3 +356,14 @@ change. The scripted controller holds the same leg with 0.66 N sustained.
    run the suite as `python -B -m pytest -q` from the repository root. A bare
    `pytest` can resolve to a different interpreter and fails collection on all
    thirteen files at once.
+7. A `gate_free` manifest still carries fourteen Gate and Phase-I fields
+   (`gate_position_target_m`, `gate_reward`, `premature_entry_distance_m`,
+   `phase1_cruise_speed_m_s`, ...) because `Phase2MissionConfig` is shared with
+   the two-phase modes. **None of them do anything in `gate_free`** -- every one
+   is keyed off mission phase 0, which that mode never enters. Do not read task
+   semantics off them. For the same reason observation dimension 24, the mission
+   phase flag, is constant 1 there.
+8. Reward weights and the guidance constants are constructor defaults, not
+   config fields, so `asdict(config)` misses them. `train.py` records them under
+   the manifest's `reward_settings` -- read the numbers there, not from the
+   environment block.

@@ -485,6 +485,31 @@ class Phase2MissionReward:
             return self.terminal_desired_velocity(relative)
         return self.phase1_desired_velocity(relative, reference_position_m)
 
+    def settings(self) -> dict[str, float]:
+        """Every weight and guidance constant that shapes this reward.
+
+        These are constructor defaults rather than environment-config fields,
+        so ``asdict(config)`` does not reach them and a manifest cannot be read
+        back without them. Record them explicitly instead.
+        """
+
+        return {
+            "progress_weight": self.progress_weight,
+            "actuation_weight": self.actuation_weight,
+            "warning_weight": self.warning_weight,
+            "discount_factor": self.discount_factor,
+            "position_scale_m": float(self.scales[0]),
+            "attitude_scale_rad": float(self.scales[1]),
+            "velocity_scale_m_s": float(self.scales[2]),
+            "angular_velocity_scale_rad_s": float(self.scales[3]),
+            "phase1_cruise_speed_m_s": self.phase1_cruise_speed_m_s,
+            "phase1_braking_gain_per_s": self.phase1_braking_gain_per_s,
+            "terminal_closing_speed_fraction": self.terminal_closing_speed_fraction,
+            "terminal_axial_gain_per_s": self.terminal_axial_gain_per_s,
+            "terminal_lateral_gain_per_s": self.terminal_lateral_gain_per_s,
+            "terminal_total_speed_fraction": self.terminal_total_speed_fraction,
+        }
+
     @staticmethod
     def _bounded_square(value: float) -> float:
         squared = float(value) ** 2

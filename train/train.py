@@ -27,6 +27,17 @@ from train.callbacks import DeterministicPhase2EvalCallback, Phase2DiagnosticsCa
 from train.configs import model_kwargs, serializable_hyperparameters
 
 
+def reward_settings(config: SE3RendezvousConfig) -> dict[str, float]:
+    """Reward weights and guidance constants, which the config does not carry."""
+
+    environment = SE3RendezvousEnv(config)
+    try:
+        reward = environment._reward
+        return reward.settings() if hasattr(reward, "settings") else {}
+    finally:
+        environment.close()
+
+
 def training_environment_config(
     mode: Phase2Mode = "full_mission",
 ) -> SE3RendezvousConfig:
@@ -50,11 +61,6 @@ def parse_args() -> argparse.Namespace:
         "--mode",
         choices=("phase1_pretrain", "full_mission", "gate_free"),
         default="gate_free",
-    )
-    parser.add_argument(
-        "--actor-init",
-        type=Path,
-        help="S1 model used for actor-only S2 initialization; critic/replay stay fresh",
     )
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--checkpoint-freq", type=int, default=50_000)
@@ -96,11 +102,6 @@ def validate_request(args: argparse.Namespace, project_root: Path) -> tuple[Path
     log_dir = project_root / "logs" / args.run_name
     if model_dir.exists() or log_dir.exists():
         raise FileExistsError("run output already exists; use a new run-name")
-    if getattr(args, "actor_init", None) is not None:
-        if args.mode != "full_mission":
-            raise ValueError("actor-init is only valid for full_mission S2")
-        if not args.actor_init.is_file():
-            raise FileNotFoundError(args.actor_init)
     return model_dir, log_dir
 
 
@@ -149,15 +150,16 @@ def main() -> None:
         "seed": args.seed,
         "requested_timesteps": args.steps,
         "actual_model_timesteps": 0,
-        "fresh_initialization": args.actor_init is None,
-        "actor_initialization": (
-            None if args.actor_init is None else str(args.actor_init.resolve())
-        ),
+        # Every run starts from zero -- fresh actor, critic and replay. This is
+        # a standing decision, so the manifest states it rather than recording
+        # an initialisation source that can no longer be supplied.
+        "fresh_initialization": True,
         "critic_initialization": "fresh",
         "initial_replay_buffer_transitions": 0,
         "training_environment": asdict(training_config),
         "evaluation_environment": asdict(evaluation_config),
         "hyperparameters": serializable_hyperparameters(),
+        "reward_settings": reward_settings(training_config),
         "callbacks": ["checkpoint", "phase2_diagnostics", "deterministic_phase2_evaluation"],
         "evaluation_steps": args.eval_steps,
         "versions": _versions(),
@@ -184,11 +186,6 @@ def main() -> None:
         ),
     )
     model = SAC("MlpPolicy", env, seed=args.seed, device=device, verbose=1, tensorboard_log=str(log_dir / "tensorboard"), **model_kwargs())
-    if args.actor_init is not None:
-        source = SAC.load(args.actor_init, device=device)
-        if source.observation_space != model.observation_space or source.action_space != model.action_space:
-            raise ValueError("actor-init spaces differ from the canonical mission")
-        model.actor.load_state_dict(source.actor.state_dict())
     callbacks = CallbackList([
         CheckpointCallback(save_freq=args.checkpoint_freq, save_path=str(checkpoint_dir), name_prefix="sac", save_replay_buffer=False, save_vecnormalize=False),
         Phase2DiagnosticsCallback(log_dir, probe_config=training_config),

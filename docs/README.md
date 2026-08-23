@@ -1,10 +1,13 @@
-# 文档导航
+# 历史文档,非权威
 
-- `PROJECT_OVERVIEW.md`：导师阅读入口；
-- `DEVELOPMENT_HISTORY.md`：关键决策、失败和改进时间线；
-- `CURRENT_PHASE2_BASELINE.md`：当前任务、算法与证据结论；
-- `EXPERIMENT_INDEX.md`：日志和代表模型位置；
-- `REPRODUCIBILITY.md`：环境、测试和入口；
-- `CLEANUP_MANIFEST_20260817.md`：本次导师移交整理的删除、迁移与保留边界；
-- `history/`：按日期保留的详细原始验证与分析；
-- `NEXT_WINDOW_PROMPT.md`、`NEXT_WINDOW_HANDOFF.md`：后续自动化工作上下文，不是科研结论来源。
+这个目录保存的是**历史材料**:各轮实验当时的验证记录、分析和判断。它们记录了当时
+的认识,其中不少已被后续实测推翻——包括 `history/CURRENT_PHASE2_BASELINE.md` 和
+`history/NEXT_WINDOW_*.md`,尽管文件名如此,它们**都不描述当前状态**。
+
+**不要用这里的任何内容支持当前主张。**
+
+当前的研究主线、已定结论、实测参考数值、纪律规则和陷阱,唯一权威是仓库根目录的
+`CLAUDE.md`。
+
+保留这些文件是为了追溯"当时为什么那样判断",典型用途是复查一个被推翻的结论当初
+基于什么证据。
