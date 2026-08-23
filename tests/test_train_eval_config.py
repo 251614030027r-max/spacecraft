@@ -58,7 +58,7 @@ def test_phase1_pretrain_and_full_mission_are_explicit() -> None:
     assert phase1.phase2_training_mode == "phase1_pretrain"
     assert phase1.phase2_observation_schema == PHASE2_MISSION_OBSERVATION_SCHEMA
     assert phase1.phase2_observation_schema == (
-        "phase2_mission_v3_body_velocity_error_24d"
+        "phase2_mission_v4_phase_guidance_error_24d"
     )
     assert full.phase2_training_mode == "full_mission"
     assert phase1.phase2_task == full.phase2_task
@@ -124,3 +124,44 @@ def test_existing_run_is_rejected(tmp_path) -> None:
     args = argparse.Namespace(steps=100, checkpoint_freq=50, run_name="duplicate")
     with pytest.raises(FileExistsError):
         validate_request(args, tmp_path)
+
+
+def test_evaluate_model_runs_end_to_end_on_a_plain_predictor() -> None:
+    """evaluate_model only needs .predict, and every info key it reads must exist.
+
+    A missing key raised only once a real model was loaded, which the sandbox
+    never does, so exercise the whole loop against a trivial predictor.
+    """
+
+    import numpy as np
+
+    from dataclasses import replace
+    from env.phase2_env import phase2_environment_config
+    from eval.evaluate_policy import evaluate_model
+
+    class ZeroPredictor:
+        def predict(self, observation, deterministic=True):  # noqa: ARG002
+            return np.zeros(6, dtype=np.float32), None
+
+    config = replace(
+        phase2_environment_config("gate_free"),
+        cache_target_trajectory=False,
+        max_time_s=3.0,
+    )
+    result = evaluate_model(ZeroPredictor(), config, episodes=2, seed=262000)
+    assert result["rates"]["episode_completion"] == 0.0
+    record = result["episode_records"][0]
+    assert set(record["best_completion_conditions"]) == {
+        "position_error_m",
+        "attitude_error_rad",
+        "total_speed_m_s",
+        "angular_velocity_rad_s",
+    }
+    assert record["best_completion_streak"] == 0
+    assert set(record["minimum_margins"]) == {
+        "corridor_axial_margin_m",
+        "corridor_lateral_margin_m",
+        "fov_margin_rad",
+        "total_speed_margin_m_s",
+        "closing_speed_margin_m_s",
+    }

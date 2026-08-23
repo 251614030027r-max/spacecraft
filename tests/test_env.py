@@ -457,3 +457,50 @@ def test_adaptive_phase1_curriculum_promotes_and_demotes_persistent_frontier() -
     finally:
         env.close()
     assert promoted["phase1_curriculum_difficulty"] == 0.1
+
+
+def test_gate_free_starts_in_the_terminal_phase_with_live_constraints() -> None:
+    """The single-phase task has no Gate: phase 1 and its constraints from step one."""
+
+    env = SE3RendezvousEnv(
+        replace(
+            phase2_environment_config("gate_free"),
+            cache_target_trajectory=False,
+            max_time_s=1.0,
+        )
+    )
+    try:
+        observation, reset_info = env.reset(seed=262000)
+        _, _, _, _, info = env.step(np.zeros(6))
+    finally:
+        env.close()
+    assert reset_info["mission_phase"] == 1
+    assert observation[-1] == 1.0
+    assert np.allclose(
+        reset_info["active_reference_position_m"],
+        env.config.phase2_task.desired_position,
+    )
+    # The Gate, its bonus and the phase-0 guards all key off phase 0, so none of
+    # them can fire; the terminal constraint check is live instead.
+    assert not info["gate_transition"]
+    assert not info["gate_reached"]
+    assert info["reward_event"] == 0.0
+    assert not info["premature_entry_failure"]
+    assert not info["phase1_speed_failure"]
+    assert info["constraint_feasible"]
+
+
+def test_gate_free_leaves_the_two_phase_modes_untouched() -> None:
+    for mode in ("phase1_pretrain", "full_mission"):
+        env = SE3RendezvousEnv(
+            replace(
+                phase2_environment_config(mode),
+                cache_target_trajectory=False,
+                max_time_s=1.0,
+            )
+        )
+        try:
+            _, reset_info = env.reset(seed=262000)
+        finally:
+            env.close()
+        assert reset_info["mission_phase"] == 0

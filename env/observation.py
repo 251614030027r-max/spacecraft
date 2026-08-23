@@ -12,8 +12,11 @@ PHASE2_MISSION_TARGET_TRANSLATION_OBSERVATION_SCHEMA = "phase2_mission_v1_24d"
 PHASE2_MISSION_BODY_TRANSLATION_OBSERVATION_SCHEMA = (
     "phase2_mission_v2_body_translation_24d"
 )
+# v4: the velocity channel is a tracking error against the guidance law that is
+# active in the current phase. Under v3 the terminal phase had no guidance law,
+# so that channel degraded into a raw speed once the constraints went live.
 PHASE2_MISSION_OBSERVATION_SCHEMA = (
-    "phase2_mission_v3_body_velocity_error_24d"
+    "phase2_mission_v4_phase_guidance_error_24d"
 )
 
 

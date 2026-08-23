@@ -304,6 +304,10 @@ class Phase2MissionReward:
         phase1_velocity_tracking_weight: float = 0.02,
         phase1_attitude_weight: float = 0.005,
         phase1_angular_velocity_weight: float = 0.005,
+        terminal_closing_speed_fraction: float = 0.5,
+        terminal_axial_gain_per_s: float = 0.5,
+        terminal_lateral_gain_per_s: float = 0.4,
+        terminal_total_speed_fraction: float = 0.6,
         discount_factor: float = 0.997,
     ) -> None:
         values = (
@@ -323,6 +327,10 @@ class Phase2MissionReward:
             phase1_velocity_tracking_weight,
             phase1_attitude_weight,
             phase1_angular_velocity_weight,
+            terminal_closing_speed_fraction,
+            terminal_axial_gain_per_s,
+            terminal_lateral_gain_per_s,
+            terminal_total_speed_fraction,
             discount_factor,
         )
         if min(values) <= 0.0:
@@ -348,6 +356,12 @@ class Phase2MissionReward:
         self.phase1_angular_velocity_weight = float(
             phase1_angular_velocity_weight
         )
+        self.terminal_closing_speed_fraction = float(terminal_closing_speed_fraction)
+        self.terminal_axial_gain_per_s = float(terminal_axial_gain_per_s)
+        self.terminal_lateral_gain_per_s = float(terminal_lateral_gain_per_s)
+        self.terminal_total_speed_fraction = float(terminal_total_speed_fraction)
+        if max(terminal_closing_speed_fraction, terminal_total_speed_fraction) >= 1.0:
+            raise ValueError("terminal guidance fractions must stay below one")
         self.discount_factor = float(discount_factor)
         if self.discount_factor > 1.0:
             raise ValueError("discount_factor must not exceed one")
@@ -371,9 +385,18 @@ class Phase2MissionReward:
         return float(weights @ (normalized**2))
 
     def bounded_potential(
-        self, relative: RelativeState, reference_position_m: ArrayLike
+        self,
+        relative: RelativeState,
+        reference_position_m: ArrayLike,
+        *,
+        terminal_constraints_active: bool = False,
     ) -> float:
-        """Bounded Phase-I cost potential used for discount-consistent shaping."""
+        """Bounded cost potential used for discount-consistent shaping.
+
+        The velocity term is measured against the guidance law that is active
+        in this phase, so the potential and the observation agree on what the
+        chaser is supposed to be doing.
+        """
 
         reference = np.asarray(reference_position_m, dtype=np.float64)
         if reference.shape != (3,):
@@ -382,7 +405,11 @@ class Phase2MissionReward:
         attitude_error = np.linalg.norm(so3_log(relative.rotation, project=True))
         velocity_error = np.linalg.norm(
             relative.rotation @ relative.velocity
-            - self.phase1_desired_velocity(relative, reference)
+            - self.active_desired_velocity(
+                relative,
+                reference,
+                terminal_constraints_active=terminal_constraints_active,
+            )
         )
         angular_rate = np.linalg.norm(relative.omega)
         normalized_squared = (
@@ -412,6 +439,39 @@ class Phase2MissionReward:
         )
         return -desired_speed * error / distance
 
+    def terminal_desired_velocity(self, relative: RelativeState) -> np.ndarray:
+        """Corridor-aware target-frame velocity reference for the constrained leg.
+
+        The axial component is held at a fraction of the range-dependent closing
+        speed limit, the lateral component regulates the offset from the approach
+        axis, and the norm is capped below the total speed limit. This is a
+        *guidance* reference, not a control law: the chaser still has to work out
+        the thrust, which at these ranges includes the sustained 0.5-2.2 N of
+        co-rotation the tumbling target frame demands.
+        """
+
+        task = self.task
+        axis = task.approach_axis
+        error = relative.position - task.desired_position
+        axial_remaining = float(axis @ error)
+        lateral = error - axial_remaining * axis
+        # Proportional in the axial error and signed, so overshooting past the
+        # desired pose commands a retreat rather than a hold. Clamping the gain
+        # term at zero left the reference saying "stay" once the chaser was
+        # inside, and the corridor radius is the distance ahead of the port
+        # times tan(half-angle), so it pinches shut on anything that drifts in.
+        axial_speed = min(
+            self.terminal_closing_speed_fraction
+            * task.closing_speed_limit(axial_remaining),
+            self.terminal_axial_gain_per_s * axial_remaining,
+        )
+        desired = -axial_speed * axis - self.terminal_lateral_gain_per_s * lateral
+        cap = self.terminal_total_speed_fraction * task.total_speed_limit_m_s
+        speed = float(np.linalg.norm(desired))
+        if speed > cap:
+            desired = desired * (cap / speed)
+        return desired
+
     def active_desired_velocity(
         self,
         relative: RelativeState,
@@ -422,9 +482,7 @@ class Phase2MissionReward:
         """Formal target-frame velocity reference shared by reward and observation."""
 
         if terminal_constraints_active:
-            # The current Phase-II active pose reference is stationary; its reward
-            # penalizes the actual relative velocity norm with no separate guidance law.
-            return np.zeros(3, dtype=np.float64)
+            return self.terminal_desired_velocity(relative)
         return self.phase1_desired_velocity(relative, reference_position_m)
 
     @staticmethod
@@ -432,11 +490,19 @@ class Phase2MissionReward:
         squared = float(value) ** 2
         return squared / (1.0 + squared)
 
-    def reset(self, relative: RelativeState, reference_position_m: ArrayLike) -> None:
+    def reset(
+        self,
+        relative: RelativeState,
+        reference_position_m: ArrayLike,
+        *,
+        terminal_constraints_active: bool = False,
+    ) -> None:
         self._reference = np.asarray(reference_position_m, dtype=np.float64).copy()
         self._previous_potential = self.potential(relative, self._reference)
         self._previous_bounded_potential = self.bounded_potential(
-            relative, self._reference
+            relative,
+            self._reference,
+            terminal_constraints_active=terminal_constraints_active,
         )
 
     @staticmethod
@@ -461,7 +527,11 @@ class Phase2MissionReward:
         if action.shape != (6,) or not np.all(np.isfinite(action)):
             raise ValueError("normalized_action must be finite and shape=(6,)")
         potential = self.potential(relative, self._reference)
-        bounded_potential = self.bounded_potential(relative, self._reference)
+        bounded_potential = self.bounded_potential(
+            relative,
+            self._reference,
+            terminal_constraints_active=terminal_constraints_active,
+        )
         warning_penalty = 0.0
         if terminal_constraints_active:
             metrics = compute_task_metrics(relative, self.task)
@@ -509,25 +579,23 @@ class Phase2MissionReward:
                 + self.phase1_angular_velocity_weight
                 * self._bounded_square(angular_velocity / self.scales[3])
             )
-        progress = (
-            self.progress_weight * (self._previous_potential - potential)
-            if terminal_constraints_active
-            else self.progress_weight
-            * (
-                self._previous_bounded_potential
-                - self.discount_factor * bounded_potential
-            )
+        # One shaping form for both phases: bounded, and discount-consistent so
+        # the term is policy-invariant. The unbounded potential and its per-step
+        # state penalty are what made the terminal leg's dense signal negligible
+        # against its events, so neither is used any more; `state_weight` is
+        # retained only so historical manifests still load.
+        progress = self.progress_weight * (
+            self._previous_bounded_potential
+            - self.discount_factor * bounded_potential
         )
         result = Phase2MissionRewardBreakdown(
             progress=progress,
-            state_penalty=(
-                -self.state_weight * potential if terminal_constraints_active else 0.0
-            ),
+            state_penalty=0.0,
             actuation_penalty=-self.actuation_weight
             * float(np.mean(np.clip(action, -1.0, 1.0) ** 2)),
             constraint_warning=warning_penalty,
             event_reward=float(event_reward),
-            potential=(potential if terminal_constraints_active else bounded_potential),
+            potential=bounded_potential,
         )
         self._previous_potential = potential
         self._previous_bounded_potential = bounded_potential

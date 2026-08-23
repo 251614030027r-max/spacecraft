@@ -85,6 +85,19 @@ def evaluate_model(
                 "closing_speed_margin_m_s",
             )}
             first_violation: dict[str, Any] | None = None
+            # Completion needs five conditions at once, held for a full second.
+            # Track how close each got on its own, and the best streak, so a
+            # zero completion rate says which condition is blocking.
+            completion_keys = {
+                "position_error_m": "position_error_m",
+                "attitude_error_rad": "attitude_error_rad",
+                "total_speed_m_s": "total_speed_m_s",
+                "angular_velocity_rad_s": "angular_velocity_error_rad_s",
+            }
+            best_completion = {
+                name: float(info[key]) for name, key in completion_keys.items()
+            }
+            best_completion_streak = 0
             min_position = float(info["position_error_m"])
             min_gate_position = float(info["gate_position_error_m"])
             force_impulse = torque_impulse = 0.0
@@ -124,6 +137,13 @@ def evaluate_model(
                 saturated += int(np.count_nonzero(np.abs(action) >= 0.95))
                 samples += action.size
                 min_position = min(min_position, float(info["position_error_m"]))
+                for name, key in completion_keys.items():
+                    best_completion[name] = min(
+                        best_completion[name], float(info[key])
+                    )
+                best_completion_streak = max(
+                    best_completion_streak, int(info["completion_streak"])
+                )
                 current_gate_position = float(info["gate_position_error_m"])
                 if current_gate_position < min_gate_position:
                     min_gate_position = current_gate_position
@@ -167,6 +187,8 @@ def evaluate_model(
                 "constraint_success": bool(info["constraint_success"]),
                 "first_violation": first_violation,
                 "minimum_margins": min_margins,
+                "best_completion_conditions": best_completion,
+                "best_completion_streak": best_completion_streak,
                 "minimum_position_error_m": min_position,
                 "minimum_gate_position_error_m": min_gate_position,
                 "final_position_error_m": float(info["position_error_m"]),
@@ -192,6 +214,19 @@ def evaluate_model(
             "gate_acquisition": mean(float(r["gate_reached"]) for r in records),
             "final_completion": mean(float(r["final_completed"]) for r in records),
             "constraint_success": mean(float(r["constraint_success"]) for r in records),
+            # Failure-mode mix. In full_mission the completion rate alone cannot
+            # say whether a policy dies in the corridor or never enters it.
+            "terminal_constraint_failure": mean(
+                float(r["terminal_constraint_failure"]) for r in records
+            ),
+            "premature_entry_failure": mean(
+                float(r["premature_entry_failure"]) for r in records
+            ),
+            "phase1_speed_failure": mean(
+                float(r["phase1_speed_failure"]) for r in records
+            ),
+            "distance_failure": mean(float(r["distance_failure"]) for r in records),
+            "time_failure": mean(float(r["time_failure"]) for r in records),
         },
         "episode_records": records,
     }
@@ -206,8 +241,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument(
         "--mode",
-        choices=("phase1_pretrain", "full_mission"),
-        default="full_mission",
+        choices=("phase1_pretrain", "full_mission", "gate_free"),
+        default="gate_free",
     )
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--stochastic", action="store_true")

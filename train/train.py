@@ -48,8 +48,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-name", required=True)
     parser.add_argument(
         "--mode",
-        choices=("phase1_pretrain", "full_mission"),
-        default="full_mission",
+        choices=("phase1_pretrain", "full_mission", "gate_free"),
+        default="gate_free",
     )
     parser.add_argument(
         "--actor-init",

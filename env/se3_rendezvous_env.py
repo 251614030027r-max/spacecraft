@@ -358,7 +358,11 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             < c.phase2_mission.initial_distance_min_m
         ):
             raise ValueError("Phase-I easy distance envelope must precede full")
-        if c.phase2_training_mode not in {"phase1_pretrain", "full_mission"}:
+        if c.phase2_training_mode not in {
+            "phase1_pretrain",
+            "full_mission",
+            "gate_free",
+        }:
             raise ValueError("unsupported Phase-2 training mode")
         if c.phase2_target_tumble_scale < 0.0:
             raise ValueError("Phase-2 target tumble scale must be non-negative")
@@ -620,9 +624,14 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._resolve_episode_envelope()
         self._select_phase2_stage()
         if self.config.phase2_mission_enabled:
-            self._mission_phase = 0
+            # gate_free starts already in the terminal phase, so the task
+            # constraints are live from the first step and the Gate, its bonus
+            # and the premature-entry guard -- all of which key off phase 0 --
+            # never apply.
+            gate_free = self.config.phase2_training_mode == "gate_free"
+            self._mission_phase = 1 if gate_free else 0
             self._gate_reached = False
-            self._phase2_stage = "phase1"
+            self._phase2_stage = "phase2" if gate_free else "phase1"
             self._episode_tumble_scale = self.config.phase2_target_tumble_scale
             if self.config.phase1_curriculum_enabled:
                 if self.config.phase1_curriculum_adaptive:
@@ -786,7 +795,11 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             name: 0.0 for name in self._constraint_max_violation
         }
         if isinstance(self._reward, Phase2MissionReward):
-            self._reward.reset(self.relative, self._active_reference_position())
+            self._reward.reset(
+                self.relative,
+                self._active_reference_position(),
+                terminal_constraints_active=(self._mission_phase == 1),
+            )
         else:
             self._reward.reset(self.relative)
         metrics = compute_error_metrics(
@@ -1132,7 +1145,9 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 self._phase2_stage = "phase2"
                 self._completion_streak = 0
                 self._reward.reset(
-                    self.relative, self._active_reference_position()
+                    self.relative,
+                    self._active_reference_position(),
+                    terminal_constraints_active=True,
                 )
             completed = bool(phase1_pretrain_success or final_completed)
             time_failure = bool(

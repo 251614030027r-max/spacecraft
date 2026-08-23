@@ -223,15 +223,73 @@ def test_body_velocity_tracking_error_uses_verified_inverse_rotation() -> None:
     assert observation[7] < 0.0
 
 
-def test_phase2_velocity_reference_is_the_stationary_formal_reference() -> None:
+def test_terminal_velocity_reference_closes_inside_the_speed_limits() -> None:
+    """The constrained leg has a real guidance law, admissible by construction."""
+
     task = Phase2TaskConfig()
     reward = Phase2MissionReward(task=task)
-    relative = RelativeState(
+    axis = task.approach_axis
+    for range_m in (12.0, 8.0, 5.0, 3.5):
+        position = task.desired_position + (range_m - 3.0) * axis
+        relative = RelativeState(make_transform(np.eye(3), position), np.zeros(6))
+        desired = reward.active_desired_velocity(
+            relative, task.desired_position, terminal_constraints_active=True
+        )
+        axial_remaining = float(axis @ (position - task.desired_position))
+        closing = float(-axis @ desired)
+        assert closing > 0.0, "the reference must approach the desired pose"
+        assert closing <= task.closing_speed_limit(axial_remaining)
+        assert float(np.linalg.norm(desired)) <= task.total_speed_limit_m_s
+
+    # At the desired pose the reference is stationary, so the leg has a fixed point.
+    at_goal = RelativeState(
         make_transform(np.eye(3), task.desired_position), np.zeros(6)
     )
-    desired = reward.active_desired_velocity(
-        relative,
-        task.desired_position,
-        terminal_constraints_active=True,
+    assert np.allclose(
+        reward.active_desired_velocity(
+            at_goal, task.desired_position, terminal_constraints_active=True
+        ),
+        0.0,
     )
-    assert np.allclose(desired, 0.0)
+
+
+def test_phase_guidance_reference_switches_with_the_phase() -> None:
+    """Phase 0 aims at its own reference; the terminal leg aims at the port axis."""
+
+    task = Phase2TaskConfig()
+    reward = Phase2MissionReward(task=task)
+    gate = np.array([-8.0, 0.0, 0.0])
+    position = np.array([-12.0, 1.0, 0.0])
+    relative = RelativeState(make_transform(np.eye(3), position), np.zeros(6))
+    approach = reward.active_desired_velocity(
+        relative, gate, terminal_constraints_active=False
+    )
+    terminal = reward.active_desired_velocity(
+        relative, gate, terminal_constraints_active=True
+    )
+    assert not np.allclose(approach, terminal)
+    # Phase 0 heads straight at the Gate; the terminal law also kills the lateral
+    # offset from the approach axis, so it carries a component the other lacks.
+    assert abs(float(terminal[1])) > abs(float(approach[1]))
+
+
+def test_terminal_reference_retreats_when_the_chaser_overshoots() -> None:
+    """Past the desired pose the reference must back off, not hold.
+
+    The corridor radius is the distance ahead of the port times tan(35 deg),
+    so it pinches shut on a chaser that drifts toward the port. A reference
+    that commands zero axial velocity there offers nothing to push back with.
+    """
+
+    task = Phase2TaskConfig()
+    reward = Phase2MissionReward(task=task)
+    axis = task.approach_axis
+    for overshoot_m in (0.25, 0.75, 1.2):
+        position = task.desired_position - overshoot_m * axis
+        relative = RelativeState(make_transform(np.eye(3), position), np.zeros(6))
+        desired = reward.active_desired_velocity(
+            relative, task.desired_position, terminal_constraints_active=True
+        )
+        # Positive along the approach axis is away from the port.
+        assert float(axis @ desired) > 0.0, "overshoot must command a retreat"
+        assert float(np.linalg.norm(desired)) <= task.total_speed_limit_m_s

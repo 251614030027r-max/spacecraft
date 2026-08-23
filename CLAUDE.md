@@ -13,10 +13,16 @@ feasibility and safety -- and is **architecture-uniform across the whole
 mission**, not switched on for the terminal phase only. Switching architecture
 mid-episode would confound the comparison with the phase switch itself.
 
-**The common benchmark is the end-to-end `full_mission`**, cleared for that use
-by `eval/validate_phase2_semantics.py` (20/20 scripted completion). Phase-I is
-a SAC *training* curriculum and the source of the coupling analysis, not a
-separate headline result. Training may be staged; evaluation may not.
+**The common benchmark is the single-phase `gate_free` task**, cleared for that
+use by `eval/validate_gatefree_semantics.py` (20/20 scripted completion, all
+five margins positive, one control law for the whole mission). The Gate was
+diagnostic scaffolding, not a task element: it postponed the terminal
+constraints until 8 m, which understates the problem (see *Co-rotation*). It
+keeps its place as the instrument that localised the co-rotation failure, and
+`full_mission` remains a valid secondary task -- Pure SAC reaching the Gate
+there is what certifies the baseline implementation is competent. Phase-I is a
+SAC *training* curriculum, not a headline result. Training may be staged;
+evaluation may not.
 
 **The entropy temperature was the driver of critic overestimation, and
 pinning it fixed the critic.** `auto_0.005` never converged: alpha rose
@@ -86,17 +92,49 @@ Current state: **200k is the training length; 500k is past the cliff.** The
 three-seed replication above is the Pure SAC Phase-I result. The late decay is
 a documented limitation of longer training, not something to keep chasing.
 
+## Co-rotation: why this task is not translational rendezvous
+
+The Gate and the desired pose are **body-fixed on a target tumbling at 0.0412
+rad/s**, and `total_speed_m_s` is the relative speed in that rotating frame. An
+inertially frozen chaser therefore appears to move at `omega * r`:
+
+| r | apparent speed | margin to the 0.35 m/s limit | co-rotation force |
+|---|---|---|---|
+| 12 m | 0.494 m/s | **negative** | 2.16 N |
+| 10 m | 0.412 m/s | **negative** | 1.80 N |
+| 8 m (Gate) | 0.330 m/s | +0.020 | 1.44 N |
+| 3 m (desired) | 0.124 m/s | +0.226 | 0.54 N |
+
+Write `Lambda = omega * r / v_max`. **`Lambda > 1` means station-keeping is
+inadmissible and the chaser must co-rotate continuously.** The task runs from
+`Lambda = 1.41` at 12 m to 0.35 at 3 m, crossing 1 near the Gate. A zero-thrust
+chaser breaches the speed limit after 19.2 s on average (14.6-23.6 over 12
+seeds), always on `total_speed`, against a ~95 s mission.
+
+So the total-speed limit is not a manoeuvring cap, it is a **sustained-thrust
+condition whose required thrust scales with range**. This is the physical
+motivation for the hybrid, and it is the regime the reference papers do not
+occupy: `References/北航.pdf` has the same corridor and FOV geometry but a
+target at 0.0173 rad/s and *no* speed constraint (`Lambda` undefined; 0.74 if
+ours were applied at their 15 m anchor), and `References/南航.pdf` names
+"tumbling rate is moderate relative to the prediction horizon" as the standing
+assumption of its LTI prediction model and successive re-linearisation as
+future work -- which `controllers/mpc/prediction.py` already implements against
+the RK45 truth.
+
 ## Trusted entry points
 
 | Purpose | Entry |
 |---|---|
-| Environment | `env.phase2_env.phase2_environment_config("phase1_pretrain" \| "full_mission")` |
+| Environment | `env.phase2_env.phase2_environment_config("gate_free" \| "phase1_pretrain" \| "full_mission")` |
 | Task | `env.phase2_env.phase2_s1v2_mission_config()` |
 | SAC config | `train.configs.PURE_SAC` (single instance, pinned by tests) |
 | Train | `python -B -m train.train` |
 | Evaluate | `python -B -m eval.evaluate_policy` |
 | Phase-I reachability | `python -B -m eval.validate_phase1_semantics` |
+| Gate-free reachability | `python -B -m eval.validate_gatefree_semantics` |
 | Full-mission reachability | `python -B -m eval.validate_phase2_semantics` |
+| Why episodes ended | `python -B -m eval.inspect_failures --run logs/<run>` |
 | Critic calibration | `python -B -m eval.diagnose_value_calibration` |
 | One-screen run digest | `python -B -m eval.digest_run --run logs/<run>` |
 
@@ -139,6 +177,35 @@ a documented limitation of longer training, not something to keep chasing.
 | Gate-PD cruise 0.15 | 20/20 | 24.1 s | +3.66 |
 | Scripted full mission | 20/20 gate, 20/20 completion | 95.2 s | +5.21 |
 
+Single-phase `gate_free` task (seed block 262000, its own reward scale -- these
+numbers are **not** comparable with the two-phase rows above, which carry the
++5 Gate event):
+
+| Policy | Completion | Survival | Discounted return |
+|---|---|---|---|
+| Zero action | 0/20, terminal violation | 16.9 s | -9.08 |
+| Hover (co-rotate, never close) | 0/6, never dies | 200 s | +3.03 |
+| Scripted single law | **20/20** | 95.3 s | **+4.13** |
+
+Scripted worst margins over 20 seeds: total speed +0.140, closing speed +0.047,
+FOV +0.325, corridor lateral +1.19, axial +1.71; peak total speed 0.210 against
+the 0.35 limit. Thrust mean 1.76 N, p95 6.29 N, peak 8.66 N (= the full
+three-axis authority), saturated on 1.2% of steps. **The binding resource early
+in the task is actuation, not constraint margin** -- if the task ever has to be
+degraded, move the initial range or the terminal tolerances, never
+`total_speed_limit_m_s`, which is what puts the task in the `Lambda > 1` regime
+that makes it worth posing.
+
+**Attribute a calibration error before acting on it.** `calibration_error` is
+`Q - soft`, and the soft return carries `alpha * entropy` accumulated *per
+step*, so it grows with survival: a policy living 110 s collects about +5 of
+entropy bonus, one dying at 16 s collects a few tenths. `digest_run` and the
+diagnostic CLI print `hard`, `soft` and `entropy_contribution` side by side for
+exactly this reason. A critic that tracks the hard return but lags the soft one
+is failing to anticipate the bonus for surviving longer, which is what chasing
+an improving policy from below looks like; that is a different finding from a
+critic that misjudges task quality.
+
 Reachable discounted return spans only about 16, so a calibration error of
 several units means the critic carries no information about policy quality.
 That was true of every `auto_0.005` model (4.9 to 45.7); it is no longer true
@@ -148,6 +215,92 @@ Target body rate 0.0412 rad/s puts the body-fixed Gate on a 0.33 m/s circle,
 so co-rotation needs a *sustained* 1.44 N at the Gate and 2.16 N at 12 m, plus
 about 1.31 N of Coriolis. Phase-I is therefore attitude-orbit coupled tracking,
 not translational rendezvous -- this is the physical motivation for the hybrid.
+
+## The gate_free reward, and the one thing it does not fix
+
+`gate_free` uses **one shaping form for the whole mission**: the bounded,
+discount-consistent potential that Phase-I always used, with its velocity term
+measured against `active_desired_velocity`, which now returns a corridor-aware
+guidance law whenever the terminal constraints are live instead of zero. The
+unbounded potential and its per-step state penalty are gone. Observation schema
+`phase2_mission_v4_phase_guidance_error_24d` records the change: the velocity
+channel is a tracking error against the *active* law in every phase, where v3
+degraded it into a raw speed once the constraints went live.
+
+This is a guidance reference, not a control law -- the chaser still has to find
+the thrust, including the sustained co-rotation. It is the same relationship
+Phase-I always had with `phase1_desired_velocity`.
+
+**What it does not fix is the horizon.** Potential shaping is policy-invariant
+by construction, so the choice between completing and hovering rests entirely on
+the discounted completion bonus, and at `gamma = 0.997` the effective horizon is
+333 steps against a 953-step mission -- 2.9 horizons, `gamma^953 = 0.057`, so the
++20 is worth **+1.14** at reset. Hovering therefore captures 73% of the scripted
+return risk-free (+3.03 against +4.13).
+
+Do not patch this pre-emptively. Pure SAC's measured failure is that it cannot
+hold co-rotation for more than ~35 s, so it cannot yet reach the hover policy at
+all; the +1.11 gap is the last increment, not the first obstacle. Run the
+baseline first. If a seed plateaus on `time_failure` with no violations and near
+200 s survival, it has reached hover and the horizon is then the binding factor
+-- raising `gamma` or `final_success_reward` becomes the next single factor.
+
+## Pure SAC on `gate_free` (three seeds, 260850-260852, 400k)
+
+Completion is 0/20 on every seed at every checkpoint, but the reason moved
+twice, and each move needed a different metric to see:
+
+| checkpoint | closest approach (260850) | worst corridor_axial | what ended it |
+|---|---|---|---|
+| 100k | 9.38 m | +4.63 | FOV 16/20, total speed 4/20 |
+| 250k | 3.44 m | +4.36 | **no violation 19/20**, ran to the 200 s cap |
+| 350k | 0.61 m | +1.74 | FOV 11/20, corridor 4/20 |
+| 400k | **0.07 m** | **+0.29** | corridor lateral 13/20 |
+
+**Do not judge this task by `constraint_success`.** It rewards not trying: the
+250k checkpoint scores 19/20 clean by hovering 3.44 m short. Closest approach
+is the metric that tracks progress, and by it 400k is the best checkpoint, not
+250k.
+
+At 400k the chaser reaches 0.07 m from the desired pose -- inside the 0.25 m
+completion tolerance -- and then keeps going. `corridor_axial` is the distance
+ahead of the port and the corridor radius is that distance times
+`tan(35 deg)`, so at the 0.29 m it reaches the cone is only 0.21 m wide and
+squeezes it out. It overshoots the desired pose by 1.2 m, straight at the port.
+Every other margin is grazed but barely negative (FOV -0.024, total speed
+-0.002, closing -0.001): a policy flying on every boundary at once.
+
+The critic is not the problem. Q rises monotonically to 2.0-2.3 on all three
+seeds, alpha stays pinned, no abort fires, and at 250k the calibration errors
+are -2.89 / +2.78 / +4.83 with entropy contributions of 3.96 / 1.94 / 2.96 --
+the good seed under-estimates a long-surviving policy, which is the benign
+direction and mostly the entropy bonus it has not yet learned to expect.
+
+## Pure SAC on `full_mission` (three seeds, 260830-260832)
+
+Training length is **150k**; the run collapses by 200k. Judged as the rules
+require, on calibration error rather than Gate rate:
+
+Measured under observation schema v3, before the guidance-law rebuild, so these
+numbers are a record of the two-phase baseline rather than a live comparison.
+
+| seed | Gate @150k | calibration @150k | Gate @200k | calibration @200k |
+|---|---|---|---|---|
+| 260830 | **20/20** | **0.002** | 1/20 | 6.636 |
+| 260831 | 18/20 | 2.165 | 1/20 | 9.524 |
+| 260832 | 0/20 | -- | 0/20 | -- |
+
+0.002 is the best calibration ever measured here. The collapse is behavioural,
+not critical: Q barely moves (+0.458 -> +0.580) while the true soft return falls
+(+0.456 -> -6.056). Same signature as the Phase-I late decay, arriving earlier.
+alpha stayed pinned at 0.005 throughout and no abort gate fired.
+
+**Completion is 0/20 on every seed at every checkpoint.** Pure SAC clears the
+Gate and then loses co-rotation: corridor survival is ~35 s against the 71 s the
+terminal leg needs, and of 61 Gate arrivals, 41 died on `total_speed`, 15 on
+FOV, 4 on the corridor and 1 on closing speed. **None died on the transition
+step**, so the Gate acceptance set is admissible and its tolerances need no
+change. The scripted controller holds the same leg with 0.66 N sustained.
 
 ## Traps
 
@@ -159,7 +312,9 @@ not translational rendezvous -- this is the physical motivation for the hybrid.
    manifest's own config instead (`diagnose_value_calibration.py` shows how).
 3. `train/train.py` writes `translational_observation_frame`,
    `translational_velocity_observation` and `mission_task_version` as string
-   literals. Fix those before ever changing the observation schema.
+   literals. Fix those before ever changing the observation schema. The v3 -> v4
+   bump left all three still accurate, but `tests/test_train_eval_config.py`
+   pins the schema name and is the tripwire that catches a silent change.
 4. `logs/phase2_mission_s1_semanticfix_validation/` predates the current reward
    implementation and cannot support any current claim. Its replacement is
    `logs/phase2_mission_s1v2_validation/`.

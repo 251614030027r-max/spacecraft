@@ -25,7 +25,17 @@ from typing import Any
 # was originally patched around.
 CRITIC_Q_ABORT = 10.0
 ENTROPY_COEFFICIENT_ABORT = 0.1
+# Zero-action survival differs per task: the two-phase modes only enforce the
+# terminal constraints after the Gate, gate_free enforces them from step one.
 ZERO_ACTION_SURVIVAL_S = 53.3
+GATE_FREE_ZERO_ACTION_SURVIVAL_S = 16.9
+SCRIPTED_COMPLETION_S = 95.3
+OUTCOME_RATES = (
+    "episode_completion",
+    "gate_acquisition",
+    "final_completion",
+    "constraint_success",
+)
 
 REPORTED_HYPERPARAMETERS = (
     "learning_rate",
@@ -77,6 +87,7 @@ def main() -> None:
     run = args.run
 
     manifest = _load(run / "manifest.json")
+    mode = manifest.get("phase2_mode") if manifest is not None else None
     if manifest is not None:
         hyper = manifest.get("hyperparameters", {})
         print(f"run     {manifest.get('run_name')}  seed {manifest.get('seed')}")
@@ -131,9 +142,31 @@ def main() -> None:
         print(
             "\nsurvival (training episode length, median per fifth, seconds)\n        "
             + "  ".join(f"{value * args.dt:.1f}" for value in medians)
-            + f"   | zero-action baseline {ZERO_ACTION_SURVIVAL_S}"
-            + "\n        (in phase1_pretrain a Gate success ends the episode, so"
-            + " short episodes at a high Gate rate are success, not failure)"
+            + "   | zero-action baseline "
+            + (
+                f"{GATE_FREE_ZERO_ACTION_SURVIVAL_S}"
+                if mode == "gate_free"
+                else f"{ZERO_ACTION_SURVIVAL_S}"
+            )
+            + "\n        "
+            + {
+                "phase1_pretrain": (
+                    "(in phase1_pretrain a Gate success ends the episode, so short"
+                    " episodes at a high Gate rate are success, not failure)"
+                ),
+                "gate_free": (
+                    "(in gate_free the task constraints are live from step one:"
+                    f" scripted completion runs ~{SCRIPTED_COMPLETION_S} s, a short"
+                    " episode is a death, and ~200 s means the cap was hit without"
+                    " completing -- read it with the failure mix below)"
+                ),
+            }.get(
+                mode,
+                "(in full_mission the Gate does not end the episode:"
+                f" scripted completion runs ~{SCRIPTED_COMPLETION_S} s, so a short"
+                " episode is a death, and ~200 s means the cap was hit without"
+                " completing)",
+            )
         )
         tail = lengths[-200:]
         print(
@@ -147,23 +180,35 @@ def main() -> None:
         for path in evaluations:
             payload = json.loads(path.read_text(encoding="utf-8"))
             rates = payload.get("rates", {})
+            outcome = {k: v for k, v in rates.items() if k in OUTCOME_RATES}
+            failures = {k: v for k, v in rates.items() if k not in OUTCOME_RATES}
             print(
                 f"{payload.get('training_step'):<9} "
-                + "  ".join(f"{key}={value}" for key, value in rates.items())
+                + "  ".join(f"{key}={value}" for key, value in outcome.items())
             )
+            if failures:
+                print(
+                    " " * 10
+                    + "  ".join(f"{key}={value}" for key, value in failures.items())
+                )
 
     calibrations = sorted(run.glob("value_calibration*.json"))
     if calibrations:
         print("\ncalibration (independent Monte-Carlo ground truth)")
         for path in calibrations:
             summary = json.loads(path.read_text(encoding="utf-8"))["summary"]
+            # The soft return carries alpha * entropy accumulated per step, so a
+            # long-surviving policy collects a large bonus that has nothing to do
+            # with task quality. Print it, and the hard return, so a calibration
+            # error can be attributed rather than just read off.
             print(
-                f"{path.stem:<38} "
+                f"{path.stem:<34} "
                 f"Q={summary['critic_q_min_s0']:+.3f} "
+                f"hard={summary['hard_discounted_return']:+.3f} "
                 f"soft={summary['soft_discounted_return']:+.3f} "
-                f"err={summary['calibration_error']:.3f} "
-                f"survival={summary['deterministic_survival_s']:.1f}s "
-                f"gate={summary['deterministic_gate_rate']:.2f}"
+                f"(entropy {summary['entropy_contribution']:+.3f}) "
+                f"err={summary['calibration_error']:+.3f} "
+                f"survival={summary['deterministic_survival_s']:.1f}s"
             )
 
 

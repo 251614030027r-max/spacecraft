@@ -183,6 +183,9 @@ def main() -> None:
                 "alpha": result["entropy_coefficient"],
                 "critic_Q_s0": round(s["critic_q_min_s0"], 3),
                 "soft_MC_return": round(s["soft_discounted_return"], 3),
+                # alpha * entropy accumulated per step, so it grows with survival
+                # and is not a statement about task quality.
+                "entropy_contribution": round(s["entropy_contribution"], 3),
                 "calibration_error": round(s["calibration_error"], 3),
                 "hard_MC_return": round(s["hard_discounted_return"], 3),
                 "survival_s": round(s["deterministic_survival_s"], 1),

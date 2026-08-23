@@ -5,10 +5,14 @@ a saturated target-frame PD reaches the Gate 20/20, which is what licenses the
 claim that the Phase-I task itself is clean. Phase-II never had the equivalent,
 and unlike Phase-I it has no guidance law at all -- ``Phase2MissionReward.
 active_desired_velocity`` returns a zero desired velocity once the terminal
-constraints are active, while the closing-speed constraint simultaneously
-requires the chaser to keep approaching. Nothing in the repository establishes
-that the terminal task is reachable, or that a controller can hold every
-Phase-II constraint from the Gate all the way to the completion set.
+constraints are active, so the observation's velocity channel degrades from a
+tracking error into a raw speed. (An earlier version of this note claimed the
+closing-speed constraint simultaneously requires the chaser to keep
+approaching. It does not: ``closing_speed_min_m_s`` is the floor of the *upper*
+limit, and nothing anywhere imposes a minimum approach speed.) Nothing in the
+repository establishes that the terminal task is reachable, or that a
+controller can hold every Phase-II constraint from the Gate all the way to the
+completion set.
 
 This module supplies that ground truth with a deliberately simple two-stage
 scripted controller flown in ``full_mission`` mode, so the Gate transition is
