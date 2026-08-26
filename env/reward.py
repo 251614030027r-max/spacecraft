@@ -9,7 +9,12 @@ from numpy.typing import ArrayLike
 
 from dynamics.relative import RelativeState
 from dynamics.lie import so3_log
-from env.task import Phase2TaskConfig, TaskMetrics, compute_task_metrics
+from env.task import (
+    Phase2TaskConfig,
+    TaskMetrics,
+    compute_task_metrics,
+    corridor_guidance_velocity,
+)
 
 
 @dataclass(frozen=True)
@@ -426,7 +431,7 @@ class Phase2MissionReward:
     def phase1_desired_velocity(
         self, relative: RelativeState, reference_position_m: ArrayLike
     ) -> np.ndarray:
-        """Smooth target-frame velocity field for Gate approach and braking."""
+        """Smooth target-frame velocity field for Waypoint approach and braking."""
 
         reference = np.asarray(reference_position_m, dtype=np.float64)
         error = relative.position - reference
@@ -442,35 +447,22 @@ class Phase2MissionReward:
     def terminal_desired_velocity(self, relative: RelativeState) -> np.ndarray:
         """Corridor-aware target-frame velocity reference for the constrained leg.
 
-        The axial component is held at a fraction of the range-dependent closing
-        speed limit, the lateral component regulates the offset from the approach
-        axis, and the norm is capped below the total speed limit. This is a
-        *guidance* reference, not a control law: the chaser still has to work out
-        the thrust, which at these ranges includes the sustained 0.5-2.2 N of
-        co-rotation the tumbling target frame demands.
+        Delewaypoints to ``env.task.corridor_guidance_velocity``, which is the one
+        definition: the reward's shaping potential, the observation's velocity
+        channel and the Pure MPC reference trajectory all have to mean the same
+        thing by it, and a second copy is how two of them drifted apart once.
+        The weights stay constructor arguments here so a manifest still records
+        the numbers this reward was built with.
         """
 
-        task = self.task
-        axis = task.approach_axis
-        error = relative.position - task.desired_position
-        axial_remaining = float(axis @ error)
-        lateral = error - axial_remaining * axis
-        # Proportional in the axial error and signed, so overshooting past the
-        # desired pose commands a retreat rather than a hold. Clamping the gain
-        # term at zero left the reference saying "stay" once the chaser was
-        # inside, and the corridor radius is the distance ahead of the port
-        # times tan(half-angle), so it pinches shut on anything that drifts in.
-        axial_speed = min(
-            self.terminal_closing_speed_fraction
-            * task.closing_speed_limit(axial_remaining),
-            self.terminal_axial_gain_per_s * axial_remaining,
+        return corridor_guidance_velocity(
+            relative.position,
+            self.task,
+            closing_speed_fraction=self.terminal_closing_speed_fraction,
+            axial_gain_per_s=self.terminal_axial_gain_per_s,
+            lateral_gain_per_s=self.terminal_lateral_gain_per_s,
+            total_speed_fraction=self.terminal_total_speed_fraction,
         )
-        desired = -axial_speed * axis - self.terminal_lateral_gain_per_s * lateral
-        cap = self.terminal_total_speed_fraction * task.total_speed_limit_m_s
-        speed = float(np.linalg.norm(desired))
-        if speed > cap:
-            desired = desired * (cap / speed)
-        return desired
 
     def active_desired_velocity(
         self,

@@ -20,18 +20,22 @@ def nonlinear_rollout_cost(
     u = np.asarray(controls, dtype=np.float64)
     sx = np.asarray(state_scales, dtype=np.float64)
     su = np.asarray(input_scales, dtype=np.float64)
-    reference = (
-        np.zeros_like(sx)
-        if reference_state is None
-        else np.asarray(reference_state, dtype=np.float64)
-    )
-    if reference.shape != sx.shape:
-        raise ValueError("reference state must match state scales")
+    # A single reference is broadcast to every stage (the fixed-setpoint case);
+    # a (len(states), 12) array is a per-stage reference trajectory, which the
+    # objective and this diagnostic have to share or the number is meaningless.
+    if reference_state is None:
+        reference = np.zeros((len(states), sx.size), dtype=np.float64)
+    else:
+        reference = np.asarray(reference_state, dtype=np.float64)
+        if reference.ndim == 1:
+            reference = np.tile(reference, (len(states), 1))
+    if reference.shape != (len(states), sx.size):
+        raise ValueError("reference must match state scales and rollout length")
     stage = sum(
-        state_weight * float(np.sum(np.square((x - reference) / sx)))
+        state_weight * float(np.sum(np.square((x - reference[index]) / sx)))
         + input_weight * float(np.sum(np.square(control / su)))
-        for x, control in zip(states[:-1], u)
+        for index, (x, control) in enumerate(zip(states[:-1], u))
     )
     return stage + terminal_weight * float(
-        np.sum(np.square((states[-1] - reference) / sx))
+        np.sum(np.square((states[-1] - reference[-1]) / sx))
     )

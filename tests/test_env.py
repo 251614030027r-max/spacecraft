@@ -248,11 +248,11 @@ def test_phase2_distance_failure_pays_remaining_horizon_terminal_cost() -> None:
     )
 
 
-def _reset_mission_at_gate(env: SE3RendezvousEnv, seed: int = 260813):
+def _reset_mission_at_waypoint(env: SE3RendezvousEnv, seed: int = 260813):
     env.reset(seed=seed)
     assert env.target_state is not None
-    gate = env.config.phase2_mission.gate_position
-    relative = RelativeState(make_transform(np.eye(3), gate), np.zeros(6))
+    waypoint = env.config.phase2_mission.waypoint_position
+    relative = RelativeState(make_transform(np.eye(3), waypoint), np.zeros(6))
     chaser = reconstruct_chaser_state(env.target_state, relative)
     return env.reset(
         seed=seed,
@@ -260,7 +260,7 @@ def _reset_mission_at_gate(env: SE3RendezvousEnv, seed: int = 260813):
     )
 
 
-def test_phase1_pretrain_gate_is_single_episode_success() -> None:
+def test_phase1_pretrain_waypoint_is_single_episode_success() -> None:
     env = SE3RendezvousEnv(
         replace(
             phase2_environment_config("phase1_pretrain"),
@@ -269,17 +269,17 @@ def test_phase1_pretrain_gate_is_single_episode_success() -> None:
         )
     )
     try:
-        observation, _ = _reset_mission_at_gate(env)
+        observation, _ = _reset_mission_at_waypoint(env)
         assert observation[-1] == 0.0
         _, _, terminated, truncated, info = env.step(np.zeros(6))
     finally:
         env.close()
     assert terminated and not truncated
-    assert info["gate_success"] and info["completed"]
-    assert info["reward_event"] == env.config.phase2_mission.gate_reward
+    assert info["waypoint_success"] and info["completed"]
+    assert info["reward_event"] == env.config.phase2_mission.waypoint_reward
 
 
-def test_s1v2_gate_does_not_require_attitude_or_angular_rate_regulation() -> None:
+def test_s1v2_waypoint_does_not_require_attitude_or_angular_rate_regulation() -> None:
     env = SE3RendezvousEnv(
         replace(
             phase2_environment_config("phase1_pretrain"),
@@ -293,7 +293,7 @@ def test_s1v2_gate_does_not_require_attitude_or_angular_rate_regulation() -> Non
         relative = RelativeState(
             make_transform(
                 so3_exp([0.0, np.deg2rad(35.0), 0.0]),
-                env.config.phase2_mission.gate_position,
+                env.config.phase2_mission.waypoint_position,
             ),
             np.array([0.10, 0.0, 0.0, 0.0, 0.0, 0.0]),
         )
@@ -305,15 +305,15 @@ def test_s1v2_gate_does_not_require_attitude_or_angular_rate_regulation() -> Non
         _, _, terminated, _, info = env.step(np.zeros(6))
     finally:
         env.close()
-    assert info["attitude_error_rad"] > env.config.phase2_mission.gate_attitude_tolerance_rad
+    assert info["attitude_error_rad"] > env.config.phase2_mission.waypoint_attitude_tolerance_rad
     assert info["angular_velocity_error_rad_s"] > (
-        env.config.phase2_mission.gate_angular_velocity_tolerance_rad_s
+        env.config.phase2_mission.waypoint_angular_velocity_tolerance_rad_s
     )
-    assert info["fov_angle_rad"] < env.config.phase2_mission.gate_fov_tolerance_rad
-    assert terminated and info["gate_success"]
+    assert info["fov_angle_rad"] < env.config.phase2_mission.waypoint_fov_tolerance_rad
+    assert terminated and info["waypoint_success"]
 
 
-def test_full_mission_gate_switches_once_and_changes_active_reference() -> None:
+def test_full_mission_waypoint_switches_once_and_changes_active_reference() -> None:
     env = SE3RendezvousEnv(
         replace(
             phase2_environment_config("full_mission"),
@@ -322,18 +322,18 @@ def test_full_mission_gate_switches_once_and_changes_active_reference() -> None:
         )
     )
     try:
-        _reset_mission_at_gate(env)
+        _reset_mission_at_waypoint(env)
         observation, _, terminated, truncated, first = env.step(np.zeros(6))
         _, _, _, _, second = env.step(np.zeros(6))
     finally:
         env.close()
     assert not terminated and not truncated
     assert observation[-1] == 1.0
-    assert first["gate_transition"] and first["mission_phase"] == 1
+    assert first["waypoint_transition"] and first["mission_phase"] == 1
     assert np.allclose(
         first["active_reference_position_m"], env.config.phase2_task.desired_position
     )
-    assert not second["gate_transition"]
+    assert not second["waypoint_transition"]
     assert second["reward_event"] == 0.0
 
 
@@ -346,7 +346,7 @@ def test_full_mission_terminal_truth_violation_terminates() -> None:
         )
     )
     try:
-        _reset_mission_at_gate(env)
+        _reset_mission_at_waypoint(env)
         env.step(np.zeros(6))
         assert env.target_state is not None
         bad = RelativeState(
@@ -383,7 +383,7 @@ def test_phase1_coarse_speed_is_soft_and_only_catastrophic_speed_terminates() ->
         )
         env.chaser_state = reconstruct_chaser_state(env.target_state, soft_state)
         env.relative = soft_state
-        env._reward.reset(env.relative, mission.gate_position)
+        env._reward.reset(env.relative, mission.waypoint_position)
         _, _, terminated, _, soft_info = env.step(np.zeros(6))
         assert not terminated
         assert not soft_info["phase1_speed_failure"]
@@ -397,7 +397,7 @@ def test_phase1_coarse_speed_is_soft_and_only_catastrophic_speed_terminates() ->
             env.target_state, catastrophic_state
         )
         env.relative = catastrophic_state
-        env._reward.reset(env.relative, mission.gate_position)
+        env._reward.reset(env.relative, mission.waypoint_position)
         _, _, terminated, _, catastrophic_info = env.step(np.zeros(6))
     finally:
         env.close()
@@ -459,12 +459,12 @@ def test_adaptive_phase1_curriculum_promotes_and_demotes_persistent_frontier() -
     assert promoted["phase1_curriculum_difficulty"] == 0.1
 
 
-def test_gate_free_starts_in_the_terminal_phase_with_live_constraints() -> None:
-    """The single-phase task has no Gate: phase 1 and its constraints from step one."""
+def test_single_phase_starts_in_the_terminal_phase_with_live_constraints() -> None:
+    """The single-phase task has no Waypoint: phase 1 and its constraints from step one."""
 
     env = SE3RendezvousEnv(
         replace(
-            phase2_environment_config("gate_free"),
+            phase2_environment_config("single_phase"),
             cache_target_trajectory=False,
             max_time_s=1.0,
         )
@@ -480,17 +480,17 @@ def test_gate_free_starts_in_the_terminal_phase_with_live_constraints() -> None:
         reset_info["active_reference_position_m"],
         env.config.phase2_task.desired_position,
     )
-    # The Gate, its bonus and the phase-0 guards all key off phase 0, so none of
+    # The Waypoint, its bonus and the phase-0 guards all key off phase 0, so none of
     # them can fire; the terminal constraint check is live instead.
-    assert not info["gate_transition"]
-    assert not info["gate_reached"]
+    assert not info["waypoint_transition"]
+    assert not info["waypoint_reached"]
     assert info["reward_event"] == 0.0
     assert not info["premature_entry_failure"]
     assert not info["phase1_speed_failure"]
     assert info["constraint_feasible"]
 
 
-def test_gate_free_leaves_the_two_phase_modes_untouched() -> None:
+def test_single_phase_leaves_the_two_phase_modes_untouched() -> None:
     for mode in ("phase1_pretrain", "full_mission"):
         env = SE3RendezvousEnv(
             replace(

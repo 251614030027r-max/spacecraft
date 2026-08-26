@@ -7,7 +7,7 @@ import json
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from statistics import mean, median, pstdev
+from statistics import mean
 from time import perf_counter
 from typing import Any
 
@@ -26,9 +26,19 @@ from dynamics.gravity import GravityOptions
 from dynamics.integrator import RK45Settings
 from dynamics.types import GeneralizedForce
 from env.action import wrench_to_normalized
-from env.phase2_env import terminal_phase_environment_config
+from env.phase2_env import (
+    phase2_environment_config,
+    terminal_phase_environment_config,
+)
 from env.se3_rendezvous_env import SE3RendezvousConfig, SE3RendezvousEnv
 from env.scenarios import chaser_parameters, target_parameters
+from eval.metrics import main_table_metrics, summarize
+from train.configs import PURE_SAC
+
+
+# One discount for every reported return, shared with the learned rows and the
+# scripted validators, so the main table is on a single scale.
+GAMMA = PURE_SAC.gamma
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,19 +52,36 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--terminal-weight", type=float)
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--max-time", type=float)
+    parser.add_argument(
+        "--task",
+        choices=("terminal", "single_phase"),
+        default="terminal",
+        help=(
+            "terminal is the 2-10 m terminal-only shell the fixed-setpoint "
+            "evidence was measured on; single_phase is the benchmark the SAC "
+            "and scripted rows use (10-14 m, constrained from step one), which "
+            "is the task the three-way table compares on"
+        ),
+    )
+    parser.add_argument(
+        "--reference-source",
+        choices=("fixed", "corridor_guidance"),
+        default=None,
+        help=(
+            "fixed holds the reference at the desired pose; corridor_guidance "
+            "tracks the shared guidance path. Left unset it defaults per task: "
+            "corridor_guidance for single_phase (the fair benchmark reference) "
+            "and fixed for terminal (the terminal-only record). Pass it only to "
+            "override that default."
+        ),
+    )
     return parser.parse_args()
 
 
-def _summary(values: list[float]) -> dict[str, float]:
-    ordered = sorted(values)
-    return {
-        "mean": mean(values),
-        "median": median(values),
-        "std": pstdev(values),
-        "p95": ordered[min(len(ordered) - 1, int(np.ceil(0.95 * len(ordered))) - 1)],
-        "min": ordered[0],
-        "max": ordered[-1],
-    }
+def _summary(values: list[float]) -> dict[str, float] | None:
+    """One summary shape across every path that fills a main-table row."""
+
+    return summarize(values)
 
 
 def evaluate(
@@ -86,6 +113,10 @@ def evaluate(
     records: list[dict[str, Any]] = []
     all_solve_times: list[float] = []
     all_command_times: list[float] = []
+    # The controller half is `command_time_s`, which this path has always timed
+    # alone; the environment half is recorded beside it so the compute column
+    # can be read in the same convention as the learned rows.
+    all_environment_times: list[float] = []
     total_fallbacks = 0
     predicted_safe_truth_violation_count = 0
     compared_constraint_steps = 0
@@ -99,6 +130,9 @@ def evaluate(
             saturation_counts = np.zeros(6, dtype=np.int64)
             episode_solve_times: list[float] = []
             episode_command_times: list[float] = []
+            episode_environment_times: list[float] = []
+            discounted_return = 0.0
+            discount = 1.0
             episode_fallbacks = 0
             min_position_error_m = float(info["position_error_m"])
             minimum_margins = {
@@ -144,7 +178,11 @@ def evaluate(
                             "solver_status": diagnostics.status,
                         }
                     )
-                _, _, terminated, truncated, info = env.step(action)
+                environment_started = perf_counter()
+                _, reward, terminated, truncated, info = env.step(action)
+                episode_environment_times.append(perf_counter() - environment_started)
+                discounted_return += discount * float(reward)
+                discount *= GAMMA
                 min_position_error_m = min(
                     min_position_error_m, float(info["position_error_m"])
                 )
@@ -171,6 +209,7 @@ def evaluate(
                     compared_constraint_steps += 1
             all_solve_times.extend(episode_solve_times)
             all_command_times.extend(episode_command_times)
+            all_environment_times.extend(episode_environment_times)
             total_fallbacks += episode_fallbacks
             records.append(
                 {
@@ -184,6 +223,11 @@ def evaluate(
                     "time_failure": bool(info["time_failure"]),
                     "steps": env.step_count,
                     "time_seconds": env.time_seconds,
+                    # `survival_s` and `discounted_return` under the names the
+                    # shared metric path reads; for a completed episode the
+                    # first is the completion time.
+                    "survival_s": float(env.time_seconds),
+                    "discounted_return": discounted_return,
                     "first_violation": first_violation,
                     "minimum_margins": minimum_margins,
                     "minimum_position_error_m": min_position_error_m,
@@ -199,6 +243,11 @@ def evaluate(
                     "qp_fallback_count": episode_fallbacks,
                     "solve_time_s": _summary(episode_solve_times),
                     "command_time_s": _summary(episode_command_times),
+                    # `controller_time_s` is `command_time_s` under the shared
+                    # name; the QP alone is `solve_time_s`, and the gap between
+                    # them is this implementation's finite-difference overhead.
+                    "controller_time_s": _summary(episode_command_times),
+                    "environment_step_time_s": _summary(episode_environment_times),
                     **(
                         {
                             "constraint_success": bool(info["constraint_success"]),
@@ -256,13 +305,20 @@ def evaluate(
             ),
         }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "evaluated_at_utc": datetime.now(timezone.utc).isoformat(),
         "algorithm": "mpc_only",
         "episodes": episodes,
         "base_seed": seed,
         "environment": asdict(env_config),
         "mpc_config": asdict(config),
+        "gamma": GAMMA,
+        "main_table": main_table_metrics(
+            records,
+            controller_times_s=all_command_times,
+            environment_step_times_s=all_environment_times,
+            control_period_s=env_config.dt_s,
+        ),
         "rates": rates,
         "qp": {
             "fallback_count": total_fallbacks,
@@ -280,10 +336,25 @@ def evaluate(
     }
 
 
+def resolve_reference_source(task: str, explicit: str | None) -> str:
+    """Pick the fair reference for a task unless the user overrode it.
+
+    A fixed setpoint is a myopic regulator on the 95 s single_phase task, so
+    that task defaults to the shared corridor-guidance path; the terminal shell
+    keeps the fixed setpoint its historical evidence was measured on. An
+    explicit choice always wins.
+    """
+
+    if explicit is not None:
+        return explicit
+    return "corridor_guidance" if task == "single_phase" else "fixed"
+
+
 def main() -> None:
     args = parse_args()
     if args.output.exists():
         raise FileExistsError(args.output)
+    reference_source = resolve_reference_source(args.task, args.reference_source)
     base_config = constrained_mpc_nominal_config()
     config = replace(
         base_config,
@@ -305,8 +376,13 @@ def main() -> None:
             if args.terminal_weight is not None
             else 100.0
         ),
+        reference_source=reference_source,
     )
-    environment_config = terminal_phase_environment_config()
+    environment_config = (
+        phase2_environment_config("single_phase")
+        if args.task == "single_phase"
+        else terminal_phase_environment_config()
+    )
     if args.max_time is not None:
         environment_config = replace(environment_config, max_time_s=args.max_time)
     result = evaluate(

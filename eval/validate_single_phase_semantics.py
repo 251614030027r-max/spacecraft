@@ -1,8 +1,8 @@
-"""Reachability and constraint validation for the single-phase (gate-free) task.
+"""Reachability and constraint validation for the single-phase (single-phase) task.
 
-The two-phase mission postpones the terminal constraints until the Gate at 8 m,
+The two-phase mission postpones the terminal constraints until the Waypoint at 8 m,
 where an inertially frozen chaser already moves at 0.330 m/s in the tumbling
-target frame against a 0.35 m/s limit. Removing the Gate makes those
+target frame against a 0.35 m/s limit. Removing the Waypoint makes those
 constraints live from the first step, at 10-14 m, where the same quantity is
 0.41-0.58 m/s -- above the limit. Station-keeping is therefore inadmissible for
 most of the task and the chaser must co-rotate continuously, which is what makes
@@ -12,7 +12,7 @@ Nothing established that the task is reachable under those conditions, so this
 module supplies the ground truth, exactly as ``validate_phase2_semantics`` does
 for the two-phase mission. It flies the corridor-aware control law that module
 uses for its terminal leg -- one law for the whole mission, no phase switch, no
-Gate waypoint -- so a failure here means the task is infeasible rather than
+Waypoint waypoint -- so a failure here means the task is infeasible rather than
 that the reference controller was rebuilt to pass.
 
 That law and the reward's `terminal_desired_velocity` agree pointwise while
@@ -33,11 +33,14 @@ import argparse
 import json
 from pathlib import Path
 from statistics import mean, median
+from time import perf_counter
 from typing import Any
 
 import numpy as np
 
+from dynamics.constants import CONTROL_DT_S
 from env.phase2_env import make_phase2_env
+from eval.metrics import main_table_metrics, summarize
 from eval.validate_phase2_semantics import (
     PHASE2_VELOCITY_GAIN_PER_S,
     _body_action,
@@ -78,7 +81,7 @@ POLICIES = {"scripted": scripted_action, "zero": zero_action}
 
 
 def rollout(seed: int, policy: str, max_steps: int = 2001) -> dict[str, Any]:
-    env = make_phase2_env("gate_free")
+    env = make_phase2_env("single_phase")
     action_fn = POLICIES[policy]
     try:
         _, info = env.reset(seed=seed)
@@ -88,22 +91,37 @@ def rollout(seed: int, policy: str, max_steps: int = 2001) -> dict[str, Any]:
         saturation_sum = 0.0
         forces: list[float] = []
         torques: list[float] = []
+        controller_times: list[float] = []
+        environment_times: list[float] = []
+        force_impulse = 0.0
+        torque_impulse = 0.0
         worst = {key: np.inf for key in MARGIN_KEYS}
         first_violation: dict[str, Any] | None = None
         best_completion_streak = 0
         minimum_position_error_m = np.inf
         maximum_total_speed_m_s = 0.0
         step = 0
+        dt_s = env.config.dt_s
         for step in range(1, max_steps):
+            # The scripted law is a main-table row like any other, so its
+            # controller and the RK45 truth propagation are timed apart.
+            started = perf_counter()
             action = action_fn(env)
+            commanded = perf_counter()
+            controller_times.append(commanded - started)
             saturation_sum += float(np.mean(np.abs(action) >= 1.0 - 1.0e-12))
-            forces.append(
-                float(np.linalg.norm(action[3:]) * env.config.max_force_per_axis_n)
+            force_n = float(
+                np.linalg.norm(action[3:]) * env.config.max_force_per_axis_n
             )
-            torques.append(
-                float(np.linalg.norm(action[:3]) * env.config.max_torque_per_axis_nm)
+            torque_nm = float(
+                np.linalg.norm(action[:3]) * env.config.max_torque_per_axis_nm
             )
+            forces.append(force_n)
+            torques.append(torque_nm)
+            force_impulse += force_n * dt_s
+            torque_impulse += torque_nm * dt_s
             _, reward, terminated, truncated, info = env.step(action)
+            environment_times.append(perf_counter() - commanded)
             discounted_return += discount * float(reward)
             discount *= GAMMA
             for key in MARGIN_KEYS:
@@ -130,6 +148,19 @@ def rollout(seed: int, policy: str, max_steps: int = 2001) -> dict[str, Any]:
             "seed": seed,
             "policy": policy,
             "steps": step,
+            # `completed`, `minimum_margins`, the two impulses and the two
+            # timings are the names `eval.metrics.main_table_metrics` reads.
+            "completed": bool(info.get("final_completed", False)),
+            "minimum_margins": {key: float(value) for key, value in worst.items()},
+            "force_impulse_n_s": force_impulse,
+            "torque_impulse_nm_s": torque_impulse,
+            "controller_time_s": summarize(controller_times),
+            "environment_step_time_s": summarize(environment_times),
+            # Raw per-step samples, popped in main() before the record is
+            # written: the pooled distribution is what the table needs, the
+            # thousand floats per episode are not.
+            "_controller_times_s": controller_times,
+            "_environment_times_s": environment_times,
             "initial_distance_m": initial_distance,
             "survival_s": step * env.config.dt_s,
             "discounted_return": discounted_return,
@@ -204,7 +235,7 @@ def _summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Scripted validation of the single-phase gate-free task"
+        description="Scripted validation of the single-phase single-phase task"
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=262000)
@@ -226,12 +257,28 @@ def main() -> None:
         for index in range(args.preference_episodes)
     ]
     reachability = _summarize(scripted)
+    # The scripted controller is the reference row of the main table, so it is
+    # assembled here in the same shared conventions as the learned and MPC rows.
+    scripted_main_table = main_table_metrics(
+        scripted,
+        controller_times_s=[
+            value for item in scripted for value in item["_controller_times_s"]
+        ],
+        environment_step_times_s=[
+            value for item in scripted for value in item["_environment_times_s"]
+        ],
+        control_period_s=CONTROL_DT_S,
+    )
+    for item in (*scripted, *passive):
+        item.pop("_controller_times_s", None)
+        item.pop("_environment_times_s", None)
     result = {
-        "schema_version": 1,
-        "probe": "gate_free_scripted_reachability",
+        "schema_version": 2,
+        "probe": "single_phase_scripted_reachability",
         "gamma": GAMMA,
         "seed": args.seed,
         "reachability": reachability,
+        "main_table": scripted_main_table,
         "passive": _summarize(passive),
         "reward_preference": {
             "episodes": args.preference_episodes,
@@ -262,6 +309,7 @@ def main() -> None:
             {
                 "reachability": reachability,
                 "acceptance": result["acceptance"],
+                "main_table": scripted_main_table,
                 "minimum_reward_preference_margin": result["reward_preference"][
                     "minimum_margin"
                 ],

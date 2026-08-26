@@ -313,9 +313,9 @@ def sample_phase2_mission_chaser_state(
     speed_limit = lerp(easy_speed_limit_m_s, mission.initial_speed_limit_m_s)
     full_speed = mission.initial_speed_limit_m_s * rng.random() ** (1.0 / 3.0)
     full_position_rate = full_speed * velocity_direction
-    gate_error = position - mission.gate_position
-    gate_direction = -gate_error / np.linalg.norm(gate_error)
-    easy_position_rate = easy_speed_limit_m_s * gate_direction
+    waypoint_error = position - mission.waypoint_position
+    waypoint_direction = -waypoint_error / np.linalg.norm(waypoint_error)
+    easy_position_rate = easy_speed_limit_m_s * waypoint_direction
     position_rate = (
         (1.0 - difficulty) * easy_position_rate
         + difficulty * full_position_rate

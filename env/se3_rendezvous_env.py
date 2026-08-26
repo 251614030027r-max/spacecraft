@@ -272,7 +272,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._phase1_curriculum_window_count = 0
         self._phase1_curriculum_window_successes = 0
         self._mission_phase = 0
-        self._gate_reached = False
+        self._waypoint_reached = False
         self._constraint_success = True
         self._constraint_violation_steps = {
             name: 0 for name in ("corridor", "fov", "total_speed", "closing_speed")
@@ -361,7 +361,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         if c.phase2_training_mode not in {
             "phase1_pretrain",
             "full_mission",
-            "gate_free",
+            "single_phase",
         }:
             raise ValueError("unsupported Phase-2 training mode")
         if c.phase2_target_tumble_scale < 0.0:
@@ -478,7 +478,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         return float(self.np_random.uniform(lower, ceiling)), False
 
     def set_curriculum_ceiling(self, ceiling: float | None) -> None:
-        """Override the open-loop ceiling for mastery-gated training."""
+        """Override the open-loop ceiling for mastery-waypointd training."""
 
         if not self.config.curriculum_enabled:
             raise RuntimeError("curriculum ceiling requires an enabled curriculum")
@@ -542,7 +542,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
 
     def _active_reference_position(self) -> np.ndarray:
         return (
-            self.config.phase2_mission.gate_position
+            self.config.phase2_mission.waypoint_position
             if self._mission_phase == 0
             else self.config.phase2_task.desired_position
         )
@@ -624,14 +624,14 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._resolve_episode_envelope()
         self._select_phase2_stage()
         if self.config.phase2_mission_enabled:
-            # gate_free starts already in the terminal phase, so the task
-            # constraints are live from the first step and the Gate, its bonus
+            # single_phase starts already in the terminal phase, so the task
+            # constraints are live from the first step and the Waypoint, its bonus
             # and the premature-entry guard -- all of which key off phase 0 --
             # never apply.
-            gate_free = self.config.phase2_training_mode == "gate_free"
-            self._mission_phase = 1 if gate_free else 0
-            self._gate_reached = False
-            self._phase2_stage = "phase2" if gate_free else "phase1"
+            single_phase = self.config.phase2_training_mode == "single_phase"
+            self._mission_phase = 1 if single_phase else 0
+            self._waypoint_reached = False
+            self._phase2_stage = "phase2" if single_phase else "phase1"
             self._episode_tumble_scale = self.config.phase2_target_tumble_scale
             if self.config.phase1_curriculum_enabled:
                 if self.config.phase1_curriculum_adaptive:
@@ -826,8 +826,8 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 constraint_success=True,
                 completed=False,
                 final_completed=False,
-                gate_success=False,
-                gate_transition=False,
+                waypoint_success=False,
+                waypoint_transition=False,
                 terminal_constraint_failure=False,
                 phase1_speed_failure=False,
                 premature_entry_failure=False,
@@ -876,13 +876,13 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             "episode_target_tumble_scale": self._episode_tumble_scale,
             "phase2_stage": self._phase2_stage,
             "mission_phase": self._mission_phase,
-            "gate_reached": self._gate_reached,
+            "waypoint_reached": self._waypoint_reached,
             "target_nfev": target_nfev,
             "chaser_nfev": chaser_nfev,
         }
         if mission_metrics is not None:
             info.update(
-                gate_position_error_m=mission_metrics.gate_position_error_m,
+                waypoint_position_error_m=mission_metrics.waypoint_position_error_m,
                 target_center_distance_m=mission_metrics.target_center_distance_m,
                 phase1_speed_limit_m_s=(
                     self.config.phase2_mission.phase1_speed_limit_m_s
@@ -1053,21 +1053,21 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             assert isinstance(self._reward, Phase2MissionReward)
             mission = self.config.phase2_mission
             mission_metrics = compute_mission_metrics(self.relative, mission)
-            gate_transition = bool(
+            waypoint_transition = bool(
                 self._mission_phase == 0
-                and mission.gate_satisfied(
+                and mission.waypoint_satisfied(
                     mission_metrics,
                     fov_angle_rad=task_metrics.fov_angle_rad,
                 )
             )
             phase1_pretrain_success = bool(
-                gate_transition
+                waypoint_transition
                 and self.config.phase2_training_mode == "phase1_pretrain"
             )
             terminal_active = bool(
                 self._mission_phase == 1
                 or (
-                    gate_transition
+                    waypoint_transition
                     and self.config.phase2_training_mode == "full_mission"
                 )
             )
@@ -1081,7 +1081,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             )
             premature_entry_failure = bool(
                 self._mission_phase == 0
-                and not gate_transition
+                and not waypoint_transition
                 and mission_metrics.target_center_distance_m
                 < mission.premature_entry_distance_m
             )
@@ -1123,9 +1123,9 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 )
             )
             event_reward = 0.0
-            if gate_transition:
-                event_reward += mission.gate_reward
-                self._gate_reached = True
+            if waypoint_transition:
+                event_reward += mission.waypoint_reward
+                self._waypoint_reached = True
             if final_completed:
                 event_reward += mission.final_success_reward
             if terminal_constraint_failure:
@@ -1140,7 +1140,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 terminal_constraints_active=(self._mission_phase == 1),
                 event_reward=event_reward,
             )
-            if gate_transition and not phase1_pretrain_success:
+            if waypoint_transition and not phase1_pretrain_success:
                 self._mission_phase = 1
                 self._phase2_stage = "phase2"
                 self._completion_streak = 0
@@ -1171,8 +1171,8 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             info.update(
                 completed=completed,
                 final_completed=final_completed,
-                gate_success=phase1_pretrain_success,
-                gate_transition=gate_transition,
+                waypoint_success=phase1_pretrain_success,
+                waypoint_transition=waypoint_transition,
                 constraint_feasible=(
                     task_metrics.constraints_satisfied if terminal_active else True
                 ),

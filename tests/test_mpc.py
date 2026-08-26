@@ -1,6 +1,7 @@
 import numpy as np
+import pytest
 
-from controllers.mpc import LocalRelativePredictionModel, MPCConfig, MPCController, RelativePredictionModel, constrained_mpc_nominal_config
+from controllers.mpc import LocalRelativePredictionModel, MPCConfig, MPCController, RelativePredictionModel, constrained_mpc_nominal_config, corridor_tracking_mpc_config
 from controllers.mpc.constraints import linearize_constraint_margins, normalized_constraint_margins
 from controllers.mpc.linearization import central_difference_linearization
 from controllers.mpc.prediction import relative_to_vector
@@ -141,8 +142,6 @@ def test_phase2_constraint_margins_and_linearization_are_consistent() -> None:
         state,
         config.task,
         corridor_facets=config.corridor_facets,
-        state_scales=config.state_scales,
-        relative_step=config.difference_relative_step,
     )
     assert np.min(margins) >= 0.0
     assert np.allclose(jacobian @ state - offset, margins)
@@ -188,3 +187,254 @@ def test_phase2_constrained_mpc_targets_desired_pose_without_fallback() -> None:
     assert not diagnostics.used_zero_fallback
     assert diagnostics.maximum_slack <= mpc_config.constraint_slack_limit
     assert np.isfinite(diagnostics.predicted_minimum_margin)
+
+
+def _random_relative_states(count: int, seed: int) -> list[np.ndarray]:
+    """States spanning the corridor geometry, not only the nominal envelope."""
+
+    rng = np.random.default_rng(seed)
+    return [
+        np.concatenate(
+            (
+                rng.normal(scale=0.5, size=3),
+                rng.normal(scale=4.0, size=3),
+                rng.normal(scale=0.02, size=3),
+                rng.normal(scale=0.2, size=3),
+            )
+        )
+        for _ in range(count)
+    ]
+
+
+def test_margin_functions_agree_with_the_task_module() -> None:
+    """The lean margins must be the task's margins, not a second definition.
+
+    ``constraints`` stopped routing through ``compute_task_metrics`` because a
+    margin needs three of its twenty fields and was paying for an ``se3_log``,
+    an ``so3_log`` and an SVD it never reads. The values have to be unchanged,
+    so compare them against the task module itself rather than a reimplementation.
+    """
+
+    from controllers.mpc.constraints import normalized_truth_margins
+    from dynamics.lie import se3_exp
+    from dynamics.relative import RelativeState
+    from env.task import Phase2TaskConfig, compute_task_metrics
+
+    task = Phase2TaskConfig()
+    for state in _random_relative_states(64, seed=7):
+        metrics = compute_task_metrics(
+            RelativeState(se3_exp(state[:6]), state[6:]), task
+        )
+        expected = np.array(
+            [
+                min(
+                    metrics.corridor_axial_margin_m,
+                    metrics.corridor_lateral_margin_m,
+                )
+                / 3.0,
+                metrics.fov_margin_rad / task.fov_half_angle_rad,
+                metrics.total_speed_margin_m_s / task.total_speed_limit_m_s,
+                metrics.closing_speed_margin_m_s / task.closing_speed_max_m_s,
+            ]
+        )
+        assert np.array_equal(normalized_truth_margins(state, task), expected)
+
+        facets = normalized_constraint_margins(state, task, corridor_facets=8)
+        assert facets[9] == expected[1]
+        assert facets[10] == expected[2]
+        assert facets[11] == expected[3]
+
+
+def test_constraint_jacobian_is_analytic_and_matches_central_differences() -> None:
+    """The Jacobian is closed-form; central differences are the ground truth.
+
+    Finite differencing the margins was 74% of a control step, so the Jacobian
+    is derived instead. A derivative error here would silently mis-steer the
+    QP's constraints, which is exactly the failure a numerical check catches.
+    """
+
+    from controllers.mpc.constraints import _pose
+    from env.task import Phase2TaskConfig
+
+    task = Phase2TaskConfig()
+    facets = 8
+    step = 1.0e-6
+
+    def central(state: np.ndarray) -> np.ndarray:
+        columns = []
+        for index in range(12):
+            direction = np.zeros(12)
+            direction[index] = step
+            columns.append(
+                (
+                    normalized_constraint_margins(
+                        state + direction, task, corridor_facets=facets
+                    )
+                    - normalized_constraint_margins(
+                        state - direction, task, corridor_facets=facets
+                    )
+                )
+                / (2.0 * step)
+            )
+        return np.stack(columns, axis=1)
+
+    checked = 0
+    for state in _random_relative_states(48, seed=11):
+        # The closing-speed envelope has a kink where it meets its floor and its
+        # ceiling; neither one-sided derivative is "the" derivative there, so a
+        # central difference is not a fair reference within a step of it.
+        remaining = float(
+            task.approach_axis @ (_pose(state)[1] - task.desired_position)
+        )
+        envelope = (
+            task.closing_speed_min_m_s
+            + task.closing_speed_slope_per_s * remaining
+        )
+        if abs(remaining) < 1.0e-3 or abs(envelope - task.closing_speed_max_m_s) < 1.0e-3:
+            continue
+        jacobian, offset = linearize_constraint_margins(
+            state, task, corridor_facets=facets
+        )
+        assert np.max(np.abs(jacobian - central(state))) < 1.0e-7
+        # No margin is a function of the relative angular velocity.
+        assert np.array_equal(jacobian[:, 6:9], np.zeros((facets + 4, 3)))
+        # The affine form the QP consumes has to reproduce the margins exactly.
+        assert np.allclose(
+            jacobian @ state - offset,
+            normalized_constraint_margins(state, task, corridor_facets=facets),
+            atol=1.0e-12,
+        )
+        checked += 1
+    assert checked >= 40
+
+
+def test_fixed_reference_is_the_construction_time_broadcast() -> None:
+    """The default reference must stay the fixed setpoint, bitwise.
+
+    Making the reference a per-stage parameter is what let the corridor path in;
+    the terminal-only MPC evidence was measured before it existed, so the
+    "fixed" default has to remain exactly ``reference_state`` at every stage.
+    """
+
+
+    config = constrained_mpc_nominal_config(horizon_steps=6)
+    controller = MPCController(
+        config,
+        LocalRelativePredictionModel(chaser_parameters()),
+        _reference(SE3RendezvousConfig(curriculum_enabled=False, max_time_s=1.0)),
+    )
+    rng = np.random.default_rng(5)
+    state = np.concatenate(
+        (rng.normal(scale=0.4, size=3), rng.normal(scale=4.0, size=3), np.zeros(6))
+    )
+    trajectory = controller._reference_trajectory(state)
+    expected = np.tile(config.reference_state.reshape(12, 1), (1, config.horizon_steps + 1))
+    assert np.array_equal(trajectory, expected)
+
+
+def test_corridor_guidance_reference_tracks_the_shared_law() -> None:
+    """The guidance reference must be the one law, not a fourth copy of it.
+
+    Its velocity column has to equal ``env.task.corridor_guidance_velocity`` at
+    the current position -- the same law the reward, the observation and the
+    scripted controller use -- with an identity attitude reference, and the path
+    has to advance toward the desired pose rather than sit still.
+    """
+
+    from dynamics.lie import se3_exp
+    from env.task import corridor_guidance_velocity
+
+    config = corridor_tracking_mpc_config(horizon_steps=8)
+    controller = MPCController(
+        config,
+        LocalRelativePredictionModel(chaser_parameters()),
+        _reference(SE3RendezvousConfig(curriculum_enabled=False, max_time_s=1.0)),
+    )
+    rng = np.random.default_rng(9)
+    state = np.concatenate(
+        (
+            rng.normal(scale=0.3, size=3),
+            rng.normal(scale=3.0, size=3),
+            rng.normal(scale=0.02, size=3),
+            rng.normal(scale=0.2, size=3),
+        )
+    )
+    trajectory = controller._reference_trajectory(state)
+    assert trajectory.shape == (12, config.horizon_steps + 1)
+
+    position = se3_exp(state[:6])[:3, 3]
+    assert np.allclose(trajectory[3:6, 0], position)
+    assert np.allclose(
+        trajectory[9:12, 0], corridor_guidance_velocity(position, config.task)
+    )
+    # Attitude reference is identity: exponential rotation and angular-rate
+    # reference are zero at every stage.
+    assert np.array_equal(trajectory[:3, :], np.zeros((3, config.horizon_steps + 1)))
+    assert np.array_equal(trajectory[6:9, :], np.zeros((3, config.horizon_steps + 1)))
+    # Each stage is the previous one advanced by its guidance velocity.
+    for index in range(config.horizon_steps):
+        step = trajectory[3:6, index] + trajectory[9:12, index] * config.dt_s
+        assert np.allclose(trajectory[3:6, index + 1], step)
+
+
+def test_corridor_guidance_reference_requires_a_task() -> None:
+    from controllers.mpc import MPCConfig
+
+    with pytest.raises(ValueError):
+        MPCConfig(reference_source="corridor_guidance")
+
+
+def test_mpc_evaluate_runs_on_the_single_phase_benchmark() -> None:
+    """Pure MPC must fill a main-table row on the same task the other rows use.
+
+    The three-way comparison is measured on the single-phase benchmark, so the
+    MPC path has to run against that environment (10-14 m, constrained from step
+    one) and emit the shared main_table block, not only the terminal shell it was
+    first measured on.
+    """
+
+    from dataclasses import replace
+
+    from controllers.mpc import corridor_tracking_mpc_config
+    from env.phase2_env import phase2_environment_config
+    from experiments.evaluate_mpc import evaluate
+
+    env_config = replace(
+        phase2_environment_config("single_phase"), max_time_s=1.0
+    )
+    result = evaluate(
+        corridor_tracking_mpc_config(horizon_steps=8),
+        episodes=1,
+        seed=262000,
+        environment_config=env_config,
+    )
+    assert result["mpc_config"]["reference_source"] == "corridor_guidance"
+    table = result["main_table"]
+    assert table["episodes"] == 1
+    assert set(table["worst_constraint_margin"]) == {
+        "corridor_axial_margin_m",
+        "corridor_lateral_margin_m",
+        "fov_margin_rad",
+        "total_speed_margin_m_s",
+        "closing_speed_margin_m_s",
+    }
+    assert table["per_step_compute_s"]["control_period_s"] == pytest.approx(0.1)
+
+
+def test_single_phase_defaults_to_the_fair_corridor_reference() -> None:
+    """The benchmark row must not be measured with a myopic fixed setpoint.
+
+    A fixed reference on the 95 s single_phase task is a myopic regulator, so
+    the task defaults to the shared corridor-guidance path; the terminal shell
+    keeps the fixed setpoint its historical evidence was measured on. An
+    explicit choice overrides either default. This resolver is what stops the
+    Pure MPC row from being assembled under the wrong reference by an omitted
+    flag.
+    """
+
+    from experiments.evaluate_mpc import resolve_reference_source
+
+    assert resolve_reference_source("single_phase", None) == "corridor_guidance"
+    assert resolve_reference_source("terminal", None) == "fixed"
+    assert resolve_reference_source("single_phase", "fixed") == "fixed"
+    assert resolve_reference_source("terminal", "corridor_guidance") == "corridor_guidance"

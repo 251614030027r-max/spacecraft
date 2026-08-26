@@ -1,7 +1,7 @@
 """End-to-end reachability and constraint validation for the full mission.
 
 Phase-I already has a scripted ground truth (``validate_phase1_semantics``):
-a saturated target-frame PD reaches the Gate 20/20, which is what licenses the
+a saturated target-frame PD reaches the Waypoint 20/20, which is what licenses the
 claim that the Phase-I task itself is clean. Phase-II never had the equivalent,
 and unlike Phase-I it has no guidance law at all -- ``Phase2MissionReward.
 active_desired_velocity`` returned a zero desired velocity once the terminal
@@ -13,11 +13,11 @@ closing-speed constraint simultaneously requires the chaser to keep
 approaching. It does not: ``closing_speed_min_m_s`` is the floor of the *upper*
 limit, and nothing anywhere imposes a minimum approach speed.) Nothing in the
 repository establishes that the terminal task is reachable, or that a
-controller can hold every Phase-II constraint from the Gate all the way to the
+controller can hold every Phase-II constraint from the Waypoint all the way to the
 completion set.
 
 This module supplies that ground truth with a deliberately simple two-stage
-scripted controller flown in ``full_mission`` mode, so the Gate transition is
+scripted controller flown in ``full_mission`` mode, so the Waypoint transition is
 exercised in the same episode:
 
   * Phase-I leg -- the Phase-I guidance law of ``phase1_desired_velocity``
@@ -89,11 +89,11 @@ def _body_action(env, target_frame_force: np.ndarray) -> np.ndarray:
 
 
 def phase1_desired_velocity(env) -> np.ndarray:
-    """Cruise/braking velocity field toward the Gate, in the target frame."""
+    """Cruise/braking velocity field toward the Waypoint, in the target frame."""
 
     relative = env.relative
     mission = env.config.phase2_mission
-    error = relative.position - mission.gate_position
+    error = relative.position - mission.waypoint_position
     distance = float(np.linalg.norm(error))
     if distance <= np.finfo(float).eps:
         return np.zeros(3, dtype=np.float64)
@@ -162,7 +162,7 @@ def rollout(seed: int, policy: str, max_steps: int = 2001) -> dict[str, Any]:
         discount = 1.0
         saturation_sum = 0.0
         mission_phase = 0
-        gate_entry: dict[str, float] | None = None
+        waypoint_entry: dict[str, float] | None = None
         worst = {
             "corridor_axial_margin_m": np.inf,
             "corridor_lateral_margin_m": np.inf,
@@ -179,10 +179,10 @@ def rollout(seed: int, policy: str, max_steps: int = 2001) -> dict[str, Any]:
             _, reward, terminated, truncated, info = env.step(action)
             discounted_return += discount * float(reward)
             discount *= GAMMA
-            if info.get("gate_transition", False) and gate_entry is None:
-                gate_entry = {
+            if info.get("waypoint_transition", False) and waypoint_entry is None:
+                waypoint_entry = {
                     "time_s": float(info["time_seconds"]),
-                    "gate_position_error_m": float(info["gate_position_error_m"]),
+                    "waypoint_position_error_m": float(info["waypoint_position_error_m"]),
                     "total_speed_m_s": float(info["total_speed_m_s"]),
                     "closing_speed_m_s": float(info["closing_speed_m_s"]),
                     "closing_speed_limit_m_s": float(
@@ -206,15 +206,15 @@ def rollout(seed: int, policy: str, max_steps: int = 2001) -> dict[str, Any]:
                 )
             if terminated or truncated:
                 break
-        reached_phase2 = gate_entry is not None
+        reached_phase2 = waypoint_entry is not None
         return {
             "seed": seed,
             "policy": policy,
             "steps": step,
             "survival_s": step * env.config.dt_s,
             "discounted_return": discounted_return,
-            "gate_reached": bool(info["gate_reached"]),
-            "gate_entry": gate_entry,
+            "waypoint_reached": bool(info["waypoint_reached"]),
+            "waypoint_entry": waypoint_entry,
             "final_completed": bool(info.get("final_completed", False)),
             "terminal_constraint_failure": bool(
                 info.get("terminal_constraint_failure", False)
@@ -241,11 +241,11 @@ def rollout(seed: int, policy: str, max_steps: int = 2001) -> dict[str, Any]:
 
 
 def _summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
-    gate = [item for item in records if item["gate_entry"] is not None]
+    waypoint = [item for item in records if item["waypoint_entry"] is not None]
     done = [item for item in records if item["final_completed"]]
     summary: dict[str, Any] = {
         "episodes": len(records),
-        "gate_transition_rate": len(gate) / len(records),
+        "waypoint_transition_rate": len(waypoint) / len(records),
         "mission_completion_rate": len(done) / len(records),
         "terminal_constraint_failure_rate": mean(
             float(item["terminal_constraint_failure"]) for item in records
@@ -258,19 +258,19 @@ def _summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
             float(item["action_saturation_fraction"]) for item in records
         ),
     }
-    if gate:
-        summary["mean_gate_time_s"] = mean(
-            float(item["gate_entry"]["time_s"]) for item in gate
+    if waypoint:
+        summary["mean_waypoint_time_s"] = mean(
+            float(item["waypoint_entry"]["time_s"]) for item in waypoint
         )
-        summary["minimum_gate_closing_speed_margin_m_s"] = min(
-            float(item["gate_entry"]["closing_speed_margin_m_s"]) for item in gate
+        summary["minimum_waypoint_closing_speed_margin_m_s"] = min(
+            float(item["waypoint_entry"]["closing_speed_margin_m_s"]) for item in waypoint
         )
         summary["phase2_worst_margins"] = {
-            key: min(float(item["phase2_worst_margins"][key]) for item in gate)
-            for key in gate[0]["phase2_worst_margins"]
+            key: min(float(item["phase2_worst_margins"][key]) for item in waypoint)
+            for key in waypoint[0]["phase2_worst_margins"]
         }
         summary["phase2_minimum_position_error_m"] = min(
-            float(item["phase2_minimum_position_error_m"]) for item in gate
+            float(item["phase2_minimum_position_error_m"]) for item in waypoint
         )
     if done:
         summary["mean_completion_time_s"] = mean(
@@ -325,7 +325,7 @@ def main() -> None:
     print(
         json.dumps(
             {
-                "gate_transition_rate": reach["gate_transition_rate"],
+                "waypoint_transition_rate": reach["waypoint_transition_rate"],
                 "mission_completion_rate": reach["mission_completion_rate"],
                 "terminal_constraint_failure_rate": reach[
                     "terminal_constraint_failure_rate"

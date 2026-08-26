@@ -9,7 +9,9 @@ import cvxpy as cp
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from dynamics.lie import se3_exp
 from dynamics.types import SpacecraftState
+from env.task import corridor_guidance_velocity
 
 from .config import MPCConfig
 from .constraints import (
@@ -65,7 +67,14 @@ class MPCController:
         su_inverse = np.diag(1.0 / config.input_scales)
         constraints: list[cp.Constraint] = [self._x[:, 0] == self._x0]
         objective = 0.0
-        reference = config.reference_state
+        # Per-stage reference parameter. Filled each step: broadcast from the
+        # fixed setpoint under "fixed", or a corridor-guidance path under
+        # "corridor_guidance". A parameter, not a constant, so the trajectory
+        # can move without rebuilding the problem.
+        self._reference = cp.Parameter((12, n + 1))
+        self._reference.value = np.tile(
+            config.reference_state.reshape(12, 1), (1, n + 1)
+        )
         constraint_count = config.corridor_facets + 4
         if config.task is not None:
             self._slack = cp.Variable((constraint_count, n), nonneg=True)
@@ -87,7 +96,7 @@ class MPCController:
                 ]
             )
             objective += config.state_weight * cp.sum_squares(
-                sx_inverse @ (self._x[:, index] - reference)
+                sx_inverse @ (self._x[:, index] - self._reference[:, index])
             ) + config.input_weight * cp.sum_squares(
                 su_inverse @ self._u[:, index]
             )
@@ -105,7 +114,7 @@ class MPCController:
                     self._slack[:, index]
                 )
         objective += config.terminal_weight * cp.sum_squares(
-            sx_inverse @ (self._x[:, n] - reference)
+            sx_inverse @ (self._x[:, n] - self._reference[:, n])
         )
         self._problem = cp.Problem(cp.Minimize(objective), constraints)
         self._nominal_controls = np.zeros((n, 6), dtype=np.float64)
@@ -120,6 +129,32 @@ class MPCController:
         self._drift.fill(0.0)
         self._exact_linearization = None
         self._control_step = 0
+
+    def _reference_trajectory(self, state: FloatArray) -> FloatArray:
+        """Return the ``(12, horizon+1)`` reference the objective tracks.
+
+        Under ``"fixed"`` every stage is ``reference_state`` -- the myopic
+        regulator, and the value is bitwise the construction-time broadcast, so
+        prior evidence is unchanged. Under ``"corridor_guidance"`` the reference
+        is a path: roll ``corridor_guidance_velocity`` forward from the current
+        relative position, one guidance step per horizon step. The desired
+        attitude is identity, so a reference pose ``(I, p)`` has exponential
+        coordinates ``(0, p)`` and a target-frame velocity ``v`` is already the
+        body-frame reference there -- the columns are ``[0, p, 0, v]``.
+        """
+
+        n = self.config.horizon_steps
+        if self.config.reference_source == "fixed":
+            return np.tile(self.config.reference_state.reshape(12, 1), (1, n + 1))
+        assert self.config.task is not None
+        position = se3_exp(state[:6])[:3, 3]
+        reference = np.zeros((12, n + 1), dtype=np.float64)
+        for index in range(n + 1):
+            velocity = corridor_guidance_velocity(position, self.config.task)
+            reference[3:6, index] = position
+            reference[9:12, index] = velocity
+            position = position + velocity * self.config.dt_s
+        return reference
 
     def _predict(self, state: FloatArray, control: FloatArray) -> FloatArray:
         return self.local_model.predict(state, control) + self._drift
@@ -173,6 +208,9 @@ class MPCController:
         state = np.asarray(relative_vector, dtype=np.float64)
         if state.shape != (12,) or not np.all(np.isfinite(state)):
             raise ValueError("MPC state must be finite and shape=(12,)")
+        # Depends only on the current state, so build it once per control step.
+        reference_trajectory = self._reference_trajectory(state)
+        self._reference.value = reference_trajectory
         use_exact = self.config.linearization_source == "exact"
         if use_exact and (
             self._exact_linearization is None
@@ -217,8 +255,6 @@ class MPCController:
                             nominal_states[index + 1],
                             self.config.task,
                             corridor_facets=self.config.corridor_facets,
-                            state_scales=self.config.state_scales,
-                            relative_step=self.config.difference_relative_step,
                         )
                         constraint_linearization_time += (
                             perf_counter() - started_constraints
@@ -300,7 +336,9 @@ class MPCController:
             state_weight=self.config.state_weight,
             input_weight=self.config.input_weight,
             terminal_weight=self.config.terminal_weight,
-            reference_state=self.config.reference_state,
+            # The same per-stage reference the objective used, so the reported
+            # cost measures the problem that was actually solved.
+            reference_state=reference_trajectory.T,
         )
         self._control_step += 1
         return command, MPCStepDiagnostics(

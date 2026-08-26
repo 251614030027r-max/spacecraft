@@ -20,19 +20,19 @@ from statistics import median
 from typing import Any
 
 
-# Abort gates from the current experiment protocol; see the gradient_steps
+# Abort thresholds from the current experiment protocol; see the gradient_steps
 # commit message. Exceeding either is the divergence the lowered update ratio
 # was originally patched around.
 CRITIC_Q_ABORT = 10.0
 ENTROPY_COEFFICIENT_ABORT = 0.1
 # Zero-action survival differs per task: the two-phase modes only enforce the
-# terminal constraints after the Gate, gate_free enforces them from step one.
+# terminal constraints after the Waypoint, single_phase enforces them from step one.
 ZERO_ACTION_SURVIVAL_S = 53.3
-GATE_FREE_ZERO_ACTION_SURVIVAL_S = 16.9
+SINGLE_PHASE_ZERO_ACTION_SURVIVAL_S = 16.9
 SCRIPTED_COMPLETION_S = 95.3
 OUTCOME_RATES = (
     "episode_completion",
-    "gate_acquisition",
+    "waypoint_acquisition",
     "final_completion",
     "constraint_success",
 )
@@ -77,6 +77,75 @@ def _window_medians(lengths: list[float], windows: int = 5) -> list[float]:
         median(lengths[start : start + size])
         for start in range(0, len(lengths), size)
     ][:windows]
+
+
+def _cell(summary: dict[str, Any] | None, key: str, scale: float = 1.0) -> str:
+    """Format one summary field, or a dash when the sample does not exist."""
+
+    if not summary or summary.get(key) is None:
+        return "--"
+    return f"{float(summary[key]) * scale:.3f}"
+
+
+def _print_main_table(evaluation: dict[str, Any]) -> None:
+    """Print the four columns that separate the three methods.
+
+    Completion rate cannot: the scripted controller is already 20/20 and both
+    optimizer-based methods should reach it. These four can, so they are printed
+    together, at the latest checkpoint, in the shared conventions -- controller
+    compute without the simulator, effort and time over completed episodes.
+    """
+
+    table = evaluation.get("main_table")
+    if not table:
+        return
+    step = evaluation.get("training_step")
+    completed = table["completed_episodes"]
+    print(
+        f"\nmain table  (step {step}; {completed}/{table['episodes']} completed)"
+    )
+    time_s = table.get("completion_time_s")
+    print(
+        "        completion time (completed only)  "
+        f"mean {_cell(time_s, 'mean')} s   median {_cell(time_s, 'median')} s"
+        f"   max {_cell(time_s, 'max')} s"
+        + ("" if completed else "   (no completed episode yet)")
+    )
+    force = table["force_impulse_n_s"]
+    print(
+        "        force impulse                     "
+        f"mean {_cell(force['completed_only'], 'mean')} N*s (completed)"
+        f"   {_cell(force['all_episodes'], 'mean')} N*s (all episodes)"
+    )
+    print(
+        "        worst constraint margin (all)     "
+        + "  ".join(
+            f"{name.replace('_margin_m_s','').replace('_margin_m','').replace('_margin_rad','')}"
+            f"={value:+.3f}"
+            for name, value in table["worst_constraint_margin"].items()
+        )
+    )
+    compute = table["per_step_compute_s"]
+    period = compute["control_period_s"]
+    controller = compute["controller"]
+    over = compute.get("controller_mean_over_budget")
+    print(
+        "        per-step controller compute       "
+        f"mean {_cell(controller, 'mean', 1e3)} ms   p95 "
+        f"{_cell(controller, 'p95', 1e3)} ms"
+        f"   of a {period * 1e3:.0f} ms period"
+        + (f"   ({over:.2f}x budget)" if over is not None else "")
+    )
+    print(
+        "        (environment RK45 step, excluded) "
+        f"mean {_cell(compute['environment_step'], 'mean', 1e3)} ms"
+    )
+    returns = table.get("discounted_return")
+    if returns:
+        print(
+            "        discounted return                 "
+            f"mean {_cell(returns['all_episodes'], 'mean')} (all episodes)"
+        )
 
 
 def main() -> None:
@@ -132,7 +201,7 @@ def main() -> None:
                     f"ABORT alpha {worst_alpha:.4f} > {ENTROPY_COEFFICIENT_ABORT}"
                 )
             print(
-                "\ngates   "
+                "\nguards  "
                 + ("; ".join(flags) if flags else "ok (no abort condition hit)")
             )
 
@@ -144,25 +213,25 @@ def main() -> None:
             + "  ".join(f"{value * args.dt:.1f}" for value in medians)
             + "   | zero-action baseline "
             + (
-                f"{GATE_FREE_ZERO_ACTION_SURVIVAL_S}"
-                if mode == "gate_free"
+                f"{SINGLE_PHASE_ZERO_ACTION_SURVIVAL_S}"
+                if mode == "single_phase"
                 else f"{ZERO_ACTION_SURVIVAL_S}"
             )
             + "\n        "
             + {
                 "phase1_pretrain": (
-                    "(in phase1_pretrain a Gate success ends the episode, so short"
-                    " episodes at a high Gate rate are success, not failure)"
+                    "(in phase1_pretrain a Waypoint success ends the episode, so short"
+                    " episodes at a high Waypoint rate are success, not failure)"
                 ),
-                "gate_free": (
-                    "(in gate_free the task constraints are live from step one:"
+                "single_phase": (
+                    "(in single_phase the task constraints are live from step one:"
                     f" scripted completion runs ~{SCRIPTED_COMPLETION_S} s, a short"
                     " episode is a death, and ~200 s means the cap was hit without"
                     " completing -- read it with the failure mix below)"
                 ),
             }.get(
                 mode,
-                "(in full_mission the Gate does not end the episode:"
+                "(in full_mission the Waypoint does not end the episode:"
                 f" scripted completion runs ~{SCRIPTED_COMPLETION_S} s, so a short"
                 " episode is a death, and ~200 s means the cap was hit without"
                 " completing)",
@@ -191,6 +260,10 @@ def main() -> None:
                     " " * 10
                     + "  ".join(f"{key}={value}" for key, value in failures.items())
                 )
+
+    if evaluations:
+        latest = json.loads(evaluations[-1].read_text(encoding="utf-8"))
+        _print_main_table(latest)
 
     calibrations = sorted(run.glob("value_calibration*.json"))
     if calibrations:

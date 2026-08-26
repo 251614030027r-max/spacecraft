@@ -24,7 +24,7 @@ class Phase2DiagnosticsCallback(BaseCallback):
         self.probe_seed = int(probe_seed)
         self._next_probe = self.interval_steps
         self._probe_observations: np.ndarray | None = None
-        self._minimum_gate_distance_by_env: list[float] = []
+        self._minimum_waypoint_distance_by_env: list[float] = []
         self.episodes: list[dict] = []
         self.probes: list[dict] = []
 
@@ -34,7 +34,7 @@ class Phase2DiagnosticsCallback(BaseCallback):
             self._probe_observations = np.asarray([env.reset(seed=self.probe_seed + i)[0] for i in range(32)], dtype=np.float32)
         finally:
             env.close()
-        self._minimum_gate_distance_by_env = [
+        self._minimum_waypoint_distance_by_env = [
             float("inf") for _ in range(self.training_env.num_envs)
         ]
 
@@ -193,9 +193,9 @@ class Phase2DiagnosticsCallback(BaseCallback):
         for index, (info, done) in enumerate(
             zip(self.locals.get("infos", []), self.locals.get("dones", []))
         ):
-            gate_distance = float(info.get("gate_position_error_m", np.inf))
-            self._minimum_gate_distance_by_env[index] = min(
-                self._minimum_gate_distance_by_env[index], gate_distance
+            waypoint_distance = float(info.get("waypoint_position_error_m", np.inf))
+            self._minimum_waypoint_distance_by_env[index] = min(
+                self._minimum_waypoint_distance_by_env[index], waypoint_distance
             )
             if done:
                 self.episodes.append({
@@ -204,11 +204,11 @@ class Phase2DiagnosticsCallback(BaseCallback):
                     "constraint_success": bool(info.get("constraint_success", False)),
                     "position_error_m": float(info.get("position_error_m", np.nan)),
                     "mission_phase": int(info.get("mission_phase", 0)),
-                    "gate_reached": bool(info.get("gate_reached", False)),
-                    "minimum_gate_position_error_m": float(
-                        self._minimum_gate_distance_by_env[index]
+                    "waypoint_reached": bool(info.get("waypoint_reached", False)),
+                    "minimum_waypoint_position_error_m": float(
+                        self._minimum_waypoint_distance_by_env[index]
                     ),
-                    "terminal_gate_position_error_m": gate_distance,
+                    "terminal_waypoint_position_error_m": waypoint_distance,
                     "terminal_attitude_error_rad": float(
                         info.get("attitude_error_rad", np.nan)
                     ),
@@ -240,7 +240,7 @@ class Phase2DiagnosticsCallback(BaseCallback):
                     ),
                     "violation_steps": {name: int(info.get(f"{name}_violation_steps", 0)) for name in ("corridor", "fov", "total_speed", "closing_speed")},
                 })
-                self._minimum_gate_distance_by_env[index] = float("inf")
+                self._minimum_waypoint_distance_by_env[index] = float("inf")
         if self.num_timesteps >= self._next_probe:
             self._probe()
             self._next_probe += self.interval_steps

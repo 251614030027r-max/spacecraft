@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
 from dynamics.lie import inverse_transform, make_transform, se3_log, so3_log
 from dynamics.relative import RelativeState
@@ -113,19 +113,70 @@ class Phase2TaskConfig:
         return int(np.ceil(self.completion_hold_s / dt_s - 1.0e-12))
 
 
+def corridor_guidance_velocity(
+    position_target_m: ArrayLike,
+    config: Phase2TaskConfig = Phase2TaskConfig(),
+    *,
+    closing_speed_fraction: float = 0.5,
+    axial_gain_per_s: float = 0.5,
+    lateral_gain_per_s: float = 0.4,
+    total_speed_fraction: float = 0.6,
+) -> FloatArray:
+    """Corridor-aware target-frame velocity reference for the constrained leg.
+
+    The axial component is held at a fraction of the range-dependent closing
+    speed limit, the lateral component regulates the offset from the approach
+    axis, and the norm is capped below the total speed limit.
+
+    This is a *guidance* reference, not a control law: it says where to be going,
+    not what to thrust. At these ranges the thrust that realises it includes the
+    sustained 0.5-2.2 N of co-rotation the tumbling target frame demands, which
+    the controller still has to find.
+
+    It lives here, on the task, because four things need the same one: the
+    reward's shaping potential, the observation's velocity channel, the scripted
+    reference controller, and the Pure MPC reference trajectory. A second copy
+    is how the reward and the scripted validator drifted apart once already.
+
+    The axial term is proportional and *signed*, so overshooting past the desired
+    pose commands a retreat rather than a hold. Clamping it at zero left the
+    reference saying "stay" once the chaser was inside, and the corridor radius
+    is the distance ahead of the port times tan(half-angle), so the cone pinches
+    shut on anything that drifts in.
+    """
+
+    position = np.asarray(position_target_m, dtype=np.float64)
+    if position.shape != (3,) or not np.all(np.isfinite(position)):
+        raise ValueError("position_target_m must be a finite three-vector")
+    axis = config.approach_axis
+    error = position - config.desired_position
+    axial_remaining = float(axis @ error)
+    lateral = error - axial_remaining * axis
+    axial_speed = min(
+        closing_speed_fraction * config.closing_speed_limit(axial_remaining),
+        axial_gain_per_s * axial_remaining,
+    )
+    desired = -axial_speed * axis - lateral_gain_per_s * lateral
+    cap = total_speed_fraction * config.total_speed_limit_m_s
+    speed = float(np.linalg.norm(desired))
+    if speed > cap:
+        desired = desired * (cap / speed)
+    return desired
+
+
 @dataclass(frozen=True)
 class Phase2MissionConfig:
     """Canonical two-phase mission settings outside the terminal task."""
 
-    gate_position_target_m: tuple[float, float, float] = (-8.0, 0.0, 0.0)
-    gate_semantics: Literal["legacy_regulation", "acquisition_v2"] = (
+    waypoint_position_target_m: tuple[float, float, float] = (-8.0, 0.0, 0.0)
+    waypoint_semantics: Literal["legacy_regulation", "acquisition_v2"] = (
         "legacy_regulation"
     )
-    gate_position_tolerance_m: float = 1.0
-    gate_attitude_tolerance_rad: float = float(np.deg2rad(30.0))
-    gate_speed_tolerance_m_s: float = 0.20
-    gate_angular_velocity_tolerance_rad_s: float = 0.03
-    gate_fov_tolerance_rad: float = float(np.deg2rad(45.0))
+    waypoint_position_tolerance_m: float = 1.0
+    waypoint_attitude_tolerance_rad: float = float(np.deg2rad(30.0))
+    waypoint_speed_tolerance_m_s: float = 0.20
+    waypoint_angular_velocity_tolerance_rad_s: float = 0.03
+    waypoint_fov_tolerance_rad: float = float(np.deg2rad(45.0))
     initial_distance_min_m: float = 12.0
     initial_distance_max_m: float = 18.0
     initial_direction_half_angle_rad: float = float(np.deg2rad(20.0))
@@ -138,7 +189,7 @@ class Phase2MissionConfig:
     phase1_cruise_speed_m_s: float = 0.18
     phase1_catastrophic_speed_limit_m_s: float = 1.00
     premature_entry_distance_m: float = 6.0
-    gate_reward: float = 5.0
+    waypoint_reward: float = 5.0
     final_success_reward: float = 20.0
     terminal_constraint_failure_penalty: float = -10.0
     phase1_failure_penalty: float = -15.0
@@ -147,16 +198,16 @@ class Phase2MissionConfig:
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
-            "gate_position_target_m",
-            tuple(float(x) for x in self.gate_position_target_m),
+            "waypoint_position_target_m",
+            tuple(float(x) for x in self.waypoint_position_target_m),
         )
-        _vector3(self.gate_position_target_m, "gate_position_target_m")
+        _vector3(self.waypoint_position_target_m, "waypoint_position_target_m")
         positive = (
-            self.gate_position_tolerance_m,
-            self.gate_attitude_tolerance_rad,
-            self.gate_speed_tolerance_m_s,
-            self.gate_angular_velocity_tolerance_rad_s,
-            self.gate_fov_tolerance_rad,
+            self.waypoint_position_tolerance_m,
+            self.waypoint_attitude_tolerance_rad,
+            self.waypoint_speed_tolerance_m_s,
+            self.waypoint_angular_velocity_tolerance_rad_s,
+            self.waypoint_fov_tolerance_rad,
             self.initial_distance_min_m,
             self.initial_distance_max_m,
             self.initial_direction_half_angle_rad,
@@ -173,8 +224,8 @@ class Phase2MissionConfig:
             raise ValueError("mission scales and thresholds must be positive")
         if self.initial_distance_min_m >= self.initial_distance_max_m:
             raise ValueError("mission initial distance bounds are invalid")
-        if self.gate_semantics not in {"legacy_regulation", "acquisition_v2"}:
-            raise ValueError("unsupported Gate semantics")
+        if self.waypoint_semantics not in {"legacy_regulation", "acquisition_v2"}:
+            raise ValueError("unsupported Waypoint semantics")
         if max(
             self.initial_direction_half_angle_rad,
             self.initial_attitude_limit_rad,
@@ -185,7 +236,7 @@ class Phase2MissionConfig:
         if self.phase1_cruise_speed_m_s >= self.phase1_catastrophic_speed_limit_m_s:
             raise ValueError("Phase-I cruise speed must be below catastrophic speed")
         if min(
-            self.gate_reward,
+            self.waypoint_reward,
             self.final_success_reward,
             -self.terminal_constraint_failure_penalty,
             -self.phase1_failure_penalty,
@@ -194,35 +245,35 @@ class Phase2MissionConfig:
             raise ValueError("mission event rewards must have declared signs")
 
     @property
-    def gate_position(self) -> FloatArray:
-        return _vector3(self.gate_position_target_m, "gate_position_target_m")
+    def waypoint_position(self) -> FloatArray:
+        return _vector3(self.waypoint_position_target_m, "waypoint_position_target_m")
 
-    def gate_satisfied(
+    def waypoint_satisfied(
         self,
         metrics: "MissionMetrics",
         *,
         fov_angle_rad: float | None = None,
     ) -> bool:
-        if self.gate_semantics == "acquisition_v2":
+        if self.waypoint_semantics == "acquisition_v2":
             if fov_angle_rad is None:
-                raise ValueError("acquisition_v2 Gate requires the FOV angle")
+                raise ValueError("acquisition_v2 Waypoint requires the FOV angle")
             return bool(
-                metrics.gate_position_error_m <= self.gate_position_tolerance_m
-                and metrics.total_speed_m_s <= self.gate_speed_tolerance_m_s
-                and fov_angle_rad <= self.gate_fov_tolerance_rad
+                metrics.waypoint_position_error_m <= self.waypoint_position_tolerance_m
+                and metrics.total_speed_m_s <= self.waypoint_speed_tolerance_m_s
+                and fov_angle_rad <= self.waypoint_fov_tolerance_rad
             )
         return bool(
-            metrics.gate_position_error_m <= self.gate_position_tolerance_m
-            and metrics.attitude_error_rad <= self.gate_attitude_tolerance_rad
-            and metrics.total_speed_m_s <= self.gate_speed_tolerance_m_s
+            metrics.waypoint_position_error_m <= self.waypoint_position_tolerance_m
+            and metrics.attitude_error_rad <= self.waypoint_attitude_tolerance_rad
+            and metrics.total_speed_m_s <= self.waypoint_speed_tolerance_m_s
             and metrics.angular_velocity_error_rad_s
-            <= self.gate_angular_velocity_tolerance_rad_s
+            <= self.waypoint_angular_velocity_tolerance_rad_s
         )
 
 
 @dataclass(frozen=True)
 class MissionMetrics:
-    gate_position_error_m: float
+    waypoint_position_error_m: float
     target_center_distance_m: float
     attitude_error_rad: float
     total_speed_m_s: float
@@ -235,8 +286,8 @@ def compute_mission_metrics(
 ) -> MissionMetrics:
     position_rate = relative.rotation @ relative.velocity
     return MissionMetrics(
-        gate_position_error_m=float(
-            np.linalg.norm(relative.position - mission.gate_position)
+        waypoint_position_error_m=float(
+            np.linalg.norm(relative.position - mission.waypoint_position)
         ),
         target_center_distance_m=float(np.linalg.norm(relative.position)),
         attitude_error_rad=float(

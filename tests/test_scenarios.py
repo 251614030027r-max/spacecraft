@@ -177,7 +177,7 @@ def test_phase2_mission_sampler_matches_phase1_envelope() -> None:
         assert np.max(np.abs(relative.omega)) <= mission.initial_angular_velocity_component_limit_rad_s + 1.0e-12
 
 
-def test_phase1_easy_sampler_is_near_gate_but_not_initially_complete() -> None:
+def test_phase1_easy_sampler_is_near_waypoint_but_not_initially_complete() -> None:
     rng = np.random.default_rng(263400)
     mission = Phase2MissionConfig()
     target = target_initial_state(tumble_scale=0.20)
@@ -190,7 +190,7 @@ def test_phase1_easy_sampler_is_near_gate_but_not_initially_complete() -> None:
         )
         metrics = compute_mission_metrics(relative, mission)
         assert 9.02 <= metrics.target_center_distance_m <= 9.05
-        assert metrics.gate_position_error_m > mission.gate_position_tolerance_m
+        assert metrics.waypoint_position_error_m > mission.waypoint_position_tolerance_m
         assert metrics.attitude_error_rad <= np.deg2rad(2.0) + 1.0e-12
         assert metrics.total_speed_m_s <= 0.03 + 1.0e-12
         assert np.max(np.abs(relative.omega)) <= 0.001 + 1.0e-12

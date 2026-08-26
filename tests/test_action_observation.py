@@ -258,17 +258,17 @@ def test_phase_guidance_reference_switches_with_the_phase() -> None:
 
     task = Phase2TaskConfig()
     reward = Phase2MissionReward(task=task)
-    gate = np.array([-8.0, 0.0, 0.0])
+    waypoint = np.array([-8.0, 0.0, 0.0])
     position = np.array([-12.0, 1.0, 0.0])
     relative = RelativeState(make_transform(np.eye(3), position), np.zeros(6))
     approach = reward.active_desired_velocity(
-        relative, gate, terminal_constraints_active=False
+        relative, waypoint, terminal_constraints_active=False
     )
     terminal = reward.active_desired_velocity(
-        relative, gate, terminal_constraints_active=True
+        relative, waypoint, terminal_constraints_active=True
     )
     assert not np.allclose(approach, terminal)
-    # Phase 0 heads straight at the Gate; the terminal law also kills the lateral
+    # Phase 0 heads straight at the Waypoint; the terminal law also kills the lateral
     # offset from the approach axis, so it carries a component the other lacks.
     assert abs(float(terminal[1])) > abs(float(approach[1]))
 

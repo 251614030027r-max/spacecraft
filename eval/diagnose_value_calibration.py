@@ -55,7 +55,7 @@ def calibration(
     try:
         for index in range(episodes):
             observation, info = env.reset(seed=seed + index)
-            initial_gate = float(info["gate_position_error_m"])
+            initial_waypoint = float(info["waypoint_position_error_m"])
             tensor = torch.as_tensor(observation[None], dtype=torch.float32)
             first_action, _ = model.predict(observation, deterministic=True)
             with torch.no_grad():
@@ -77,8 +77,8 @@ def calibration(
                 hard += discount * float(reward)
                 discount *= gamma
             hard_steps = int(info["step_count"])
-            hard_gate = bool(info["gate_reached"])
-            hard_min_gate = float(info["gate_position_error_m"])
+            hard_waypoint = bool(info["waypoint_reached"])
+            hard_min_waypoint = float(info["waypoint_position_error_m"])
 
             # entropy-augmented soft return, stochastic after the first action
             observation, _ = env.reset(seed=seed + index)
@@ -101,15 +101,15 @@ def calibration(
             records.append(
                 {
                     "seed": seed + index,
-                    "initial_gate_position_error_m": initial_gate,
+                    "initial_waypoint_position_error_m": initial_waypoint,
                     "critic_q_min_s0": q0,
                     "hard_discounted_return": hard,
                     "soft_discounted_return": soft,
                     "entropy_contribution": entropy_term,
                     "calibration_error": q0 - soft,
                     "deterministic_steps": hard_steps,
-                    "deterministic_gate_reached": hard_gate,
-                    "deterministic_final_gate_error_m": hard_min_gate,
+                    "deterministic_waypoint_reached": hard_waypoint,
+                    "deterministic_final_waypoint_error_m": hard_min_waypoint,
                 }
             )
     finally:
@@ -135,8 +135,8 @@ def calibration(
             "deterministic_survival_s": float(
                 np.mean([r["deterministic_steps"] for r in records]) * 0.1
             ),
-            "deterministic_gate_rate": float(
-                np.mean([r["deterministic_gate_reached"] for r in records])
+            "deterministic_waypoint_rate": float(
+                np.mean([r["deterministic_waypoint_reached"] for r in records])
             ),
         },
         "episode_records": records,
@@ -189,7 +189,7 @@ def main() -> None:
                 "calibration_error": round(s["calibration_error"], 3),
                 "hard_MC_return": round(s["hard_discounted_return"], 3),
                 "survival_s": round(s["deterministic_survival_s"], 1),
-                "gate_rate": s["deterministic_gate_rate"],
+                "waypoint_rate": s["deterministic_waypoint_rate"],
                 "output": str(args.output.resolve()),
             },
             indent=2,

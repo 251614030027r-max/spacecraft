@@ -59,8 +59,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-name", required=True)
     parser.add_argument(
         "--mode",
-        choices=("phase1_pretrain", "full_mission", "gate_free"),
-        default="gate_free",
+        choices=("phase1_pretrain", "full_mission", "single_phase"),
+        default="single_phase",
     )
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--checkpoint-freq", type=int, default=50_000)
@@ -173,7 +173,7 @@ def main() -> None:
         filename=str(log_dir / "train"),
         info_keywords=(
             "completed",
-            "gate_reached",
+            "waypoint_reached",
             "constraint_success",
             "phase1_speed_failure",
             "premature_entry_failure",

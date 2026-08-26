@@ -111,7 +111,7 @@ def test_mission_reward_progress_and_terminal_warning_are_well_scaled() -> None:
     assert warning.constraint_warning < 0.0
 
 
-def test_phase1_soft_speed_cost_starts_before_gate_failure_region() -> None:
+def test_phase1_soft_speed_cost_starts_before_waypoint_failure_region() -> None:
     task = Phase2TaskConfig()
     reward = Phase2MissionReward(task=task)
     safe = _relative(-10.0, 0.16)
@@ -163,7 +163,7 @@ def test_phase1_stationary_progress_uses_sac_discount() -> None:
     assert np.isclose(result.progress, expected)
 
 
-def test_phase1_velocity_field_points_to_gate_and_brakes_near_it() -> None:
+def test_phase1_velocity_field_points_to_waypoint_and_brakes_near_it() -> None:
     reward = Phase2MissionReward(task=Phase2TaskConfig())
     reference = np.array([-8.0, 0.0, 0.0])
     far = reward.phase1_desired_velocity(_relative(-18.0), reference)
@@ -173,7 +173,7 @@ def test_phase1_velocity_field_points_to_gate_and_brakes_near_it() -> None:
     assert np.isclose(near[0], reward.phase1_braking_gain_per_s)
 
 
-def test_phase1_reward_prefers_gate_directed_velocity_over_reverse_velocity() -> None:
+def test_phase1_reward_prefers_waypoint_directed_velocity_over_reverse_velocity() -> None:
     reward = Phase2MissionReward(task=Phase2TaskConfig())
     reference = np.array([-8.0, 0.0, 0.0])
     initial = _relative(-12.0, 0.0)

@@ -1,4 +1,19 @@
-"""Deterministic evaluation for the canonical Phase-2 Pure SAC path."""
+"""Deterministic evaluation for the canonical Phase-2 Pure SAC path.
+
+This is the shared measurement path for all three methods: ``evaluate_model``
+needs nothing but an object with ``.predict(obs, deterministic) -> (action,
+state)``. It therefore has to record everything the main table needs, in the
+conventions ``eval.metrics`` pins -- completion time, force impulse, worst
+constraint margin and *controller* compute -- because a row it cannot fill has
+to be filled by a fork, and a forked row is not comparable.
+
+The controller and the environment are timed separately. Timing them together
+was over-reporting the controller by about 8.6x on this task (``predict``
+1.09 ms against ``env.step`` 8.32 ms, CPU), while ``experiments.evaluate_mpc``
+has always timed ``controller.command`` alone; ``full_control_cycle_runtime_s``
+is retained as the sum so historical evaluation files still parse, but it is not
+the compute column.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +33,13 @@ from env.phase2_env import Phase2Mode, phase2_environment_config
 from env.se3_rendezvous_env import SE3RendezvousConfig, SE3RendezvousEnv
 from env.task import Phase2MissionConfig, Phase2TaskConfig
 from env.termination import SuccessThresholds
+from eval.metrics import main_table_metrics, summarize
+from train.configs import PURE_SAC
+
+
+# The discount every reported return uses, shared with the scripted validators
+# so a model row and the scripted row are on one scale.
+GAMMA = PURE_SAC.gamma
 
 
 def environment_config_from_manifest(
@@ -54,14 +76,10 @@ def _manifest_for_model(model_path: Path) -> Path:
     return Path(*parts[:index], "logs", parts[index + 1], "manifest.json")
 
 
-def _summary(values: list[float]) -> dict[str, float]:
-    array = np.asarray(values, dtype=np.float64)
-    return {
-        "mean": float(np.mean(array)),
-        "std": float(np.std(array)),
-        "min": float(np.min(array)),
-        "max": float(np.max(array)),
-    }
+def _summary(values: list[float]) -> dict[str, float] | None:
+    """Per-episode summary, in the one shape ``eval.metrics`` defines."""
+
+    return summarize(values)
 
 
 def evaluate_model(
@@ -75,6 +93,11 @@ def evaluate_model(
     if episodes <= 0 or not config.phase2_enabled:
         raise ValueError("positive episodes and a Phase-2 config are required")
     records: list[dict[str, Any]] = []
+    # Per-step compute, pooled over the whole evaluation: the per-episode
+    # summaries below have already collapsed it, and the main table needs the
+    # distribution over steps, not the distribution over episode means.
+    all_controller_times: list[float] = []
+    all_environment_times: list[float] = []
     env = SE3RendezvousEnv(config)
     try:
         for episode in range(episodes):
@@ -99,14 +122,17 @@ def evaluate_model(
             }
             best_completion_streak = 0
             min_position = float(info["position_error_m"])
-            min_gate_position = float(info["gate_position_error_m"])
+            min_waypoint_position = float(info["waypoint_position_error_m"])
             force_impulse = torque_impulse = 0.0
             saturated = samples = 0
-            cycle_times: list[float] = []
-            gate_entry: dict[str, float] | None = None
-            closest_gate_approach = {
+            controller_times: list[float] = []
+            environment_times: list[float] = []
+            discounted_return = 0.0
+            discount = 1.0
+            waypoint_entry: dict[str, float] | None = None
+            closest_waypoint_approach = {
                 "time_s": float(info["time_seconds"]),
-                "position_error_m": min_gate_position,
+                "position_error_m": min_waypoint_position,
                 "speed_m_s": float(info["total_speed_m_s"]),
                 "fov_angle_rad": float(info["fov_angle_rad"]),
                 "attitude_error_rad": float(info["attitude_error_rad"]),
@@ -116,13 +142,20 @@ def evaluate_model(
             }
             terminated = truncated = False
             while not (terminated or truncated):
+                # Two timers, not one: the controller is what the compute column
+                # compares, and the RK45 truth propagation is not part of it.
                 started = perf_counter()
                 action, _ = model.predict(observation, deterministic=deterministic)
-                observation, _, terminated, truncated, info = env.step(action)
-                if info.get("gate_transition", False) and gate_entry is None:
-                    gate_entry = {
+                predicted = perf_counter()
+                observation, reward, terminated, truncated, info = env.step(action)
+                environment_times.append(perf_counter() - predicted)
+                controller_times.append(predicted - started)
+                discounted_return += discount * float(reward)
+                discount *= GAMMA
+                if info.get("waypoint_transition", False) and waypoint_entry is None:
+                    waypoint_entry = {
                         "time_s": float(info["time_seconds"]),
-                        "position_error_m": float(info["gate_position_error_m"]),
+                        "position_error_m": float(info["waypoint_position_error_m"]),
                         "attitude_error_rad": float(info["attitude_error_rad"]),
                         "speed_m_s": float(info["total_speed_m_s"]),
                         "fov_angle_rad": float(info["fov_angle_rad"]),
@@ -130,7 +163,6 @@ def evaluate_model(
                             info["angular_velocity_error_rad_s"]
                         ),
                     }
-                cycle_times.append(perf_counter() - started)
                 action = np.asarray(action, dtype=np.float64)
                 torque_impulse += float(np.linalg.norm(action[:3] * config.max_torque_per_axis_nm)) * config.dt_s
                 force_impulse += float(np.linalg.norm(action[3:] * config.max_force_per_axis_n)) * config.dt_s
@@ -144,12 +176,12 @@ def evaluate_model(
                 best_completion_streak = max(
                     best_completion_streak, int(info["completion_streak"])
                 )
-                current_gate_position = float(info["gate_position_error_m"])
-                if current_gate_position < min_gate_position:
-                    min_gate_position = current_gate_position
-                    closest_gate_approach = {
+                current_waypoint_position = float(info["waypoint_position_error_m"])
+                if current_waypoint_position < min_waypoint_position:
+                    min_waypoint_position = current_waypoint_position
+                    closest_waypoint_approach = {
                         "time_s": float(info["time_seconds"]),
-                        "position_error_m": current_gate_position,
+                        "position_error_m": current_waypoint_position,
                         "speed_m_s": float(info["total_speed_m_s"]),
                         "fov_angle_rad": float(info["fov_angle_rad"]),
                         "attitude_error_rad": float(info["attitude_error_rad"]),
@@ -165,13 +197,21 @@ def evaluate_model(
                             "time_s": float(info["time_seconds"]), "type": name,
                             "margin": value,
                         }
+            all_controller_times.extend(controller_times)
+            all_environment_times.extend(environment_times)
             records.append({
                 "episode": episode,
                 "seed": seed + episode,
+                # Episode duration, on the same names the scripted validators
+                # use, so the reference row and the model rows are one table.
+                # For a completed episode this is the completion time.
+                "steps": int(info["step_count"]),
+                "survival_s": float(info["time_seconds"]),
+                "discounted_return": discounted_return,
                 "completed": bool(info["completed"]),
-                "gate_reached": bool(info["gate_reached"]),
-                "gate_entry": gate_entry,
-                "closest_gate_approach": closest_gate_approach,
+                "waypoint_reached": bool(info["waypoint_reached"]),
+                "waypoint_entry": waypoint_entry,
+                "closest_waypoint_approach": closest_waypoint_approach,
                 "final_completed": bool(info.get("final_completed", False)),
                 "terminal_constraint_failure": bool(
                     info.get("terminal_constraint_failure", False)
@@ -190,7 +230,7 @@ def evaluate_model(
                 "best_completion_conditions": best_completion,
                 "best_completion_streak": best_completion_streak,
                 "minimum_position_error_m": min_position,
-                "minimum_gate_position_error_m": min_gate_position,
+                "minimum_waypoint_position_error_m": min_waypoint_position,
                 "final_position_error_m": float(info["position_error_m"]),
                 "final_attitude_error_rad": float(info["attitude_error_rad"]),
                 "final_speed_m_s": float(info["total_speed_m_s"]),
@@ -198,20 +238,41 @@ def evaluate_model(
                 "force_impulse_n_s": force_impulse,
                 "torque_impulse_nm_s": torque_impulse,
                 "action_saturation_fraction": saturated / max(1, samples),
-                "full_control_cycle_runtime_s": _summary(cycle_times),
+                "controller_time_s": _summary(controller_times),
+                "environment_step_time_s": _summary(environment_times),
+                # Retained so historical evaluation files and any reader that
+                # already knows this key still parse. It is the sum of the two
+                # above and is *not* the compute column.
+                "full_control_cycle_runtime_s": _summary(
+                    [
+                        controller + environment
+                        for controller, environment in zip(
+                            controller_times, environment_times
+                        )
+                    ]
+                ),
             })
     finally:
         env.close()
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "algorithm": "pure_sac",
         "deterministic": deterministic,
+        "gamma": GAMMA,
         "episodes": episodes,
         "base_seed": seed,
         "environment": asdict(config),
+        # The four columns that actually separate the three methods, assembled
+        # in the shared conventions rather than re-derived per method.
+        "main_table": main_table_metrics(
+            records,
+            controller_times_s=all_controller_times,
+            environment_step_times_s=all_environment_times,
+            control_period_s=config.dt_s,
+        ),
         "rates": {
             "episode_completion": mean(float(r["completed"]) for r in records),
-            "gate_acquisition": mean(float(r["gate_reached"]) for r in records),
+            "waypoint_acquisition": mean(float(r["waypoint_reached"]) for r in records),
             "final_completion": mean(float(r["final_completed"]) for r in records),
             "constraint_success": mean(float(r["constraint_success"]) for r in records),
             # Failure-mode mix. In full_mission the completion rate alone cannot
@@ -241,11 +302,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument(
         "--mode",
-        choices=("phase1_pretrain", "full_mission", "gate_free"),
-        default="gate_free",
+        choices=("phase1_pretrain", "full_mission", "single_phase"),
+        default="single_phase",
     )
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--stochastic", action="store_true")
+    parser.add_argument(
+        "--assume-canonical",
+        action="store_true",
+        help=(
+            "skip the manifest comparison and evaluate against the current "
+            "canonical config for --mode. Use for a checkpoint trained before a "
+            "rename whose manifest no longer loads but whose observation and "
+            "action spaces are unchanged (the schema name is verified against "
+            "the checkpoint, so a real schema mismatch still fails)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -256,22 +328,45 @@ def main() -> None:
     if args.device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but unavailable")
     device = "cuda" if args.device == "auto" and torch.cuda.is_available() else ("cpu" if args.device == "auto" else args.device)
-    manifest_path = args.manifest or _manifest_for_model(args.model)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    config = environment_config_from_manifest(manifest)
-    expected = phase2_environment_config(args.mode)
-    if (
-        config.phase2_task != expected.phase2_task
-        or config.phase2_mission != expected.phase2_mission
-        or config.phase2_training_mode != expected.phase2_training_mode
-        or config.phase2_observation_schema != expected.phase2_observation_schema
-    ):
-        raise ValueError("manifest differs from the canonical Phase-2 mission")
-    config = expected
+    config = phase2_environment_config(args.mode)
+    manifest_path: Path | None = None
+    if not args.assume_canonical:
+        manifest_path = args.manifest or _manifest_for_model(args.model)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        from_manifest = environment_config_from_manifest(manifest)
+        if (
+            from_manifest.phase2_task != config.phase2_task
+            or from_manifest.phase2_mission != config.phase2_mission
+            or from_manifest.phase2_training_mode != config.phase2_training_mode
+            or from_manifest.phase2_observation_schema != config.phase2_observation_schema
+        ):
+            raise ValueError("manifest differs from the canonical Phase-2 mission")
     model = SAC.load(args.model, device=device)
+    # The network is only compatible if its observation and action spaces match
+    # the current environment; a genuine schema change would surface here rather
+    # than as an opaque predict-time shape error.
+    reference_env = SE3RendezvousEnv(config)
+    try:
+        expected_obs = reference_env.observation_space.shape
+        expected_act = reference_env.action_space.shape
+    finally:
+        reference_env.close()
+    if (
+        model.observation_space.shape != expected_obs
+        or model.action_space.shape != expected_act
+    ):
+        raise ValueError(
+            "checkpoint spaces "
+            f"{model.observation_space.shape}/{model.action_space.shape} do not "
+            f"match the canonical {expected_obs}/{expected_act}; this checkpoint "
+            "is not compatible with the current observation schema"
+        )
     result = evaluate_model(model, config, episodes=args.episodes, seed=args.seed, deterministic=not args.stochastic)
     result["model"] = str(args.model.resolve())
-    result["training_manifest"] = str(manifest_path.resolve())
+    result["training_manifest"] = (
+        str(manifest_path.resolve()) if manifest_path is not None else None
+    )
+    result["assumed_canonical"] = bool(args.assume_canonical)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Evaluation result: {args.output.resolve()}")

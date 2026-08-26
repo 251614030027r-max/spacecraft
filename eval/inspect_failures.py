@@ -2,13 +2,13 @@
 
 ``digest_run`` reports *that* a run failed on a terminal constraint, but not
 which of the five went first, how long the policy held before it, and -- in the
-two-phase modes -- whether the violation landed on the Gate transition step (a
-Gate definition defect) or later inside the corridor (a control problem). Those
-read identically in the aggregated rates and differently in the per-episode
-``first_violation`` and ``gate_entry`` records, so read those.
+two-phase modes -- whether the violation landed on the Waypoint transition step (a
+Waypoint definition defect) or later inside the corridor (a control problem). Those
+read identically in the aggrewaypointd rates and differently in the per-episode
+``first_violation`` and ``waypoint_entry`` records, so read those.
 
-Works on both task families: two-phase runs are reported relative to Gate
-entry, gate_free runs relative to episode start, since there is no Gate.
+Works on both task families: two-phase runs are reported relative to Waypoint
+entry, single_phase runs relative to episode start, since there is no Waypoint.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ def _report(step: Any, records: list[dict[str, Any]]) -> None:
     if not records:
         print(f"{str(step):<9} no episodes")
         return
-    arrivals = [r for r in records if r.get("gate_entry") is not None]
+    arrivals = [r for r in records if r.get("waypoint_entry") is not None]
     kinds: Counter[str] = Counter()
     holds: list[float] = []
     for record in records:
@@ -37,10 +37,10 @@ def _report(step: Any, records: list[dict[str, Any]]) -> None:
             kinds["(no violation)"] += 1
             continue
         kinds[str(violation["type"])] += 1
-        # Two-phase runs only enforce the constraints after the Gate, so the
-        # meaningful duration is measured from there; gate_free enforces them
+        # Two-phase runs only enforce the constraints after the Waypoint, so the
+        # meaningful duration is measured from there; single_phase enforces them
         # from step one, so it is measured from reset.
-        entry = record.get("gate_entry")
+        entry = record.get("waypoint_entry")
         start = float(entry["time_s"]) if entry is not None else 0.0
         holds.append(float(violation["time_s"]) - start)
 
@@ -51,9 +51,9 @@ def _report(step: Any, records: list[dict[str, Any]]) -> None:
     clean = [r for r in records if r.get("first_violation") is None]
     line = f"{str(step):<9} episodes={len(records):<3} "
     if arrivals:
-        speeds = [float(r["gate_entry"]["speed_m_s"]) for r in arrivals]
+        speeds = [float(r["waypoint_entry"]["speed_m_s"]) for r in arrivals]
         line += (
-            f"Gate arrivals={len(arrivals)} "
+            f"Waypoint arrivals={len(arrivals)} "
             f"(speed mean {sum(speeds)/len(speeds):.3f} max {max(speeds):.3f} m/s)  "
         )
     print(line + "  ".join(f"{name}={count}" for name, count in kinds.most_common()))
@@ -129,7 +129,7 @@ def _report(step: Any, records: list[dict[str, Any]]) -> None:
 
     if holds:
         immediate = sum(1 for value in holds if value <= 1.0e-9)
-        anchor = "Gate entry" if arrivals else "reset"
+        anchor = "Waypoint entry" if arrivals else "reset"
         print(
             f"{'':9} held from {anchor} to first violation: "
             f"median {median(holds):.1f} s  min {min(holds):.1f} s  "

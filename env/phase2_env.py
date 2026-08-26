@@ -18,7 +18,7 @@ from env.observation import PHASE2_MISSION_OBSERVATION_SCHEMA
 from env.task import Phase2MissionConfig
 
 
-Phase2Mode = Literal["phase1_pretrain", "full_mission", "gate_free"]
+Phase2Mode = Literal["phase1_pretrain", "full_mission", "single_phase"]
 
 
 def phase2_s1v2_mission_config() -> Phase2MissionConfig:
@@ -26,10 +26,10 @@ def phase2_s1v2_mission_config() -> Phase2MissionConfig:
 
     return replace(
         Phase2MissionConfig(),
-        gate_semantics="acquisition_v2",
-        gate_position_tolerance_m=1.5,
-        gate_speed_tolerance_m_s=0.30,
-        gate_fov_tolerance_rad=float(np.deg2rad(45.0)),
+        waypoint_semantics="acquisition_v2",
+        waypoint_position_tolerance_m=1.5,
+        waypoint_speed_tolerance_m_s=0.30,
+        waypoint_fov_tolerance_rad=float(np.deg2rad(45.0)),
         initial_distance_min_m=10.0,
         initial_distance_max_m=14.0,
         initial_direction_half_angle_rad=float(np.deg2rad(15.0)),
@@ -45,12 +45,12 @@ def phase2_environment_config(
 ) -> SE3RendezvousConfig:
     """Return the canonical mission environment configuration.
 
-    ``gate_free`` is the single-phase task: the same dynamics, geometry and
+    ``single_phase`` is the single-phase task: the same dynamics, geometry and
     constraint set, with the terminal constraints active from the first step
-    and no Gate waypoint, bonus or premature-entry guard.
+    and no approach waypoint, bonus or premature-entry guard.
     """
 
-    if mode not in {"phase1_pretrain", "full_mission", "gate_free"}:
+    if mode not in {"phase1_pretrain", "full_mission", "single_phase"}:
         raise ValueError(f"unsupported Phase-2 mode: {mode}")
     return replace(
         SE3RendezvousConfig(),

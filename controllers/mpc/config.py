@@ -49,6 +49,12 @@ class MPCConfig:
         default_factory=lambda: np.zeros(12, dtype=np.float64)
     )
     task: Phase2TaskConfig | None = None
+    # "fixed" holds the reference at reference_state for the whole horizon -- a
+    # myopic regulator. "corridor_guidance" rolls env.task.corridor_guidance_velocity
+    # forward from the current relative position, giving the QP the same path
+    # plan the reward and the scripted controller use, so the comparison is not
+    # decided by one method having a reference and the other not.
+    reference_source: str = "fixed"
     corridor_facets: int = 8
     constraint_slack_weight: float = 1.0e4
     constraint_slack_limit: float = 2.0
@@ -76,6 +82,10 @@ class MPCConfig:
             raise ValueError("MPC integer settings must be positive")
         if self.linearization_source not in {"exact", "local"}:
             raise ValueError("linearization_source must be 'exact' or 'local'")
+        if self.reference_source not in {"fixed", "corridor_guidance"}:
+            raise ValueError("reference_source must be 'fixed' or 'corridor_guidance'")
+        if self.reference_source == "corridor_guidance" and self.task is None:
+            raise ValueError("corridor_guidance reference requires a task")
         if self.corridor_facets < 4:
             raise ValueError("corridor_facets must be at least four")
         if min(self.constraint_slack_weight, self.constraint_slack_limit) <= 0.0:
@@ -101,6 +111,22 @@ def constrained_mpc_nominal_config(**changes: object) -> MPCConfig:
     }
     values.update(changes)
     return MPCConfig(**values)
+
+
+def corridor_tracking_mpc_config(**changes: object) -> MPCConfig:
+    """Constrained MPC that tracks the corridor-guidance path, not a setpoint.
+
+    Same task, solver and horizon as the nominal config; the only change is that
+    the reference is the corridor-guidance trajectory the reward and the scripted
+    controller already use, so Pure MPC is compared on how it flies a shared
+    reference rather than on whether it has one. This is the fair Pure MPC row
+    for the single-phase task; the fixed-setpoint config stays the record for
+    the terminal-only evidence measured before it existed.
+    """
+
+    return constrained_mpc_nominal_config(
+        reference_source="corridor_guidance", **changes
+    )
 
 
 # Historical name retained only for loading old evidence/scripts. Current code

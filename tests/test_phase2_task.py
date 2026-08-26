@@ -56,32 +56,32 @@ def test_closing_envelope_clamps_negative_remaining_distance() -> None:
     assert task.completion_required_steps(0.1) == 10
 
 
-def test_gate_condition_is_a_state_event_not_terminal_completion() -> None:
+def test_waypoint_condition_is_a_state_event_not_terminal_completion() -> None:
     mission = Phase2MissionConfig()
-    relative = _relative(mission.gate_position)
+    relative = _relative(mission.waypoint_position)
     metrics = compute_mission_metrics(relative, mission)
-    assert mission.gate_satisfied(metrics)
+    assert mission.waypoint_satisfied(metrics)
     assert not compute_task_metrics(relative).instantaneous_completion
 
 
-def test_acquisition_v2_gate_uses_position_speed_and_fov_only() -> None:
+def test_acquisition_v2_waypoint_uses_position_speed_and_fov_only() -> None:
     mission = Phase2MissionConfig(
-        gate_semantics="acquisition_v2",
-        gate_position_tolerance_m=1.5,
-        gate_speed_tolerance_m_s=0.30,
+        waypoint_semantics="acquisition_v2",
+        waypoint_position_tolerance_m=1.5,
+        waypoint_speed_tolerance_m_s=0.30,
     )
     relative = _relative(
-        mission.gate_position,
+        mission.waypoint_position,
         rotation=so3_exp([0.0, np.deg2rad(35.0), 0.0]),
         omega=[0.10, 0.0, 0.0],
     )
     metrics = compute_mission_metrics(relative, mission)
-    assert metrics.attitude_error_rad > mission.gate_attitude_tolerance_rad
+    assert metrics.attitude_error_rad > mission.waypoint_attitude_tolerance_rad
     assert metrics.angular_velocity_error_rad_s > (
-        mission.gate_angular_velocity_tolerance_rad_s
+        mission.waypoint_angular_velocity_tolerance_rad_s
     )
-    assert mission.gate_satisfied(metrics, fov_angle_rad=np.deg2rad(40.0))
-    assert not mission.gate_satisfied(metrics, fov_angle_rad=np.deg2rad(50.0))
+    assert mission.waypoint_satisfied(metrics, fov_angle_rad=np.deg2rad(40.0))
+    assert not mission.waypoint_satisfied(metrics, fov_angle_rad=np.deg2rad(50.0))
 
 
 def test_manifest_lists_are_canonicalized_for_config_equality() -> None:
@@ -91,14 +91,14 @@ def test_manifest_lists_are_canonicalized_for_config_equality() -> None:
         approach_axis_target=[-1.0, 0.0, 0.0],
         camera_boresight_chaser=[1.0, 0.0, 0.0],
     )
-    mission = Phase2MissionConfig(gate_position_target_m=[-8.0, 0.0, 0.0])
+    mission = Phase2MissionConfig(waypoint_position_target_m=[-8.0, 0.0, 0.0])
     assert task == Phase2TaskConfig()
     assert mission == Phase2MissionConfig()
 
 
 def test_phase1_catastrophic_guard_is_outside_soft_speed_region() -> None:
     mission = Phase2MissionConfig()
-    assert mission.gate_speed_tolerance_m_s < mission.phase1_soft_speed_m_s
+    assert mission.waypoint_speed_tolerance_m_s < mission.phase1_soft_speed_m_s
     assert mission.phase1_soft_speed_m_s < mission.phase1_catastrophic_speed_limit_m_s
     assert mission.phase1_failure_penalty == mission.catastrophic_failure_penalty
-    assert mission.phase1_failure_penalty < -mission.gate_reward
+    assert mission.phase1_failure_penalty < -mission.waypoint_reward
