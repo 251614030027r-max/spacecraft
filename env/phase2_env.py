@@ -18,7 +18,9 @@ from env.observation import PHASE2_MISSION_OBSERVATION_SCHEMA
 from env.task import Phase2MissionConfig
 
 
-Phase2Mode = Literal["phase1_pretrain", "full_mission", "single_phase"]
+Phase2Mode = Literal[
+    "phase1_pretrain", "full_mission", "single_phase", "single_phase_phase_sampled"
+]
 
 
 def phase2_s1v2_mission_config() -> Phase2MissionConfig:
@@ -50,13 +52,26 @@ def phase2_environment_config(
     and no approach waypoint, bonus or premature-entry guard.
     """
 
-    if mode not in {"phase1_pretrain", "full_mission", "single_phase"}:
+    if mode not in {
+        "phase1_pretrain",
+        "full_mission",
+        "single_phase",
+        "single_phase_phase_sampled",
+    }:
         raise ValueError(f"unsupported Phase-2 mode: {mode}")
+    # single_phase_phase_sampled is single_phase with one change: the target's
+    # initial attitude and tumble direction are sampled per episode (magnitude
+    # frozen). The training mode stays "single_phase" so every task semantic --
+    # phase flag, live terminal constraints, no Waypoint -- is identical; the
+    # only difference is the phase-sampling flag, which is the single factor.
+    phase_sampled = mode == "single_phase_phase_sampled"
+    training_mode = "single_phase" if phase_sampled else mode
     return replace(
         SE3RendezvousConfig(),
         phase2_enabled=True,
         phase2_mission_enabled=True,
-        phase2_training_mode=mode,
+        phase2_training_mode=training_mode,
+        phase2_target_phase_sampling=phase_sampled,
         phase2_mission=phase2_s1v2_mission_config(),
         phase2_observation_schema=PHASE2_MISSION_OBSERVATION_SCHEMA,
         curriculum_enabled=False,

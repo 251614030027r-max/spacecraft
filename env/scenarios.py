@@ -32,10 +32,41 @@ TARGET_ORBIT_INCLINATION_RAD = float(np.deg2rad(45.0))
 TARGET_BASE_TUMBLE_RAD_S = np.array([0.05, 0.2, 0.0], dtype=np.float64)
 
 
-def target_initial_state(*, tumble_scale: float) -> SpacecraftState:
+def _uniform_rotation(rng: Generator) -> np.ndarray:
+    """A rotation drawn uniformly from SO(3) (Haar measure).
+
+    QR of a Gaussian matrix gives a Haar-uniform orthogonal matrix once the
+    signs of the R diagonal are folded into Q; a final column flip forces
+    det = +1 so the result is a proper rotation rather than a reflection.
+    """
+
+    gaussian = rng.normal(size=(3, 3))
+    q, r = np.linalg.qr(gaussian)
+    q = q * np.sign(np.diag(r))
+    if np.linalg.det(q) < 0.0:
+        q[:, 0] = -q[:, 0]
+    return q
+
+
+def target_initial_state(
+    *, tumble_scale: float, phase_seed: int | None = None
+) -> SpacecraftState:
+    """Nominal or phase-sampled tumbling-target initial state.
+
+    ``phase_seed=None`` reproduces the single deterministic realisation the whole
+    project has used: identity attitude and angular velocity
+    ``tumble_scale * TARGET_BASE_TUMBLE_RAD_S``. A ``phase_seed`` samples the
+    target's initial attitude (uniform on SO(3)) and the *direction* of its
+    angular velocity, while **freezing the tumble-rate magnitude** to that same
+    ``|tumble_scale * TARGET_BASE_TUMBLE_RAD_S|`` -- so the Lambda>1 regime is
+    unchanged and only the tumble's orientation and nutation phase vary. This is
+    the single factor of the ``single_phase_phase_sampled`` sub-task; the
+    determinism (a fixed integer seed reproduces the state exactly) keeps every
+    episode reproducible from its manifest.
+    """
+
     if tumble_scale < 0.0:
         raise ValueError("tumble_scale must be non-negative")
-    rotation = np.eye(3)
     orbital_radius = EARTH.equatorial_radius + TARGET_ORBIT_ALTITUDE_M
     circular_speed = np.sqrt(EARTH.mu / orbital_radius)
     inclination = TARGET_ORBIT_INCLINATION_RAD
@@ -47,10 +78,22 @@ def target_initial_state(*, tumble_scale: float) -> SpacecraftState:
             circular_speed * np.sin(inclination),
         ]
     )
+    if phase_seed is None:
+        rotation = np.eye(3)
+        omega = tumble_scale * TARGET_BASE_TUMBLE_RAD_S
+    else:
+        rng = np.random.default_rng(phase_seed)
+        rotation = _uniform_rotation(rng)
+        rate_magnitude = float(
+            np.linalg.norm(tumble_scale * TARGET_BASE_TUMBLE_RAD_S)
+        )
+        direction = rng.normal(size=3)
+        direction /= np.linalg.norm(direction)
+        omega = rate_magnitude * direction
     return SpacecraftState(
         rotation=rotation,
         position=position_eci,
-        omega=tumble_scale * TARGET_BASE_TUMBLE_RAD_S,
+        omega=omega,
         velocity=rotation.T @ velocity_eci,
     )
 

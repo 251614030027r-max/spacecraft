@@ -80,8 +80,13 @@ def zero_action(env) -> np.ndarray:  # noqa: ARG001
 POLICIES = {"scripted": scripted_action, "zero": zero_action}
 
 
-def rollout(seed: int, policy: str, max_steps: int = 2001) -> dict[str, Any]:
-    env = make_phase2_env("single_phase")
+def rollout(
+    seed: int,
+    policy: str,
+    max_steps: int = 2001,
+    task: str = "single_phase",
+) -> dict[str, Any]:
+    env = make_phase2_env(task)
     action_fn = POLICIES[policy]
     try:
         _, info = env.reset(seed=seed)
@@ -241,15 +246,25 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=262000)
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--preference-episodes", type=int, default=3)
+    parser.add_argument(
+        "--task",
+        choices=("single_phase", "single_phase_phase_sampled"),
+        default="single_phase",
+        help="single_phase_phase_sampled runs the scripted reference row on the "
+        "phase-sampled sub-task; the scripted law is a live feedback law, so a "
+        "large completion drop there flags a hidden identity assumption rather "
+        "than a real regime effect",
+    )
     args = parser.parse_args()
     if args.output.exists():
         raise FileExistsError(args.output)
 
     scripted = [
-        rollout(args.seed + index, "scripted") for index in range(args.episodes)
+        rollout(args.seed + index, "scripted", task=args.task)
+        for index in range(args.episodes)
     ]
     passive = [
-        rollout(args.seed + index, "zero")
+        rollout(args.seed + index, "zero", task=args.task)
         for index in range(args.preference_episodes)
     ]
     margins = [

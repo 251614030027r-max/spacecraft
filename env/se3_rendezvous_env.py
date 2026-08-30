@@ -125,6 +125,11 @@ class SE3RendezvousConfig:
     phase1_curriculum_easy_speed_limit_m_s: float = 0.03
     phase1_curriculum_easy_angular_velocity_limit_rad_s: float = 0.001
     phase2_task: Phase2TaskConfig = field(default_factory=Phase2TaskConfig)
+    # When True, each episode samples the target's initial attitude and angular-
+    # velocity direction (tumble-rate magnitude frozen) instead of the single
+    # deterministic identity/base realisation. This is the sole change of the
+    # single_phase_phase_sampled sub-task; all task semantics stay identical.
+    phase2_target_phase_sampling: bool = False
     phase2_target_tumble_scale: float = 0.25
     phase2_axial_remaining_min_m: float = 3.0
     phase2_axial_remaining_max_m: float = 7.0
@@ -155,7 +160,7 @@ class SE3RendezvousConfig:
     phase2_distance_failure_penalty: float = -20.0
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=256)
 def _cached_target_trajectory(
     max_time_s: float,
     dt_s: float,
@@ -163,8 +168,14 @@ def _cached_target_trajectory(
     solver_rtol: float,
     solver_atol: float,
     tumble_scale: float,
+    phase_seed: int | None = None,
 ) -> tuple[SpacecraftState, ...]:
-    state = target_initial_state(tumble_scale=tumble_scale)
+    # phase_seed is part of the key: with per-episode phase sampling each episode
+    # has a distinct target trajectory, so keying on tumble_scale alone would
+    # silently reuse one realisation for every phase. None reproduces the nominal
+    # deterministic trajectory bitwise. maxsize is raised so a whole evaluation
+    # block's phases stay cached within a run rather than thrashing.
+    state = target_initial_state(tumble_scale=tumble_scale, phase_seed=phase_seed)
     parameters = target_parameters()
     gravity = GravityOptions(include_j2=include_j2)
     solver = RK45Settings(rtol=solver_rtol, atol=solver_atol, max_step=dt_s)
@@ -261,6 +272,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             self.config.inertial_velocity_component_limit_m_s
         )
         self._episode_tumble_scale = self.config.target_tumble_scale
+        self._episode_target_phase_seed: int | None = None
         self._target_trajectory: tuple[SpacecraftState, ...] | None = None
         self._active_phase2_task = self.config.phase2_task
         self._phase2_stage = "nominal"
@@ -672,11 +684,21 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 self._phase1_curriculum_difficulty = 1.0
                 self._phase1_curriculum_full_sample = True
                 self._phase1_curriculum_current_full_probability = 1.0
+        # Per-episode target phase seed, drawn from the episode RNG so it is
+        # reproducible from the episode seed and recorded in info. None keeps the
+        # single deterministic realisation used everywhere else.
+        if self.config.phase2_target_phase_sampling:
+            self._episode_target_phase_seed = int(
+                self.np_random.integers(0, 2**31 - 1)
+            )
+        else:
+            self._episode_target_phase_seed = None
         supplied_target = options.get("target_state")
         supplied_target_parameters = options.get("target_parameters")
         if supplied_target is None:
             self.target_state = target_initial_state(
-                tumble_scale=self._episode_tumble_scale
+                tumble_scale=self._episode_tumble_scale,
+                phase_seed=self._episode_target_phase_seed,
             )
             self.target_parameters = target_parameters()
             self._target_trajectory = (
@@ -687,6 +709,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                     self.config.solver_rtol,
                     self.config.solver_atol,
                     self._episode_tumble_scale,
+                    self._episode_target_phase_seed,
                 )
                 if self.config.cache_target_trajectory
                 else None
@@ -874,6 +897,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             "episode_max_relative_attitude_rad": self._episode_attitude_limit,
             "episode_inertial_velocity_limit_m_s": self._episode_velocity_limit,
             "episode_target_tumble_scale": self._episode_tumble_scale,
+            "episode_target_phase_seed": self._episode_target_phase_seed,
             "phase2_stage": self._phase2_stage,
             "mission_phase": self._mission_phase,
             "waypoint_reached": self._waypoint_reached,

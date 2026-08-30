@@ -76,13 +76,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-time", type=float)
     parser.add_argument(
         "--task",
-        choices=("terminal", "single_phase"),
+        choices=("terminal", "single_phase", "single_phase_phase_sampled"),
         default="terminal",
         help=(
             "terminal is the 2-10 m terminal-only shell the fixed-setpoint "
             "evidence was measured on; single_phase is the benchmark the SAC "
-            "and scripted rows use (10-14 m, constrained from step one), which "
-            "is the task the three-way table compares on"
+            "and scripted rows use (10-14 m, constrained from step one); "
+            "single_phase_phase_sampled is that benchmark with the target's "
+            "initial attitude and tumble direction sampled per episode (rate "
+            "magnitude frozen) -- the route-A harder regime"
         ),
     )
     parser.add_argument(
@@ -387,7 +389,8 @@ def resolve_reference_source(task: str, explicit: str | None) -> str:
 
     if explicit is not None:
         return explicit
-    return "corridor_guidance" if task == "single_phase" else "fixed"
+    single_phase_family = task in {"single_phase", "single_phase_phase_sampled"}
+    return "corridor_guidance" if single_phase_family else "fixed"
 
 
 def main() -> None:
@@ -439,8 +442,8 @@ def main() -> None:
         ),
     )
     environment_config = (
-        phase2_environment_config("single_phase")
-        if args.task == "single_phase"
+        phase2_environment_config(args.task)
+        if args.task in {"single_phase", "single_phase_phase_sampled"}
         else terminal_phase_environment_config()
     )
     if args.max_time is not None:
