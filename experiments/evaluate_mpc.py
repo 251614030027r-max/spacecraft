@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 
 from controllers.mpc import (
+    ConvexQuadraticTerminalValue,
     LocalRelativePredictionModel,
     MPCConfig,
     MPCController,
@@ -74,6 +75,24 @@ def parse_args() -> argparse.Namespace:
             "and fixed for terminal (the terminal-only record). Pass it only to "
             "override that default."
         ),
+    )
+    parser.add_argument(
+        "--terminal-cost-source",
+        choices=("fixed_quadratic", "learned_convex"),
+        default="fixed_quadratic",
+        help=(
+            "fixed_quadratic keeps the diagonal terminal penalty (the Pure MPC "
+            "baseline and the matched short-horizon control row); learned_convex "
+            "uses the fitted convex terminal value from --terminal-value-file. "
+            "This is the single interpretable factor of the coupling experiment."
+        ),
+    )
+    parser.add_argument(
+        "--terminal-value-file",
+        type=Path,
+        default=None,
+        help="JSON terminal value from experiments.fit_terminal_value; required "
+        "when --terminal-cost-source learned_convex",
     )
     return parser.parse_args()
 
@@ -355,6 +374,14 @@ def main() -> None:
     if args.output.exists():
         raise FileExistsError(args.output)
     reference_source = resolve_reference_source(args.task, args.reference_source)
+    if args.terminal_cost_source == "learned_convex":
+        if args.terminal_value_file is None:
+            raise ValueError(
+                "--terminal-cost-source learned_convex requires --terminal-value-file"
+            )
+        terminal_value = ConvexQuadraticTerminalValue.load(args.terminal_value_file)
+    else:
+        terminal_value = None
     base_config = constrained_mpc_nominal_config()
     config = replace(
         base_config,
@@ -377,6 +404,8 @@ def main() -> None:
             else 100.0
         ),
         reference_source=reference_source,
+        terminal_cost_source=args.terminal_cost_source,
+        terminal_value=terminal_value,
     )
     environment_config = (
         phase2_environment_config("single_phase")

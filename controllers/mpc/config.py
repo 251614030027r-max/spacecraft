@@ -9,6 +9,8 @@ import numpy as np
 from dynamics.lie import se3_log
 from env.task import Phase2TaskConfig
 
+from .terminal_value import ConvexQuadraticTerminalValue
+
 
 def _state_scales() -> np.ndarray:
     return np.array(
@@ -55,6 +57,13 @@ class MPCConfig:
     # plan the reward and the scripted controller use, so the comparison is not
     # decided by one method having a reference and the other not.
     reference_source: str = "fixed"
+    # "fixed_quadratic" keeps the historical terminal penalty
+    # terminal_weight * ||S^-1 (x - r)||^2 -- a diagonal cost on the deviation
+    # from the terminal reference, bitwise unchanged. "learned_convex" replaces
+    # it with the fitted convex quadratic in `terminal_value`, the single
+    # interpretable factor of the SAC-MPC coupling minimal experiment.
+    terminal_cost_source: str = "fixed_quadratic"
+    terminal_value: ConvexQuadraticTerminalValue | None = None
     corridor_facets: int = 8
     constraint_slack_weight: float = 1.0e4
     constraint_slack_limit: float = 2.0
@@ -86,6 +95,16 @@ class MPCConfig:
             raise ValueError("reference_source must be 'fixed' or 'corridor_guidance'")
         if self.reference_source == "corridor_guidance" and self.task is None:
             raise ValueError("corridor_guidance reference requires a task")
+        if self.terminal_cost_source not in {"fixed_quadratic", "learned_convex"}:
+            raise ValueError(
+                "terminal_cost_source must be 'fixed_quadratic' or 'learned_convex'"
+            )
+        if self.terminal_cost_source == "learned_convex" and not isinstance(
+            self.terminal_value, ConvexQuadraticTerminalValue
+        ):
+            raise ValueError(
+                "learned_convex terminal cost requires a ConvexQuadraticTerminalValue"
+            )
         if self.corridor_facets < 4:
             raise ValueError("corridor_facets must be at least four")
         if min(self.constraint_slack_weight, self.constraint_slack_limit) <= 0.0:
@@ -127,6 +146,32 @@ def corridor_tracking_mpc_config(**changes: object) -> MPCConfig:
     return constrained_mpc_nominal_config(
         reference_source="corridor_guidance", **changes
     )
+
+
+def learned_terminal_mpc_config(
+    terminal_value: ConvexQuadraticTerminalValue,
+    *,
+    horizon_steps: int = 10,
+    **changes: object,
+) -> MPCConfig:
+    """Short-horizon constrained MPC with a learned convex terminal value.
+
+    This is the (c) row of the minimal SAC-MPC coupling experiment: the same
+    task, solver and corridor-guidance reference as the fair Pure MPC baseline,
+    but a shortened horizon whose terminal cost is the fitted convex quadratic
+    rather than the fixed diagonal penalty. The single interpretable factor
+    against the matched short-horizon "fixed_quadratic" row (b) is
+    ``terminal_cost_source``.
+    """
+
+    values: dict[str, object] = {
+        "reference_source": "corridor_guidance",
+        "horizon_steps": horizon_steps,
+        "terminal_cost_source": "learned_convex",
+        "terminal_value": terminal_value,
+    }
+    values.update(changes)
+    return constrained_mpc_nominal_config(**values)
 
 
 # Historical name retained only for loading old evidence/scripts. Current code

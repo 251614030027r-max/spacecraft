@@ -113,9 +113,26 @@ class MPCController:
                 objective += config.constraint_slack_weight * cp.sum_squares(
                     self._slack[:, index]
                 )
-        objective += config.terminal_weight * cp.sum_squares(
-            sx_inverse @ (self._x[:, n] - self._reference[:, n])
-        )
+        if config.terminal_cost_source == "learned_convex":
+            # A learned convex quadratic V(x) = (x-c)^T H (x-c) + g^T (x-c),
+            # entering as ||L (x-c)||^2 + g^T (x-c) with L^T L = H. Every term is
+            # a numpy constant baked in here, so the terminal cost is a fixed
+            # affine-of-variable expression -- trivially DCP/DPP, no neural
+            # network and no manifold Jacobian in the solver. It replaces the
+            # fixed diagonal penalty; the reference tracked over the horizon is
+            # unchanged, only the last-stage cost differs.
+            terminal_value = config.terminal_value
+            assert terminal_value is not None
+            factor = terminal_value.cholesky_factor()
+            center = terminal_value.center
+            deviation = self._x[:, n] - center
+            objective += cp.sum_squares(factor @ deviation) + (
+                terminal_value.linear @ deviation
+            )
+        else:
+            objective += config.terminal_weight * cp.sum_squares(
+                sx_inverse @ (self._x[:, n] - self._reference[:, n])
+            )
         self._problem = cp.Problem(cp.Minimize(objective), constraints)
         self._nominal_controls = np.zeros((n, 6), dtype=np.float64)
         self._drift = np.zeros(12, dtype=np.float64)
@@ -328,6 +345,10 @@ class MPCController:
             if self.config.task is not None
             else ()
         )
+        # Report the cost of the problem that was actually solved: under the
+        # learned terminal value the last-stage penalty is V, not the fixed
+        # diagonal one, so zero out the diagonal terminal weight and add V.
+        learned_terminal = self.config.terminal_cost_source == "learned_convex"
         predicted_cost = nonlinear_rollout_cost(
             predicted_states,
             self._nominal_controls,
@@ -335,11 +356,14 @@ class MPCController:
             input_scales=self.config.input_scales,
             state_weight=self.config.state_weight,
             input_weight=self.config.input_weight,
-            terminal_weight=self.config.terminal_weight,
+            terminal_weight=0.0 if learned_terminal else self.config.terminal_weight,
             # The same per-stage reference the objective used, so the reported
             # cost measures the problem that was actually solved.
             reference_state=reference_trajectory.T,
         )
+        if learned_terminal:
+            assert self.config.terminal_value is not None
+            predicted_cost += self.config.terminal_value.value(predicted_states[-1])
         self._control_step += 1
         return command, MPCStepDiagnostics(
             status=status,
