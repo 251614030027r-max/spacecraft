@@ -48,6 +48,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--horizon", type=int)
+    parser.add_argument(
+        "--linearization-source",
+        choices=("exact", "local"),
+        default=None,
+        help=(
+            "exact refreshes an RK45-truth Jacobian every --exact-refresh-steps "
+            "control steps (the ~250 ms refresh lump that sets the compute p95); "
+            "local re-linearises the fast prediction model along the horizon with "
+            "no truth refresh. This is the single factor of the refresh compute "
+            "experiment: does dropping/lengthening the refresh bring p95 into "
+            "budget without losing constraint margin?"
+        ),
+    )
+    parser.add_argument(
+        "--exact-refresh-steps",
+        type=int,
+        default=None,
+        help="control steps between exact-linearisation refreshes (default 10); "
+        "larger fires the refresh lump less often, trading model staleness for a "
+        "lower compute p95",
+    )
     parser.add_argument("--outer-iterations", type=int)
     parser.add_argument("--input-weight", type=float)
     parser.add_argument("--terminal-weight", type=float)
@@ -406,6 +427,16 @@ def main() -> None:
         reference_source=reference_source,
         terminal_cost_source=args.terminal_cost_source,
         terminal_value=terminal_value,
+        linearization_source=(
+            args.linearization_source
+            if args.linearization_source is not None
+            else base_config.linearization_source
+        ),
+        exact_linearization_refresh_steps=(
+            args.exact_refresh_steps
+            if args.exact_refresh_steps is not None
+            else base_config.exact_linearization_refresh_steps
+        ),
     )
     environment_config = (
         phase2_environment_config("single_phase")

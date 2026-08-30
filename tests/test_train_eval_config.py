@@ -347,6 +347,19 @@ def test_main_table_assembler_reads_main_table_blocks(tmp_path) -> None:
     assert scripted["completion"] == "3/3"
     assert scripted["compute_ms"] == "0.085"
     assert mpc["budget_x"] == "1.00x"
+
+    # p95/max budget are the headline: an in-budget mean must not hide an
+    # over-budget worst case (the exact-linearisation refresh step). A table
+    # that carries the p95 and max fields renders them; an older one that does
+    # not falls back to a dash rather than silently reporting the mean.
+    detailed = table(0.03, 2, 2)
+    detailed["per_step_compute_s"]["controller"].update({"p95": 0.276, "max": 0.282})
+    detailed["per_step_compute_s"]["controller_p95_over_budget"] = 2.76
+    refresh_row = _row("MPC h10", detailed)
+    assert refresh_row["budget_x"] == "0.30x"  # mean is in budget
+    assert refresh_row["budget_p95_x"] == "2.76x"  # but p95 is not
+    assert refresh_row["budget_max_x"] == "2.82x"
+    assert scripted["budget_p95_x"] == "--"  # absent fields degrade gracefully
     # Worst margin is the single tightest across the five, not a per-column list.
     assert scripted["worst_margin"] == "+0.050"
     rendered = _render([scripted, mpc])

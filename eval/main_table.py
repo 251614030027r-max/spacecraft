@@ -74,10 +74,25 @@ def _provenance(path: Path) -> dict[str, Any]:
 
 def _row(label: str, table: dict[str, Any]) -> dict[str, str]:
     compute = table["per_step_compute_s"]
-    over = compute.get("controller_mean_over_budget")
+    controller = compute.get("controller") or {}
+    period = compute.get("control_period_s")
+    mean_over = compute.get("controller_mean_over_budget")
+    p95_over = compute.get("controller_p95_over_budget")
+    # Real-time is bounded by the worst case, not the mean, so the headline
+    # budget columns are p95 and max. The exact-linearization refresh step fires
+    # once every few seconds and dominates both while barely moving the mean;
+    # reporting only the mean (as this table used to) hides an over-budget
+    # controller behind an in-budget average. max/period is derived here so the
+    # column works on evaluation files written before the metric existed.
+    max_s = controller.get("max")
+    max_over = (max_s / period) if (max_s is not None and period) else None
     force = table["force_impulse_n_s"]["completed_only"]
     returns = table.get("discounted_return", {}).get("completed_only")
     worst = table["worst_constraint_margin"]
+
+    def budget(value: float | None) -> str:
+        return "--" if value is None else f"{value:.2f}x"
+
     return {
         "method": label,
         "completion": f"{table['completed_episodes']}/{table['episodes']}",
@@ -88,8 +103,11 @@ def _row(label: str, table: dict[str, Any]) -> dict[str, str]:
             if not worst
             else f"{min(worst.values()):+.3f}"
         ),
-        "compute_ms": _cell(compute["controller"], "mean", 1e3),
-        "budget_x": ("--" if over is None else f"{over:.2f}x"),
+        "compute_ms": _cell(controller, "mean", 1e3),
+        "p95_ms": _cell(controller, "p95", 1e3),
+        "budget_x": budget(mean_over),
+        "budget_p95_x": budget(p95_over),
+        "budget_max_x": budget(max_over),
         "return": _cell(returns, "mean"),
     }
 
@@ -101,8 +119,10 @@ def _render(rows: list[dict[str, str]]) -> str:
         ("time_s", "time s", ">"),
         ("force_ns", "force N*s", ">"),
         ("worst_margin", "worst margin", ">"),
-        ("compute_ms", "compute ms", ">"),
-        ("budget_x", "budget", ">"),
+        ("compute_ms", "mean ms", ">"),
+        ("p95_ms", "p95 ms", ">"),
+        ("budget_p95_x", "budget p95", ">"),
+        ("budget_max_x", "budget max", ">"),
         ("return", "return", ">"),
     ]
     widths = {
@@ -149,7 +169,11 @@ def main() -> None:
     print(_render(rows))
     print(
         "\nworst margin is the single tightest of the five task margins over all"
-        " episodes; budget is controller mean / control period (>1 = over budget)."
+        " episodes. compute is the controller only; budget is controller time /"
+        " control period (>1 = over budget). Real-time is bounded by the worst"
+        " case, so budget p95 and budget max are the headline -- an in-budget"
+        " mean can still hide an over-budget refresh step (mean ms shown for"
+        " reference)."
     )
     print("\nalignment (confirm the rows are one comparison):")
     for label, item in provenance:
