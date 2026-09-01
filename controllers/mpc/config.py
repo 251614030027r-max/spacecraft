@@ -57,6 +57,13 @@ class MPCConfig:
     # plan the reward and the scripted controller use, so the comparison is not
     # decided by one method having a reference and the other not.
     reference_source: str = "fixed"
+    # Fraction of the total-speed limit the corridor-guidance reference aims for
+    # (the coefficient inside env.task.corridor_guidance_velocity, default 0.6).
+    # Lowering it flies the co-rotation more conservatively, buying total_speed
+    # margin -- the knob for the observation-error margin control (fly at 0.5x /
+    # 0.4x). It changes only the MPC's own reference, not the task or reward, so
+    # it stays a clean single factor. Applies only under corridor_guidance.
+    corridor_speed_fraction: float = 0.6
     # "fixed_quadratic" keeps the historical terminal penalty
     # terminal_weight * ||S^-1 (x - r)||^2 -- a diagonal cost on the deviation
     # from the terminal reference, bitwise unchanged. "learned_convex" replaces
@@ -107,6 +114,8 @@ class MPCConfig:
             )
         if self.corridor_facets < 4:
             raise ValueError("corridor_facets must be at least four")
+        if not 0.0 < self.corridor_speed_fraction <= 1.0:
+            raise ValueError("corridor_speed_fraction must be in (0, 1]")
         if min(self.constraint_slack_weight, self.constraint_slack_limit) <= 0.0:
             raise ValueError("constraint slack settings must be positive")
         if self.constraint_tightening < 0.0:

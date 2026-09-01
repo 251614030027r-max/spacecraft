@@ -102,6 +102,38 @@ def target_parameters() -> SpacecraftParameters:
     return SpacecraftParameters(225.0, TARGET_INERTIA_KG_M2)
 
 
+def sample_target_parameters(
+    *, mismatch: float, seed: int
+) -> SpacecraftParameters:
+    """Truth target parameters with a bounded multiplicative model mismatch.
+
+    A non-cooperative target's inertia and mass are estimated from imaging/radar
+    with error; the controller predicts the tumble with the nominal estimate
+    while the truth differs. ``mismatch`` is the fractional half-range of a
+    uniform multiplicative perturbation (0.20 = +-20%). The inertia is perturbed
+    on its principal axes -- eigen-decompose, scale each principal moment,
+    reconstruct -- so the result stays symmetric positive-definite and is a
+    physically valid inertia. Inertia is the effective lever: a free-orbit
+    target's tumble is driven by its inertia (Euler's equations), while its mass
+    cancels in the gravitational acceleration, so mass is perturbed too for
+    completeness but barely moves the truth trajectory. ``mismatch=0`` returns
+    the nominal parameters exactly.
+    """
+
+    nominal = target_parameters()
+    if mismatch <= 0.0:
+        return nominal
+    if mismatch >= 1.0:
+        raise ValueError("mismatch must be in [0, 1)")
+    rng = np.random.default_rng(seed)
+    eigenvalues, vectors = np.linalg.eigh(nominal.inertia)
+    factors = 1.0 + rng.uniform(-mismatch, mismatch, size=3)
+    perturbed = (vectors * (eigenvalues * factors)) @ vectors.T
+    perturbed = 0.5 * (perturbed + perturbed.T)
+    mass = nominal.mass * (1.0 + float(rng.uniform(-mismatch, mismatch)))
+    return SpacecraftParameters(mass, perturbed)
+
+
 def chaser_parameters() -> SpacecraftParameters:
     return SpacecraftParameters(106.0, CHASER_INERTIA_KG_M2)
 

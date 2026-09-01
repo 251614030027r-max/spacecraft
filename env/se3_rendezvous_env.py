@@ -20,6 +20,7 @@ from dynamics.disturbance import zero_disturbance
 from dynamics.gravity import GravityOptions
 from dynamics.integrator import IntegrationDiagnostics, RK45Settings, propagate_rk45
 from dynamics.relative import RelativeState, relative_state
+from env.observation_error import TargetStateEstimator
 from dynamics.types import GeneralizedForce, SpacecraftParameters, SpacecraftState
 from env.action import normalized_to_wrench
 from env.observation import (
@@ -44,6 +45,7 @@ from env.scenarios import (
     sample_chaser_state,
     sample_phase2_mission_chaser_state,
     sample_phase2_chaser_state,
+    sample_target_parameters,
     target_initial_state,
     target_parameters,
 )
@@ -130,6 +132,20 @@ class SE3RendezvousConfig:
     # deterministic identity/base realisation. This is the sole change of the
     # single_phase_phase_sampled sub-task; all task semantics stay identical.
     phase2_target_phase_sampling: bool = False
+    # Fractional half-range of a per-episode multiplicative mismatch between the
+    # truth target inertia/mass (used to propagate the truth tumble) and the
+    # nominal parameters a model-based controller predicts with. 0.0 = truth is
+    # nominal (perfect model). This is the sole factor of the model-mismatch
+    # sub-task; it changes only the truth trajectory, never the task geometry.
+    phase2_target_model_mismatch: float = 0.0
+    # Observation-error injection for training/eval a learned policy under partial
+    # observability: the OBSERVATION is built from an estimated target pose
+    # (constant attitude bias + delay + low update rate), while truth still drives
+    # the dynamics, the reward and violation judging. All defaults off keep the
+    # observation bitwise unchanged.
+    phase2_observation_bias_rad: float = 0.0
+    phase2_observation_delay_steps: int = 0
+    phase2_observation_update_every: int = 1
     phase2_target_tumble_scale: float = 0.25
     phase2_axial_remaining_min_m: float = 3.0
     phase2_axial_remaining_max_m: float = 7.0
@@ -169,14 +185,22 @@ def _cached_target_trajectory(
     solver_atol: float,
     tumble_scale: float,
     phase_seed: int | None = None,
+    model_mismatch: float = 0.0,
+    model_mismatch_seed: int | None = None,
 ) -> tuple[SpacecraftState, ...]:
-    # phase_seed is part of the key: with per-episode phase sampling each episode
-    # has a distinct target trajectory, so keying on tumble_scale alone would
-    # silently reuse one realisation for every phase. None reproduces the nominal
-    # deterministic trajectory bitwise. maxsize is raised so a whole evaluation
-    # block's phases stay cached within a run rather than thrashing.
+    # phase_seed and (model_mismatch, model_mismatch_seed) are part of the key:
+    # each episode's phase and truth inertia give a distinct target trajectory,
+    # so keying on tumble_scale alone would silently reuse one realisation. None
+    # / 0.0 reproduce the nominal deterministic trajectory bitwise. maxsize is
+    # raised so a whole evaluation block stays cached within a run.
     state = target_initial_state(tumble_scale=tumble_scale, phase_seed=phase_seed)
-    parameters = target_parameters()
+    parameters = (
+        target_parameters()
+        if model_mismatch <= 0.0 or model_mismatch_seed is None
+        else sample_target_parameters(
+            mismatch=model_mismatch, seed=model_mismatch_seed
+        )
+    )
     gravity = GravityOptions(include_j2=include_j2)
     solver = RK45Settings(rtol=solver_rtol, atol=solver_atol, max_step=dt_s)
     maximum_steps = int(np.ceil(max_time_s / dt_s - 1.0e-12))
@@ -273,6 +297,9 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         )
         self._episode_tumble_scale = self.config.target_tumble_scale
         self._episode_target_phase_seed: int | None = None
+        self._episode_target_model_mismatch_seed: int | None = None
+        self._obs_estimator: TargetStateEstimator | None = None
+        self._observed_target: SpacecraftState | None = None
         self._target_trajectory: tuple[SpacecraftState, ...] | None = None
         self._active_phase2_task = self.config.phase2_task
         self._phase2_stage = "nominal"
@@ -562,6 +589,20 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
     def _observation(self) -> np.ndarray:
         self._require_state()
         assert self.relative is not None
+        # Under partial observability the observation is built from the estimated
+        # target pose (the estimate is refreshed once per step in reset/step); the
+        # reward and violation judging still use the truth self.relative elsewhere.
+        if self._observed_target is not None:
+            assert self.chaser_state is not None
+            observed_relative = relative_state(
+                self._observed_target, self.chaser_state
+            )
+            observed_target_omega = self._observed_target.omega
+        else:
+            observed_relative = self.relative
+            observed_target_omega = (
+                self.target_state.omega if self.target_state is not None else None
+            )
         builder = (
             build_phase2_mission_observation
             if self.config.phase2_mission_enabled
@@ -571,7 +612,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             else build_observation
         )
         kwargs = dict(
-            relative=self.relative,
+            relative=observed_relative,
             attitude_scale_rad=self.config.observation_attitude_scale_rad,
             distance_scale_m=self.config.observation_distance_scale_m,
             angular_velocity_scale_rad_s=(
@@ -583,7 +624,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         if self.config.phase2_enabled:
             kwargs["task"] = self._active_phase2_task
             assert self.target_state is not None
-            kwargs["target_angular_velocity_rad_s"] = self.target_state.omega
+            kwargs["target_angular_velocity_rad_s"] = observed_target_omega
             kwargs["target_angular_velocity_scale_rad_s"] = (
                 self.config.phase2_observation_target_angular_velocity_scale_rad_s
             )
@@ -611,7 +652,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 assert isinstance(self._reward, Phase2MissionReward)
                 kwargs["active_reference_velocity_target_m_s"] = (
                     self._reward.active_desired_velocity(
-                        self.relative,
+                        observed_relative,
                         active_reference,
                         terminal_constraints_active=(self._mission_phase == 1),
                     )
@@ -693,6 +734,14 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             )
         else:
             self._episode_target_phase_seed = None
+        # Per-episode truth model-mismatch seed, drawn after the phase seed so the
+        # phase-sampling stream is unchanged. None/0.0 keeps truth = nominal.
+        if self.config.phase2_target_model_mismatch > 0.0:
+            self._episode_target_model_mismatch_seed = int(
+                self.np_random.integers(0, 2**31 - 1)
+            )
+        else:
+            self._episode_target_model_mismatch_seed = None
         supplied_target = options.get("target_state")
         supplied_target_parameters = options.get("target_parameters")
         if supplied_target is None:
@@ -700,7 +749,18 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 tumble_scale=self._episode_tumble_scale,
                 phase_seed=self._episode_target_phase_seed,
             )
-            self.target_parameters = target_parameters()
+            # env.target_parameters is the TRUTH: the truth tumble is propagated
+            # with the sampled inertia/mass. A model-based controller is built
+            # separately with the nominal parameters, so the mismatch is the gap
+            # between this and what the controller predicts with.
+            self.target_parameters = (
+                target_parameters()
+                if self._episode_target_model_mismatch_seed is None
+                else sample_target_parameters(
+                    mismatch=self.config.phase2_target_model_mismatch,
+                    seed=self._episode_target_model_mismatch_seed,
+                )
+            )
             self._target_trajectory = (
                 _cached_target_trajectory(
                     self.config.max_time_s,
@@ -710,6 +770,8 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                     self.config.solver_atol,
                     self._episode_tumble_scale,
                     self._episode_target_phase_seed,
+                    self.config.phase2_target_model_mismatch,
+                    self._episode_target_model_mismatch_seed,
                 )
                 if self.config.cache_target_trajectory
                 else None
@@ -800,6 +862,26 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self.relative = relative_state(self.target_state, self.chaser_state)
         self.time_seconds = 0.0
         self.step_count = 0
+        # Per-episode observation estimator (partial observability). The estimate
+        # is refreshed once per step (below) so the observation, however many
+        # times it is built per step, reads a single consistent estimate.
+        if (
+            self.config.phase2_observation_bias_rad > 0.0
+            or self.config.phase2_observation_delay_steps > 0
+            or self.config.phase2_observation_update_every > 1
+        ):
+            self._obs_estimator = TargetStateEstimator(
+                bias_rad=self.config.phase2_observation_bias_rad,
+                bias_seed=int(self.np_random.integers(0, 2**31 - 1)),
+                delay_steps=self.config.phase2_observation_delay_steps,
+                update_every=self.config.phase2_observation_update_every,
+            )
+            self._observed_target = self._obs_estimator.estimate(
+                self.target_state, 0, 0.0
+            )
+        else:
+            self._obs_estimator = None
+            self._observed_target = None
         self._completion_streak = 0
         task_metrics = (
             compute_task_metrics(self.relative, self._active_phase2_task)
@@ -898,6 +980,14 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             "episode_inertial_velocity_limit_m_s": self._episode_velocity_limit,
             "episode_target_tumble_scale": self._episode_tumble_scale,
             "episode_target_phase_seed": self._episode_target_phase_seed,
+            "episode_target_model_mismatch": self.config.phase2_target_model_mismatch,
+            "episode_target_model_mismatch_seed": (
+                self._episode_target_model_mismatch_seed
+            ),
+            "episode_target_inertia_trace": float(
+                np.trace(self.target_parameters.inertia)
+            ),
+            "observation_error_active": self._obs_estimator is not None,
             "phase2_stage": self._phase2_stage,
             "mission_phase": self._mission_phase,
             "waypoint_reached": self._waypoint_reached,
@@ -1064,6 +1154,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self.total_transition_count += 1
         self.time_seconds = self.step_count * self.config.dt_s
         self.relative = relative_state(target_next, chaser_next)
+        if self._obs_estimator is not None:
+            self._observed_target = self._obs_estimator.estimate(
+                self.target_state, self.step_count, self.time_seconds
+            )
         metrics = compute_error_metrics(
             self.relative, self.config.success_thresholds
         )

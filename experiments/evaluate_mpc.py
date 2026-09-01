@@ -25,7 +25,9 @@ from controllers.mpc.constraints import normalized_truth_margins
 from controllers.mpc.prediction import relative_to_vector
 from dynamics.gravity import GravityOptions
 from dynamics.integrator import RK45Settings
-from dynamics.types import GeneralizedForce
+from dynamics.relative import relative_state
+from dynamics.types import GeneralizedForce, SpacecraftParameters
+from env.observation_error import TargetStateEstimator
 from env.action import wrench_to_normalized
 from env.phase2_env import (
     phase2_environment_config,
@@ -117,6 +119,63 @@ def parse_args() -> argparse.Namespace:
         help="JSON terminal value from experiments.fit_terminal_value; required "
         "when --terminal-cost-source learned_convex",
     )
+    parser.add_argument(
+        "--target-model-mismatch",
+        type=float,
+        default=0.0,
+        help="fractional half-range of the per-episode truth-vs-nominal target "
+        "inertia/mass mismatch (0 = perfect model, 0.2 = +-20%%). The truth "
+        "tumble uses the sampled parameters; the controller predicts with "
+        "nominal unless --controller-model truth. The single factor of the "
+        "model-mismatch probe.",
+    )
+    parser.add_argument(
+        "--controller-model",
+        choices=("nominal", "truth"),
+        default="nominal",
+        help="nominal: the controller predicts with the fixed nominal target "
+        "parameters (the realistic non-cooperative case). truth: rebuild the "
+        "controller each episode with the sampled truth parameters (feasibility "
+        "control -- confirms the task is solvable with a perfect model).",
+    )
+    parser.add_argument(
+        "--obs-bias-deg",
+        type=float,
+        default=0.0,
+        help="partial-observability probe: per-episode constant target attitude "
+        "estimation bias (degrees) fed to the controller. Truth is unchanged; "
+        "violations are still judged on real geometry.",
+    )
+    parser.add_argument(
+        "--obs-delay-steps",
+        type=int,
+        default=0,
+        help="control steps the controller's target-pose estimate lags the truth",
+    )
+    parser.add_argument(
+        "--obs-update-every",
+        type=int,
+        default=1,
+        help="the controller's target-pose estimate refreshes every N control "
+        "steps and is held in between (1 = every step)",
+    )
+    parser.add_argument(
+        "--target-estimator",
+        choices=("raw", "ekf"),
+        default="raw",
+        help="raw: the controller flies the corrupted sensor fix directly. ekf: "
+        "an output-feedback baseline forward-propagates the delayed/held fix with "
+        "a nominal target model (predict step), de-lagging it -- compensates "
+        "delay/low-rate but not a constant attitude bias.",
+    )
+    parser.add_argument(
+        "--corridor-speed-fraction",
+        type=float,
+        default=0.6,
+        help="fraction of the total-speed limit the MPC's corridor reference "
+        "aims for (default 0.6). Lower flies co-rotation more conservatively for "
+        "more total_speed margin -- the observation-error margin control.",
+    )
     return parser.parse_args()
 
 
@@ -132,14 +191,49 @@ def evaluate(
     episodes: int,
     seed: int,
     environment_config: SE3RendezvousConfig | None = None,
+    controller_model_source: str = "nominal",
+    observation_bias_rad: float = 0.0,
+    observation_delay_steps: int = 0,
+    observation_update_every: int = 1,
+    observation_filter: str = "hold",
 ) -> dict[str, Any]:
     if episodes <= 0:
         raise ValueError("episodes must be positive")
+    if controller_model_source not in {"nominal", "truth"}:
+        raise ValueError("controller_model_source must be 'nominal' or 'truth'")
+    observed_target = (
+        observation_bias_rad > 0.0
+        or observation_delay_steps > 0
+        or observation_update_every > 1
+    )
     env_config = environment_config or terminal_phase_environment_config()
     if env_config.curriculum_enabled or not env_config.phase2_enabled:
         raise ValueError("MPC evaluation requires canonical fixed Phase-2")
     env = SE3RendezvousEnv(env_config)
-    reference = RelativePredictionModel(
+
+    def build_controller(target_params: SpacecraftParameters) -> MPCController:
+        reference = RelativePredictionModel(
+            target_parameters=target_params,
+            chaser_parameters=chaser_parameters(),
+            dt_s=env_config.dt_s,
+            gravity_options=GravityOptions(include_j2=env_config.include_j2),
+            solver_settings=RK45Settings(
+                rtol=env_config.solver_rtol,
+                atol=env_config.solver_atol,
+                max_step=env_config.dt_s,
+            ),
+        )
+        local = LocalRelativePredictionModel(
+            reference.chaser_parameters, env_config.dt_s
+        )
+        return MPCController(config, local, reference)
+
+    if observation_filter not in {"hold", "ekf"}:
+        raise ValueError("observation_filter must be 'hold' or 'ekf'")
+    # The EKF-style output-feedback baseline forward-propagates the delayed/held
+    # sensor fix with a nominal target model (predict step), de-lagging the
+    # estimate the controller flies on.
+    estimator_reference = RelativePredictionModel(
         target_parameters=target_parameters(),
         chaser_parameters=chaser_parameters(),
         dt_s=env_config.dt_s,
@@ -150,8 +244,13 @@ def evaluate(
             max_step=env_config.dt_s,
         ),
     )
-    local = LocalRelativePredictionModel(reference.chaser_parameters, env_config.dt_s)
-    controller = MPCController(config, local, reference)
+
+    # "nominal": one controller that always predicts with the nominal target
+    # parameters -- the realistic non-cooperative case, built once. "truth":
+    # rebuild the controller each episode from the env's sampled truth
+    # parameters -- the feasibility control that confirms the task is solvable
+    # when the model is exactly right, isolating the mismatch as the cause.
+    controller = build_controller(target_parameters())
     records: list[dict[str, Any]] = []
     all_solve_times: list[float] = []
     all_command_times: list[float] = []
@@ -166,7 +265,25 @@ def evaluate(
     try:
         for episode in range(episodes):
             _, info = env.reset(seed=seed + episode)
+            if controller_model_source == "truth":
+                # Give the controller the exact truth parameters this episode
+                # sampled, so its prediction model matches the truth tumble.
+                controller = build_controller(env.target_parameters)
             controller.reset()
+            estimator = (
+                TargetStateEstimator(
+                    bias_rad=observation_bias_rad,
+                    bias_seed=seed + episode,
+                    delay_steps=observation_delay_steps,
+                    update_every=observation_update_every,
+                    filter_mode="propagate" if observation_filter == "ekf" else "hold",
+                    propagate_step=estimator_reference.propagate_target,
+                    dt_s=env_config.dt_s,
+                )
+                if observed_target
+                else None
+            )
+            control_step = 0
             force_impulse = 0.0
             torque_impulse = 0.0
             saturation_counts = np.zeros(6, dtype=np.int64)
@@ -192,13 +309,31 @@ def evaluate(
             terminated = truncated = False
             while not (terminated or truncated):
                 assert env.relative is not None and env.target_state is not None
+                assert env.chaser_state is not None
+                # What the controller sees. Without an estimator it is the truth
+                # relative state; with one, the target pose is the corrupted
+                # estimate and the perceived relative state is recomputed against
+                # it (own chaser state is known). Truth still drives env.step and
+                # every constraint/metric below, so violations are real-geometry.
+                if estimator is not None:
+                    target_estimate = estimator.estimate(
+                        env.target_state, control_step, env.time_seconds
+                    )
+                    command_state = relative_to_vector(
+                        relative_state(target_estimate, env.chaser_state)
+                    )
+                    command_target = target_estimate
+                else:
+                    command_state = relative_to_vector(env.relative)
+                    command_target = env.target_state
                 x = relative_to_vector(env.relative)
                 command_started = perf_counter()
                 wrench_vector, diagnostics = controller.command(
-                    x,
-                    target_state=env.target_state,
+                    command_state,
+                    target_state=command_target,
                     time_seconds=env.time_seconds,
                 )
+                control_step += 1
                 episode_command_times.append(perf_counter() - command_started)
                 action = wrench_to_normalized(
                     GeneralizedForce.from_vector(wrench_vector),
@@ -350,6 +485,14 @@ def evaluate(
         "schema_version": 2,
         "evaluated_at_utc": datetime.now(timezone.utc).isoformat(),
         "algorithm": "mpc_only",
+        "controller_model_source": controller_model_source,
+        "observation_error": {
+            "bias_rad": observation_bias_rad,
+            "delay_steps": observation_delay_steps,
+            "update_every": observation_update_every,
+            "filter": observation_filter,
+        },
+        "corridor_speed_fraction": config.corridor_speed_fraction,
         "episodes": episodes,
         "base_seed": seed,
         "environment": asdict(env_config),
@@ -428,6 +571,7 @@ def main() -> None:
             else 100.0
         ),
         reference_source=reference_source,
+        corridor_speed_fraction=args.corridor_speed_fraction,
         terminal_cost_source=args.terminal_cost_source,
         terminal_value=terminal_value,
         linearization_source=(
@@ -448,11 +592,21 @@ def main() -> None:
     )
     if args.max_time is not None:
         environment_config = replace(environment_config, max_time_s=args.max_time)
+    if args.target_model_mismatch > 0.0:
+        environment_config = replace(
+            environment_config,
+            phase2_target_model_mismatch=args.target_model_mismatch,
+        )
     result = evaluate(
         config,
         episodes=args.episodes,
         seed=args.seed,
         environment_config=environment_config,
+        controller_model_source=args.controller_model,
+        observation_bias_rad=float(np.deg2rad(args.obs_bias_deg)),
+        observation_delay_steps=args.obs_delay_steps,
+        observation_update_every=args.obs_update_every,
+        observation_filter="ekf" if args.target_estimator == "ekf" else "hold",
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(

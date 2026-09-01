@@ -167,7 +167,11 @@ class MPCController:
         position = se3_exp(state[:6])[:3, 3]
         reference = np.zeros((12, n + 1), dtype=np.float64)
         for index in range(n + 1):
-            velocity = corridor_guidance_velocity(position, self.config.task)
+            velocity = corridor_guidance_velocity(
+                position,
+                self.config.task,
+                total_speed_fraction=self.config.corridor_speed_fraction,
+            )
             reference[3:6, index] = position
             reference[9:12, index] = velocity
             position = position + velocity * self.config.dt_s
