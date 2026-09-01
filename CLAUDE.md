@@ -5,13 +5,42 @@ target. Chaser 106 kg, target 225 kg free-tumbling, 500 km / 45 deg circular
 orbit, RK45 truth with central gravity, second moments, gravity gradient and
 J2, 0.1 s control period, 200 s episode cap, +-5 N / +-0.6 N*m per axis.
 
-## Research line
+## Current decision -- 2026-09-01 (supersedes older hybrid planning below)
 
-Three-way comparison: Pure SAC, Pure MPC, SAC-MPC hybrid. The hybrid is
-hierarchical -- an upper learned layer decides, a lower MPC layer enforces
-feasibility and safety -- and is **architecture-uniform across the whole
-mission**, not switched on for the terminal phase only. Switching architecture
-mid-episode would confound the comparison with the phase switch itself.
+Four probes for a defensible SAC-MPC gap are now closed: learned terminal
+value, sampled target phase, target-model mismatch, and target-state
+observation error. After correcting an observation-error bug, all four are
+negative. The bug rotated the target's inertial velocity together with an
+attitude bias, injecting about 6.6 m/s of false relative velocity from the
+7.6 km/s orbital velocity. The correct estimator rotates only the attitude and
+keeps inertial position, velocity, and angular velocity unchanged.
+
+With the correction, attitude bias is harmless through at least 5 deg in the
+diagnostic frontier; delay and low update rate are compensated by a classical
+model-prediction step. Sampled target phase and +-30% inertia mismatch do not
+break short-horizon MPC either. The learned convex terminal cost is actively
+harmful because its radial gradient cuts across the curved corridor, while a
+fixed terminal cost at horizon 10 already preserves the long-horizon quality.
+
+Therefore there is currently **no measured gap that justifies a hybrid on the
+warm `single_phase` task**. Hybrid training is stopped. A later upper-level
+pivot keeps the user's SAC-MPC paper objective and explicitly rules out both a
+non-coupled Route-B paper and a fifth niche probe on the same warm task. The
+next strategic decision is to restore one real MPC-hard feature as a separate
+single-factor task: (A) discrete thrusters/control allocation, preferred, or
+(B) unmodelled target dynamics. The user must choose A or B first; then a cheap
+no-training probe must show both that Pure MPC genuinely fails or MIQP misses
+real time and that an ideal controller can still solve the task. Only after
+that gate may hybrid design or training resume. See
+`HANDOFF_upper_v2_pivot.md`, `HANDOFF.md`, and `docs/PROBE_RESULTS.md`.
+
+## Historical research line (hybrid work is paused)
+
+The original target was a three-way comparison: Pure SAC, Pure MPC and an
+architecture-uniform hierarchical SAC-MPC hybrid. If a hybrid is ever
+reconsidered, it must still use one architecture across the whole mission;
+switching architecture mid-episode would confound the method with a phase
+switch. The four negative probes mean this is no longer an active build plan.
 
 **The common benchmark is the `single_phase` task**, cleared for that
 use by `eval/validate_single_phase_semantics.py` (20/20 scripted completion, all
@@ -110,7 +139,9 @@ transfer is the cost, and the honest composition of it is the 1.7x below, not th
 the next paragraph -- so this is history, kept because the terminal-only numbers
 are still the record for that shell.
 
-The hybrid does not exist either. It is the actual contribution.
+The hybrid does not exist. Four subsequent probes found no defensible gap for
+it, so implementation and training are paused; see the current-decision block
+at the top of this file.
 
 `eval.evaluate_policy.evaluate_model` needs nothing but an object with
 `.predict(obs, deterministic) -> (action, state)`, which a test pins. That is
@@ -161,10 +192,10 @@ positive over the twenty episodes. The SAC row comes from a trained checkpoint
 through the same `main_table` path.
 
 **Settle the main-table metrics before running MPC, not after.** Completion
-rate cannot separate the three methods -- the scripted controller is already
-20/20, and Pure MPC and the hybrid should both reach it. The candidates that
-do separate them are completion time, force impulse, worst constraint margin,
-and per-step compute. **All four are now on the shared path, in conventions
+rate alone does not separate successful controllers because the scripted and
+Pure MPC rows already reach 20/20. The quality columns are completion time,
+force impulse, worst constraint margin, and per-step compute. **All four are
+now on the shared path, in conventions
 `eval/metrics.py` pins**, so a row is never assembled from a private
 convention. That module is imported by the learned rows
 (`eval/evaluate_policy.py`), the Pure MPC row (`experiments/evaluate_mpc.py`)
@@ -200,9 +231,10 @@ Three tests in `tests/test_train_eval_config.py` pin this, including that the
 two timers stay separate; re-merging them is the failure mode that cost this
 round.
 
-If the hybrid's case turns out to rest on compute, the decision period and the
-MPC call rate become its design core rather than an afterthought, and that has
-to be known before the interface is written.
+The later compute probes tested whether MPC call rate created such a gap.
+Short-horizon local and sparse-refresh MPC kept completion and safety across
+three sampled-phase blocks, so no learned call-rate layer is currently
+justified.
 
 ### Compute was half artefact. The honest number is 1.7x, not 3.2x
 
@@ -241,11 +273,12 @@ rollout, and the refresh lump. Report 1.7x with this composition, not 3.2x, and
 state the implementation (Python, CVXPY, CLARABEL, one core) beside it. The
 p95 is a real property, not noise: it is the refresh step, once a second.
 
-Still open: **the QP's own 0.51x is irreducible without changing the
-formulation**, and that -- not the Python -- is the part of the compute claim
-that survives review. If the hybrid's case rests on compute, it has to beat
-that number, which means calling the MPC less often rather than making it
-faster.
+For the original horizon-50 exact configuration, the QP's own 0.51x is the
+formulation cost that survives profiling. Later horizon-10 probes reduced the
+ordinary-step QP cost and showed that exact-refresh tails, not an absent learned
+layer, are the remaining issue. Local MPC puts p95 inside budget without losing
+safety on the measured phase blocks; max/cold-start tails remain reportable
+limitations.
 
 ## What each reference is for
 
@@ -263,11 +296,13 @@ faster.
 ## How the work is run
 
 Long training happens on the user's machine, not here. This session does code
-review, `pytest`, short smoke runs (<= 5k steps) and diagnostic probes; the
-user runs training and pastes `eval/digest_run.py` output back. Deliver code
-changes as a zip preserving repository-relative paths -- this session has no
-push permission, so the user applies and commits. Run the suite as
-`python -B -m pytest -q`; it should be 112 passed.
+review, `pytest`, short smoke runs (<= 5k steps) and diagnostic probes. Training
+is currently stopped. Repository changes are made on an explicit branch and
+committed once per auditable stage. Run the suite as `python -B -m pytest -q`;
+the 2026-09-01 repository state is **146 passed**, not the stale 147 recorded
+in the superseded handoff. The checked-in `.venv` launcher points to a missing
+Python 3.12.6; use the verified fallback in `docs/REPRODUCIBILITY.md` rather
+than rebuilding or modifying code merely for that launcher symptom.
 
 ## Co-rotation: why this task is not translational rendezvous
 
@@ -290,7 +325,7 @@ seeds), always on `total_speed`, against a ~95 s mission.
 
 So the total-speed limit is not a manoeuvring cap, it is a **sustained-thrust
 condition whose required thrust scales with range**. This is the physical
-motivation for the hybrid, and it is the regime the reference papers do not
+motivation for the benchmark, and it is the regime the reference papers do not
 occupy: `References/北航.pdf` has the same corridor and FOV geometry but a
 target at 0.0173 rad/s and *no* speed constraint (`Lambda` undefined; 0.74 if
 ours were applied at their 15 m anchor), and `References/南航.pdf` names
@@ -424,7 +459,8 @@ at fixed alpha, where the error is under one unit through 200k.
 Target body rate 0.0412 rad/s puts the body-fixed Waypoint on a 0.33 m/s circle,
 so co-rotation needs a *sustained* 1.44 N at the Waypoint and 2.16 N at 12 m, plus
 about 1.31 N of Coriolis. Phase-I is therefore attitude-orbit coupled tracking,
-not translational rendezvous -- this is the physical motivation for the hybrid.
+not translational rendezvous. This motivates the benchmark but, after the four
+negative probes, does not by itself justify a hybrid.
 
 ## The single_phase reward, and the one thing it does not fix
 
@@ -486,17 +522,16 @@ Two things this settles:
 
 So the honest Pure SAC headline on `single_phase` is completion 3/1/0 over three
 seeds and no-violation 20/10/0 -- a real weak baseline that mostly fails to
-complete and, on some seeds, is not even safe. That last point is the sharpest
-motivation for the hybrid's lower layer: MPC holds every constraint on all 20
-episodes with zero predicted-safe truth violations, which is precisely what SAC
-cannot promise.
+complete and, on some seeds, is not even safe. It establishes the value of a
+constrained MPC safety layer: Pure MPC holds every constraint on all 20 episodes
+with zero predicted-safe truth violations, which SAC cannot promise. The probes
+did not establish that a learned upper layer adds anything to that controller.
 
 **This is a real weak baseline, not a straw man**, and Pure SAC is closed here.
 Note what it does *not* beat: the scripted controller is 20/20 on the same
-guidance law with a hand-tuned PD. So completion rate will not separate Pure MPC
-from the hybrid -- both should reach 20/20. **The differentiating metrics are
-completion time, force impulse, constraint margin and per-step compute**, and
-that has to be settled before the MPC runs, not after.
+guidance law with a hand-tuned PD. Completion rate therefore does not by itself
+distinguish successful classical controllers. **The differentiating metrics are
+completion time, force impulse, constraint margin and per-step compute.**
 
 ## Pure SAC on `single_phase`, before the overshoot fix (three seeds, 260850-260852, 400k)
 
@@ -590,18 +625,15 @@ change. The scripted controller holds the same leg with 0.66 N sustained.
    config fields, so `asdict(config)` misses them. `train.py` records them under
    the manifest's `reward_settings` -- read the numbers there, not from the
    environment block.
-9. **The target's tumble is a single deterministic realisation.**
-   `env.scenarios.target_initial_state` takes no rng: the attitude is identity
-   and omega is `tumble_scale * TARGET_BASE_TUMBLE_RAD_S`, every episode, every
-   seed. All episode randomness is in the chaser's initial pose and velocity,
-   and `_cached_target_trajectory` then reuses one trajectory per tumble scale.
-   So generalisation across *tumble* -- initial attitude, nutation phase -- has
-   never been tested, the evaluation seed blocks are less independent than they
-   look, and this quietly favours MPC, whose linearisation error never meets a
-   different phase. S1-v2 is frozen so do not change it now; **state it as a
-   limitation in the paper.** Sampling the target attitude and phase is a
-   legitimate later factor, but it must be its own single-factor round, never
-   folded into another change.
+9. The nominal benchmark intentionally keeps one deterministic target-tumble
+   realisation, and that remains a paper limitation. A separate, single-factor
+   `single_phase_phase_sampled` probe has now sampled initial attitude and
+   angular-velocity direction at fixed magnitude. Across three 20-episode seed
+   blocks, scripted, exact-r10, local and refresh100 MPC all completed 20/20
+   with positive truth margins. Thus phase sampling has been tested and did not
+   expose a hybrid gap. Do not fold it into frozen S1-v2 or claim that the
+   nominal benchmark itself now generalises across tumble; the probe is a
+   secondary task. See `docs/PROBE_RESULTS.md`.
 10. `constrained_mpc_nominal_config()` fixes `reference_state` at the desired
     pose with a 50-step (5 s) horizon -- a myopic regulator with no path plan on
     a ~95 s task from 10-14 m, while the scripted 20/20 comes from a
