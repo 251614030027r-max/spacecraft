@@ -1,32 +1,38 @@
-# DRL2：六自由度翻滚目标预捕获控制
+# DRL2：六自由度翻滚非合作目标预捕获控制
 
-高保真 SE(3) 六自由度预捕获控制,目标为自由翻滚的非合作航天器。真值传播含 J2、
-引力梯度、二阶矩与刚体耦合,RK45 积分,0.1 s 控制周期。
+本仓库实现高保真 SE(3) 六自由度预捕获控制：目标自由翻滚，真值传播包含中心引力、J2、引力梯度、二阶矩与刚体耦合，采用 RK45 积分，控制周期 0.1 s。
 
-研究主线是三方对照:**Pure SAC / Pure MPC / SAC-MPC 分层混合**,共同基准是单相位
-的 `gate_free` 任务——十到十四米起始,五条任务约束全程激活,一条控制律跑到底。
+## 当前状态
 
-## 唯一权威文档
+共同基准为 `single_phase`：10–14 m 起始，五类约束从第一步起全程生效，一条控制律完成整段任务。Pure SAC 是已刻画的弱基线，Pure MPC 是实时性与安全性较强的经典基线。值耦合、目标相位、目标参数失配和目标状态观测误差四个探针经错误修正后均未找到可信的 SAC–MPC 独占缺口，因此混合控制训练已暂停，等待用户与上层重新确定研究方向。
 
-**`CLAUDE.md`** 是这个仓库的交接文档:研究主线、已定结论、实测参考数值、纪律规则
-和陷阱全在里面。开始任何工作前先读它。
+## 阅读顺序
 
-`docs/history/` 下是历史材料,记录当时的判断,其中不少已被后续实测推翻,**不能用来
-支持任何当前主张**。
+1. `CLAUDE.md`：唯一权威，包含研究主线、正式结果、纪律和陷阱。
+2. `HANDOFF.md`：当前任务状态、停止闸门和下一窗口入口。
+3. `docs/PROBE_RESULTS.md`：四个负结果及证据边界。
+4. `docs/EVIDENCE_INDEX.md`：日志、模型和论文证据索引。
+5. `docs/HISTORY.md`：已被后续结果取代的历史演进摘要。
 
-## 快速开始
+旧的多份交接、探针操作说明和逐轮阶段报告已整合进上述文件；原文仍可从 Git 历史恢复，不再作为当前入口。
 
-```bash
-python -B -m pytest -q                       # 仓库无 conftest.py,必须这样跑
-python -B -m eval.validate_gatefree_semantics --output logs/gatefree_validation/scripted.json
-python -B -m train.train --steps 400000 --seed <seed> --run-name <name> --mode gate_free
-python -B -m eval.digest_run --run logs/<name>
+## 只读验证
+
+仓库虚拟环境启动器绑定的 Python 3.12.6 已不存在。当前可用的只读验证方式见 `docs/REPRODUCIBILITY.md`。最近一次完整回归为：
+
+```text
+146 passed
 ```
 
-入口清单见 `CLAUDE.md` 的 *Trusted entry points*。
+训练当前处于停止状态。恢复训练前必须先由用户与上层重新确认研究问题和实验因子。
 
 ## 目录
 
-活动源码只在 `dynamics/`、`env/`、`controllers/`、`train/`、`eval/`、`experiments/`。
-`References/` 是本工作对标的文献,是方法的一部分。`models/` 刻意不入版本控制——
-checkpoint 可由 manifest 加种子复现。
+- `dynamics/`、`env/`：SE(3) 动力学、任务和环境；
+- `controllers/`：MPC 与终端值实验实现；
+- `train/`、`eval/`、`experiments/`：训练、统一评价和诊断工具；
+- `tests/`：回归测试；
+- `logs/`：主要审计证据，失败实验也保留；
+- `models/`：本机未跟踪模型，仅作历史复核，不代表合格策略；
+- `References/`：对标论文；
+- `docs/`：当前状态、证据索引、复现方法和压缩历史。

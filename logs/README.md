@@ -1,13 +1,15 @@
 # 实验日志说明
 
-日志是本工程的主要审计证据，因此失败实验也保留。正式run通常包含：
+日志是本工程的主要审计证据，失败实验也保留。正式训练目录通常包含：
 
 ```text
-manifest.json                 完整任务、算法、版本和执行状态
-train.monitor.csv             episode级训练结果
-phase2_diagnostics.json       Q、alpha、动作、Gate和失败类型
-tensorboard/                  SB3训练标量
-evaluations/                  固定seed周期deterministic评估
+manifest.json
+train.monitor.csv
+phase2_diagnostics.json
+tensorboard/
+evaluations/
 ```
 
-`phase2_sac_v2_*`属于早期受约束Phase-2探索；`phase2_mission_s1_*`记录两阶段任务、语义修正和单因素演进；两组`phase2_mission_s1v2_*`是当前最关键证据。具体阅读顺序见`docs/EXPERIMENT_INDEX.md`。8组更早的Phase-I完整日志已迁至`legacy/log_history/`，选定摘要另见`legacy/reference_baseline_evidence/`，不再混放于当前日志根目录。
+当前证据阅读顺序和模型对应关系见 `docs/EVIDENCE_INDEX.md`。根目录训练日志按运行名称保留，不因结论为负而删除。
+
+`invalidated/observation_velocity_rotation_bug/` 保存观测偏置错误旋转惯性速度时生成的网格输出。它们只用于复查错误机制，不得支持当前性能主张。修正后的观测误差结论见 `docs/PROBE_RESULTS.md`。
