@@ -22,14 +22,17 @@ break short-horizon MPC either. The learned convex terminal cost is actively
 harmful because its radial gradient cuts across the curved corridor, while a
 fixed terminal cost at horizon 10 already preserves the long-horizon quality.
 
-Therefore there is currently **no measured gap that justifies a hybrid**.
-Hybrid training is stopped. The honest landing is Route B: the two baselines,
-the `Lambda > 1` regime, and the negative probe results. Do not restart
-training or continue hybrid implementation without a new user/upper-level
-decision. `HANDOFF.md` and `docs/PROBE_RESULTS.md` are the compact current
-handoff and evidence map. Any older statement in this file that calls the
-hybrid "the actual contribution" is historical motivation, not the current
-decision.
+Therefore there is currently **no measured gap that justifies a hybrid on the
+warm `single_phase` task**. Hybrid training is stopped. A later upper-level
+pivot keeps the user's SAC-MPC paper objective and explicitly rules out both a
+non-coupled Route-B paper and a fifth niche probe on the same warm task. The
+next strategic decision is to restore one real MPC-hard feature as a separate
+single-factor task: (A) discrete thrusters/control allocation, preferred, or
+(B) unmodelled target dynamics. The user must choose A or B first; then a cheap
+no-training probe must show both that Pure MPC genuinely fails or MIQP misses
+real time and that an ideal controller can still solve the task. Only after
+that gate may hybrid design or training resume. See
+`HANDOFF_upper_v2_pivot.md`, `HANDOFF.md`, and `docs/PROBE_RESULTS.md`.
 
 ## Historical research line (hybrid work is paused)
 
