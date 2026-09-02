@@ -5,7 +5,37 @@ target. Chaser 106 kg, target 225 kg free-tumbling, 500 km / 45 deg circular
 orbit, RK45 truth with central gravity, second moments, gravity gradient and
 J2, 0.1 s control period, 200 s episode cap, +-5 N / +-0.6 N*m per axis.
 
-## Current decision -- 2026-09-01 (supersedes older hybrid planning below)
+## Current decision -- 2026-09-02 (A1 perception foundation complete)
+
+The research direction is now locked to action-dependent local perception. A1
+adds an independent five-feature pinhole-camera and 12D relative-state EKF chain
+through `phase2_perception_environment_config()`. The camera uses the chaser +x
+boresight, 1024x1024 image, 430 px focal length, 50 deg half-FOV, 30 m range and
+1 px noise. The EKF state/error order is `[dtheta, dp, domega, dv]`; its mean
+uses `LocalRelativePredictionModel` with the executed wrench, while transition
+and image Jacobians use centred differences in the same local coordinates.
+
+The A1 task is still the frozen `single_phase` S1-v2 task with the existing
+corridor guidance, reward, truth dynamics, termination and constraint checks.
+Only the observation source changes: the 29D `phase2_perception_v1_29d` schema
+contains an estimated 24D core, four bounded log covariance summaries and
+visible-feature fraction. Target angular velocity is reconstructed from known
+chaser navigation plus the estimated relative state; truth remains confined to
+dynamics, reward, termination, geometry and evaluation diagnostics.
+`perception=None` takes the original path without drawing extra randomness, and
+the compatibility test pins the initial observation and one-step transition
+bitwise.
+
+Acceptance is **149 passed**. The fixed seed 260902 perception smoke ran 300
+steps with finite 29D observations and covariance, five visible features and a
+measurement update on all 301 frames including reset; it reached the 30 s smoke
+cap without early termination. This is a wiring check, not a formal estimation
+or control result. No training was run. A2 (removing artificial guidance as a
+separate task) is not implemented in A1; do not combine it with camera, EKF,
+reward, geometry or S1-v2 changes. See
+`docs/A1_PERCEPTION_FOUNDATION_MANIFEST.md`.
+
+## Prior decision -- 2026-09-01 (superseded by the A1 direction above)
 
 Four probes for a defensible SAC-MPC gap are now closed: learned terminal
 value, sampled target phase, target-model mismatch, and target-state
@@ -299,7 +329,7 @@ Long training happens on the user's machine, not here. This session does code
 review, `pytest`, short smoke runs (<= 5k steps) and diagnostic probes. Training
 is currently stopped. Repository changes are made on an explicit branch and
 committed once per auditable stage. Run the suite as `python -B -m pytest -q`;
-the 2026-09-01 repository state is **146 passed**, not the stale 147 recorded
+the 2026-09-02 repository state is **149 passed**, not the stale 146/147 recorded
 in the superseded handoff. The checked-in `.venv` launcher points to a missing
 Python 3.12.6; use the verified fallback in `docs/REPRODUCIBILITY.md` rather
 than rebuilding or modifying code merely for that launcher symptom.

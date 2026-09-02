@@ -18,6 +18,7 @@ PHASE2_MISSION_BODY_TRANSLATION_OBSERVATION_SCHEMA = (
 PHASE2_MISSION_OBSERVATION_SCHEMA = (
     "phase2_mission_v4_phase_guidance_error_24d"
 )
+PHASE2_PERCEPTION_OBSERVATION_SCHEMA = "phase2_perception_v1_29d"
 
 
 def _softsign(raw: np.ndarray, limit: float) -> np.ndarray:
@@ -253,4 +254,70 @@ def build_phase2_mission_observation(
     )
     if observation.shape != (24,) or not np.all(np.isfinite(observation)):
         raise RuntimeError("invalid Phase-2 mission observation")
+    return observation.astype(np.float32)
+
+
+def build_phase2_perception_observation(
+    relative: RelativeState,
+    *,
+    covariance: np.ndarray,
+    initial_block_stds: np.ndarray,
+    visible_feature_fraction: float,
+    task: Phase2TaskConfig,
+    active_reference_position_m: np.ndarray,
+    mission_phase: int,
+    attitude_scale_rad: float,
+    distance_scale_m: float,
+    angular_velocity_scale_rad_s: float,
+    velocity_scale_m_s: float,
+    softsign_limit: float = 10.0,
+    target_angular_velocity_rad_s: np.ndarray | None = None,
+    target_angular_velocity_scale_rad_s: float = 0.05,
+) -> np.ndarray:
+    """A1 29D observation: estimated 24D core plus uncertainty and visibility."""
+
+    covariance_value = np.asarray(covariance, dtype=np.float64)
+    block_initial = np.asarray(initial_block_stds, dtype=np.float64)
+    if (
+        covariance_value.shape != (12, 12)
+        or not np.all(np.isfinite(covariance_value))
+        or block_initial.shape != (4,)
+        or np.min(block_initial) <= 0.0
+        or not 0.0 <= visible_feature_fraction <= 1.0
+    ):
+        raise ValueError("perception covariance, scales, or visibility are invalid")
+    core = build_phase2_mission_observation(
+        relative,
+        task=task,
+        active_reference_position_m=active_reference_position_m,
+        mission_phase=mission_phase,
+        attitude_scale_rad=attitude_scale_rad,
+        distance_scale_m=distance_scale_m,
+        angular_velocity_scale_rad_s=angular_velocity_scale_rad_s,
+        velocity_scale_m_s=velocity_scale_m_s,
+        softsign_limit=softsign_limit,
+        target_angular_velocity_rad_s=target_angular_velocity_rad_s,
+        target_angular_velocity_scale_rad_s=(
+            target_angular_velocity_scale_rad_s
+        ),
+        translational_observation_frame="chaser_body",
+        translational_velocity_observation="actual",
+    )
+    diagonal = np.maximum(np.diag(covariance_value), 0.0)
+    block_rms = np.array(
+        [
+            np.sqrt(np.mean(diagonal[0:3])),
+            np.sqrt(np.mean(diagonal[3:6])),
+            np.sqrt(np.mean(diagonal[6:9])),
+            np.sqrt(np.mean(diagonal[9:12])),
+        ],
+        dtype=np.float64,
+    )
+    log_ratio = np.log(np.maximum(block_rms, 1.0e-12) / block_initial)
+    uncertainty = log_ratio / (1.0 + np.abs(log_ratio))
+    observation = np.concatenate(
+        (core, uncertainty, np.array([visible_feature_fraction]))
+    )
+    if observation.shape != (29,) or not np.all(np.isfinite(observation)):
+        raise RuntimeError("invalid Phase-2 perception observation")
     return observation.astype(np.float32)

@@ -14,7 +14,11 @@ from typing import Literal
 import numpy as np
 
 from env.se3_rendezvous_env import SE3RendezvousConfig, SE3RendezvousEnv
-from env.observation import PHASE2_MISSION_OBSERVATION_SCHEMA
+from env.observation import (
+    PHASE2_MISSION_OBSERVATION_SCHEMA,
+    PHASE2_PERCEPTION_OBSERVATION_SCHEMA,
+)
+from env.perception import PerceptionConfig
 from env.task import Phase2MissionConfig
 
 
@@ -90,6 +94,16 @@ def make_phase2_env(
     return SE3RendezvousEnv(phase2_environment_config(mode))
 
 
+def phase2_perception_environment_config() -> SE3RendezvousConfig:
+    """Derive A1 from frozen single_phase with perception as the sole change."""
+
+    return replace(
+        phase2_environment_config("single_phase"),
+        perception=PerceptionConfig(),
+        phase2_observation_schema=PHASE2_PERCEPTION_OBSERVATION_SCHEMA,
+    )
+
+
 def terminal_phase_environment_config() -> SE3RendezvousConfig:
     """Terminal-only config retained for P0 MPC validation and later P3 reuse."""
 
@@ -111,6 +125,7 @@ __all__ = [
     "Phase2Mode",
     "make_phase2_env",
     "phase2_environment_config",
+    "phase2_perception_environment_config",
     "phase2_s1v2_mission_config",
     "terminal_phase_environment_config",
 ]

@@ -19,18 +19,27 @@ from dynamics.constants import (
 from dynamics.disturbance import zero_disturbance
 from dynamics.gravity import GravityOptions
 from dynamics.integrator import IntegrationDiagnostics, RK45Settings, propagate_rk45
+from dynamics.lie import adjoint, so3_log
 from dynamics.relative import RelativeState, relative_state
 from env.observation_error import TargetStateEstimator
 from dynamics.types import GeneralizedForce, SpacecraftParameters, SpacecraftState
+from estimation import RelativeStateEKF
 from env.action import normalized_to_wrench
 from env.observation import (
     PHASE2_MISSION_BODY_TRANSLATION_OBSERVATION_SCHEMA,
     PHASE2_MISSION_OBSERVATION_SCHEMA,
     PHASE2_MISSION_TARGET_TRANSLATION_OBSERVATION_SCHEMA,
     PHASE2_OBSERVATION_SCHEMA,
+    PHASE2_PERCEPTION_OBSERVATION_SCHEMA,
     build_observation,
     build_phase2_mission_observation,
     build_phase2_observation,
+    build_phase2_perception_observation,
+)
+from env.perception import (
+    FeatureMeasurement,
+    PerceptionConfig,
+    measure_visible_features,
 )
 from env.reward import (
     Phase2MissionReward,
@@ -174,6 +183,7 @@ class SE3RendezvousConfig:
     phase2_observation_schema: str = PHASE2_OBSERVATION_SCHEMA
     phase2_observation_target_angular_velocity_scale_rad_s: float = 0.05
     phase2_distance_failure_penalty: float = -20.0
+    perception: PerceptionConfig | None = None
 
 
 @lru_cache(maxsize=256)
@@ -230,7 +240,9 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self.action_space = spaces.Box(-1.0, 1.0, shape=(6,), dtype=np.float32)
         limit = self.config.observation_softsign_limit
         observation_size = (
-            24
+            29
+            if self.config.perception is not None
+            else 24
             if self.config.phase2_mission_enabled
             else (23 if self.config.phase2_enabled else 12)
         )
@@ -300,6 +312,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._episode_target_model_mismatch_seed: int | None = None
         self._obs_estimator: TargetStateEstimator | None = None
         self._observed_target: SpacecraftState | None = None
+        self._relative_ekf: RelativeStateEKF | None = None
+        self._estimated_relative: RelativeState | None = None
+        self._perception_measurement: FeatureMeasurement | None = None
+        self._perception_measurement_used = False
         self._target_trajectory: tuple[SpacecraftState, ...] | None = None
         self._active_phase2_task = self.config.phase2_task
         self._phase2_stage = "nominal"
@@ -424,12 +440,28 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 PHASE2_MISSION_OBSERVATION_SCHEMA,
                 PHASE2_MISSION_BODY_TRANSLATION_OBSERVATION_SCHEMA,
                 PHASE2_MISSION_TARGET_TRANSLATION_OBSERVATION_SCHEMA,
+                PHASE2_PERCEPTION_OBSERVATION_SCHEMA,
             }
             if c.phase2_mission_enabled
             else {PHASE2_OBSERVATION_SCHEMA}
         )
         if c.phase2_enabled and c.phase2_observation_schema not in supported_schemas:
             raise ValueError("unsupported Phase-2 observation schema")
+        if c.perception is not None:
+            if (
+                not c.phase2_mission_enabled
+                or c.phase2_observation_schema
+                != PHASE2_PERCEPTION_OBSERVATION_SCHEMA
+            ):
+                raise ValueError("perception requires the 29D Phase-2 mission schema")
+            if (
+                c.phase2_observation_bias_rad > 0.0
+                or c.phase2_observation_delay_steps > 0
+                or c.phase2_observation_update_every > 1
+            ):
+                raise ValueError("perception cannot reuse observation-error probes")
+        elif c.phase2_observation_schema == PHASE2_PERCEPTION_OBSERVATION_SCHEMA:
+            raise ValueError("the perception schema requires a perception config")
         if c.phase2_distance_failure_penalty > 0.0:
             raise ValueError("Phase-2 distance-failure penalty must be non-positive")
 
@@ -586,9 +618,60 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             else self.config.phase2_task.desired_position
         )
 
+    @property
+    def observed_relative(self) -> RelativeState:
+        """Return the estimator state when enabled and truth otherwise."""
+
+        self._require_state()
+        assert self.relative is not None
+        if self._estimated_relative is not None:
+            return self._estimated_relative
+        if self._observed_target is not None:
+            assert self.chaser_state is not None
+            return relative_state(self._observed_target, self.chaser_state)
+        return self.relative
+
+    def _target_angular_velocity_from_relative(
+        self, relative: RelativeState
+    ) -> np.ndarray:
+        assert self.chaser_state is not None
+        target_twist = adjoint(relative.transform) @ (
+            self.chaser_state.twist - relative.twist
+        )
+        return target_twist[:3]
+
     def _observation(self) -> np.ndarray:
         self._require_state()
         assert self.relative is not None
+        if self._relative_ekf is not None:
+            assert self._perception_measurement is not None
+            observed_relative = self.observed_relative
+            return build_phase2_perception_observation(
+                observed_relative,
+                covariance=self._relative_ekf.covariance,
+                initial_block_stds=(
+                    self._relative_ekf.config.initial_block_stds
+                ),
+                visible_feature_fraction=(
+                    self._perception_measurement.visible_count / 5.0
+                ),
+                task=self._active_phase2_task,
+                active_reference_position_m=self._active_reference_position(),
+                mission_phase=self._mission_phase,
+                attitude_scale_rad=self.config.observation_attitude_scale_rad,
+                distance_scale_m=self.config.observation_distance_scale_m,
+                angular_velocity_scale_rad_s=(
+                    self.config.observation_angular_velocity_scale_rad_s
+                ),
+                velocity_scale_m_s=self.config.observation_velocity_scale_m_s,
+                softsign_limit=self.config.observation_softsign_limit,
+                target_angular_velocity_rad_s=(
+                    self._target_angular_velocity_from_relative(observed_relative)
+                ),
+                target_angular_velocity_scale_rad_s=(
+                    self.config.phase2_observation_target_angular_velocity_scale_rad_s
+                ),
+            )
         # Under partial observability the observation is built from the estimated
         # target pose (the estimate is refreshed once per step in reset/step); the
         # reward and violation judging still use the truth self.relative elsewhere.
@@ -882,6 +965,26 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         else:
             self._obs_estimator = None
             self._observed_target = None
+        if self.config.perception is not None:
+            assert self.chaser_parameters is not None
+            self._relative_ekf = RelativeStateEKF(
+                self.chaser_parameters,
+                self.config.perception,
+                dt_s=self.config.dt_s,
+            )
+            self._relative_ekf.initialize(self.relative, self.np_random)
+            self._perception_measurement = measure_visible_features(
+                self.relative, self.config.perception, self.np_random
+            )
+            self._perception_measurement_used = self._relative_ekf.update(
+                self._perception_measurement
+            )
+            self._estimated_relative = self._relative_ekf.state
+        else:
+            self._relative_ekf = None
+            self._estimated_relative = None
+            self._perception_measurement = None
+            self._perception_measurement_used = False
         self._completion_streak = 0
         task_metrics = (
             compute_task_metrics(self.relative, self._active_phase2_task)
@@ -994,6 +1097,40 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             "target_nfev": target_nfev,
             "chaser_nfev": chaser_nfev,
         }
+        if self._relative_ekf is not None:
+            assert self.relative is not None
+            assert self._estimated_relative is not None
+            assert self._perception_measurement is not None
+            estimate = self._estimated_relative
+            covariance = self._relative_ekf.covariance
+            info.update(
+                estimated_relative_vector=np.concatenate(
+                    (estimate.exponential_coordinates, estimate.twist)
+                ),
+                estimator_covariance_diag=np.diag(covariance).copy(),
+                estimation_attitude_error_rad=float(
+                    np.linalg.norm(
+                        so3_log(
+                            estimate.rotation.T @ self.relative.rotation,
+                            project=True,
+                        )
+                    )
+                ),
+                estimation_position_error_m=float(
+                    np.linalg.norm(estimate.position - self.relative.position)
+                ),
+                estimation_angular_velocity_error_rad_s=float(
+                    np.linalg.norm(estimate.omega - self.relative.omega)
+                ),
+                estimation_velocity_error_m_s=float(
+                    np.linalg.norm(estimate.velocity - self.relative.velocity)
+                ),
+                visible_feature_count=self._perception_measurement.visible_count,
+                visible_feature_fraction=(
+                    self._perception_measurement.visible_count / 5.0
+                ),
+                perception_measurement_used=self._perception_measurement_used,
+            )
         if mission_metrics is not None:
             info.update(
                 waypoint_position_error_m=mission_metrics.waypoint_position_error_m,
@@ -1158,6 +1295,16 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             self._observed_target = self._obs_estimator.estimate(
                 self.target_state, self.step_count, self.time_seconds
             )
+        if self._relative_ekf is not None:
+            assert self.config.perception is not None
+            self._relative_ekf.predict(control.vector)
+            self._perception_measurement = measure_visible_features(
+                self.relative, self.config.perception, self.np_random
+            )
+            self._perception_measurement_used = self._relative_ekf.update(
+                self._perception_measurement
+            )
+            self._estimated_relative = self._relative_ekf.state
         metrics = compute_error_metrics(
             self.relative, self.config.success_thresholds
         )
