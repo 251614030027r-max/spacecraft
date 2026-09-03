@@ -25,6 +25,7 @@ from controllers.mpc.constraints import normalized_truth_margins
 from controllers.mpc.prediction import relative_to_vector
 from dynamics.gravity import GravityOptions
 from dynamics.integrator import RK45Settings
+from dynamics.lie import hat3
 from dynamics.relative import (
     RelativeState,
     reconstruct_target_state,
@@ -248,6 +249,18 @@ def _perception_sample(
     covariance = env.observed_relative_covariance
     error = local_error(estimate, env.relative)
     nees = float(error @ np.linalg.solve(covariance, error))
+    position_error = estimate.position - env.relative.position
+    position_std = np.sqrt(np.maximum(np.diag(covariance)[3:6], 0.0))
+    estimated_target_velocity = estimate.rotation @ estimate.velocity
+    truth_target_velocity = env.relative.rotation @ env.relative.velocity
+    velocity_error = estimated_target_velocity - truth_target_velocity
+    velocity_jacobian = np.zeros((3, 12), dtype=np.float64)
+    velocity_jacobian[:, :3] = -estimate.rotation @ hat3(estimate.velocity)
+    velocity_jacobian[:, 9:12] = estimate.rotation
+    velocity_covariance = velocity_jacobian @ covariance @ velocity_jacobian.T
+    velocity_std = np.sqrt(np.maximum(np.diag(velocity_covariance), 0.0))
+    position_axis_ratio = np.abs(position_error) / np.maximum(position_std, 1.0e-12)
+    velocity_axis_ratio = np.abs(velocity_error) / np.maximum(velocity_std, 1.0e-12)
     return {
         "episode": episode,
         "step": int(info["step_count"]),
@@ -261,6 +274,13 @@ def _perception_sample(
         "nees_12d": nees,
         "visible_feature_count": int(info["visible_feature_count"]),
         "measurement_used": bool(info["perception_measurement_used"]),
+        "fov_angle_rad": float(info["fov_angle_rad"]),
+        "position_error_axes_m": position_error.tolist(),
+        "position_std_axes_m": position_std.tolist(),
+        "velocity_error_axes_m_s": velocity_error.tolist(),
+        "velocity_std_axes_m_s": velocity_std.tolist(),
+        "worst_position_axis_error_over_std": float(np.max(position_axis_ratio)),
+        "worst_velocity_axis_error_over_std": float(np.max(velocity_axis_ratio)),
     }
 
 
@@ -371,6 +391,9 @@ def evaluate(
     controller = build_controller(target_parameters())
     records: list[dict[str, Any]] = []
     all_solve_times: list[float] = []
+    all_model_linearization_times: list[float] = []
+    all_rollout_times: list[float] = []
+    all_exact_refresh_times: list[float] = []
     all_command_times: list[float] = []
     # The controller half is `command_time_s`, which this path has always timed
     # alone; the environment half is recorded beside it so the compute column
@@ -416,6 +439,9 @@ def evaluate(
             torque_impulse = 0.0
             saturation_counts = np.zeros(6, dtype=np.int64)
             episode_solve_times: list[float] = []
+            episode_model_linearization_times: list[float] = []
+            episode_rollout_times: list[float] = []
+            episode_exact_refresh_times: list[float] = []
             episode_command_times: list[float] = []
             episode_environment_times: list[float] = []
             discounted_return = 0.0
@@ -476,6 +502,11 @@ def evaluate(
                 torque_impulse += float(np.linalg.norm(wrench_vector[:3])) * env_config.dt_s
                 force_impulse += float(np.linalg.norm(wrench_vector[3:])) * env_config.dt_s
                 episode_solve_times.append(diagnostics.solve_time_s)
+                episode_model_linearization_times.append(
+                    diagnostics.model_linearization_time_s
+                )
+                episode_rollout_times.append(diagnostics.rollout_time_s)
+                episode_exact_refresh_times.append(diagnostics.exact_refresh_time_s)
                 episode_fallbacks += int(diagnostics.used_zero_fallback)
                 if episode < 5 and env.step_count % 10 == 0:
                     trace.append(
@@ -533,6 +564,9 @@ def evaluate(
                     )
                     compared_constraint_steps += 1
             all_solve_times.extend(episode_solve_times)
+            all_model_linearization_times.extend(episode_model_linearization_times)
+            all_rollout_times.extend(episode_rollout_times)
+            all_exact_refresh_times.extend(episode_exact_refresh_times)
             all_command_times.extend(episode_command_times)
             all_environment_times.extend(episode_environment_times)
             total_fallbacks += episode_fallbacks
@@ -583,6 +617,11 @@ def evaluate(
                     ).tolist(),
                     "qp_fallback_count": episode_fallbacks,
                     "solve_time_s": _summary(episode_solve_times),
+                    "model_linearization_time_s": _summary(
+                        episode_model_linearization_times
+                    ),
+                    "rollout_time_s": _summary(episode_rollout_times),
+                    "exact_refresh_time_s": _summary(episode_exact_refresh_times),
                     "command_time_s": _summary(episode_command_times),
                     # `controller_time_s` is `command_time_s` under the shared
                     # name; the QP alone is `solve_time_s`, and the gap between
@@ -690,6 +729,27 @@ def evaluate(
                     "visible_feature_count",
                 )
             },
+            "axiswise_pooled": {
+                field: [
+                    _summary([float(sample[field][axis]) for sample in perception_samples])
+                    for axis in range(3)
+                ]
+                for field in (
+                    "position_error_axes_m",
+                    "position_std_axes_m",
+                    "velocity_error_axes_m_s",
+                    "velocity_std_axes_m_s",
+                )
+            },
+            "worst_axis_consistency": {
+                field: _summary(
+                    [float(sample[field]) for sample in perception_samples]
+                )
+                for field in (
+                    "worst_position_axis_error_over_std",
+                    "worst_velocity_axis_error_over_std",
+                )
+            },
             "longest_no_measurement_streak_s": _summary(
                 longest_no_measurement_streaks_s
             ),
@@ -741,6 +801,10 @@ def evaluate(
         "perception": perception_metrics,
         "controller_compute": {
             "command_time_s": _summary(all_command_times),
+            "qp_solve_time_s": _summary(all_solve_times),
+            "model_linearization_time_s": _summary(all_model_linearization_times),
+            "rollout_time_s": _summary(all_rollout_times),
+            "exact_refresh_time_s": _summary(all_exact_refresh_times),
             "over_control_period_rate": command_over_period_rate,
             "command_time_samples_s": all_command_times,
         },

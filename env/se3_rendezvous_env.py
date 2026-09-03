@@ -118,6 +118,9 @@ class SE3RendezvousConfig:
     phase2_enabled: bool = False
     phase2_mission_enabled: bool = False
     phase2_training_mode: str = "full_mission"
+    # A2 single factor: keep the frozen A1 sensing/task stack, but remove the
+    # corridor-guidance velocity from reward shaping and controller references.
+    phase2_guidance_free: bool = False
     phase2_mission: Phase2MissionConfig = field(default_factory=Phase2MissionConfig)
     phase1_curriculum_enabled: bool = False
     phase1_curriculum_start_step: int = 5_000
@@ -258,6 +261,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._reward = (
             Phase2MissionReward(
                 task=self.config.phase2_task,
+                guidance_free=self.config.phase2_guidance_free,
                 phase1_soft_speed_m_s=(
                     self.config.phase2_mission.phase1_soft_speed_m_s
                 ),
@@ -419,6 +423,12 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             "single_phase",
         }:
             raise ValueError("unsupported Phase-2 training mode")
+        if c.phase2_guidance_free and (
+            c.phase2_training_mode != "single_phase" or c.perception is None
+        ):
+            raise ValueError(
+                "guidance-free A2 requires single_phase with frozen perception"
+            )
         if c.phase2_target_tumble_scale < 0.0:
             raise ValueError("Phase-2 target tumble scale must be non-negative")
         if c.phase2_warmup_steps < 0:

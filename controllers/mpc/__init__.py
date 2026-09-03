@@ -4,6 +4,9 @@ from .config import (
     MPCConfig,
     constrained_mpc_nominal_config,
     corridor_tracking_mpc_config,
+    planning_tracking_mpc_config,
+    receding_plan_mpc_config,
+    terminal_short_mpc_config,
     learned_terminal_mpc_config,
 )
 from .controller import MPCController, MPCStepDiagnostics
@@ -16,6 +19,9 @@ __all__ = [
     "MPCConfig",
     "constrained_mpc_nominal_config",
     "corridor_tracking_mpc_config",
+    "planning_tracking_mpc_config",
+    "receding_plan_mpc_config",
+    "terminal_short_mpc_config",
     "fit_convex_quadratic",
     "learned_terminal_mpc_config",
     "MPCController",

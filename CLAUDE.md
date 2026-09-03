@@ -5,7 +5,32 @@ target. Chaser 106 kg, target 225 kg free-tumbling, 500 km / 45 deg circular
 orbit, RK45 truth with central gravity, second moments, gravity gradient and
 J2, 0.1 s control period, 200 s episode cap, +-5 N / +-0.6 N*m per axis.
 
-## Current decision -- 2026-09-02 (A1 perception foundation complete)
+## Current decision -- 2026-09-03 (A2 complete; learning gate closed)
+
+G0 accepted the A1 perception chain after the physics-consistent EKF mean
+correction. A2 is now implemented as
+`perception_guidance_free_environment_config()`, derived from A1 with one
+environment flag. Camera/EKF settings, 29D schema, local estimated-state input,
+S1-v2 distribution, continuous actuators, truth dynamics and constraints are
+frozen. The existing A1 29D core already carries estimated relative velocity
+itself, so no observation schema change was needed. A2 changes terminal reward
+velocity shaping from corridor guidance to zero terminal velocity and forbids
+corridor guidance in its three realistic controller rows: fixed-terminal h10,
+receding endpoint-plan h50, and explicit episode-plan plus h20 tracking. The
+matched planning/tracking oracle uses truth only as a feasibility control; the
+A1 h50 guided estimated-state row remains the control.
+
+Implementation acceptance is **152 passed**. Formal A2 evaluation is complete:
+the explicit episode plan plus h20 MPC completed 60/60 with zero truth-geometry
+violations, matching oracle completion/time and beating A1 guidance on time and
+force impulse. All successful trajectories kept 5/5 features visible with no
+measurement gaps and matched estimate/oracle covariance, so the present task
+has no active-perception gap. Strict compute p95 fails (52.17 ms mean, 163.02 ms
+p95) because the exact refresh tail is about 123 ms. No training is authorized;
+upper-level review must choose a separate compute stage or a physically
+motivated sensing-hard factor. See `docs/A2_GUIDANCE_FREE_RESULTS.md`.
+
+## Prior decision -- 2026-09-02 (A1 perception foundation complete)
 
 The research direction is now locked to action-dependent local perception. A1
 adds an independent five-feature pinhole-camera and 12D relative-state EKF chain

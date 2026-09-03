@@ -314,6 +314,7 @@ class Phase2MissionReward:
         terminal_lateral_gain_per_s: float = 0.4,
         terminal_total_speed_fraction: float = 0.6,
         discount_factor: float = 0.997,
+        guidance_free: bool = False,
     ) -> None:
         values = (
             position_scale_m,
@@ -368,6 +369,7 @@ class Phase2MissionReward:
         if max(terminal_closing_speed_fraction, terminal_total_speed_fraction) >= 1.0:
             raise ValueError("terminal guidance fractions must stay below one")
         self.discount_factor = float(discount_factor)
+        self.guidance_free = bool(guidance_free)
         if self.discount_factor > 1.0:
             raise ValueError("discount_factor must not exceed one")
         self._previous_potential: float | None = None
@@ -455,6 +457,8 @@ class Phase2MissionReward:
         the numbers this reward was built with.
         """
 
+        if self.guidance_free:
+            return np.zeros(3, dtype=np.float64)
         return corridor_guidance_velocity(
             relative.position,
             self.task,
@@ -477,7 +481,7 @@ class Phase2MissionReward:
             return self.terminal_desired_velocity(relative)
         return self.phase1_desired_velocity(relative, reference_position_m)
 
-    def settings(self) -> dict[str, float]:
+    def settings(self) -> dict[str, float | bool]:
         """Every weight and guidance constant that shapes this reward.
 
         These are constructor defaults rather than environment-config fields,
@@ -486,6 +490,7 @@ class Phase2MissionReward:
         """
 
         return {
+            "guidance_free": self.guidance_free,
             "progress_weight": self.progress_weight,
             "actuation_weight": self.actuation_weight,
             "warning_weight": self.warning_weight,

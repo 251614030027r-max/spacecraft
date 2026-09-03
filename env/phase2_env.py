@@ -104,6 +104,15 @@ def phase2_perception_environment_config() -> SE3RendezvousConfig:
     )
 
 
+def perception_guidance_free_environment_config() -> SE3RendezvousConfig:
+    """Derive A2 from frozen A1 with guidance removal as the sole change."""
+
+    return replace(
+        phase2_perception_environment_config(),
+        phase2_guidance_free=True,
+    )
+
+
 def terminal_phase_environment_config() -> SE3RendezvousConfig:
     """Terminal-only config retained for P0 MPC validation and later P3 reuse."""
 
@@ -126,6 +135,7 @@ __all__ = [
     "make_phase2_env",
     "phase2_environment_config",
     "phase2_perception_environment_config",
+    "perception_guidance_free_environment_config",
     "phase2_s1v2_mission_config",
     "terminal_phase_environment_config",
 ]

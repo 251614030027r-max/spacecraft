@@ -9,7 +9,14 @@ import cvxpy as cp
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from dynamics.lie import se3_exp
+from dynamics.lie import (
+    left_jacobian_so3,
+    make_transform,
+    se3_exp,
+    se3_log,
+    so3_exp,
+    so3_log,
+)
 from dynamics.types import SpacecraftState
 from env.task import corridor_guidance_velocity
 
@@ -37,6 +44,9 @@ class MPCStepDiagnostics:
     predicted_cost: float
     used_zero_fallback: bool
     constraint_linearization_time_s: float
+    model_linearization_time_s: float
+    rollout_time_s: float
+    exact_refresh_time_s: float
     maximum_slack: float
     total_slack: float
     predicted_minimum_margin: float
@@ -140,14 +150,74 @@ class MPCController:
             FloatArray, FloatArray, FloatArray
         ] | None = None
         self._control_step = 0
+        self._episode_plan_initial_state: FloatArray | None = None
+        self._episode_plan_start_time_s: float | None = None
 
     def reset(self) -> None:
         self._nominal_controls.fill(0.0)
         self._drift.fill(0.0)
         self._exact_linearization = None
         self._control_step = 0
+        self._episode_plan_initial_state = None
+        self._episode_plan_start_time_s = None
 
-    def _reference_trajectory(self, state: FloatArray) -> FloatArray:
+    def _endpoint_plan(
+        self,
+        initial_state: FloatArray,
+        sample_times_s: FloatArray,
+    ) -> FloatArray:
+        """Return a closed-form minimum-jerk path using endpoints only."""
+
+        initial_transform = se3_exp(initial_state[:6])
+        desired_transform = se3_exp(self.config.reference_state[:6])
+        initial_rotation = initial_transform[:3, :3]
+        initial_position = initial_transform[:3, 3]
+        desired_position = desired_transform[:3, 3]
+        rotation_to_goal = so3_log(initial_rotation.T @ desired_transform[:3, :3])
+        distance = float(np.linalg.norm(desired_position - initial_position))
+        duration = max(
+            self.config.planning_min_duration_s,
+            1.875 * distance / self.config.planning_speed_m_s,
+        )
+        clipped_times = np.clip(sample_times_s, 0.0, duration)
+
+        def quintic(
+            start: FloatArray, goal: FloatArray, initial_rate: FloatArray
+        ) -> tuple[FloatArray, FloatArray]:
+            delta = goal - start
+            a3 = (10.0 * delta - 6.0 * initial_rate * duration) / duration**3
+            a4 = (-15.0 * delta + 8.0 * initial_rate * duration) / duration**4
+            a5 = (6.0 * delta - 3.0 * initial_rate * duration) / duration**5
+            t = clipped_times[:, None]
+            value = start + initial_rate * t + a3 * t**3 + a4 * t**4 + a5 * t**5
+            rate = initial_rate + 3.0 * a3 * t**2 + 4.0 * a4 * t**3 + 5.0 * a5 * t**4
+            return value, rate
+
+        positions, position_rates = quintic(
+            initial_position,
+            desired_position,
+            initial_rotation @ initial_state[9:12],
+        )
+        rotation_vectors, rotation_rates = quintic(
+            np.zeros(3, dtype=np.float64),
+            rotation_to_goal,
+            initial_state[6:9],
+        )
+        reference = np.zeros((12, sample_times_s.size), dtype=np.float64)
+        for index, (rotation_vector, rotation_rate) in enumerate(
+            zip(rotation_vectors, rotation_rates)
+        ):
+            rotation = initial_rotation @ so3_exp(rotation_vector)
+            position = positions[index]
+            position_rate = position_rates[index]
+            reference[:6, index] = se3_log(make_transform(rotation, position))
+            reference[6:9, index] = left_jacobian_so3(-rotation_vector) @ rotation_rate
+            reference[9:12, index] = rotation.T @ position_rate
+        return reference
+
+    def _reference_trajectory(
+        self, state: FloatArray, time_seconds: float = 0.0
+    ) -> FloatArray:
         """Return the ``(12, horizon+1)`` reference the objective tracks.
 
         Under ``"fixed"`` every stage is ``reference_state`` -- the myopic
@@ -163,6 +233,19 @@ class MPCController:
         n = self.config.horizon_steps
         if self.config.reference_source == "fixed":
             return np.tile(self.config.reference_state.reshape(12, 1), (1, n + 1))
+        sample_offsets = np.arange(n + 1, dtype=np.float64) * self.config.dt_s
+        if self.config.reference_source == "receding_plan":
+            return self._endpoint_plan(state, sample_offsets)
+        if self.config.reference_source == "episode_plan":
+            if self._episode_plan_initial_state is None:
+                self._episode_plan_initial_state = state.copy()
+                self._episode_plan_start_time_s = float(time_seconds)
+            assert self._episode_plan_start_time_s is not None
+            elapsed = max(0.0, float(time_seconds) - self._episode_plan_start_time_s)
+            return self._endpoint_plan(
+                self._episode_plan_initial_state,
+                elapsed + sample_offsets,
+            )
         assert self.config.task is not None
         position = se3_exp(state[:6])[:3, 3]
         reference = np.zeros((12, n + 1), dtype=np.float64)
@@ -230,34 +313,42 @@ class MPCController:
         if state.shape != (12,) or not np.all(np.isfinite(state)):
             raise ValueError("MPC state must be finite and shape=(12,)")
         # Depends only on the current state, so build it once per control step.
-        reference_trajectory = self._reference_trajectory(state)
+        reference_trajectory = self._reference_trajectory(state, time_seconds)
         self._reference.value = reference_trajectory
         use_exact = self.config.linearization_source == "exact"
+        exact_refresh_time = 0.0
         if use_exact and (
             self._exact_linearization is None
             or self._control_step
             % self.config.exact_linearization_refresh_steps
             == 0
         ):
+            started_exact = perf_counter()
             self._refresh_exact_linearization(state, target_state, time_seconds)
+            exact_refresh_time = perf_counter() - started_exact
         elif not use_exact and self._control_step % self.config.drift_refresh_steps == 0:
             self._refresh_drift(state, target_state, time_seconds)
         controls = np.vstack((self._nominal_controls[1:], np.zeros((1, 6))))
         status = "not_solved"
         total_solve_time = 0.0
         constraint_linearization_time = 0.0
+        model_linearization_time = 0.0
+        rollout_time = 0.0
         solver_iterations = 0
         objective = float("nan")
         completed_outer = 0
         try:
             for outer in range(self.config.outer_iterations):
+                started_rollout = perf_counter()
                 nominal_states = self._rollout(state, controls)
+                rollout_time += perf_counter() - started_rollout
                 cached_linearization: tuple[FloatArray, FloatArray, FloatArray] | None = None
                 for index in range(self.config.horizon_steps):
                     if use_exact:
                         assert self._exact_linearization is not None
                         cached_linearization = self._exact_linearization
                     elif index % self.config.linearization_stride == 0:
+                        started_linearization = perf_counter()
                         cached_linearization = central_difference_linearization(
                             self._predict,
                             nominal_states[index],
@@ -265,6 +356,9 @@ class MPCController:
                             state_scales=self.config.state_scales,
                             input_scales=self.config.input_scales,
                             relative_step=self.config.difference_relative_step,
+                        )
+                        model_linearization_time += (
+                            perf_counter() - started_linearization
                         )
                     assert cached_linearization is not None
                     self._a[index].value, self._b[index].value, self._c[index].value = (
@@ -324,7 +418,9 @@ class MPCController:
             command = np.zeros(6, dtype=np.float64)
             self._nominal_controls.fill(0.0)
             used_fallback = True
+        started_rollout = perf_counter()
         predicted_states = self._rollout(state, self._nominal_controls)
+        rollout_time += perf_counter() - started_rollout
         if self._slack is not None and self._slack.value is not None:
             slack_values = np.asarray(self._slack.value, dtype=np.float64)
             maximum_slack = float(np.max(slack_values))
@@ -378,6 +474,9 @@ class MPCController:
             predicted_cost=predicted_cost,
             used_zero_fallback=used_fallback,
             constraint_linearization_time_s=constraint_linearization_time,
+            model_linearization_time_s=model_linearization_time,
+            rollout_time_s=rollout_time,
+            exact_refresh_time_s=exact_refresh_time,
             maximum_slack=maximum_slack,
             total_slack=total_slack,
             predicted_minimum_margin=predicted_minimum_margin,
