@@ -25,12 +25,18 @@ from controllers.mpc.constraints import normalized_truth_margins
 from controllers.mpc.prediction import relative_to_vector
 from dynamics.gravity import GravityOptions
 from dynamics.integrator import RK45Settings
-from dynamics.relative import relative_state
-from dynamics.types import GeneralizedForce, SpacecraftParameters
+from dynamics.relative import (
+    RelativeState,
+    reconstruct_target_state,
+    relative_state,
+)
+from dynamics.types import GeneralizedForce, SpacecraftParameters, SpacecraftState
+from estimation.relative_ekf import local_error
 from env.observation_error import TargetStateEstimator
 from env.action import wrench_to_normalized
 from env.phase2_env import (
     phase2_environment_config,
+    phase2_perception_environment_config,
     terminal_phase_environment_config,
 )
 from env.se3_rendezvous_env import SE3RendezvousConfig, SE3RendezvousEnv
@@ -75,6 +81,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-weight", type=float)
     parser.add_argument("--terminal-weight", type=float)
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument(
+        "--progress", action="store_true", help="print one compact line per episode"
+    )
     parser.add_argument("--max-time", type=float)
     parser.add_argument(
         "--task",
@@ -99,6 +108,17 @@ def parse_args() -> argparse.Namespace:
             "corridor_guidance for single_phase (the fair benchmark reference) "
             "and fixed for terminal (the terminal-only record). Pass it only to "
             "override that default."
+        ),
+    )
+    parser.add_argument(
+        "--control-state-source",
+        choices=("oracle", "estimate"),
+        default=None,
+        help=(
+            "Enable the pre-registered G0 perception comparison. oracle gives "
+            "the controller env.relative; estimate gives it only "
+            "env.observed_relative. Both run the frozen A1 perception env and "
+            "truth remains the scoring source. Omit for the legacy evaluator."
         ),
     )
     parser.add_argument(
@@ -185,6 +205,96 @@ def _summary(values: list[float]) -> dict[str, float] | None:
     return summarize(values)
 
 
+def _target_from_observed_relative(
+    observed: RelativeState, chaser: SpacecraftState
+) -> SpacecraftState:
+    """Reconstruct the target estimate without reading environment truth."""
+
+    return reconstruct_target_state(chaser, observed)
+
+
+def controller_inputs(
+    env: SE3RendezvousEnv, state_source: str
+) -> tuple[np.ndarray, SpacecraftState]:
+    """Return only the state information the evaluated controller may read.
+
+    This boundary is deliberately small enough for the G0 leakage test to put
+    raising sentinels on every truth attribute. Evaluation code outside this
+    function may read truth for scoring; the controller path may not.
+    """
+
+    if state_source == "estimate":
+        observed = env.observed_relative
+        chaser = env.chaser_state
+        if chaser is None:
+            raise RuntimeError("controller input requested before reset")
+        target = _target_from_observed_relative(observed, chaser)
+        return relative_to_vector(observed), target
+    if state_source == "oracle":
+        if env.relative is None or env.target_state is None:
+            raise RuntimeError("controller input requested before reset")
+        return relative_to_vector(env.relative), env.target_state
+    raise ValueError("state_source must be 'oracle' or 'estimate'")
+
+
+def _perception_sample(
+    env: SE3RendezvousEnv, info: dict[str, Any], *, episode: int
+) -> dict[str, Any]:
+    """Capture the fixed G0 estimation and consistency metrics at one step."""
+
+    if env.relative is None:
+        raise RuntimeError("perception metrics requested before reset")
+    estimate = env.observed_relative
+    covariance = env.observed_relative_covariance
+    error = local_error(estimate, env.relative)
+    nees = float(error @ np.linalg.solve(covariance, error))
+    return {
+        "episode": episode,
+        "step": int(info["step_count"]),
+        "time_seconds": float(info["time_seconds"]),
+        "position_error_m": float(info["estimation_position_error_m"]),
+        "attitude_error_rad": float(info["estimation_attitude_error_rad"]),
+        "velocity_error_m_s": float(info["estimation_velocity_error_m_s"]),
+        "angular_velocity_error_rad_s": float(
+            info["estimation_angular_velocity_error_rad_s"]
+        ),
+        "nees_12d": nees,
+        "visible_feature_count": int(info["visible_feature_count"]),
+        "measurement_used": bool(info["perception_measurement_used"]),
+    }
+
+
+def _perception_trend(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reduce per-episode samples to the pre-registered p50/p95 time trend."""
+
+    fields = (
+        "position_error_m",
+        "attitude_error_rad",
+        "velocity_error_m_s",
+        "angular_velocity_error_rad_s",
+        "nees_12d",
+        "visible_feature_count",
+    )
+    by_step: dict[int, list[dict[str, Any]]] = {}
+    for sample in samples:
+        by_step.setdefault(int(sample["step"]), []).append(sample)
+    trend: list[dict[str, Any]] = []
+    for step, rows in sorted(by_step.items()):
+        point: dict[str, Any] = {
+            "step": step,
+            "time_seconds": float(rows[0]["time_seconds"]),
+            "episode_count": len(rows),
+        }
+        for field in fields:
+            values = np.asarray([row[field] for row in rows], dtype=np.float64)
+            point[field] = {
+                "p50": float(np.quantile(values, 0.50)),
+                "p95": float(np.quantile(values, 0.95)),
+            }
+        trend.append(point)
+    return trend
+
+
 def evaluate(
     config: MPCConfig,
     *,
@@ -196,11 +306,15 @@ def evaluate(
     observation_delay_steps: int = 0,
     observation_update_every: int = 1,
     observation_filter: str = "hold",
+    control_state_source: str = "oracle",
+    progress: bool = False,
 ) -> dict[str, Any]:
     if episodes <= 0:
         raise ValueError("episodes must be positive")
     if controller_model_source not in {"nominal", "truth"}:
         raise ValueError("controller_model_source must be 'nominal' or 'truth'")
+    if control_state_source not in {"oracle", "estimate"}:
+        raise ValueError("control_state_source must be 'oracle' or 'estimate'")
     observed_target = (
         observation_bias_rad > 0.0
         or observation_delay_steps > 0
@@ -209,6 +323,10 @@ def evaluate(
     env_config = environment_config or terminal_phase_environment_config()
     if env_config.curriculum_enabled or not env_config.phase2_enabled:
         raise ValueError("MPC evaluation requires canonical fixed Phase-2")
+    if control_state_source == "estimate" and env_config.perception is None:
+        raise ValueError("estimate control-state source requires perception")
+    if control_state_source == "estimate" and observed_target:
+        raise ValueError("G0 estimate source cannot use legacy observation errors")
     env = SE3RendezvousEnv(env_config)
 
     def build_controller(target_params: SpacecraftParameters) -> MPCController:
@@ -262,6 +380,8 @@ def evaluate(
     predicted_safe_truth_violation_count = 0
     compared_constraint_steps = 0
     trajectories: list[dict[str, Any]] = []
+    perception_samples: list[dict[str, Any]] = []
+    longest_no_measurement_streaks_s: list[float] = []
     try:
         for episode in range(episodes):
             _, info = env.reset(seed=seed + episode)
@@ -284,6 +404,14 @@ def evaluate(
                 else None
             )
             control_step = 0
+            no_measurement_steps = 0
+            longest_no_measurement_steps = 0
+            if env_config.perception is not None:
+                initial_sample = _perception_sample(env, info, episode=episode)
+                perception_samples.append(initial_sample)
+                if not initial_sample["measurement_used"]:
+                    no_measurement_steps = 1
+                    longest_no_measurement_steps = 1
             force_impulse = 0.0
             torque_impulse = 0.0
             saturation_counts = np.zeros(6, dtype=np.int64)
@@ -323,6 +451,10 @@ def evaluate(
                         relative_state(target_estimate, env.chaser_state)
                     )
                     command_target = target_estimate
+                elif env_config.perception is not None:
+                    command_state, command_target = controller_inputs(
+                        env, control_state_source
+                    )
                 else:
                     command_state = relative_to_vector(env.relative)
                     command_target = env.target_state
@@ -350,6 +482,12 @@ def evaluate(
                         {
                             "time_seconds": env.time_seconds,
                             "state": x.tolist(),
+                            "truth_position_m": env.relative.position.tolist(),
+                            "observed_position_m": (
+                                env.observed_relative.position.tolist()
+                                if env_config.perception is not None
+                                else env.relative.position.tolist()
+                            ),
                             "control": wrench_vector.tolist(),
                             "predicted_cost": diagnostics.predicted_cost,
                             "solver_status": diagnostics.status,
@@ -358,6 +496,16 @@ def evaluate(
                 environment_started = perf_counter()
                 _, reward, terminated, truncated, info = env.step(action)
                 episode_environment_times.append(perf_counter() - environment_started)
+                if env_config.perception is not None:
+                    sample = _perception_sample(env, info, episode=episode)
+                    perception_samples.append(sample)
+                    if sample["measurement_used"]:
+                        no_measurement_steps = 0
+                    else:
+                        no_measurement_steps += 1
+                        longest_no_measurement_steps = max(
+                            longest_no_measurement_steps, no_measurement_steps
+                        )
                 discounted_return += discount * float(reward)
                 discount *= GAMMA
                 min_position_error_m = min(
@@ -388,6 +536,19 @@ def evaluate(
             all_command_times.extend(episode_command_times)
             all_environment_times.extend(episode_environment_times)
             total_fallbacks += episode_fallbacks
+            if env_config.perception is not None:
+                longest_no_measurement_streaks_s.append(
+                    longest_no_measurement_steps * env_config.dt_s
+                )
+            violation_step_keys = (
+                "corridor_violation_steps",
+                "fov_violation_steps",
+                "total_speed_violation_steps",
+                "closing_speed_violation_steps",
+            )
+            zero_violation = config.task is None or all(
+                int(info[key]) == 0 for key in violation_step_keys
+            )
             records.append(
                 {
                     "episode": episode,
@@ -398,6 +559,9 @@ def evaluate(
                     "position_success": bool(info["position_success"]),
                     "distance_failure": bool(info["distance_failure"]),
                     "time_failure": bool(info["time_failure"]),
+                    "truth_geometry_zero_violation_completed": bool(
+                        info["completed"] and zero_violation
+                    ),
                     "steps": env.step_count,
                     "time_seconds": env.time_seconds,
                     # `survival_s` and `discounted_return` under the names the
@@ -425,6 +589,11 @@ def evaluate(
                     # them is this implementation's finite-difference overhead.
                     "controller_time_s": _summary(episode_command_times),
                     "environment_step_time_s": _summary(episode_environment_times),
+                    "longest_no_measurement_streak_s": (
+                        longest_no_measurement_steps * env_config.dt_s
+                        if env_config.perception is not None
+                        else None
+                    ),
                     **(
                         {
                             "constraint_success": bool(info["constraint_success"]),
@@ -446,6 +615,13 @@ def evaluate(
             )
             if episode < 5:
                 trajectories.append({"episode": episode, "seed": seed + episode, "samples": trace})
+            if progress:
+                print(
+                    f"episode {episode + 1}/{episodes} seed={seed + episode} "
+                    f"completed={bool(info['completed'])} "
+                    f"zero_violation={zero_violation} steps={env.step_count}",
+                    flush=True,
+                )
     finally:
         env.close()
     rate_keys = (
@@ -461,6 +637,10 @@ def evaluate(
         rates["constraint_success"] = mean(
             float(row["constraint_success"]) for row in records
         )
+    rates["truth_geometry_zero_violation_completion"] = mean(
+        float(row["truth_geometry_zero_violation_completed"])
+        for row in records
+    )
     total_steps = sum(int(row["steps"]) for row in records)
     fallback_rate = total_fallbacks / max(1, total_steps)
     checks = {
@@ -481,10 +661,47 @@ def evaluate(
                 predicted_safe_truth_violation_count == 0
             ),
         }
+    command_over_period_rate = mean(
+        float(value > env_config.dt_s) for value in all_command_times
+    )
+    violation_episode_counts = {
+        name: sum(int(row.get(name, 0)) > 0 for row in records)
+        for name in (
+            "corridor_violation_steps",
+            "fov_violation_steps",
+            "total_speed_violation_steps",
+            "closing_speed_violation_steps",
+        )
+    }
+    perception_metrics = None
+    if env_config.perception is not None:
+        perception_metrics = {
+            "estimation_error_over_time": _perception_trend(perception_samples),
+            "pooled": {
+                field: _summary(
+                    [float(sample[field]) for sample in perception_samples]
+                )
+                for field in (
+                    "position_error_m",
+                    "attitude_error_rad",
+                    "velocity_error_m_s",
+                    "angular_velocity_error_rad_s",
+                    "nees_12d",
+                    "visible_feature_count",
+                )
+            },
+            "longest_no_measurement_streak_s": _summary(
+                longest_no_measurement_streaks_s
+            ),
+            # Retained to combine the three disjoint blocks without averaging
+            # quantiles. The digest and handoff consume summaries, not this log.
+            "time_series_samples": perception_samples,
+        }
     return {
         "schema_version": 2,
         "evaluated_at_utc": datetime.now(timezone.utc).isoformat(),
         "algorithm": "mpc_only",
+        "control_state_source": control_state_source,
         "controller_model_source": controller_model_source,
         "observation_error": {
             "bias_rad": observation_bias_rad,
@@ -514,6 +731,18 @@ def evaluate(
                 predicted_safe_truth_violation_count
             ),
             "compared_constraint_steps": compared_constraint_steps,
+        },
+        "truth_geometry": {
+            "zero_violation_completion_rate": rates[
+                "truth_geometry_zero_violation_completion"
+            ],
+            "violation_episode_counts": violation_episode_counts,
+        },
+        "perception": perception_metrics,
+        "controller_compute": {
+            "command_time_s": _summary(all_command_times),
+            "over_control_period_rate": command_over_period_rate,
+            "command_time_samples_s": all_command_times,
         },
         "acceptance": {"checks": checks, "passed": all(checks.values())},
         "episode_records": records,
@@ -585,11 +814,16 @@ def main() -> None:
             else base_config.exact_linearization_refresh_steps
         ),
     )
-    environment_config = (
-        phase2_environment_config(args.task)
-        if args.task in {"single_phase", "single_phase_phase_sampled"}
-        else terminal_phase_environment_config()
-    )
+    if args.control_state_source is not None:
+        if args.task != "single_phase":
+            raise ValueError("G0 perception comparison requires --task single_phase")
+        environment_config = phase2_perception_environment_config()
+    else:
+        environment_config = (
+            phase2_environment_config(args.task)
+            if args.task in {"single_phase", "single_phase_phase_sampled"}
+            else terminal_phase_environment_config()
+        )
     if args.max_time is not None:
         environment_config = replace(environment_config, max_time_s=args.max_time)
     if args.target_model_mismatch > 0.0:
@@ -607,6 +841,8 @@ def main() -> None:
         observation_delay_steps=args.obs_delay_steps,
         observation_update_every=args.obs_update_every,
         observation_filter="ekf" if args.target_estimator == "ekf" else "hold",
+        control_state_source=args.control_state_source or "oracle",
+        progress=args.progress,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(

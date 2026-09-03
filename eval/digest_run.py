@@ -148,12 +148,54 @@ def _print_main_table(evaluation: dict[str, Any]) -> None:
         )
 
 
+def _print_g0_digest(summary: dict[str, Any]) -> None:
+    """Print the fixed G0 gate without exposing block-level log files."""
+
+    print("G0 perception closed-loop  (3 blocks x 20 paired episodes)")
+    for source in ("oracle", "estimate"):
+        row = summary["sources"][source]
+        compute = row["controller_compute"]
+        command = compute["command_time_s"]
+        streak = row["longest_no_measurement_streak_s"]
+        print(
+            f"{source:<8} completion={row['completion_rate']:.3f}  "
+            f"zero-violation completion={row['zero_violation_completion_rate']:.3f}  "
+            f"compute p95/max={1e3 * command['p95']:.1f}/{1e3 * command['max']:.1f} ms  "
+            f">0.1s={compute['over_0p1s_rate']:.3f}  "
+            f"max no-measurement={streak['max']:.1f}s"
+        )
+        errors = row["pooled_estimation"]
+        print(
+            " " * 9
+            + "pooled error p50/p95: "
+            + "  ".join(
+                f"{name}={values['median']:.4g}/{values['p95']:.4g}"
+                for name, values in errors.items()
+            )
+            + f"  NEES={row['nees_12d']['median']:.3g}/{row['nees_12d']['p95']:.3g}"
+        )
+    print("paired blocks  " + "  ".join(
+        f"{row['base_seed']}:{row['counts']['estimate']}/{row['counts']['oracle']}"
+        for row in summary["paired_block_decisions"]
+    ) + "  (estimate/oracle zero-violation completions)")
+    acceptance = summary["acceptance"]
+    print("gate    " + ("PASS" if acceptance["passed"] else "STOP"))
+    for name, passed in acceptance["checks"].items():
+        print(f"        {'ok' if passed else 'FAIL'}  {name}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="One-screen digest of a run")
     parser.add_argument("--run", type=Path, required=True)
     parser.add_argument("--dt", type=float, default=0.1)
     args = parser.parse_args()
     run = args.run
+
+    g0_path = run if run.is_file() else run / "g0_summary.json"
+    g0_summary = _load(g0_path)
+    if g0_summary is not None and g0_summary.get("probe") == "G0_perception_closed_loop":
+        _print_g0_digest(g0_summary)
+        return
 
     manifest = _load(run / "manifest.json")
     mode = manifest.get("phase2_mode") if manifest is not None else None

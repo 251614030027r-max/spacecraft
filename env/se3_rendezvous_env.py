@@ -631,6 +631,14 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             return relative_state(self._observed_target, self.chaser_state)
         return self.relative
 
+    @property
+    def observed_relative_covariance(self) -> np.ndarray:
+        """Return the full EKF covariance used by perception evaluations."""
+
+        if self._relative_ekf is None:
+            raise RuntimeError("relative-state covariance requires perception")
+        return self._relative_ekf.covariance
+
     def _target_angular_velocity_from_relative(
         self, relative: RelativeState
     ) -> np.ndarray:
@@ -970,7 +978,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             self._relative_ekf = RelativeStateEKF(
                 self.chaser_parameters,
                 self.config.perception,
+                target_parameters=target_parameters(),
                 dt_s=self.config.dt_s,
+                gravity_options=self._gravity,
+                solver_settings=self._solver,
             )
             self._relative_ekf.initialize(self.relative, self.np_random)
             self._perception_measurement = measure_visible_features(
@@ -1260,6 +1271,8 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         assert self.chaser_state is not None
         assert self.target_parameters is not None
         assert self.chaser_parameters is not None
+        chaser_previous = self.chaser_state
+        transition_start_time = self.time_seconds
         control = self.scale_action(action)
         if self._target_trajectory is None:
             target_next, target_diag = propagate_rk45(
@@ -1297,7 +1310,11 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             )
         if self._relative_ekf is not None:
             assert self.config.perception is not None
-            self._relative_ekf.predict(control.vector)
+            self._relative_ekf.predict(
+                control.vector,
+                chaser_state=chaser_previous,
+                time_seconds=transition_start_time,
+            )
             self._perception_measurement = measure_visible_features(
                 self.relative, self.config.perception, self.np_random
             )

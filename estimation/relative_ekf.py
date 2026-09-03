@@ -9,11 +9,14 @@ from numpy.typing import ArrayLike, NDArray
 
 from controllers.mpc.prediction import (
     LocalRelativePredictionModel,
+    RelativePredictionModel,
     relative_to_vector,
 )
+from dynamics.gravity import GravityOptions
+from dynamics.integrator import RK45Settings
 from dynamics.lie import make_transform, se3_exp, so3_exp, so3_log
-from dynamics.relative import RelativeState
-from dynamics.types import SpacecraftParameters
+from dynamics.relative import RelativeState, reconstruct_target_state
+from dynamics.types import SpacecraftParameters, SpacecraftState
 from env.perception import (
     FeatureMeasurement,
     PerceptionConfig,
@@ -133,12 +136,26 @@ class RelativeStateEKF:
         chaser_parameters: SpacecraftParameters,
         perception_config: PerceptionConfig,
         *,
+        target_parameters: SpacecraftParameters,
         dt_s: float = 0.1,
+        gravity_options: GravityOptions = GravityOptions(include_j2=True),
+        solver_settings: RK45Settings = RK45Settings(
+            rtol=1.0e-7, atol=1.0e-9, max_step=0.1
+        ),
         config: RelativeEKFConfig | None = None,
     ) -> None:
         self.config = config or RelativeEKFConfig()
         self.perception_config = perception_config
-        self._prediction = LocalRelativePredictionModel(chaser_parameters, dt_s=dt_s)
+        self._local_prediction = LocalRelativePredictionModel(
+            chaser_parameters, dt_s=dt_s
+        )
+        self._mean_prediction = RelativePredictionModel(
+            target_parameters=target_parameters,
+            chaser_parameters=chaser_parameters,
+            dt_s=dt_s,
+            gravity_options=gravity_options,
+            solver_settings=solver_settings,
+        )
         self._state: RelativeState | None = None
         self._covariance: FloatArray | None = None
 
@@ -162,27 +179,57 @@ class RelativeStateEKF:
         self._covariance = np.diag(initial_std * initial_std)
         return self.state
 
-    def _propagate(
+    def _propagate_local(
         self, relative: RelativeState, wrench_vector: ArrayLike
     ) -> RelativeState:
-        prediction = self._prediction.predict(
+        prediction = self._local_prediction.predict(
             relative_to_vector(relative), wrench_vector
         )
         return RelativeState(se3_exp(prediction[:6]), prediction[6:])
 
-    def predict(self, wrench_vector: ArrayLike) -> RelativeState:
+    def _propagate_mean(
+        self,
+        relative: RelativeState,
+        wrench_vector: ArrayLike,
+        chaser_state: SpacecraftState,
+        time_seconds: float,
+    ) -> RelativeState:
+        target_estimate = reconstruct_target_state(chaser_state, relative)
+        prediction, _ = self._mean_prediction.predict(
+            relative_to_vector(relative),
+            wrench_vector,
+            target_estimate,
+            time_seconds,
+        )
+        return RelativeState(se3_exp(prediction[:6]), prediction[6:])
+
+    def predict(
+        self,
+        wrench_vector: ArrayLike,
+        *,
+        chaser_state: SpacecraftState,
+        time_seconds: float = 0.0,
+    ) -> RelativeState:
         state = self.state
         covariance = self.covariance
-        nominal_next = self._propagate(state, wrench_vector)
+        # G0 correction: the mean now follows the same absolute rigid-body and
+        # gravity equations as truth, reconstructed only from the estimated
+        # relative state and known ownship state. Covariance propagation keeps
+        # the frozen A1 local Jacobian and process noise, so this is one model
+        # correction rather than noise tuning.
+        nominal_next = self._propagate_mean(
+            state, wrench_vector, chaser_state, time_seconds
+        )
+        local_nominal_next = self._propagate_local(state, wrench_vector)
         transition = np.empty((12, 12), dtype=np.float64)
         for index, step in enumerate(self.config.difference_steps):
             delta = np.zeros(12, dtype=np.float64)
             delta[index] = step
-            plus = self._propagate(inject_error(state, delta), wrench_vector)
-            minus = self._propagate(inject_error(state, -delta), wrench_vector)
+            plus = self._propagate_local(inject_error(state, delta), wrench_vector)
+            minus = self._propagate_local(inject_error(state, -delta), wrench_vector)
             transition[:, index] = (
-                local_error(nominal_next, plus)
-                - local_error(nominal_next, minus)
+                local_error(local_nominal_next, plus)
+                - local_error(local_nominal_next, minus)
             ) / (2.0 * step)
         process_std = self.config.process_std_vector
         self._state = nominal_next
