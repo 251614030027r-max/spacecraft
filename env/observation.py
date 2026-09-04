@@ -4,7 +4,13 @@ import numpy as np
 
 from dynamics.lie import inverse_transform, make_transform, se3_log
 from dynamics.relative import RelativeState
-from env.task import Phase2TaskConfig, compute_task_metrics, orthogonal_plane_basis
+from env.task import (
+    Phase2TaskConfig,
+    PrecaptureMetrics,
+    PrecaptureTaskConfig,
+    compute_task_metrics,
+    orthogonal_plane_basis,
+)
 
 
 PHASE2_OBSERVATION_SCHEMA = "phase2_v2_1_23d"
@@ -19,6 +25,7 @@ PHASE2_MISSION_OBSERVATION_SCHEMA = (
     "phase2_mission_v4_phase_guidance_error_24d"
 )
 PHASE2_PERCEPTION_OBSERVATION_SCHEMA = "phase2_perception_v1_29d"
+PRECAPTURE_PLANNING_FULL_STATE_SCHEMA = "precapture_planning_full_state_v1_24d"
 
 
 def _softsign(raw: np.ndarray, limit: float) -> np.ndarray:
@@ -320,4 +327,75 @@ def build_phase2_perception_observation(
     )
     if observation.shape != (29,) or not np.all(np.isfinite(observation)):
         raise RuntimeError("invalid Phase-2 perception observation")
+    return observation.astype(np.float32)
+
+
+def build_precapture_full_state_observation(
+    relative: RelativeState,
+    *,
+    metrics: PrecaptureMetrics,
+    task: PrecaptureTaskConfig,
+    target_angular_velocity_rad_s: np.ndarray,
+    attitude_scale_rad: float,
+    distance_scale_m: float,
+    angular_velocity_scale_rad_s: float,
+    velocity_scale_m_s: float,
+    target_angular_velocity_scale_rad_s: float = 0.05,
+    softsign_limit: float = 10.0,
+) -> np.ndarray:
+    """Diagnostic full-state observation for task/MPC feasibility work only."""
+
+    target_omega = np.asarray(target_angular_velocity_rad_s, dtype=np.float64)
+    if target_omega.shape != (3,) or not np.all(np.isfinite(target_omega)):
+        raise ValueError("target angular velocity must be a finite three-vector")
+    scales = (
+        attitude_scale_rad,
+        distance_scale_m,
+        angular_velocity_scale_rad_s,
+        velocity_scale_m_s,
+        target_angular_velocity_scale_rad_s,
+        softsign_limit,
+    )
+    if min(scales) <= 0.0:
+        raise ValueError("precapture observation scales must be positive")
+    position_error = metrics.position_target_m - task.desired_position
+    core = np.concatenate(
+        (
+            metrics.desired_error_coordinates[:3] / attitude_scale_rad,
+            position_error / distance_scale_m,
+            metrics.position_rate_target_m_s / velocity_scale_m_s,
+            relative.omega / angular_velocity_scale_rad_s,
+            target_omega / target_angular_velocity_scale_rad_s,
+        )
+    )
+    corridor_scale = max(
+        abs(metrics.port_axial_distance_m) * np.tan(task.corridor_half_angle_rad),
+        0.25,
+    )
+    margins = np.array(
+        [
+            metrics.keepout_margin_m / task.keepout_radius_m,
+            metrics.fov_margin_rad / task.fov_half_angle_rad,
+            metrics.outer_inertial_speed_margin_m_s
+            / task.outer_inertial_speed_limit_m_s,
+            metrics.target_frame_speed_margin_m_s
+            / metrics.target_frame_speed_limit_m_s,
+            metrics.corridor_lateral_margin_m / corridor_scale,
+            metrics.closing_speed_margin_m_s / task.closing_speed_max_m_s,
+        ],
+        dtype=np.float64,
+    )
+    context = np.array(
+        [
+            metrics.target_center_distance_m / distance_scale_m,
+            float(metrics.terminal_region_active),
+            float(metrics.transition_speed_active),
+        ],
+        dtype=np.float64,
+    )
+    observation = np.concatenate(
+        (_softsign(core, softsign_limit), _softsign(margins, softsign_limit), context)
+    )
+    if observation.shape != (24,) or not np.all(np.isfinite(observation)):
+        raise RuntimeError("invalid precapture full-state observation")
     return observation.astype(np.float32)

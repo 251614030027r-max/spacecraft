@@ -31,10 +31,12 @@ from env.observation import (
     PHASE2_MISSION_TARGET_TRANSLATION_OBSERVATION_SCHEMA,
     PHASE2_OBSERVATION_SCHEMA,
     PHASE2_PERCEPTION_OBSERVATION_SCHEMA,
+    PRECAPTURE_PLANNING_FULL_STATE_SCHEMA,
     build_observation,
     build_phase2_mission_observation,
     build_phase2_observation,
     build_phase2_perception_observation,
+    build_precapture_full_state_observation,
 )
 from env.perception import (
     FeatureMeasurement,
@@ -46,6 +48,9 @@ from env.reward import (
     Phase2MissionRewardBreakdown,
     Phase2RewardBreakdown,
     Phase2TaskReward,
+    PrecaptureReward,
+    PrecaptureRewardBreakdown,
+    PrecaptureRewardConfig,
     PhysicalStorageReward,
     RewardBreakdown,
 )
@@ -54,6 +59,7 @@ from env.scenarios import (
     sample_chaser_state,
     sample_phase2_mission_chaser_state,
     sample_phase2_chaser_state,
+    sample_precapture_planning_chaser_state,
     sample_target_parameters,
     fixed_prediction_target_parameters,
     target_initial_state,
@@ -63,9 +69,12 @@ from env.task import (
     MissionMetrics,
     Phase2MissionConfig,
     Phase2TaskConfig,
+    PrecaptureMetrics,
+    PrecaptureTaskConfig,
     TaskMetrics,
     compute_mission_metrics,
     compute_task_metrics,
+    compute_precapture_metrics,
 )
 from env.termination import ErrorMetrics, SuccessThresholds, compute_error_metrics
 
@@ -118,6 +127,7 @@ class SE3RendezvousConfig:
     cache_target_trajectory: bool = True
     phase2_enabled: bool = False
     phase2_mission_enabled: bool = False
+    precapture_planning_enabled: bool = False
     phase2_training_mode: str = "full_mission"
     # A2 single factor: keep the frozen A1 sensing/task stack, but remove the
     # corridor-guidance velocity from reward shaping and controller references.
@@ -127,6 +137,16 @@ class SE3RendezvousConfig:
     phase2_prediction_model_mismatch: float = 0.0
     phase2_prediction_model_seed: int = 0
     phase2_mission: Phase2MissionConfig = field(default_factory=Phase2MissionConfig)
+    precapture_task: PrecaptureTaskConfig = field(default_factory=PrecaptureTaskConfig)
+    precapture_reward: PrecaptureRewardConfig = field(
+        default_factory=PrecaptureRewardConfig
+    )
+    precapture_initial_range_min_m: float = 15.0
+    precapture_initial_range_max_m: float = 20.0
+    precapture_initial_inertial_speed_max_m_s: float = 0.10
+    precapture_initial_pointing_error_max_rad: float = float(np.deg2rad(5.0))
+    precapture_initial_chaser_omega_component_limit_rad_s: float = 0.005
+    precapture_fov_violation_terminates: bool = True
     phase1_curriculum_enabled: bool = False
     phase1_curriculum_start_step: int = 5_000
     phase1_curriculum_end_step: int = 150_000
@@ -251,7 +271,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             29
             if self.config.perception is not None
             else 24
-            if self.config.phase2_mission_enabled
+            if (
+                self.config.phase2_mission_enabled
+                or self.config.precapture_planning_enabled
+            )
             else (23 if self.config.phase2_enabled else 12)
         )
         self.observation_space = spaces.Box(
@@ -264,6 +287,13 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             max_step=self.config.dt_s,
         )
         self._reward = (
+            PrecaptureReward(
+                task=self.config.precapture_task,
+                settings=self.config.precapture_reward,
+                time_step_s=self.config.dt_s,
+            )
+            if self.config.precapture_planning_enabled
+            else
             Phase2MissionReward(
                 task=self.config.phase2_task,
                 guidance_free=self.config.phase2_guidance_free,
@@ -336,11 +366,23 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._phase1_curriculum_window_count = 0
         self._phase1_curriculum_window_successes = 0
         self._mission_phase = 0
+        self._terminal_region_entered = False
         self._waypoint_reached = False
         self._constraint_success = True
-        self._constraint_violation_steps = {
-            name: 0 for name in ("corridor", "fov", "total_speed", "closing_speed")
-        }
+        constraint_names = (
+            (
+                "keepout",
+                "fov",
+                "outer_speed",
+                "transition_speed",
+                "corridor",
+                "total_speed",
+                "closing_speed",
+            )
+            if self.config.precapture_planning_enabled
+            else ("corridor", "fov", "total_speed", "closing_speed")
+        )
+        self._constraint_violation_steps = {name: 0 for name in constraint_names}
         self._constraint_max_violation = {
             name: 0.0 for name in self._constraint_violation_steps
         }
@@ -397,6 +439,17 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             raise ValueError("legacy curriculum cannot be enabled for Phase-2")
         if c.phase2_mission_enabled and not c.phase2_enabled:
             raise ValueError("Phase-2 mission requires phase2_enabled")
+        if c.precapture_planning_enabled and not c.phase2_enabled:
+            raise ValueError("precapture planning requires phase2_enabled")
+        if c.precapture_planning_enabled and c.phase2_mission_enabled:
+            raise ValueError("precapture planning and the legacy mission are exclusive")
+        if c.precapture_planning_enabled and not (
+            0.0
+            < c.precapture_initial_range_min_m
+            < c.precapture_initial_range_max_m
+            < c.max_distance_m
+        ):
+            raise ValueError("precapture initial range must lie inside max distance")
         if c.phase1_curriculum_enabled and not c.phase2_mission_enabled:
             raise ValueError("Phase-I curriculum requires the Phase-2 mission")
         if not 0 <= c.phase1_curriculum_start_step < c.phase1_curriculum_end_step:
@@ -455,6 +508,9 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         ):
             raise ValueError("Phase-2 axial sampling bounds are invalid")
         supported_schemas = (
+            {PRECAPTURE_PLANNING_FULL_STATE_SCHEMA}
+            if c.precapture_planning_enabled
+            else
             {
                 PHASE2_MISSION_OBSERVATION_SCHEMA,
                 PHASE2_MISSION_BODY_TRANSLATION_OBSERVATION_SCHEMA,
@@ -467,6 +523,8 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         if c.phase2_enabled and c.phase2_observation_schema not in supported_schemas:
             raise ValueError("unsupported Phase-2 observation schema")
         if c.perception is not None:
+            if c.precapture_planning_enabled:
+                raise ValueError("precapture full-state P1 does not enable perception")
             if (
                 not c.phase2_mission_enabled
                 or c.phase2_observation_schema
@@ -485,7 +543,11 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             raise ValueError("Phase-2 distance-failure penalty must be non-positive")
 
     def _select_phase2_stage(self) -> None:
-        if not self.config.phase2_enabled or self.config.phase2_mission_enabled:
+        if (
+            not self.config.phase2_enabled
+            or self.config.phase2_mission_enabled
+            or self.config.precapture_planning_enabled
+        ):
             return
         warmup = self.total_transition_count < self.config.phase2_warmup_steps
         self._phase2_stage = "warmup" if warmup else "nominal"
@@ -631,6 +693,8 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         )
 
     def _active_reference_position(self) -> np.ndarray:
+        if self.config.precapture_planning_enabled:
+            return self.config.precapture_task.desired_position
         return (
             self.config.phase2_mission.waypoint_position
             if self._mission_phase == 0
@@ -670,6 +734,32 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
     def _observation(self) -> np.ndarray:
         self._require_state()
         assert self.relative is not None
+        if self.config.precapture_planning_enabled:
+            assert self.target_state is not None
+            assert self.chaser_state is not None
+            precapture_metrics = compute_precapture_metrics(
+                self.target_state,
+                self.chaser_state,
+                self.relative,
+                self.config.precapture_task,
+                terminal_region_active=self._terminal_region_entered,
+            )
+            return build_precapture_full_state_observation(
+                self.relative,
+                metrics=precapture_metrics,
+                task=self.config.precapture_task,
+                target_angular_velocity_rad_s=self.target_state.omega,
+                attitude_scale_rad=self.config.observation_attitude_scale_rad,
+                distance_scale_m=self.config.observation_distance_scale_m,
+                angular_velocity_scale_rad_s=(
+                    self.config.observation_angular_velocity_scale_rad_s
+                ),
+                velocity_scale_m_s=self.config.observation_velocity_scale_m_s,
+                target_angular_velocity_scale_rad_s=(
+                    self.config.phase2_observation_target_angular_velocity_scale_rad_s
+                ),
+                softsign_limit=self.config.observation_softsign_limit,
+            )
         if self._relative_ekf is not None:
             assert self._perception_measurement is not None
             observed_relative = self.observed_relative
@@ -786,6 +876,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         options = options or {}
         self._resolve_episode_envelope()
         self._select_phase2_stage()
+        self._terminal_region_entered = False
         if self.config.phase2_mission_enabled:
             # single_phase starts already in the terminal phase, so the task
             # constraints are live from the first step and the Waypoint, its bonus
@@ -895,7 +986,24 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             supplied_chaser.copy()
             if supplied_chaser is not None
             else (
-                sample_phase2_mission_chaser_state(
+                sample_precapture_planning_chaser_state(
+                    self.np_random,
+                    self.target_state,
+                    task=self.config.precapture_task,
+                    initial_range_min_m=self.config.precapture_initial_range_min_m,
+                    initial_range_max_m=self.config.precapture_initial_range_max_m,
+                    initial_inertial_relative_speed_max_m_s=(
+                        self.config.precapture_initial_inertial_speed_max_m_s
+                    ),
+                    pointing_error_max_rad=(
+                        self.config.precapture_initial_pointing_error_max_rad
+                    ),
+                    chaser_angular_velocity_component_limit_rad_s=(
+                        self.config.precapture_initial_chaser_omega_component_limit_rad_s
+                    ),
+                )
+                if self.config.precapture_planning_enabled
+                else sample_phase2_mission_chaser_state(
                     self.np_random,
                     self.target_state,
                     mission=self.config.phase2_mission,
@@ -1021,13 +1129,44 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._completion_streak = 0
         task_metrics = (
             compute_task_metrics(self.relative, self._active_phase2_task)
-            if self.config.phase2_enabled
+            if self.config.phase2_enabled and not self.config.precapture_planning_enabled
             else None
         )
+        precapture_metrics = (
+            compute_precapture_metrics(
+                self.target_state,
+                self.chaser_state,
+                self.relative,
+                self.config.precapture_task,
+                terminal_region_active=False,
+            )
+            if self.config.precapture_planning_enabled
+            else None
+        )
+        if (
+            precapture_metrics is not None
+            and supplied_chaser is None
+            and not (
+                self.config.precapture_initial_range_min_m
+                <= precapture_metrics.target_center_distance_m
+                <= self.config.precapture_initial_range_max_m
+                and precapture_metrics.target_center_distance_m
+                > self.config.precapture_task.terminal_activation_range_m
+                and precapture_metrics.corridor_lateral_margin_m < 0.0
+                and precapture_metrics.keepout_margin_m > 0.0
+                and precapture_metrics.fov_margin_rad >= 0.0
+                and precapture_metrics.outer_inertial_speed_margin_m_s >= 0.0
+                and precapture_metrics.active_constraints_satisfied
+            )
+        ):
+            raise RuntimeError("precapture sampler violated reset acceptance")
         self._constraint_success = bool(
             self.config.phase2_mission_enabled
-            or task_metrics is None
-            or task_metrics.constraints_satisfied
+            or (
+                precapture_metrics.active_constraints_satisfied
+                if precapture_metrics is not None
+                else task_metrics is None or task_metrics.constraints_satisfied
+            )
         )
         self._constraint_violation_steps = {
             name: 0 for name in self._constraint_violation_steps
@@ -1035,7 +1174,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._constraint_max_violation = {
             name: 0.0 for name in self._constraint_max_violation
         }
-        if isinstance(self._reward, Phase2MissionReward):
+        if isinstance(self._reward, PrecaptureReward):
+            assert precapture_metrics is not None
+            self._reward.reset(precapture_metrics)
+        elif isinstance(self._reward, Phase2MissionReward):
             self._reward.reset(
                 self.relative,
                 self._active_reference_position(),
@@ -1054,6 +1196,21 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         info = self._info(
             metrics, task_metrics, mission_metrics, None, 0, 0
         )
+        if precapture_metrics is not None:
+            info.update(self._precapture_info(precapture_metrics))
+            info.update(
+                completed=False,
+                final_completed=False,
+                constraint_feasible=precapture_metrics.active_constraints_satisfied,
+                constraint_success=self._constraint_success,
+                terminal_constraint_failure=False,
+                keepout_failure=False,
+                fov_failure=False,
+                outer_speed_failure=False,
+                transition_speed_failure=False,
+                distance_failure=False,
+                time_failure=False,
+            )
         if self.config.phase2_mission_enabled:
             info.update(
                 phase1_curriculum_progress=self._phase1_curriculum_progress,
@@ -1077,12 +1234,54 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             )
         return self._observation(), info
 
+    def _precapture_info(self, metrics: PrecaptureMetrics) -> dict:
+        return {
+            "target_center_distance_m": metrics.target_center_distance_m,
+            "axial_remaining_m": metrics.axial_remaining_m,
+            "port_axial_distance_m": metrics.port_axial_distance_m,
+            "corridor_radial_distance_m": metrics.corridor_radial_distance_m,
+            "corridor_axial_margin_m": metrics.corridor_axial_margin_m,
+            "corridor_lateral_margin_m": metrics.corridor_lateral_margin_m,
+            "keepout_margin_m": metrics.keepout_margin_m,
+            "fov_angle_rad": metrics.fov_angle_rad,
+            "fov_margin_rad": metrics.fov_margin_rad,
+            "inertial_relative_speed_m_s": metrics.inertial_relative_speed_m_s,
+            "outer_inertial_speed_margin_m_s": (
+                metrics.outer_inertial_speed_margin_m_s
+            ),
+            "target_frame_speed_m_s": metrics.target_frame_speed_m_s,
+            "target_frame_speed_limit_m_s": metrics.target_frame_speed_limit_m_s,
+            "target_frame_speed_margin_m_s": metrics.target_frame_speed_margin_m_s,
+            "terminal_total_speed_margin_m_s": (
+                metrics.terminal_total_speed_margin_m_s
+            ),
+            "closing_speed_m_s": metrics.closing_speed_m_s,
+            "closing_speed_limit_m_s": metrics.closing_speed_limit_m_s,
+            "closing_speed_margin_m_s": metrics.closing_speed_margin_m_s,
+            "position_error_m": metrics.position_error_m,
+            "attitude_error_rad": metrics.attitude_error_rad,
+            "angular_velocity_error_rad_s": metrics.angular_velocity_error_rad_s,
+            "joint_success": metrics.instantaneous_completion,
+            "terminal_region_active": metrics.terminal_region_active,
+            "transition_speed_active": metrics.transition_speed_active,
+            "active_constraints_satisfied": metrics.active_constraints_satisfied,
+            "all_truth_safety_satisfied": metrics.all_truth_safety_satisfied,
+            **{
+                f"{name}_violation_steps": count
+                for name, count in self._constraint_violation_steps.items()
+            },
+            **{
+                f"{name}_max_violation": value
+                for name, value in self._constraint_max_violation.items()
+            },
+        }
+
     def _info(
         self,
         metrics: ErrorMetrics,
         task_metrics: TaskMetrics | None,
         mission_metrics: MissionMetrics | None,
-        reward: RewardBreakdown | Phase2RewardBreakdown | Phase2MissionRewardBreakdown | None,
+        reward: RewardBreakdown | Phase2RewardBreakdown | Phase2MissionRewardBreakdown | PrecaptureRewardBreakdown | None,
         target_nfev: int,
         chaser_nfev: int,
     ) -> dict:
@@ -1252,6 +1451,16 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 reward_event=reward.event_reward,
                 reward_potential=reward.potential,
             )
+        elif isinstance(reward, PrecaptureRewardBreakdown):
+            info.update(
+                reward_shaping=reward.shaping,
+                reward_time_penalty=reward.time_penalty,
+                reward_force_penalty=reward.force_penalty,
+                reward_torque_penalty=reward.torque_penalty,
+                reward_safety_penalty=reward.safety_penalty,
+                reward_event=reward.event_reward,
+                reward_potential=reward.potential,
+            )
         return info
 
     def _update_phase1_curriculum(self, success: bool) -> None:
@@ -1349,9 +1558,148 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         )
         task_metrics = (
             compute_task_metrics(self.relative, self._active_phase2_task)
-            if self.config.phase2_enabled
+            if self.config.phase2_enabled and not self.config.precapture_planning_enabled
             else None
         )
+        if self.config.precapture_planning_enabled:
+            assert isinstance(self._reward, PrecaptureReward)
+            precapture = compute_precapture_metrics(
+                self.target_state,
+                self.chaser_state,
+                self.relative,
+                self.config.precapture_task,
+                terminal_region_active=self._terminal_region_entered,
+            )
+            if (
+                not self._terminal_region_entered
+                and precapture.target_center_distance_m
+                <= self.config.precapture_task.terminal_activation_range_m
+            ):
+                self._terminal_region_entered = True
+                precapture = compute_precapture_metrics(
+                    self.target_state,
+                    self.chaser_state,
+                    self.relative,
+                    self.config.precapture_task,
+                    terminal_region_active=True,
+                )
+            active_margins = {
+                "keepout": precapture.keepout_margin_m,
+                "fov": precapture.fov_margin_rad,
+            }
+            if self._terminal_region_entered:
+                active_margins.update(
+                    corridor=min(
+                        precapture.corridor_axial_margin_m,
+                        precapture.corridor_lateral_margin_m,
+                    ),
+                    total_speed=precapture.terminal_total_speed_margin_m_s,
+                    closing_speed=precapture.closing_speed_margin_m_s,
+                )
+            else:
+                active_margins["outer_speed"] = (
+                    precapture.outer_inertial_speed_margin_m_s
+                )
+                if precapture.transition_speed_active:
+                    active_margins["transition_speed"] = (
+                        precapture.target_frame_speed_margin_m_s
+                    )
+            for name, margin in active_margins.items():
+                violation = max(-margin, 0.0)
+                if violation > self.config.precapture_task.constraint_tolerance:
+                    self._constraint_violation_steps[name] += 1
+                    self._constraint_max_violation[name] = max(
+                        self._constraint_max_violation[name], violation
+                    )
+            self._constraint_success = bool(
+                self._constraint_success and precapture.active_constraints_satisfied
+            )
+            final_candidate = bool(
+                self._terminal_region_entered
+                and precapture.instantaneous_completion
+                and precapture.active_constraints_satisfied
+            )
+            self._completion_streak = (
+                self._completion_streak + 1 if final_candidate else 0
+            )
+            completed = bool(
+                self._completion_streak
+                >= self.config.precapture_task.completion_required_steps(
+                    self.config.dt_s
+                )
+            )
+            keepout_failure = precapture.keepout_margin_m < 0.0
+            fov_failure = bool(
+                self.config.precapture_fov_violation_terminates
+                and precapture.fov_margin_rad < 0.0
+            )
+            outer_speed_failure = bool(
+                not self._terminal_region_entered
+                and precapture.outer_inertial_speed_margin_m_s < 0.0
+            )
+            transition_speed_failure = bool(
+                not self._terminal_region_entered
+                and precapture.transition_speed_active
+                and precapture.target_frame_speed_margin_m_s < 0.0
+            )
+            terminal_constraint_failure = bool(
+                self._terminal_region_entered
+                and (
+                    precapture.corridor_axial_margin_m < 0.0
+                    or precapture.corridor_lateral_margin_m < 0.0
+                    or precapture.terminal_total_speed_margin_m_s < 0.0
+                    or precapture.closing_speed_margin_m_s < 0.0
+                )
+            )
+            distance_failure = bool(
+                precapture.target_center_distance_m > self.config.max_distance_m
+            )
+            hard_failure = bool(
+                keepout_failure
+                or fov_failure
+                or outer_speed_failure
+                or transition_speed_failure
+                or terminal_constraint_failure
+                or distance_failure
+            )
+            event_reward = (
+                self.config.precapture_reward.success_reward
+                if completed
+                else self.config.precapture_reward.failure_penalty
+                if hard_failure
+                else 0.0
+            )
+            reward = self._reward.compute(
+                precapture, action, event_reward=event_reward
+            )
+            time_failure = bool(
+                self.time_seconds >= self.config.max_time_s and not completed
+            )
+            info = self._info(
+                metrics, None, None, reward, target_diag.nfev, chaser_diag.nfev
+            )
+            info.update(self._precapture_info(precapture))
+            info.update(
+                completed=completed,
+                final_completed=completed,
+                constraint_feasible=precapture.active_constraints_satisfied,
+                constraint_success=self._constraint_success,
+                terminal_constraint_failure=terminal_constraint_failure,
+                keepout_failure=keepout_failure,
+                fov_failure=fov_failure,
+                outer_speed_failure=outer_speed_failure,
+                transition_speed_failure=transition_speed_failure,
+                distance_failure=distance_failure,
+                time_failure=time_failure,
+                terminal_failure_penalty=event_reward if hard_failure else 0.0,
+            )
+            return (
+                self._observation(),
+                reward.total,
+                bool(completed or hard_failure),
+                time_failure,
+                info,
+            )
         if self.config.phase2_mission_enabled:
             assert task_metrics is not None
             assert isinstance(self._reward, Phase2MissionReward)
