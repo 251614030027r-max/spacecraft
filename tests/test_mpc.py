@@ -588,3 +588,39 @@ def test_external_local_waypoint_is_inertially_oriented() -> None:
         assert np.allclose(
             target_rotation @ reference[3:6, index], waypoint_inertial
         )
+
+
+def test_two_stage_precapture_guidance_latches_only_after_slow_staging() -> None:
+    from env.phase2_env import precapture_planning_environment_config
+    from env.scenarios import target_initial_state
+    from experiments.evaluate_mpc import _two_stage_precapture_reference
+
+    environment = precapture_planning_environment_config()
+    target = target_initial_state(tumble_scale=0.20)
+    state = np.zeros(12)
+    state[3] = -10.0
+    state[9] = 0.60
+    staging, latched = _two_stage_precapture_reference(
+        state, target, environment, final_stage_latched=False
+    )
+    assert not latched
+    assert np.allclose(
+        staging,
+        target.rotation @ (10.0 * environment.precapture_task.approach_axis),
+    )
+
+    state[9] = 0.40
+    final, latched = _two_stage_precapture_reference(
+        state, target, environment, final_stage_latched=False
+    )
+    assert latched
+    assert np.allclose(
+        final, target.rotation @ environment.precapture_task.desired_position
+    )
+
+    state[3] = -12.0
+    final_after_departure, latched = _two_stage_precapture_reference(
+        state, target, environment, final_stage_latched=latched
+    )
+    assert latched
+    assert np.allclose(final_after_departure, final)

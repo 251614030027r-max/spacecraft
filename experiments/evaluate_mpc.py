@@ -29,7 +29,7 @@ from controllers.mpc.constraints import (
 from controllers.mpc.prediction import relative_to_vector
 from dynamics.gravity import GravityOptions
 from dynamics.integrator import RK45Settings
-from dynamics.lie import hat3
+from dynamics.lie import hat3, se3_exp
 from dynamics.relative import (
     RelativeState,
     reconstruct_target_state,
@@ -115,7 +115,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--reference-source",
-        choices=("fixed", "corridor_guidance"),
+        choices=("fixed", "corridor_guidance", "external_local"),
         default=None,
         help=(
             "fixed holds the reference at the desired pose; corridor_guidance "
@@ -123,6 +123,18 @@ def parse_args() -> argparse.Namespace:
             "corridor_guidance for single_phase (the fair benchmark reference) "
             "and fixed for terminal (the terminal-only record). Pass it only to "
             "override that default."
+        ),
+    )
+    parser.add_argument(
+        "--external-guidance",
+        choices=("two_stage",),
+        default=None,
+        help=(
+            "Oracle diagnostic for precapture_planning only. two_stage first "
+            "commands a target-body staging point at 10 m on the approach axis, "
+            "then latches the final desired pose once the staging point is "
+            "reached slowly. It is a hand-designed feasibility baseline, not "
+            "the learned high-level policy."
         ),
     )
     parser.add_argument(
@@ -301,6 +313,39 @@ def controller_inputs(
     raise ValueError("state_source must be 'oracle' or 'estimate'")
 
 
+def _two_stage_precapture_reference(
+    command_state: np.ndarray,
+    command_target: SpacecraftState,
+    environment_config: SE3RendezvousConfig,
+    *,
+    final_stage_latched: bool,
+) -> tuple[np.ndarray, bool]:
+    """Return the oracle two-stage baseline reference in inertial orientation.
+
+    The external MPC interface is target-centred but inertially oriented.  The
+    staging geometry itself is declared in the target body frame, so this
+    conversion is refreshed at every control step as the target tumbles.
+    """
+
+    if not environment_config.precapture_planning_enabled:
+        raise ValueError("two-stage guidance requires precapture_planning")
+    task = environment_config.precapture_task
+    transform = se3_exp(command_state[:6])
+    position_target = transform[:3, 3]
+    target_frame_speed = float(np.linalg.norm(transform[:3, :3] @ command_state[9:]))
+    staging_position_target = 10.0 * task.approach_axis
+    if (
+        not final_stage_latched
+        and np.linalg.norm(position_target - staging_position_target) <= 0.75
+        and target_frame_speed <= 0.50
+    ):
+        final_stage_latched = True
+    reference_target = (
+        task.desired_position if final_stage_latched else staging_position_target
+    )
+    return command_target.rotation @ reference_target, final_stage_latched
+
+
 def _perception_sample(
     env: SE3RendezvousEnv, info: dict[str, Any], *, episode: int
 ) -> dict[str, Any]:
@@ -390,6 +435,7 @@ def evaluate(
     observation_update_every: int = 1,
     observation_filter: str = "hold",
     control_state_source: str = "oracle",
+    external_guidance: str | None = None,
     progress: bool = False,
 ) -> dict[str, Any]:
     if episodes <= 0:
@@ -398,6 +444,14 @@ def evaluate(
         raise ValueError("controller_model_source must be 'nominal' or 'truth'")
     if control_state_source not in {"oracle", "estimate"}:
         raise ValueError("control_state_source must be 'oracle' or 'estimate'")
+    if external_guidance not in {None, "two_stage"}:
+        raise ValueError("unsupported external_guidance")
+    if (config.reference_source == "external_local") != (
+        external_guidance is not None
+    ):
+        raise ValueError(
+            "external_local reference and --external-guidance must be used together"
+        )
     observed_target = (
         observation_bias_rad > 0.0
         or observation_delay_steps > 0
@@ -494,6 +548,7 @@ def evaluate(
                 else None
             )
             control_step = 0
+            final_guidance_stage_latched = False
             no_measurement_steps = 0
             longest_no_measurement_steps = 0
             if env_config.perception is not None:
@@ -564,12 +619,23 @@ def evaluate(
                     if env_config.precapture_planning_enabled
                     else None
                 )
+                external_reference = None
+                if external_guidance == "two_stage":
+                    external_reference, final_guidance_stage_latched = (
+                        _two_stage_precapture_reference(
+                            command_state,
+                            command_target,
+                            env_config,
+                            final_stage_latched=final_guidance_stage_latched,
+                        )
+                    )
                 command_started = perf_counter()
                 wrench_vector, diagnostics = controller.command(
                     command_state,
                     target_state=command_target,
                     time_seconds=env.time_seconds,
                     terminal_latched=controller_terminal_latched,
+                    external_reference=external_reference,
                 )
                 control_step += 1
                 episode_command_times.append(perf_counter() - command_started)
@@ -594,6 +660,9 @@ def evaluate(
                             "time_seconds": env.time_seconds,
                             "state": x.tolist(),
                             "truth_position_m": env.relative.position.tolist(),
+                            "inertial_relative_position_m": (
+                                env.target_state.rotation @ env.relative.position
+                            ).tolist(),
                             "observed_position_m": (
                                 env.observed_relative.position.tolist()
                                 if env_config.perception is not None
@@ -621,6 +690,9 @@ def evaluate(
                                     ),
                                     "force_norm_n": float(
                                         np.linalg.norm(wrench_vector[3:])
+                                    ),
+                                    "guidance_final_stage_latched": bool(
+                                        final_guidance_stage_latched
                                     ),
                                 }
                                 if env_config.precapture_planning_enabled
@@ -955,6 +1027,7 @@ def evaluate(
         "algorithm": "mpc_only",
         "control_state_source": control_state_source,
         "controller_model_source": controller_model_source,
+        "external_guidance": external_guidance,
         "observation_error": {
             "bias_rad": observation_bias_rad,
             "delay_steps": observation_delay_steps,
@@ -1031,6 +1104,13 @@ def main() -> None:
     if args.output.exists():
         raise FileExistsError(args.output)
     reference_source = resolve_reference_source(args.task, args.reference_source)
+    if args.external_guidance is not None:
+        if args.task != "precapture_planning":
+            raise ValueError("--external-guidance requires --task precapture_planning")
+        if reference_source != "external_local":
+            raise ValueError(
+                "--external-guidance requires --reference-source external_local"
+            )
     if args.terminal_cost_source == "learned_convex":
         if args.terminal_value_file is None:
             raise ValueError(
@@ -1109,6 +1189,7 @@ def main() -> None:
         observation_update_every=args.obs_update_every,
         observation_filter="ekf" if args.target_estimator == "ekf" else "hold",
         control_state_source=args.control_state_source or "oracle",
+        external_guidance=args.external_guidance,
         progress=args.progress,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)

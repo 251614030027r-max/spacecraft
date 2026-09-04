@@ -49,7 +49,15 @@ python -B -m eval.validate_precapture_semantics
 python -B -m pytest -q
 ```
 
-The baseline diagnostic is the next gate and must use the unified evaluator with
+The baseline diagnostic is the next gate and uses the unified evaluator with
 `h in {1, 3, 10, 50, 200}`; h1/h3 are diagnostic rows only, not the main Pure-MPC
-baseline. Long training remains prohibited until that one-shot diagnosis establishes the
-planning-timescale structure.
+baseline. A matched h50 two-stage hand-guidance row and an oracle-model h200 feasibility
+row are included without changing the plant, constraints or MPC implementation. Run the
+complete one-shot block and generate its JSON, plots and one-page review with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File experiments/run_precapture_baseline_diagnosis.ps1
+```
+
+Long training remains prohibited until that report establishes the planning-timescale
+structure and supports the single Commit-5 Go/No-Go decision.
