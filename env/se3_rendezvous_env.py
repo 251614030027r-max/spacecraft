@@ -1262,6 +1262,18 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             "attitude_error_rad": metrics.attitude_error_rad,
             "angular_velocity_error_rad_s": metrics.angular_velocity_error_rad_s,
             "joint_success": metrics.instantaneous_completion,
+            "attitude_success": bool(
+                metrics.attitude_error_rad
+                <= self.config.precapture_task.completion_attitude_rad
+                and metrics.angular_velocity_error_rad_s
+                <= self.config.precapture_task.completion_angular_velocity_rad_s
+            ),
+            "position_success": bool(
+                metrics.position_error_m
+                <= self.config.precapture_task.completion_position_m
+                and metrics.target_frame_speed_m_s
+                <= self.config.precapture_task.completion_speed_m_s
+            ),
             "terminal_region_active": metrics.terminal_region_active,
             "transition_speed_active": metrics.transition_speed_active,
             "active_constraints_satisfied": metrics.active_constraints_satisfied,

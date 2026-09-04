@@ -47,6 +47,16 @@ MARGIN_KEYS = (
     "total_speed_margin_m_s",
     "closing_speed_margin_m_s",
 )
+PRECAPTURE_MARGIN_KEYS = (
+    "keepout_margin_m",
+    "fov_margin_rad",
+    "outer_inertial_speed_margin_m_s",
+    "target_frame_speed_margin_m_s",
+    "corridor_axial_margin_m",
+    "corridor_lateral_margin_m",
+    "terminal_total_speed_margin_m_s",
+    "closing_speed_margin_m_s",
+)
 
 
 def summarize(values: Iterable[float]) -> dict[str, float] | None:
@@ -122,7 +132,7 @@ def main_table_metrics(
             for record in episodes
             if record.get("minimum_margins")
         )
-        for key in MARGIN_KEYS
+        for key in (*MARGIN_KEYS, *PRECAPTURE_MARGIN_KEYS)
         if all(key in record.get("minimum_margins", {}) for record in episodes)
     }
     metrics: dict[str, Any] = {
@@ -150,9 +160,37 @@ def main_table_metrics(
             ),
         },
     }
+    if any("equivalent_delta_v_m_s" in record for record in episodes):
+        metrics["equivalent_delta_v_m_s"] = _split(
+            episodes, done, "equivalent_delta_v_m_s"
+        )
+    if any("minimum_normalized_margin" in record for record in episodes):
+        metrics["minimum_normalized_margin"] = summarize(
+            record["minimum_normalized_margin"]
+            for record in episodes
+            if record.get("minimum_normalized_margin") is not None
+        )
+    if any("constraint_violated" in record for record in episodes):
+        metrics["constraint_violation_rate"] = float(
+            np.mean([bool(record.get("constraint_violated", False)) for record in episodes])
+        )
+    for field in (
+        "terminal_region_entry_time_s",
+        "entry_target_frame_speed_m_s",
+        "entry_attitude_error_rad",
+        "entry_angular_velocity_error_rad_s",
+        "entry_corridor_margin_m",
+    ):
+        if any(field in record for record in episodes):
+            metrics[field] = _split(episodes, done, field)
     if any("discounted_return" in record for record in episodes):
         metrics["discounted_return"] = _split(episodes, done, "discounted_return")
     return metrics
 
 
-__all__ = ["MARGIN_KEYS", "main_table_metrics", "summarize"]
+__all__ = [
+    "MARGIN_KEYS",
+    "PRECAPTURE_MARGIN_KEYS",
+    "main_table_metrics",
+    "summarize",
+]

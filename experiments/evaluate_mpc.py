@@ -22,7 +22,10 @@ from controllers.mpc import (
     constrained_mpc_nominal_config,
     precapture_mpc_config,
 )
-from controllers.mpc.constraints import normalized_truth_margins
+from controllers.mpc.constraints import (
+    normalized_precapture_truth_margins,
+    normalized_truth_margins,
+)
 from controllers.mpc.prediction import relative_to_vector
 from dynamics.gravity import GravityOptions
 from dynamics.integrator import RK45Settings
@@ -215,6 +218,55 @@ def _summary(values: list[float]) -> dict[str, float] | None:
     """One summary shape across every path that fills a main-table row."""
 
     return summarize(values)
+
+
+def _active_precapture_margins(
+    info: dict[str, Any], environment_config: SE3RendezvousConfig
+) -> tuple[dict[str, float], float]:
+    task = environment_config.precapture_task
+    active = {
+        "keepout_margin_m": float(info["keepout_margin_m"]),
+        "fov_margin_rad": float(info["fov_margin_rad"]),
+    }
+    normalized = [
+        active["keepout_margin_m"] / task.keepout_radius_m,
+        active["fov_margin_rad"] / task.fov_half_angle_rad,
+    ]
+    if bool(info["terminal_region_active"]):
+        active.update(
+            corridor_axial_margin_m=float(info["corridor_axial_margin_m"]),
+            corridor_lateral_margin_m=float(info["corridor_lateral_margin_m"]),
+            terminal_total_speed_margin_m_s=float(
+                info["terminal_total_speed_margin_m_s"]
+            ),
+            closing_speed_margin_m_s=float(info["closing_speed_margin_m_s"]),
+        )
+        normalized.extend(
+            [
+                active["corridor_axial_margin_m"] / 3.0,
+                active["corridor_lateral_margin_m"] / 3.0,
+                active["terminal_total_speed_margin_m_s"]
+                / task.terminal_total_speed_limit_m_s,
+                active["closing_speed_margin_m_s"] / task.closing_speed_max_m_s,
+            ]
+        )
+    else:
+        active["outer_inertial_speed_margin_m_s"] = float(
+            info["outer_inertial_speed_margin_m_s"]
+        )
+        normalized.append(
+            active["outer_inertial_speed_margin_m_s"]
+            / task.outer_inertial_speed_limit_m_s
+        )
+        if bool(info["transition_speed_active"]):
+            active["target_frame_speed_margin_m_s"] = float(
+                info["target_frame_speed_margin_m_s"]
+            )
+            normalized.append(
+                active["target_frame_speed_margin_m_s"]
+                / float(info["target_frame_speed_limit_m_s"])
+            )
+    return active, float(min(normalized))
 
 
 def _target_from_observed_relative(
@@ -463,30 +515,23 @@ def evaluate(
             discount = 1.0
             episode_fallbacks = 0
             min_position_error_m = float(info["position_error_m"])
-            margin_names = (
-                (
-                    "keepout_margin_m",
-                    "fov_margin_rad",
-                    "outer_inertial_speed_margin_m_s",
-                    "target_frame_speed_margin_m_s",
-                    "corridor_axial_margin_m",
-                    "corridor_lateral_margin_m",
-                    "terminal_total_speed_margin_m_s",
-                    "closing_speed_margin_m_s",
+            if env_config.precapture_planning_enabled:
+                minimum_margins, minimum_normalized_margin = (
+                    _active_precapture_margins(info, env_config)
                 )
-                if env_config.precapture_planning_enabled
-                else (
+            else:
+                margin_names = (
                     "corridor_axial_margin_m",
                     "corridor_lateral_margin_m",
                     "fov_margin_rad",
                     "total_speed_margin_m_s",
                     "closing_speed_margin_m_s",
                 )
-            )
-            minimum_margins = {
-                name: float(info[name])
-                for name in margin_names
-            }
+                minimum_margins = {
+                    name: float(info[name]) for name in margin_names
+                }
+                minimum_normalized_margin = None
+            entry_metrics: dict[str, float] | None = None
             first_violation: dict[str, Any] | None = None
             trace: list[dict[str, Any]] = []
             terminated = truncated = False
@@ -514,16 +559,17 @@ def evaluate(
                     command_state = relative_to_vector(env.relative)
                     command_target = env.target_state
                 x = relative_to_vector(env.relative)
+                controller_terminal_latched = (
+                    bool(info["terminal_region_active"])
+                    if env_config.precapture_planning_enabled
+                    else None
+                )
                 command_started = perf_counter()
                 wrench_vector, diagnostics = controller.command(
                     command_state,
                     target_state=command_target,
                     time_seconds=env.time_seconds,
-                    terminal_latched=(
-                        bool(info["terminal_region_active"])
-                        if env_config.precapture_planning_enabled
-                        else None
-                    ),
+                    terminal_latched=controller_terminal_latched,
                 )
                 control_step += 1
                 episode_command_times.append(perf_counter() - command_started)
@@ -556,6 +602,30 @@ def evaluate(
                             "control": wrench_vector.tolist(),
                             "predicted_cost": diagnostics.predicted_cost,
                             "solver_status": diagnostics.status,
+                            **(
+                                {
+                                    "range_m": float(info["target_center_distance_m"]),
+                                    "terminal_region_active": bool(
+                                        info["terminal_region_active"]
+                                    ),
+                                    "corridor_margin_m": min(
+                                        float(info["corridor_axial_margin_m"]),
+                                        float(info["corridor_lateral_margin_m"]),
+                                    ),
+                                    "fov_margin_rad": float(info["fov_margin_rad"]),
+                                    "target_frame_speed_m_s": float(
+                                        info["target_frame_speed_m_s"]
+                                    ),
+                                    "relative_omega_error_rad_s": float(
+                                        info["angular_velocity_error_rad_s"]
+                                    ),
+                                    "force_norm_n": float(
+                                        np.linalg.norm(wrench_vector[3:])
+                                    ),
+                                }
+                                if env_config.precapture_planning_enabled
+                                else {}
+                            ),
                         }
                     )
                 environment_started = perf_counter()
@@ -572,23 +642,70 @@ def evaluate(
                             longest_no_measurement_steps, no_measurement_steps
                         )
                 discounted_return += discount * float(reward)
-                discount *= GAMMA
+                discount *= (
+                    env_config.precapture_reward.discount_factor
+                    if env_config.precapture_planning_enabled
+                    else GAMMA
+                )
                 min_position_error_m = min(
                     min_position_error_m, float(info["position_error_m"])
                 )
-                for name in minimum_margins:
-                    margin = float(info[name])
-                    minimum_margins[name] = min(minimum_margins[name], margin)
+                current_margins = (
+                    _active_precapture_margins(info, env_config)[0]
+                    if env_config.precapture_planning_enabled
+                    else {name: float(info[name]) for name in minimum_margins}
+                )
+                if env_config.precapture_planning_enabled:
+                    _, current_normalized = _active_precapture_margins(
+                        info, env_config
+                    )
+                    assert minimum_normalized_margin is not None
+                    minimum_normalized_margin = min(
+                        minimum_normalized_margin, current_normalized
+                    )
+                    if (
+                        entry_metrics is None
+                        and bool(info["terminal_region_active"])
+                    ):
+                        entry_metrics = {
+                            "terminal_region_entry_time_s": float(info["time_seconds"]),
+                            "entry_target_frame_speed_m_s": float(
+                                info["target_frame_speed_m_s"]
+                            ),
+                            "entry_attitude_error_rad": float(
+                                info["attitude_error_rad"]
+                            ),
+                            "entry_angular_velocity_error_rad_s": float(
+                                info["angular_velocity_error_rad_s"]
+                            ),
+                            "entry_corridor_margin_m": min(
+                                float(info["corridor_axial_margin_m"]),
+                                float(info["corridor_lateral_margin_m"]),
+                            ),
+                        }
+                for name, margin in current_margins.items():
+                    minimum_margins[name] = min(
+                        minimum_margins.get(name, margin), margin
+                    )
                     if margin < 0.0 and first_violation is None:
                         first_violation = {
                             "time_s": float(info["time_seconds"]),
                             "type": name,
                             "margin": margin,
                         }
-                if config.task is not None:
+                if config.task is not None or config.precapture_task is not None:
                     assert env.relative is not None
-                    actual_margins = normalized_truth_margins(
-                        relative_to_vector(env.relative), config.task
+                    actual_margins = (
+                        normalized_precapture_truth_margins(
+                            relative_to_vector(env.relative),
+                            config.precapture_task,
+                            target_angular_velocity_rad_s=env.target_state.omega,
+                            terminal_latched=bool(controller_terminal_latched),
+                        )
+                        if config.precapture_task is not None
+                        else normalized_truth_margins(
+                            relative_to_vector(env.relative), config.task
+                        )
                     )
                     predicted_margins = np.asarray(
                         diagnostics.predicted_first_step_margins
@@ -613,12 +730,25 @@ def evaluate(
                     longest_no_measurement_steps * env_config.dt_s
                 )
             violation_step_keys = (
-                "corridor_violation_steps",
-                "fov_violation_steps",
-                "total_speed_violation_steps",
-                "closing_speed_violation_steps",
+                (
+                    "keepout_violation_steps",
+                    "fov_violation_steps",
+                    "outer_speed_violation_steps",
+                    "transition_speed_violation_steps",
+                    "corridor_violation_steps",
+                    "total_speed_violation_steps",
+                    "closing_speed_violation_steps",
+                )
+                if config.precapture_task is not None
+                else (
+                    "corridor_violation_steps",
+                    "fov_violation_steps",
+                    "total_speed_violation_steps",
+                    "closing_speed_violation_steps",
+                )
             )
-            zero_violation = config.task is None or all(
+            constrained = config.task is not None or config.precapture_task is not None
+            zero_violation = not constrained or all(
                 int(info[key]) == 0 for key in violation_step_keys
             )
             records.append(
@@ -650,6 +780,12 @@ def evaluate(
                     "translational_velocity_error_m_s": float(info["translational_velocity_error_m_s"]),
                     "force_impulse_n_s": force_impulse,
                     "torque_impulse_nm_s": torque_impulse,
+                    "equivalent_delta_v_m_s": (
+                        force_impulse / env.chaser_parameters.mass
+                    ),
+                    "minimum_normalized_margin": minimum_normalized_margin,
+                    "constraint_violated": not zero_violation,
+                    **(entry_metrics or {}),
                     "saturation_fraction_per_axis": (
                         saturation_counts / max(1, env.step_count)
                     ).tolist(),
@@ -685,7 +821,21 @@ def evaluate(
                                 info["closing_speed_violation_steps"]
                             ),
                         }
-                        if config.task is not None
+                        if constrained
+                        else {}
+                    ),
+                    **(
+                        {
+                            key: int(info[key])
+                            for key in violation_step_keys
+                            if key not in {
+                                "corridor_violation_steps",
+                                "fov_violation_steps",
+                                "total_speed_violation_steps",
+                                "closing_speed_violation_steps",
+                            }
+                        }
+                        if config.precapture_task is not None
                         else {}
                     ),
                 }
@@ -710,7 +860,7 @@ def evaluate(
         "time_failure",
     )
     rates = {key: mean(float(row[key]) for row in records) for key in rate_keys}
-    if config.task is not None:
+    if config.task is not None or config.precapture_task is not None:
         rates["constraint_success"] = mean(
             float(row["constraint_success"]) for row in records
         )
@@ -726,7 +876,7 @@ def evaluate(
         "distance_failure_rate_at_most_0p05": rates["distance_failure"] <= 0.05,
         "qp_fallback_rate_at_most_0p001": fallback_rate <= 0.001,
     }
-    if config.task is not None:
+    if config.task is not None or config.precapture_task is not None:
         checks = {
             "development_seed_set": episodes >= 5,
             "completed_rate_at_least_0p80": rates["completed"] >= 0.80,
@@ -745,8 +895,11 @@ def evaluate(
     violation_episode_counts = {
         name: sum(int(row.get(name, 0)) > 0 for row in records)
         for name in (
-            "corridor_violation_steps",
+            "keepout_violation_steps",
             "fov_violation_steps",
+            "outer_speed_violation_steps",
+            "transition_speed_violation_steps",
+            "corridor_violation_steps",
             "total_speed_violation_steps",
             "closing_speed_violation_steps",
         )
@@ -814,7 +967,11 @@ def evaluate(
         "environment": asdict(env_config),
         "prediction_target_parameters": asdict(prediction_target),
         "mpc_config": asdict(config),
-        "gamma": GAMMA,
+        "gamma": (
+            env_config.precapture_reward.discount_factor
+            if env_config.precapture_planning_enabled
+            else GAMMA
+        ),
         "main_table": main_table_metrics(
             records,
             controller_times_s=all_command_times,

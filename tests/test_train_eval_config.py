@@ -372,3 +372,38 @@ def test_main_table_assembler_reads_main_table_blocks(tmp_path) -> None:
     empty.write_text(_json.dumps({"rates": {}}), encoding="utf-8")
     with pytest.raises(ValueError):
         _load_table(empty)
+
+
+def test_main_table_includes_precapture_planning_metrics() -> None:
+    from eval.metrics import main_table_metrics
+
+    records = [
+        {
+            "completed": True,
+            "survival_s": 120.0,
+            "force_impulse_n_s": 106.0,
+            "torque_impulse_nm_s": 2.0,
+            "equivalent_delta_v_m_s": 1.0,
+            "minimum_normalized_margin": 0.12,
+            "constraint_violated": False,
+            "terminal_region_entry_time_s": 80.0,
+            "entry_target_frame_speed_m_s": 0.30,
+            "entry_attitude_error_rad": 0.10,
+            "entry_angular_velocity_error_rad_s": 0.01,
+            "entry_corridor_margin_m": 0.20,
+            "minimum_margins": {
+                "keepout_margin_m": 1.0,
+                "outer_inertial_speed_margin_m_s": 0.1,
+            },
+        }
+    ]
+    table = main_table_metrics(
+        records,
+        controller_times_s=[0.04],
+        environment_step_times_s=[0.01],
+        control_period_s=0.1,
+    )
+    assert table["equivalent_delta_v_m_s"]["completed_only"]["mean"] == 1.0
+    assert table["minimum_normalized_margin"]["min"] == 0.12
+    assert table["constraint_violation_rate"] == 0.0
+    assert table["terminal_region_entry_time_s"]["completed_only"]["mean"] == 80.0
