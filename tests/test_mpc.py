@@ -438,3 +438,153 @@ def test_single_phase_defaults_to_the_fair_corridor_reference() -> None:
     assert resolve_reference_source("terminal", None) == "fixed"
     assert resolve_reference_source("single_phase", "fixed") == "fixed"
     assert resolve_reference_source("terminal", "corridor_guidance") == "corridor_guidance"
+
+
+def test_precapture_constraint_jacobian_matches_central_differences() -> None:
+    from controllers.mpc.constraints import (
+        linearize_precapture_constraint_margins,
+        normalized_precapture_constraint_margins,
+    )
+    from env.task import PrecaptureTaskConfig
+
+    task = PrecaptureTaskConfig()
+    target_omega = np.array([0.01, 0.04, -0.005])
+    facets = 8
+    states = [
+        np.array([0.1, -0.05, 0.02, -17.0, 4.0, 1.0, 0.0, 0.0, 0.0, 0.1, -0.2, 0.05]),
+        np.array([0.05, 0.02, -0.03, -10.0, 1.0, 0.5, 0.0, 0.0, 0.0, 0.1, -0.1, 0.02]),
+        np.array([0.02, -0.01, 0.03, -6.0, 0.5, 0.2, 0.0, 0.0, 0.0, 0.05, -0.03, 0.01]),
+    ]
+    step = 1.0e-6
+    for state in states:
+        terminal_latched = bool(np.linalg.norm(state[3:6]) < 8.0)
+        jacobian, offset = linearize_precapture_constraint_margins(
+            state,
+            task,
+            target_angular_velocity_rad_s=target_omega,
+            terminal_latched=terminal_latched,
+            corridor_facets=facets,
+        )
+        columns = []
+        for index in range(12):
+            direction = np.zeros(12)
+            direction[index] = step
+            plus = normalized_precapture_constraint_margins(
+                state + direction,
+                task,
+                target_angular_velocity_rad_s=target_omega,
+                terminal_latched=terminal_latched,
+                corridor_facets=facets,
+            )
+            minus = normalized_precapture_constraint_margins(
+                state - direction,
+                task,
+                target_angular_velocity_rad_s=target_omega,
+                terminal_latched=terminal_latched,
+                corridor_facets=facets,
+            )
+            columns.append((plus - minus) / (2.0 * step))
+        numerical = np.stack(columns, axis=1)
+        assert np.max(np.abs(jacobian - numerical)) < 2.0e-7
+        nominal = normalized_precapture_constraint_margins(
+            state,
+            task,
+            target_angular_velocity_rad_s=target_omega,
+            terminal_latched=terminal_latched,
+            corridor_facets=facets,
+        )
+        assert np.allclose(jacobian @ state - offset, nominal, atol=1.0e-12)
+
+
+def test_precapture_mpc_requires_explicit_latch_and_solves() -> None:
+    from controllers.mpc import precapture_mpc_config
+    from env.phase2_env import precapture_planning_environment_config
+
+    env_config = precapture_planning_environment_config()
+    env = SE3RendezvousEnv(env_config)
+    try:
+        env.reset(seed=260904)
+        assert env.relative is not None and env.target_state is not None
+        controller = MPCController(
+            precapture_mpc_config(horizon_steps=3),
+            LocalRelativePredictionModel(chaser_parameters()),
+        )
+        with pytest.raises(ValueError, match="terminal_latched"):
+            controller.command(
+                relative_to_vector(env.relative),
+                target_state=env.target_state,
+                time_seconds=0.0,
+            )
+        command, diagnostics = controller.command(
+            relative_to_vector(env.relative),
+            target_state=env.target_state,
+            time_seconds=0.0,
+            terminal_latched=False,
+        )
+    finally:
+        env.close()
+    assert np.all(np.isfinite(command))
+    assert diagnostics.status == "optimal"
+    assert not diagnostics.used_zero_fallback
+
+
+def test_precapture_constraint_rows_follow_prediction_and_one_way_latch() -> None:
+    from controllers.mpc.constraints import normalized_precapture_constraint_margins
+    from env.task import PrecaptureTaskConfig
+
+    task = PrecaptureTaskConfig()
+    target_omega = np.array([0.0, 0.04, 0.0])
+    outside = np.array([0.0, 0.0, 0.0, -9.0, 0.0, 0.0, *([0.0] * 6)])
+    inside = outside.copy()
+    inside[3] = -7.0
+    outer = normalized_precapture_constraint_margins(
+        outside,
+        task,
+        target_angular_velocity_rad_s=target_omega,
+        terminal_latched=False,
+        corridor_facets=8,
+    )
+    predicted_terminal = normalized_precapture_constraint_margins(
+        inside,
+        task,
+        target_angular_velocity_rad_s=target_omega,
+        terminal_latched=False,
+        corridor_facets=8,
+    )
+    latched_outside = normalized_precapture_constraint_margins(
+        outside,
+        task,
+        target_angular_velocity_rad_s=target_omega,
+        terminal_latched=True,
+        corridor_facets=8,
+    )
+    assert outer[2] < 1.0e3 and np.all(outer[4:] == 1.0e3)
+    assert predicted_terminal[2] == 1.0e3 and np.all(predicted_terminal[4:] < 1.0e3)
+    assert latched_outside[2] == 1.0e3 and np.all(latched_outside[4:] < 1.0e3)
+
+
+def test_external_local_waypoint_is_inertially_oriented() -> None:
+    from controllers.mpc import precapture_mpc_config
+    from dynamics.lie import so3_exp
+    from env.scenarios import target_initial_state
+
+    config = precapture_mpc_config(
+        horizon_steps=5, reference_source="external_local"
+    )
+    controller = MPCController(
+        config, LocalRelativePredictionModel(chaser_parameters())
+    )
+    target = target_initial_state(tumble_scale=0.20)
+    waypoint_inertial = np.array([-12.0, 3.0, 1.0])
+    reference = controller._reference_trajectory(
+        np.zeros(12),
+        target_state=target,
+        external_reference=waypoint_inertial,
+    )
+    for index in range(config.horizon_steps + 1):
+        target_rotation = target.rotation @ so3_exp(
+            index * config.dt_s * target.omega
+        )
+        assert np.allclose(
+            target_rotation @ reference[3:6, index], waypoint_inertial
+        )

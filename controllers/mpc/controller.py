@@ -23,7 +23,9 @@ from env.task import corridor_guidance_velocity
 from .config import MPCConfig
 from .constraints import (
     linearize_constraint_margins,
+    linearize_precapture_constraint_margins,
     normalized_constraint_margins,
+    normalized_precapture_truth_margins,
     normalized_truth_margins,
 )
 from .cost import nonlinear_rollout_cost
@@ -85,8 +87,12 @@ class MPCController:
         self._reference.value = np.tile(
             config.reference_state.reshape(12, 1), (1, n + 1)
         )
-        constraint_count = config.corridor_facets + 4
-        if config.task is not None:
+        constraint_count = (
+            config.corridor_facets + 7
+            if config.precapture_task is not None
+            else config.corridor_facets + 4
+        )
+        if config.task is not None or config.precapture_task is not None:
             self._slack = cp.Variable((constraint_count, n), nonneg=True)
             self._constraint_jacobians = [
                 cp.Parameter((constraint_count, 12)) for _ in range(n)
@@ -216,7 +222,12 @@ class MPCController:
         return reference
 
     def _reference_trajectory(
-        self, state: FloatArray, time_seconds: float = 0.0
+        self,
+        state: FloatArray,
+        time_seconds: float = 0.0,
+        *,
+        target_state: SpacecraftState | None = None,
+        external_reference: ArrayLike | None = None,
     ) -> FloatArray:
         """Return the ``(12, horizon+1)`` reference the objective tracks.
 
@@ -231,6 +242,23 @@ class MPCController:
         """
 
         n = self.config.horizon_steps
+        if self.config.reference_source == "external_local":
+            if target_state is None:
+                raise ValueError("external_local reference requires target_state")
+            waypoint = np.asarray(external_reference, dtype=np.float64)
+            if waypoint.shape != (3,) or not np.all(np.isfinite(waypoint)):
+                raise ValueError(
+                    "external_local reference must be a finite inertial-oriented 3D waypoint"
+                )
+            reference = np.zeros((12, n + 1), dtype=np.float64)
+            for index in range(n + 1):
+                target_rotation = target_state.rotation @ so3_exp(
+                    index * self.config.dt_s * target_state.omega
+                )
+                reference[3:6, index] = target_rotation.T @ waypoint
+            reference[9:12, :-1] = np.diff(reference[3:6], axis=1) / self.config.dt_s
+            reference[9:12, -1] = reference[9:12, -2]
+            return reference
         if self.config.reference_source == "fixed":
             return np.tile(self.config.reference_state.reshape(12, 1), (1, n + 1))
         sample_offsets = np.arange(n + 1, dtype=np.float64) * self.config.dt_s
@@ -347,12 +375,21 @@ class MPCController:
         *,
         target_state: SpacecraftState,
         time_seconds: float,
+        external_reference: ArrayLike | None = None,
+        terminal_latched: bool | None = None,
     ) -> tuple[FloatArray, MPCStepDiagnostics]:
         state = np.asarray(relative_vector, dtype=np.float64)
         if state.shape != (12,) or not np.all(np.isfinite(state)):
             raise ValueError("MPC state must be finite and shape=(12,)")
         # Depends only on the current state, so build it once per control step.
-        reference_trajectory = self._reference_trajectory(state, time_seconds)
+        if self.config.precapture_task is not None and terminal_latched is None:
+            raise ValueError("precapture MPC requires explicit terminal_latched")
+        reference_trajectory = self._reference_trajectory(
+            state,
+            time_seconds,
+            target_state=target_state,
+            external_reference=external_reference,
+        )
         self._reference.value = reference_trajectory
         use_exact = self.config.linearization_source == "exact"
         exact_refresh_time = 0.0
@@ -416,13 +453,29 @@ class MPCController:
                     self._a[index].value, self._b[index].value, self._c[index].value = (
                         cached_linearization
                     )
-                    if self.config.task is not None:
+                    if (
+                        self.config.task is not None
+                        or self.config.precapture_task is not None
+                    ):
                         started_constraints = perf_counter()
-                        jacobian, offset = linearize_constraint_margins(
-                            nominal_states[index + 1],
-                            self.config.task,
-                            corridor_facets=self.config.corridor_facets,
-                        )
+                        if self.config.precapture_task is not None:
+                            assert terminal_latched is not None
+                            jacobian, offset = (
+                                linearize_precapture_constraint_margins(
+                                    nominal_states[index + 1],
+                                    self.config.precapture_task,
+                                    target_angular_velocity_rad_s=target_state.omega,
+                                    terminal_latched=terminal_latched,
+                                    corridor_facets=self.config.corridor_facets,
+                                )
+                            )
+                        else:
+                            assert self.config.task is not None
+                            jacobian, offset = linearize_constraint_margins(
+                                nominal_states[index + 1],
+                                self.config.task,
+                                corridor_facets=self.config.corridor_facets,
+                            )
                         constraint_linearization_time += (
                             perf_counter() - started_constraints
                         )
@@ -482,20 +535,46 @@ class MPCController:
             rollout_time += perf_counter() - started_rollout
             predicted_minimum_margin = (
                 min(
-                    float(np.min(normalized_truth_margins(item, self.config.task)))
+                    float(
+                        np.min(
+                            normalized_precapture_truth_margins(
+                                item,
+                                self.config.precapture_task,
+                                target_angular_velocity_rad_s=target_state.omega,
+                                terminal_latched=bool(terminal_latched),
+                            )
+                            if self.config.precapture_task is not None
+                            else normalized_truth_margins(item, self.config.task)
+                        )
+                    )
                     for item in predicted_states[1:]
                 )
-                if self.config.task is not None
+                if (
+                    self.config.task is not None
+                    or self.config.precapture_task is not None
+                )
                 else float("nan")
             )
             predicted_first_step_margins = (
                 tuple(
                     float(value)
-                    for value in normalized_truth_margins(
-                        predicted_states[1], self.config.task
+                    for value in (
+                        normalized_precapture_truth_margins(
+                            predicted_states[1],
+                            self.config.precapture_task,
+                            target_angular_velocity_rad_s=target_state.omega,
+                            terminal_latched=bool(terminal_latched),
+                        )
+                        if self.config.precapture_task is not None
+                        else normalized_truth_margins(
+                            predicted_states[1], self.config.task
+                        )
                     )
                 )
-                if self.config.task is not None
+                if (
+                    self.config.task is not None
+                    or self.config.precapture_task is not None
+                )
                 else ()
             )
             # Report the cost of the problem that was actually solved.

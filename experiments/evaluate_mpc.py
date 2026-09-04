@@ -20,6 +20,7 @@ from controllers.mpc import (
     MPCController,
     RelativePredictionModel,
     constrained_mpc_nominal_config,
+    precapture_mpc_config,
 )
 from controllers.mpc.constraints import normalized_truth_margins
 from controllers.mpc.prediction import relative_to_vector
@@ -38,6 +39,7 @@ from env.action import wrench_to_normalized
 from env.phase2_env import (
     phase2_environment_config,
     phase2_perception_environment_config,
+    precapture_planning_environment_config,
     terminal_phase_environment_config,
 )
 from env.se3_rendezvous_env import SE3RendezvousConfig, SE3RendezvousEnv
@@ -63,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--horizon", type=int)
     parser.add_argument(
         "--linearization-source",
-        choices=("exact", "local"),
+        choices=("exact", "local", "analytic_local"),
         default=None,
         help=(
             "exact refreshes an RK45-truth Jacobian every --exact-refresh-steps "
@@ -92,7 +94,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-time", type=float)
     parser.add_argument(
         "--task",
-        choices=("terminal", "single_phase", "single_phase_phase_sampled"),
+        choices=(
+            "terminal",
+            "single_phase",
+            "single_phase_phase_sampled",
+            "precapture_planning",
+        ),
         default="terminal",
         help=(
             "terminal is the 2-10 m terminal-only shell the fixed-setpoint "
@@ -456,15 +463,29 @@ def evaluate(
             discount = 1.0
             episode_fallbacks = 0
             min_position_error_m = float(info["position_error_m"])
-            minimum_margins = {
-                name: float(info[name])
-                for name in (
+            margin_names = (
+                (
+                    "keepout_margin_m",
+                    "fov_margin_rad",
+                    "outer_inertial_speed_margin_m_s",
+                    "target_frame_speed_margin_m_s",
+                    "corridor_axial_margin_m",
+                    "corridor_lateral_margin_m",
+                    "terminal_total_speed_margin_m_s",
+                    "closing_speed_margin_m_s",
+                )
+                if env_config.precapture_planning_enabled
+                else (
                     "corridor_axial_margin_m",
                     "corridor_lateral_margin_m",
                     "fov_margin_rad",
                     "total_speed_margin_m_s",
                     "closing_speed_margin_m_s",
                 )
+            )
+            minimum_margins = {
+                name: float(info[name])
+                for name in margin_names
             }
             first_violation: dict[str, Any] | None = None
             trace: list[dict[str, Any]] = []
@@ -498,6 +519,11 @@ def evaluate(
                     command_state,
                     target_state=command_target,
                     time_seconds=env.time_seconds,
+                    terminal_latched=(
+                        bool(info["terminal_region_active"])
+                        if env_config.precapture_planning_enabled
+                        else None
+                    ),
                 )
                 control_step += 1
                 episode_command_times.append(perf_counter() - command_started)
@@ -856,7 +882,11 @@ def main() -> None:
         terminal_value = ConvexQuadraticTerminalValue.load(args.terminal_value_file)
     else:
         terminal_value = None
-    base_config = constrained_mpc_nominal_config()
+    base_config = (
+        precapture_mpc_config()
+        if args.task == "precapture_planning"
+        else constrained_mpc_nominal_config()
+    )
     config = replace(
         base_config,
         horizon_steps=(
@@ -898,7 +928,9 @@ def main() -> None:
         environment_config = phase2_perception_environment_config()
     else:
         environment_config = (
-            phase2_environment_config(args.task)
+            precapture_planning_environment_config()
+            if args.task == "precapture_planning"
+            else phase2_environment_config(args.task)
             if args.task in {"single_phase", "single_phase_phase_sampled"}
             else terminal_phase_environment_config()
         )

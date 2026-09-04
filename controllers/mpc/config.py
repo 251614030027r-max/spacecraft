@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from dynamics.lie import se3_log
-from env.task import Phase2TaskConfig
+from env.task import Phase2TaskConfig, PrecaptureTaskConfig
 
 from .terminal_value import ConvexQuadraticTerminalValue
 
@@ -51,6 +51,7 @@ class MPCConfig:
         default_factory=lambda: np.zeros(12, dtype=np.float64)
     )
     task: Phase2TaskConfig | None = None
+    precapture_task: PrecaptureTaskConfig | None = None
     # A2 adds two endpoint-only, guidance-free references. ``receding_plan``
     # regenerates a minimum-jerk current-to-terminal path each command;
     # ``episode_plan`` creates it once and lets MPC track that explicit plan.
@@ -108,10 +109,15 @@ class MPCConfig:
         if self.reference_source not in {
             "fixed", "corridor_guidance", "receding_plan", "episode_plan",
             "online_endpoint",
+            "external_local",
         }:
             raise ValueError("unsupported reference_source")
         if self.reference_source == "corridor_guidance" and self.task is None:
             raise ValueError("corridor_guidance reference requires a task")
+        if self.task is not None and self.precapture_task is not None:
+            raise ValueError("legacy and precapture MPC tasks are mutually exclusive")
+        if self.reference_source == "external_local" and self.precapture_task is None:
+            raise ValueError("external_local reference requires a precapture task")
         if self.terminal_cost_source not in {"fixed_quadratic", "learned_convex"}:
             raise ValueError(
                 "terminal_cost_source must be 'fixed_quadratic' or 'learned_convex'"
@@ -216,6 +222,38 @@ def online_endpoint_mpc_config(
     }
     values.update(changes)
     return constrained_mpc_nominal_config(**values)
+
+
+def precapture_mpc_config(
+    *,
+    horizon_steps: int = 20,
+    reference_source: str = "fixed",
+    **changes: object,
+) -> MPCConfig:
+    """Matched MPC used by both pure and future hybrid precapture rows."""
+
+    task = PrecaptureTaskConfig()
+    reference = np.concatenate((se3_log(task.desired_transform), np.zeros(6)))
+    values: dict[str, object] = {
+        "task": None,
+        "precapture_task": task,
+        "reference_state": reference,
+        "reference_source": reference_source,
+        "horizon_steps": horizon_steps,
+        "solver": "CLARABEL",
+        "linearization_source": "analytic_local",
+        "state_scales": np.array(
+            [
+                *([np.deg2rad(75.0)] * 3),
+                *([20.0] * 3),
+                *([0.05] * 3),
+                *([1.10] * 3),
+            ],
+            dtype=np.float64,
+        ),
+    }
+    values.update(changes)
+    return MPCConfig(**values)
 
 
 def learned_terminal_mpc_config(
