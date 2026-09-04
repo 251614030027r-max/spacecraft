@@ -12,13 +12,14 @@ from env.task import PrecaptureTaskConfig, compute_precapture_metrics
 from env.se3_rendezvous_env import SE3RendezvousEnv
 
 
-def test_precapture_speed_transition_is_continuous_and_configured() -> None:
+def test_precapture_outer_braking_profile_is_self_consistent() -> None:
     task = PrecaptureTaskConfig()
-    assert task.target_frame_speed_limit(14.0) == 1.10
-    assert np.isclose(task.target_frame_speed_limit(11.0), 0.725)
-    assert task.target_frame_speed_limit(8.0) == 0.35
-    assert task.target_frame_speed_limit(20.0) == 1.10
-    assert task.target_frame_speed_limit(3.0) == 0.35
+    assert task.outer_inertial_speed_limit_m_s == 1.20
+    assert task.terminal_activation_range_m == 6.0
+    assert np.isclose(task.outer_radial_closing_speed_limit(20.0), np.sqrt(0.72))
+    assert np.isclose(task.outer_radial_closing_speed_limit(15.0), np.sqrt(0.52))
+    assert np.isclose(task.outer_radial_closing_speed_limit(10.0), np.sqrt(0.32))
+    assert task.outer_radial_closing_speed_limit(6.0) == 0.4
 
 
 def test_precapture_sampler_restores_non_corotating_outer_states() -> None:
@@ -84,7 +85,7 @@ def test_precapture_five_semantic_states() -> None:
     assert not outer_metrics.terminal_region_active
 
     outer_fast = outer.copy()
-    outer_fast.velocity += outer_fast.rotation.T @ np.array([0.6, 0.0, 0.0])
+    outer_fast.velocity += outer_fast.rotation.T @ np.array([1.3, 0.0, 0.0])
     outer_fast_metrics = compute_precapture_metrics(
         target, outer_fast, relative_state(target, outer_fast), task
     )
@@ -129,7 +130,7 @@ def test_environment_latches_terminal_region_on_entry() -> None:
         precapture_planning_environment_config(), cache_target_trajectory=False
     )
     target = target_initial_state(tumble_scale=config.phase2_target_tumble_scale)
-    chaser = _corotating_chaser(target, [-7.5, 0.0, 0.0])
+    chaser = _corotating_chaser(target, [-5.5, 0.0, 0.0])
     env = SE3RendezvousEnv(config)
     _, reset_info = env.reset(
         seed=11, options={"target_state": target, "chaser_state": chaser}

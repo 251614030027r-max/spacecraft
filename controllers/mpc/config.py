@@ -81,6 +81,9 @@ class MPCConfig:
     # in-QP safety constraints are identical, while evaluation scores truth
     # margins externally.
     runtime_diagnostics: bool = True
+    # external_local is target-centred and inertially oriented. A waypoint is
+    # held for one high-level period before a replacement is accepted.
+    external_reference_hold_steps: int = 20
 
     def __post_init__(self) -> None:
         state_scales = np.asarray(self.state_scales, dtype=np.float64)
@@ -100,6 +103,7 @@ class MPCConfig:
             self.linearization_stride,
             self.drift_refresh_steps,
             self.exact_linearization_refresh_steps,
+            self.external_reference_hold_steps,
         ) <= 0:
             raise ValueError("MPC integer settings must be positive")
         if self.linearization_source not in {"exact", "local", "analytic_local"}:

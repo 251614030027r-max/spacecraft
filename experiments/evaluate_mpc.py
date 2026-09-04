@@ -270,14 +270,13 @@ def _active_precapture_margins(
             active["outer_inertial_speed_margin_m_s"]
             / task.outer_inertial_speed_limit_m_s
         )
-        if bool(info["transition_speed_active"]):
-            active["target_frame_speed_margin_m_s"] = float(
-                info["target_frame_speed_margin_m_s"]
-            )
-            normalized.append(
-                active["target_frame_speed_margin_m_s"]
-                / float(info["target_frame_speed_limit_m_s"])
-            )
+        active["outer_radial_margin_m_s"] = float(
+            info["outer_radial_margin_m_s"]
+        )
+        normalized.append(
+            active["outer_radial_margin_m_s"]
+            / task.outer_inertial_speed_limit_m_s
+        )
     return active, float(min(normalized))
 
 
@@ -806,7 +805,7 @@ def evaluate(
                     "keepout_violation_steps",
                     "fov_violation_steps",
                     "outer_speed_violation_steps",
-                    "transition_speed_violation_steps",
+                    "outer_radial_violation_steps",
                     "corridor_violation_steps",
                     "total_speed_violation_steps",
                     "closing_speed_violation_steps",
@@ -970,7 +969,7 @@ def evaluate(
             "keepout_violation_steps",
             "fov_violation_steps",
             "outer_speed_violation_steps",
-            "transition_speed_violation_steps",
+            "outer_radial_violation_steps",
             "corridor_violation_steps",
             "total_speed_violation_steps",
             "closing_speed_violation_steps",

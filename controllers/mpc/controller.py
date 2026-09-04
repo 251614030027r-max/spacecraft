@@ -158,6 +158,7 @@ class MPCController:
         self._control_step = 0
         self._episode_plan_initial_state: FloatArray | None = None
         self._episode_plan_start_time_s: float | None = None
+        self._held_external_reference: FloatArray | None = None
 
     def reset(self) -> None:
         self._nominal_controls.fill(0.0)
@@ -166,6 +167,49 @@ class MPCController:
         self._control_step = 0
         self._episode_plan_initial_state = None
         self._episode_plan_start_time_s = None
+        self._held_external_reference = None
+
+    def _precapture_los_rotation(self, state: FloatArray) -> FloatArray:
+        """Nearest current-roll attitude whose camera boresight points at port."""
+
+        task = self.config.precapture_task
+        if task is None:
+            raise ValueError("LOS reference requires a precapture task")
+        transform = se3_exp(state[:6])
+        current_rotation = transform[:3, :3]
+        line_of_sight = task.port_position - transform[:3, 3]
+        line_of_sight /= np.linalg.norm(line_of_sight)
+        current_boresight = current_rotation @ task.camera_boresight
+        cosine = float(np.clip(current_boresight @ line_of_sight, -1.0, 1.0))
+        cross = np.cross(current_boresight, line_of_sight)
+        sine = float(np.linalg.norm(cross))
+        if sine <= 1.0e-12:
+            if cosine > 0.0:
+                return current_rotation
+            reference = np.array([1.0, 0.0, 0.0])
+            if abs(float(reference @ current_boresight)) > 0.9:
+                reference = np.array([0.0, 1.0, 0.0])
+            axis = np.cross(current_boresight, reference)
+            axis /= np.linalg.norm(axis)
+            return so3_exp(np.pi * axis) @ current_rotation
+        axis = cross / sine
+        return so3_exp(np.arctan2(sine, cosine) * axis) @ current_rotation
+
+    def _apply_precapture_attitude_reference(
+        self,
+        reference: FloatArray,
+        state: FloatArray,
+        *,
+        terminal_latched: bool | None,
+    ) -> FloatArray:
+        if self.config.precapture_task is None or bool(terminal_latched):
+            return reference
+        rotation = self._precapture_los_rotation(state)
+        adjusted = reference.copy()
+        for index in range(reference.shape[1]):
+            position = se3_exp(reference[:6, index])[:3, 3]
+            adjusted[:6, index] = se3_log(make_transform(rotation, position))
+        return adjusted
 
     def _endpoint_plan(
         self,
@@ -228,6 +272,7 @@ class MPCController:
         *,
         target_state: SpacecraftState | None = None,
         external_reference: ArrayLike | None = None,
+        terminal_latched: bool | None = None,
     ) -> FloatArray:
         """Return the ``(12, horizon+1)`` reference the objective tracks.
 
@@ -250,6 +295,12 @@ class MPCController:
                 raise ValueError(
                     "external_local reference must be a finite inertial-oriented 3D waypoint"
                 )
+            if (
+                self._held_external_reference is None
+                or self._control_step % self.config.external_reference_hold_steps == 0
+            ):
+                self._held_external_reference = waypoint.copy()
+            waypoint = self._held_external_reference
             reference = np.zeros((12, n + 1), dtype=np.float64)
             for index in range(n + 1):
                 target_rotation = target_state.rotation @ so3_exp(
@@ -258,9 +309,16 @@ class MPCController:
                 reference[3:6, index] = target_rotation.T @ waypoint
             reference[9:12, :-1] = np.diff(reference[3:6], axis=1) / self.config.dt_s
             reference[9:12, -1] = reference[9:12, -2]
-            return reference
+            return self._apply_precapture_attitude_reference(
+                reference, state, terminal_latched=terminal_latched
+            )
         if self.config.reference_source == "fixed":
-            return np.tile(self.config.reference_state.reshape(12, 1), (1, n + 1))
+            reference = np.tile(
+                self.config.reference_state.reshape(12, 1), (1, n + 1)
+            )
+            return self._apply_precapture_attitude_reference(
+                reference, state, terminal_latched=terminal_latched
+            )
         sample_offsets = np.arange(n + 1, dtype=np.float64) * self.config.dt_s
         if self.config.reference_source == "receding_plan":
             return self._endpoint_plan(state, sample_offsets)
@@ -389,6 +447,7 @@ class MPCController:
             time_seconds,
             target_state=target_state,
             external_reference=external_reference,
+            terminal_latched=terminal_latched,
         )
         self._reference.value = reference_trajectory
         use_exact = self.config.linearization_source == "exact"

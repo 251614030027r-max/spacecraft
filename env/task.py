@@ -123,10 +123,9 @@ class PrecaptureTaskConfig:
     approach_axis_target: tuple[float, float, float] = (-1.0, 0.0, 0.0)
     camera_boresight_chaser: tuple[float, float, float] = (1.0, 0.0, 0.0)
     keepout_radius_m: float = 2.0
-    terminal_activation_range_m: float = 8.0
-    transition_outer_range_m: float = 14.0
-    outer_inertial_speed_limit_m_s: float = 0.50
-    transition_target_frame_speed_outer_m_s: float = 1.10
+    terminal_activation_range_m: float = 6.0
+    outer_inertial_speed_limit_m_s: float = 1.20
+    outer_radial_brake_accel_m_s2: float = 0.020
     corridor_half_angle_rad: float = float(np.deg2rad(35.0))
     fov_half_angle_rad: float = float(np.deg2rad(50.0))
     terminal_total_speed_limit_m_s: float = 0.35
@@ -155,9 +154,8 @@ class PrecaptureTaskConfig:
         positive = (
             self.keepout_radius_m,
             self.terminal_activation_range_m,
-            self.transition_outer_range_m,
             self.outer_inertial_speed_limit_m_s,
-            self.transition_target_frame_speed_outer_m_s,
+            self.outer_radial_brake_accel_m_s2,
             self.corridor_half_angle_rad,
             self.fov_half_angle_rad,
             self.terminal_total_speed_limit_m_s,
@@ -173,10 +171,6 @@ class PrecaptureTaskConfig:
         )
         if min(positive) <= 0.0:
             raise ValueError("precapture task scales and tolerances must be positive")
-        if self.transition_outer_range_m <= self.terminal_activation_range_m:
-            raise ValueError("transition outer range must exceed terminal range")
-        if self.transition_target_frame_speed_outer_m_s <= self.terminal_total_speed_limit_m_s:
-            raise ValueError("transition outer speed must exceed terminal speed")
         if max(self.corridor_half_angle_rad, self.fov_half_angle_rad) >= np.pi / 2:
             raise ValueError("corridor and FOV half angles must be below 90 degrees")
         if self.closing_speed_min_m_s > self.closing_speed_max_m_s:
@@ -211,21 +205,9 @@ class PrecaptureTaskConfig:
             )
         )
 
-    def target_frame_speed_limit(self, range_m: float) -> float:
-        fraction = np.clip(
-            (float(range_m) - self.terminal_activation_range_m)
-            / (self.transition_outer_range_m - self.terminal_activation_range_m),
-            0.0,
-            1.0,
-        )
-        return float(
-            self.terminal_total_speed_limit_m_s
-            + fraction
-            * (
-                self.transition_target_frame_speed_outer_m_s
-                - self.terminal_total_speed_limit_m_s
-            )
-        )
+    def outer_radial_closing_speed_limit(self, range_m: float) -> float:
+        clearance = max(float(range_m) - self.keepout_radius_m, 0.0)
+        return float(np.sqrt(2.0 * self.outer_radial_brake_accel_m_s2 * clearance))
 
     def completion_required_steps(self, dt_s: float) -> int:
         if dt_s <= 0.0:
@@ -457,6 +439,9 @@ class PrecaptureMetrics:
     fov_margin_rad: float
     inertial_relative_speed_m_s: float
     outer_inertial_speed_margin_m_s: float
+    outer_radial_closing_speed_m_s: float
+    outer_radial_closing_speed_limit_m_s: float
+    outer_radial_margin_m_s: float
     target_frame_speed_m_s: float
     target_frame_speed_limit_m_s: float
     target_frame_speed_margin_m_s: float
@@ -587,9 +572,9 @@ def compute_precapture_metrics(
 ) -> PrecaptureMetrics:
     """Single truth source for the two-region precapture task.
 
-    Region A always limits inertial COM-relative speed.  Target-frame speed is
-    unconstrained outside 14 m, ramps from 1.10 to 0.35 m/s over 14--8 m, and
-    remains at the terminal limit after the one-way terminal latch is active.
+    Region A limits inertial COM-relative total speed and inward radial speed
+    through a dynamically self-consistent braking envelope. Target-frame speed
+    is unconstrained until the one-way terminal latch activates at 6 m.
     """
 
     rotation = relative.rotation
@@ -630,12 +615,26 @@ def compute_precapture_metrics(
     outer_inertial_speed_margin = float(
         config.outer_inertial_speed_limit_m_s - inertial_relative_speed
     )
-    target_frame_speed = float(np.linalg.norm(position_rate))
-    transition_speed_active = bool(
-        terminal_region_active
-        or target_center_distance <= config.transition_outer_range_m
+    if target_center_distance <= np.finfo(np.float64).eps:
+        outer_radial_closing_speed = float("inf")
+    else:
+        radial_direction_inertial = (
+            target.rotation @ position / target_center_distance
+        )
+        outer_radial_closing_speed = float(
+            -radial_direction_inertial @ inertial_relative_velocity
+        )
+    outer_radial_closing_speed_limit = (
+        config.outer_radial_closing_speed_limit(target_center_distance)
     )
-    target_frame_speed_limit = config.target_frame_speed_limit(target_center_distance)
+    outer_radial_margin = float(
+        outer_radial_closing_speed_limit - outer_radial_closing_speed
+    )
+    target_frame_speed = float(np.linalg.norm(position_rate))
+    # Compatibility-only diagnostic fields: the withdrawn 14--8 m transition
+    # is never active. The terminal row owns the 0.35 m/s limit after latch.
+    transition_speed_active = False
+    target_frame_speed_limit = config.terminal_total_speed_limit_m_s
     target_frame_speed_margin = float(target_frame_speed_limit - target_frame_speed)
     terminal_total_speed_margin = float(
         config.terminal_total_speed_limit_m_s - target_frame_speed
@@ -667,11 +666,10 @@ def compute_precapture_metrics(
             and closing_speed_margin >= -tolerance
         )
     else:
-        regional_safe = outer_inertial_speed_margin >= -tolerance
-        if transition_speed_active:
-            regional_safe = bool(
-                regional_safe and target_frame_speed_margin >= -tolerance
-            )
+        regional_safe = bool(
+            outer_inertial_speed_margin >= -tolerance
+            and outer_radial_margin >= -tolerance
+        )
     active_constraints_satisfied = bool(common_safe and regional_safe)
     return PrecaptureMetrics(
         position_target_m=position.copy(),
@@ -687,6 +685,9 @@ def compute_precapture_metrics(
         fov_margin_rad=fov_margin,
         inertial_relative_speed_m_s=inertial_relative_speed,
         outer_inertial_speed_margin_m_s=outer_inertial_speed_margin,
+        outer_radial_closing_speed_m_s=outer_radial_closing_speed,
+        outer_radial_closing_speed_limit_m_s=outer_radial_closing_speed_limit,
+        outer_radial_margin_m_s=outer_radial_margin,
         target_frame_speed_m_s=target_frame_speed,
         target_frame_speed_limit_m_s=target_frame_speed_limit,
         target_frame_speed_margin_m_s=target_frame_speed_margin,

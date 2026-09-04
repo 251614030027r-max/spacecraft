@@ -437,8 +437,8 @@ def sample_precapture_planning_chaser_state(
 
     if not 0.0 < initial_range_min_m < initial_range_max_m:
         raise ValueError("precapture initial range bounds are invalid")
-    if initial_range_min_m <= task.transition_outer_range_m:
-        raise ValueError("precapture initial range must start outside the transition band")
+    if initial_range_min_m <= task.terminal_activation_range_m:
+        raise ValueError("precapture initial range must start outside the terminal region")
     if min(
         initial_inertial_relative_speed_max_m_s,
         pointing_error_max_rad,

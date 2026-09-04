@@ -51,7 +51,7 @@ PRECAPTURE_MARGIN_KEYS = (
     "keepout_margin_m",
     "fov_margin_rad",
     "outer_inertial_speed_margin_m_s",
-    "target_frame_speed_margin_m_s",
+    "outer_radial_margin_m_s",
     "corridor_axial_margin_m",
     "corridor_lateral_margin_m",
     "terminal_total_speed_margin_m_s",

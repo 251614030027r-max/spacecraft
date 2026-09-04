@@ -258,9 +258,14 @@ def normalized_precapture_truth_margins(
         margins[2] = (
             task.outer_inertial_speed_limit_m_s - inertial_speed
         ) / task.outer_inertial_speed_limit_m_s
-        if range_m <= task.transition_outer_range_m:
-            limit = task.target_frame_speed_limit(range_m)
-            margins[3] = (limit - target_frame_speed) / limit
+        radial_direction = position / max(range_m, _DEGENERATE)
+        radial_closing_speed = float(
+            -radial_direction @ inertial_relative_velocity_target
+        )
+        margins[3] = (
+            task.outer_radial_closing_speed_limit(range_m)
+            - radial_closing_speed
+        ) / task.outer_inertial_speed_limit_m_s
     return margins
 
 
@@ -319,9 +324,12 @@ def normalized_precapture_constraint_margins(
             task.outer_inertial_speed_limit_m_s
             - float(np.linalg.norm(inertial_velocity))
         ) / task.outer_inertial_speed_limit_m_s
-        if range_m <= task.transition_outer_range_m:
-            limit = task.target_frame_speed_limit(range_m)
-            margins[3] = (limit - speed) / limit
+        radial_direction = position / max(range_m, _DEGENERATE)
+        radial_closing_speed = float(-radial_direction @ inertial_velocity)
+        margins[3] = (
+            task.outer_radial_closing_speed_limit(range_m)
+            - radial_closing_speed
+        ) / task.outer_inertial_speed_limit_m_s
     return margins
 
 
@@ -539,24 +547,19 @@ def linearize_precapture_constraint_margins(
             )
             position_gradient[2] = inertial_gradient @ hat3(target_omega)
             rate_gradient[2] = inertial_gradient
-        if range_m <= task.transition_outer_range_m:
-            limit = task.target_frame_speed_limit(range_m)
-            if speed > _DEGENERATE:
-                rate_gradient[3] = -position_rate / speed / limit
-            if (
-                range_m > _DEGENERATE
-                and range_m > task.terminal_activation_range_m
-            ):
-                limit_slope = (
-                    task.transition_target_frame_speed_outer_m_s
-                    - task.terminal_total_speed_limit_m_s
-                ) / (
-                    task.transition_outer_range_m
-                    - task.terminal_activation_range_m
-                )
-                position_gradient[3] = (
-                    speed / (limit * limit) * limit_slope * position / range_m
-                )
+        if range_m > _DEGENERATE:
+            radial_direction = position / range_m
+            radial_limit = task.outer_radial_closing_speed_limit(range_m)
+            projection = np.eye(3) - np.outer(radial_direction, radial_direction)
+            scale = task.outer_inertial_speed_limit_m_s
+            position_gradient[3] = (
+                task.outer_radial_brake_accel_m_s2
+                / max(radial_limit, _DEGENERATE)
+                * radial_direction
+                + projection @ inertial_velocity / range_m
+                + radial_direction @ hat3(target_omega)
+            ) / scale
+            rate_gradient[3] = radial_direction / scale
 
     jacobian = np.zeros((count, 12), dtype=np.float64)
     jacobian[:, :3] = (

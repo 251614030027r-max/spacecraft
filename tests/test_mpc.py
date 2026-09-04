@@ -536,7 +536,7 @@ def test_precapture_constraint_rows_follow_prediction_and_one_way_latch() -> Non
     target_omega = np.array([0.0, 0.04, 0.0])
     outside = np.array([0.0, 0.0, 0.0, -9.0, 0.0, 0.0, *([0.0] * 6)])
     inside = outside.copy()
-    inside[3] = -7.0
+    inside[3] = -5.5
     outer = normalized_precapture_constraint_margins(
         outside,
         task,
@@ -558,14 +558,14 @@ def test_precapture_constraint_rows_follow_prediction_and_one_way_latch() -> Non
         terminal_latched=True,
         corridor_facets=8,
     )
-    assert outer[2] < 1.0e3 and np.all(outer[4:] == 1.0e3)
+    assert np.all(outer[2:4] < 1.0e3) and np.all(outer[4:] == 1.0e3)
     assert predicted_terminal[2] == 1.0e3 and np.all(predicted_terminal[4:] < 1.0e3)
     assert latched_outside[2] == 1.0e3 and np.all(latched_outside[4:] < 1.0e3)
 
 
 def test_external_local_waypoint_is_inertially_oriented() -> None:
     from controllers.mpc import precapture_mpc_config
-    from dynamics.lie import so3_exp
+    from dynamics.lie import se3_exp, so3_exp
     from env.scenarios import target_initial_state
 
     config = precapture_mpc_config(
@@ -585,9 +585,45 @@ def test_external_local_waypoint_is_inertially_oriented() -> None:
         target_rotation = target.rotation @ so3_exp(
             index * config.dt_s * target.omega
         )
+        reference_transform = se3_exp(reference[:6, index])
         assert np.allclose(
-            target_rotation @ reference[3:6, index], waypoint_inertial
+            target_rotation @ reference_transform[:3, 3], waypoint_inertial
         )
+
+
+def test_precapture_outer_reference_points_camera_at_port_and_holds_waypoint() -> None:
+    from controllers.mpc import precapture_mpc_config
+    from dynamics.lie import se3_exp
+    from env.scenarios import target_initial_state
+
+    config = precapture_mpc_config(horizon_steps=3, reference_source="external_local")
+    controller = MPCController(config, LocalRelativePredictionModel(chaser_parameters()))
+    target = target_initial_state(tumble_scale=0.20)
+    state = np.zeros(12)
+    state[3:6] = np.array([-12.0, 4.0, 1.0])
+    first_waypoint = np.array([-11.0, 2.0, 0.5])
+    reference = controller._reference_trajectory(
+        state,
+        target_state=target,
+        external_reference=first_waypoint,
+        terminal_latched=False,
+    )
+    pose = se3_exp(reference[:6, 0])
+    line_of_sight = config.precapture_task.port_position - state[3:6]
+    line_of_sight /= np.linalg.norm(line_of_sight)
+    assert np.allclose(
+        pose[:3, :3] @ config.precapture_task.camera_boresight,
+        line_of_sight,
+    )
+    controller._control_step = 1
+    held = controller._reference_trajectory(
+        state,
+        target_state=target,
+        external_reference=np.array([4.0, 5.0, 6.0]),
+        terminal_latched=False,
+    )
+    held_pose = se3_exp(held[:6, 0])
+    assert np.allclose(target.rotation @ held_pose[:3, 3], first_waypoint)
 
 
 def test_two_stage_precapture_guidance_latches_only_after_slow_staging() -> None:

@@ -374,7 +374,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 "keepout",
                 "fov",
                 "outer_speed",
-                "transition_speed",
+                "outer_radial",
                 "corridor",
                 "total_speed",
                 "closing_speed",
@@ -1207,6 +1207,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 keepout_failure=False,
                 fov_failure=False,
                 outer_speed_failure=False,
+                outer_radial_failure=False,
                 transition_speed_failure=False,
                 distance_failure=False,
                 time_failure=False,
@@ -1249,6 +1250,13 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             "outer_inertial_speed_margin_m_s": (
                 metrics.outer_inertial_speed_margin_m_s
             ),
+            "outer_radial_closing_speed_m_s": (
+                metrics.outer_radial_closing_speed_m_s
+            ),
+            "outer_radial_closing_speed_limit_m_s": (
+                metrics.outer_radial_closing_speed_limit_m_s
+            ),
+            "outer_radial_margin_m_s": metrics.outer_radial_margin_m_s,
             "target_frame_speed_m_s": metrics.target_frame_speed_m_s,
             "target_frame_speed_limit_m_s": metrics.target_frame_speed_limit_m_s,
             "target_frame_speed_margin_m_s": metrics.target_frame_speed_margin_m_s,
@@ -1612,10 +1620,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 active_margins["outer_speed"] = (
                     precapture.outer_inertial_speed_margin_m_s
                 )
-                if precapture.transition_speed_active:
-                    active_margins["transition_speed"] = (
-                        precapture.target_frame_speed_margin_m_s
-                    )
+                active_margins["outer_radial"] = precapture.outer_radial_margin_m_s
             for name, margin in active_margins.items():
                 violation = max(-margin, 0.0)
                 if violation > self.config.precapture_task.constraint_tolerance:
@@ -1649,6 +1654,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 not self._terminal_region_entered
                 and precapture.outer_inertial_speed_margin_m_s < 0.0
             )
+            outer_radial_failure = bool(
+                not self._terminal_region_entered
+                and precapture.outer_radial_margin_m_s < 0.0
+            )
             transition_speed_failure = bool(
                 not self._terminal_region_entered
                 and precapture.transition_speed_active
@@ -1670,6 +1679,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 keepout_failure
                 or fov_failure
                 or outer_speed_failure
+                or outer_radial_failure
                 or transition_speed_failure
                 or terminal_constraint_failure
                 or distance_failure
@@ -1700,6 +1710,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 keepout_failure=keepout_failure,
                 fov_failure=fov_failure,
                 outer_speed_failure=outer_speed_failure,
+                outer_radial_failure=outer_radial_failure,
                 transition_speed_failure=transition_speed_failure,
                 distance_failure=distance_failure,
                 time_failure=time_failure,
