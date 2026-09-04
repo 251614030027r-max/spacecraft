@@ -63,6 +63,7 @@ class MPCConfig:
     # it stays a clean single factor. Applies only under corridor_guidance.
     corridor_speed_fraction: float = 0.6
     planning_speed_m_s: float = 0.18
+    planning_angular_speed_rad_s: float = 0.02
     planning_min_duration_s: float = 10.0
     # "fixed_quadratic" keeps the historical terminal penalty
     # terminal_weight * ||S^-1 (x - r)||^2 -- a diagonal cost on the deviation
@@ -75,6 +76,10 @@ class MPCConfig:
     constraint_slack_weight: float = 1.0e4
     constraint_slack_limit: float = 2.0
     constraint_tightening: float = 0.02
+    # Deployment path omits post-solve rollout/cost diagnostics; actions and
+    # in-QP safety constraints are identical, while evaluation scores truth
+    # margins externally.
+    runtime_diagnostics: bool = True
 
     def __post_init__(self) -> None:
         state_scales = np.asarray(self.state_scales, dtype=np.float64)
@@ -96,10 +101,13 @@ class MPCConfig:
             self.exact_linearization_refresh_steps,
         ) <= 0:
             raise ValueError("MPC integer settings must be positive")
-        if self.linearization_source not in {"exact", "local"}:
-            raise ValueError("linearization_source must be 'exact' or 'local'")
+        if self.linearization_source not in {"exact", "local", "analytic_local"}:
+            raise ValueError(
+                "linearization_source must be exact, local or analytic_local"
+            )
         if self.reference_source not in {
-            "fixed", "corridor_guidance", "receding_plan", "episode_plan"
+            "fixed", "corridor_guidance", "receding_plan", "episode_plan",
+            "online_endpoint",
         }:
             raise ValueError("unsupported reference_source")
         if self.reference_source == "corridor_guidance" and self.task is None:
@@ -118,7 +126,11 @@ class MPCConfig:
             raise ValueError("corridor_facets must be at least four")
         if not 0.0 < self.corridor_speed_fraction <= 1.0:
             raise ValueError("corridor_speed_fraction must be in (0, 1]")
-        if min(self.planning_speed_m_s, self.planning_min_duration_s) <= 0.0:
+        if min(
+            self.planning_speed_m_s,
+            self.planning_angular_speed_rad_s,
+            self.planning_min_duration_s,
+        ) <= 0.0:
             raise ValueError("planning settings must be positive")
         if min(self.constraint_slack_weight, self.constraint_slack_limit) <= 0.0:
             raise ValueError("constraint slack settings must be positive")
@@ -186,6 +198,21 @@ def planning_tracking_mpc_config(**changes: object) -> MPCConfig:
     values: dict[str, object] = {
         "reference_source": "episode_plan",
         "horizon_steps": 20,
+    }
+    values.update(changes)
+    return constrained_mpc_nominal_config(**values)
+
+
+def online_endpoint_mpc_config(
+    *, horizon_steps: int = 10, exact: bool = False, **changes: object
+) -> MPCConfig:
+    """Deployable receding endpoint plan with a bounded short MPC horizon."""
+
+    values: dict[str, object] = {
+        "reference_source": "online_endpoint",
+        "horizon_steps": horizon_steps,
+        "linearization_source": "exact" if exact else "analytic_local",
+        "runtime_diagnostics": False,
     }
     values.update(changes)
     return constrained_mpc_nominal_config(**values)

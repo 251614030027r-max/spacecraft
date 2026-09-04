@@ -134,6 +134,14 @@ def sample_target_parameters(
     return SpacecraftParameters(mass, perturbed)
 
 
+def fixed_prediction_target_parameters(
+    *, mismatch: float, seed: int
+) -> SpacecraftParameters:
+    """One deterministic estimated target model shared by MPC and EKF."""
+
+    return sample_target_parameters(mismatch=mismatch, seed=seed)
+
+
 def chaser_parameters() -> SpacecraftParameters:
     return SpacecraftParameters(106.0, CHASER_INERTIA_KG_M2)
 

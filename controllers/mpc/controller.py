@@ -246,6 +246,45 @@ class MPCController:
                 self._episode_plan_initial_state,
                 elapsed + sample_offsets,
             )
+        if self.config.reference_source == "online_endpoint":
+            initial_transform = se3_exp(state[:6])
+            desired_transform = se3_exp(self.config.reference_state[:6])
+            initial_rotation = initial_transform[:3, :3]
+            initial_position = initial_transform[:3, 3]
+            desired_position = desired_transform[:3, 3]
+            position_error = initial_position - desired_position
+            distance = float(np.linalg.norm(position_error))
+            position_rate = min(
+                1.0 / self.config.planning_min_duration_s,
+                self.config.planning_speed_m_s / max(distance, 1.0e-12),
+            )
+            rotation_to_goal = so3_log(
+                initial_rotation.T @ desired_transform[:3, :3]
+            )
+            angle = float(np.linalg.norm(rotation_to_goal))
+            rotation_rate = min(
+                1.0 / self.config.planning_min_duration_s,
+                self.config.planning_angular_speed_rad_s / max(angle, 1.0e-12),
+            )
+            reference = np.zeros((12, n + 1), dtype=np.float64)
+            for index, sample_time in enumerate(sample_offsets):
+                position_decay = float(np.exp(-position_rate * sample_time))
+                rotation_decay = float(np.exp(-rotation_rate * sample_time))
+                position = desired_position + position_decay * position_error
+                target_position_rate = -position_rate * position_decay * position_error
+                rotation_vector = (1.0 - rotation_decay) * rotation_to_goal
+                rotation = initial_rotation @ so3_exp(rotation_vector)
+                rotation_vector_rate = (
+                    rotation_rate * rotation_decay * rotation_to_goal
+                )
+                reference[:6, index] = se3_log(
+                    make_transform(rotation, position)
+                )
+                reference[6:9, index] = (
+                    left_jacobian_so3(-rotation_vector) @ rotation_vector_rate
+                )
+                reference[9:12, index] = rotation.T @ target_position_rate
+            return reference
         assert self.config.task is not None
         position = se3_exp(state[:6])[:3, 3]
         reference = np.zeros((12, n + 1), dtype=np.float64)
@@ -349,14 +388,27 @@ class MPCController:
                         cached_linearization = self._exact_linearization
                     elif index % self.config.linearization_stride == 0:
                         started_linearization = perf_counter()
-                        cached_linearization = central_difference_linearization(
-                            self._predict,
-                            nominal_states[index],
-                            controls[index],
-                            state_scales=self.config.state_scales,
-                            input_scales=self.config.input_scales,
-                            relative_step=self.config.difference_relative_step,
-                        )
+                        if self.config.linearization_source == "analytic_local":
+                            cached_linearization = (
+                                self.local_model.analytic_kinematic_linearization(
+                                    nominal_states[index], controls[index]
+                                )
+                            )
+                            a_value, b_value, c_value = cached_linearization
+                            cached_linearization = (
+                                a_value,
+                                b_value,
+                                c_value + self._drift,
+                            )
+                        else:
+                            cached_linearization = central_difference_linearization(
+                                self._predict,
+                                nominal_states[index],
+                                controls[index],
+                                state_scales=self.config.state_scales,
+                                input_scales=self.config.input_scales,
+                                relative_step=self.config.difference_relative_step,
+                            )
                         model_linearization_time += (
                             perf_counter() - started_linearization
                         )
@@ -418,52 +470,57 @@ class MPCController:
             command = np.zeros(6, dtype=np.float64)
             self._nominal_controls.fill(0.0)
             used_fallback = True
-        started_rollout = perf_counter()
-        predicted_states = self._rollout(state, self._nominal_controls)
-        rollout_time += perf_counter() - started_rollout
         if self._slack is not None and self._slack.value is not None:
             slack_values = np.asarray(self._slack.value, dtype=np.float64)
             maximum_slack = float(np.max(slack_values))
             total_slack = float(np.sum(slack_values))
         else:
             maximum_slack = total_slack = 0.0
-        predicted_minimum_margin = (
-            min(
-                float(np.min(normalized_truth_margins(item, self.config.task)))
-                for item in predicted_states[1:]
-            )
-            if self.config.task is not None
-            else float("nan")
-        )
-        predicted_first_step_margins = (
-            tuple(
-                float(value)
-                for value in normalized_truth_margins(
-                    predicted_states[1], self.config.task
+        if self.config.runtime_diagnostics:
+            started_rollout = perf_counter()
+            predicted_states = self._rollout(state, self._nominal_controls)
+            rollout_time += perf_counter() - started_rollout
+            predicted_minimum_margin = (
+                min(
+                    float(np.min(normalized_truth_margins(item, self.config.task)))
+                    for item in predicted_states[1:]
                 )
+                if self.config.task is not None
+                else float("nan")
             )
-            if self.config.task is not None
-            else ()
-        )
-        # Report the cost of the problem that was actually solved: under the
-        # learned terminal value the last-stage penalty is V, not the fixed
-        # diagonal one, so zero out the diagonal terminal weight and add V.
-        learned_terminal = self.config.terminal_cost_source == "learned_convex"
-        predicted_cost = nonlinear_rollout_cost(
-            predicted_states,
-            self._nominal_controls,
-            state_scales=self.config.state_scales,
-            input_scales=self.config.input_scales,
-            state_weight=self.config.state_weight,
-            input_weight=self.config.input_weight,
-            terminal_weight=0.0 if learned_terminal else self.config.terminal_weight,
-            # The same per-stage reference the objective used, so the reported
-            # cost measures the problem that was actually solved.
-            reference_state=reference_trajectory.T,
-        )
-        if learned_terminal:
-            assert self.config.terminal_value is not None
-            predicted_cost += self.config.terminal_value.value(predicted_states[-1])
+            predicted_first_step_margins = (
+                tuple(
+                    float(value)
+                    for value in normalized_truth_margins(
+                        predicted_states[1], self.config.task
+                    )
+                )
+                if self.config.task is not None
+                else ()
+            )
+            # Report the cost of the problem that was actually solved.
+            learned_terminal = self.config.terminal_cost_source == "learned_convex"
+            predicted_cost = nonlinear_rollout_cost(
+                predicted_states,
+                self._nominal_controls,
+                state_scales=self.config.state_scales,
+                input_scales=self.config.input_scales,
+                state_weight=self.config.state_weight,
+                input_weight=self.config.input_weight,
+                terminal_weight=(
+                    0.0 if learned_terminal else self.config.terminal_weight
+                ),
+                reference_state=reference_trajectory.T,
+            )
+            if learned_terminal:
+                assert self.config.terminal_value is not None
+                predicted_cost += self.config.terminal_value.value(
+                    predicted_states[-1]
+                )
+        else:
+            predicted_minimum_margin = float("nan")
+            predicted_first_step_margins = ()
+            predicted_cost = objective
         self._control_step += 1
         return command, MPCStepDiagnostics(
             status=status,

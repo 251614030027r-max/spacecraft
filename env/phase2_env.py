@@ -26,6 +26,9 @@ Phase2Mode = Literal[
     "phase1_pretrain", "full_mission", "single_phase", "single_phase_phase_sampled"
 ]
 
+A3_PREDICTION_MODEL_MISMATCH = 0.20
+A3_PREDICTION_MODEL_SEED = 260903
+
 
 def phase2_s1v2_mission_config() -> Phase2MissionConfig:
     """Return the explicit S1-v2 acquisition task, isolated from legacy S1."""
@@ -113,6 +116,16 @@ def perception_guidance_free_environment_config() -> SE3RendezvousConfig:
     )
 
 
+def deployable_planning_environment_config() -> SE3RendezvousConfig:
+    """Derive A3 from A2 with one fixed, shared prediction-model mismatch."""
+
+    return replace(
+        perception_guidance_free_environment_config(),
+        phase2_prediction_model_mismatch=A3_PREDICTION_MODEL_MISMATCH,
+        phase2_prediction_model_seed=A3_PREDICTION_MODEL_SEED,
+    )
+
+
 def terminal_phase_environment_config() -> SE3RendezvousConfig:
     """Terminal-only config retained for P0 MPC validation and later P3 reuse."""
 
@@ -132,6 +145,9 @@ def terminal_phase_environment_config() -> SE3RendezvousConfig:
 
 __all__ = [
     "Phase2Mode",
+    "A3_PREDICTION_MODEL_MISMATCH",
+    "A3_PREDICTION_MODEL_SEED",
+    "deployable_planning_environment_config",
     "make_phase2_env",
     "phase2_environment_config",
     "phase2_perception_environment_config",

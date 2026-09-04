@@ -55,6 +55,7 @@ from env.scenarios import (
     sample_phase2_mission_chaser_state,
     sample_phase2_chaser_state,
     sample_target_parameters,
+    fixed_prediction_target_parameters,
     target_initial_state,
     target_parameters,
 )
@@ -121,6 +122,10 @@ class SE3RendezvousConfig:
     # A2 single factor: keep the frozen A1 sensing/task stack, but remove the
     # corridor-guidance velocity from reward shaping and controller references.
     phase2_guidance_free: bool = False
+    # A3: a deterministic non-cooperative target model estimate. Truth target
+    # propagation remains controlled by phase2_target_model_mismatch (zero in A3).
+    phase2_prediction_model_mismatch: float = 0.0
+    phase2_prediction_model_seed: int = 0
     phase2_mission: Phase2MissionConfig = field(default_factory=Phase2MissionConfig)
     phase1_curriculum_enabled: bool = False
     phase1_curriculum_start_step: int = 5_000
@@ -429,6 +434,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             raise ValueError(
                 "guidance-free A2 requires single_phase with frozen perception"
             )
+        if not 0.0 <= c.phase2_prediction_model_mismatch < 1.0:
+            raise ValueError("prediction-model mismatch must lie in [0, 1)")
+        if c.phase2_prediction_model_seed < 0:
+            raise ValueError("prediction-model seed must be non-negative")
         if c.phase2_target_tumble_scale < 0.0:
             raise ValueError("Phase-2 target tumble scale must be non-negative")
         if c.phase2_warmup_steps < 0:
@@ -988,7 +997,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             self._relative_ekf = RelativeStateEKF(
                 self.chaser_parameters,
                 self.config.perception,
-                target_parameters=target_parameters(),
+                target_parameters=fixed_prediction_target_parameters(
+                    mismatch=self.config.phase2_prediction_model_mismatch,
+                    seed=self.config.phase2_prediction_model_seed,
+                ),
                 dt_s=self.config.dt_s,
                 gravity_options=self._gravity,
                 solver_settings=self._solver,

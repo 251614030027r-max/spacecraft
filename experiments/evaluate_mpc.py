@@ -41,7 +41,11 @@ from env.phase2_env import (
     terminal_phase_environment_config,
 )
 from env.se3_rendezvous_env import SE3RendezvousConfig, SE3RendezvousEnv
-from env.scenarios import chaser_parameters, target_parameters
+from env.scenarios import (
+    chaser_parameters,
+    fixed_prediction_target_parameters,
+    target_parameters,
+)
 from eval.metrics import main_table_metrics, summarize
 from train.configs import PURE_SAC
 
@@ -348,6 +352,10 @@ def evaluate(
     if control_state_source == "estimate" and observed_target:
         raise ValueError("G0 estimate source cannot use legacy observation errors")
     env = SE3RendezvousEnv(env_config)
+    prediction_target = fixed_prediction_target_parameters(
+        mismatch=env_config.phase2_prediction_model_mismatch,
+        seed=env_config.phase2_prediction_model_seed,
+    )
 
     def build_controller(target_params: SpacecraftParameters) -> MPCController:
         reference = RelativePredictionModel(
@@ -388,7 +396,7 @@ def evaluate(
     # rebuild the controller each episode from the env's sampled truth
     # parameters -- the feasibility control that confirms the task is solvable
     # when the model is exactly right, isolating the mismatch as the cause.
-    controller = build_controller(target_parameters())
+    controller = build_controller(prediction_target)
     records: list[dict[str, Any]] = []
     all_solve_times: list[float] = []
     all_model_linearization_times: list[float] = []
@@ -559,10 +567,14 @@ def evaluate(
                     predicted_margins = np.asarray(
                         diagnostics.predicted_first_step_margins
                     )
-                    predicted_safe_truth_violation_count += int(
-                        np.any((predicted_margins >= 0.0) & (actual_margins < 0.0))
-                    )
-                    compared_constraint_steps += 1
+                    if predicted_margins.size:
+                        predicted_safe_truth_violation_count += int(
+                            np.any(
+                                (predicted_margins >= 0.0)
+                                & (actual_margins < 0.0)
+                            )
+                        )
+                        compared_constraint_steps += 1
             all_solve_times.extend(episode_solve_times)
             all_model_linearization_times.extend(episode_model_linearization_times)
             all_rollout_times.extend(episode_rollout_times)
@@ -697,7 +709,8 @@ def evaluate(
             ),
             "qp_fallback_rate_at_most_0p02": fallback_rate <= 0.02,
             "no_predicted_safe_truth_violation": (
-                predicted_safe_truth_violation_count == 0
+                compared_constraint_steps == 0
+                or predicted_safe_truth_violation_count == 0
             ),
         }
     command_over_period_rate = mean(
@@ -773,6 +786,7 @@ def evaluate(
         "episodes": episodes,
         "base_seed": seed,
         "environment": asdict(env_config),
+        "prediction_target_parameters": asdict(prediction_target),
         "mpc_config": asdict(config),
         "gamma": GAMMA,
         "main_table": main_table_metrics(

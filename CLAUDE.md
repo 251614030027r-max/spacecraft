@@ -5,7 +5,28 @@ target. Chaser 106 kg, target 225 kg free-tumbling, 500 km / 45 deg circular
 orbit, RK45 truth with central gravity, second moments, gravity gradient and
 J2, 0.1 s control period, 200 s episode cap, +-5 N / +-0.6 N*m per axis.
 
-## Current decision -- 2026-09-03 (A2 complete; learning gate closed)
+## Current decision -- 2026-09-04 (A3 P1 negative; B gate closed)
+
+A3 removes the nominal-inertia information advantage with one fixed prediction
+model (`mismatch=0.20`, seed `260903`) shared by MPC and EKF while truth remains
+nominal. It also adds an endpoint-only online reference and a deployment path
+with analytic local linearization and no post-solve diagnostic rollout. The
+prepared P1 rows are deployable online MPC, offline estimate/truth efficiency
+bounds and an exact h50 non-real-time control.
+
+Formal P1 is negative. Deployable online analytic-local h20 completed 60/60
+with zero truth-geometry violations, median time 65.05 s and mean force impulse
+139.87 N s. The offline episode-plan estimate row managed 59/60, 81.10 s and
+184.77 N s; online was faster and cheaper in every block. Exact online h50 was
+also 60/60 but essentially identical in quality (64.85 s, 139.52 N s) while
+serial p95 rose from 40.25 to 207.11 ms. H10/h15/h20 sensitivity is flat. The
+offline plan is not an efficiency upper bound and must be labelled only as a
+reference. No long-horizon planning gap exists under current S1-v2, so B
+training remains unauthorized. A single higher-Lambda or longer-range factor
+requires upper approval before another probe. See
+`docs/A3_DEPLOYABLE_PLANNING_P1_RESULTS.md`.
+
+## Prior decision -- 2026-09-03 (A2 complete; learning gate closed)
 
 G0 accepted the A1 perception chain after the physics-consistent EKF mean
 correction. A2 is now implemented as
