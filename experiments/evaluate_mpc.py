@@ -52,7 +52,10 @@ from env.scenarios import (
     target_parameters,
 )
 from experiments.evaluate_precapture_oracle import CoastThenMatchPlan
-from experiments.hand_guidance import HandGuidancePlan
+from experiments.hand_guidance import (
+    HAND_PLANNING_FOV_HALF_ANGLE_RAD,
+    HandGuidancePlan,
+)
 from eval.metrics import main_table_metrics, summarize
 from train.configs import PURE_SAC
 
@@ -468,6 +471,16 @@ def evaluate(
         raise ValueError(
             "external_local reference and --external-guidance must be used together"
         )
+    if external_guidance == "hand_guidance":
+        if config.precapture_task is None:
+            raise ValueError("hand guidance requires a precapture MPC task")
+        config = replace(
+            config,
+            precapture_task=replace(
+                config.precapture_task,
+                fov_half_angle_rad=HAND_PLANNING_FOV_HALF_ANGLE_RAD,
+            ),
+        )
     observed_target = (
         observation_bias_rad > 0.0
         or observation_delay_steps > 0
@@ -607,6 +620,7 @@ def evaluate(
                 }
                 minimum_normalized_margin = None
             entry_metrics: dict[str, float] | None = None
+            illegal_entry_events: list[dict[str, float]] = []
             first_violation: dict[str, Any] | None = None
             trace: list[dict[str, Any]] = []
             terminated = truncated = False
@@ -804,6 +818,32 @@ def evaluate(
                                 float(info["corridor_lateral_margin_m"]),
                             ),
                         }
+                    if bool(info["terminal_entry_crossed"]) and not bool(
+                        info["terminal_entry_legal"]
+                    ):
+                        radial_distance = float(
+                            info["entry_crossing_radial_distance_m"]
+                        )
+                        closing_speed = float(
+                            info["entry_crossing_closing_speed_m_s"]
+                        )
+                        illegal_entry_events.append(
+                            {
+                                "time_s": float(info["time_seconds"]),
+                                "off_axis_angle_rad": float(
+                                    np.arctan2(
+                                        radial_distance,
+                                        env_config.precapture_task.entry_port_axial_distance_m,
+                                    )
+                                ),
+                                "axial_velocity_m_s": -closing_speed,
+                                "closing_speed_m_s": closing_speed,
+                                "target_frame_total_speed_m_s": float(
+                                    info["entry_crossing_target_frame_speed_m_s"]
+                                ),
+                                "radial_distance_m": radial_distance,
+                            }
+                        )
                 for name, margin in current_margins.items():
                     minimum_margins[name] = min(
                         minimum_margins.get(name, margin), margin
@@ -889,6 +929,7 @@ def evaluate(
                     "illegal_terminal_entry_count": int(
                         info.get("illegal_terminal_entry_count", 0)
                     ),
+                    "illegal_terminal_entries": illegal_entry_events,
                     "guidance_plan": (
                         hand_guidance_plan.metadata()
                         if hand_guidance_plan is not None

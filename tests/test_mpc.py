@@ -633,6 +633,13 @@ def test_external_local_previews_motion_from_consecutive_3d_waypoints() -> None:
         )
 
 
+def test_first_local_minimum_returns_first_interior_turn() -> None:
+    from experiments.hand_guidance import first_local_minimum
+
+    samples = np.array([3.0, 2.0, 1.0, 1.5, 0.5, 0.7])
+    assert first_local_minimum(samples, last_index=4) == 2
+
+
 def test_precapture_outer_reference_points_camera_at_port_and_holds_waypoint() -> None:
     from controllers.mpc import precapture_mpc_config
     from dynamics.lie import se3_exp

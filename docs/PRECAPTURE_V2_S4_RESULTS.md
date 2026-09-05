@@ -1,43 +1,71 @@
-# Precapture v2 S4 hand-guidance development result
+# Precapture v2 S4 hand-guidance rework manifest
 
 Date: 2026-09-05
-Seed block: 262000--262004
-Episode limit: 300 s
-Lower layer: MPC h20, terminal weight 1000, 2 s high-level hold
+Lower layer: MPC h20, terminal weight 1000
+Public upper-layer action: target-centred inertially oriented 3D waypoint, 2 s hold
 
-The frozen hand baseline uses the oracle's outer-approach--rate-match--cross
-structure but makes its timing online from controller-visible state. It builds
-a nominal free-rigid-body forecast from the current target estimate, waits one
-nominal tumble period (152.4 s), matches direction rate over the preceding
-40 s, then switches to the terminal waypoint. It never reads the environment's
-cached future truth and has no per-seed parameters.
+## Frozen rule after S4-R
 
-The public `external_local` action remains exactly the declared 3D inertial
-position waypoint held for 2 s. The lower MPC now estimates inertial waypoint
-velocity from two consecutive accepted 3D commands and previews that motion
-inside its horizon. This was required because treating a moving body-fixed
-waypoint as inertially stationary for 2 s made its target-frame reference drift.
-With internal motion preview seed 262000 completed in 222.2 s; the otherwise
-identical stationary-hold smoke timed out at 300 s.
+The rule receives only the current controller-visible relative state and target
+pose/rate. It creates a nominal free-rigid-body forecast; it never reads
+`env._target_trajectory`, future truth, or per-seed offline optimisation.
 
-Five-seed result:
+Two changes were made and are now frozen:
 
-- completed: 4/5; truth-zero-violation completed: 4/5;
-- successful completion time: mean 219.900 s, range 216.4--222.2 s;
-- successful equivalent delta-v: mean 3.089 m/s, max 3.920 m/s;
-- serial MPC command time: mean 0.0611 s, p95 0.0689 s, max 0.3587 s;
-- four successful episodes had no active-constraint violation;
-- seed 262004 terminated at 73.6 s on an FOV margin of -0.000458 rad;
-- the aggregate development acceptance rule passes at its 0.80 threshold, but
-  this batch is not 5/5 safe and must not be reported as such;
-- every seed logged one illegal entry event before the later legal completion
-  in the four successful episodes; illegal entry does not latch or terminate.
+1. Window timing is the first interior local minimum of the angle between the
+   predicted approach axis `R(t) a` and the chaser's initial inertial direction.
+   The fixed 40 s match starts at that predicted time.
+2. MPC plans against a fixed 45 degree FOV half-angle while the environment and
+   all reported truth margins retain the real 50 degree half-angle.
+
+The rule holds the initial radius during angular repositioning, then hands the
+terminal waypoint to MPC. The external action remains 3D; the lower MPC previews
+motion by differencing consecutive accepted waypoints.
+
+## Development freeze block
+
+Seeds 262100--262104 were run once before the reporting block. No parameter was
+changed after seeing this block.
+
+- completion: 2/5; zero-active-constraint episodes: 5/5;
+- failures: distance 3 / illegal-entry episodes 1 / timeout 0 / corridor 0 / speed 0;
+- successful completion time: mean 227.5 s, range 215.8--239.2 s;
+- successful equivalent delta-v: mean 4.797 m/s, max 6.177 m/s;
+- worst real-geometry FOV margin: +0.5580 rad;
+- minimum normalized truth margin across episodes: +0.1499;
+- serial single-process command time: mean 0.0663 s, p95 0.1160 s,
+  max 0.3489 s;
+- selected first-local-minimum times: 8.6, 26.7, 28.7, 34.2, and 127.6 s.
 
 Artifact:
-`logs/precapture_planning_v2/hand_guidance_h020_tw1000_3d_5seeds.json`.
+`logs/precapture_planning_v2/hand_guidance_s4r_dev_262100_5seeds.json`.
 
-Two diagnostic attempts to slow the outer descent and to select a lower-rate
-later window did not remove seed 262004's FOV failure, so those variants were
-not frozen and their scratch outputs are excluded from the commit. S5 can use
-the same 3D interface for offline waypoint/switch-time optimisation; S4 itself
-remains an honestly negative 4/5 development baseline.
+The 45 degree planning margin removed the prior FOV-edge failure. Three
+action-driven outer-distance failures show that fixed-radius repositioning at
+17--19 m is physically expensive; this is a development result, not a reason to
+retune the frozen rule on the reporting seeds.
+
+## Known conservatism of the fixed rule
+
+These choices are intentionally left unresolved and must not be silently added
+to the classical baseline:
+
+1. Reposition radius is fixed at the initial radius; it does not decide to
+   descend before repositioning. For the same angle, moving at 6 m instead of
+   16 m reduces the idealised time and delta-v by about 39 percent under
+   `T = theta sqrt(r/a)` and `delta-v = theta sqrt(a r)`, `a = 5/106`.
+2. Only the first predicted local-minimum window is used. It does not compare
+   first versus second window cost; the known development examples have mixed
+   preference, so a fixed first-window rule necessarily chooses poorly in part
+   of the distribution.
+3. Match duration is fixed at 40 s and is not adapted to angle or radius.
+4. Outer descent behaviour is fixed and is not adapted to the remaining time
+   budget.
+5. Entry timing and fuel are not explicitly traded against one another.
+
+## Evidence boundary
+
+The earlier 262000--262004 result at commit `b6c388d` used a fixed 152.4 s wait
+and is superseded as the S4 baseline. The post-freeze 262000 reporting-block
+result is recorded separately below after it is run. Five-seed batches are
+development probes, not the required 20-episode formal report.

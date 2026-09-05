@@ -5,21 +5,31 @@ from __future__ import annotations
 import numpy as np
 
 from controllers.mpc.prediction import RelativePredictionModel
-from dynamics.lie import se3_exp, so3_exp
+from dynamics.lie import se3_exp
 from dynamics.types import SpacecraftState
 from env.task import PrecaptureTaskConfig
 from experiments.evaluate_precapture_oracle import (
     FINAL_DESCENT_TIME_S,
     FINAL_RADIUS_M,
     MATCH_TIME_S,
-    OUTER_STAGING_RADIUS_M,
     _slerp_direction,
     _smoothstep,
 )
 
 
 FINISH_RESERVE_S = 5.0
-HAND_OUTER_DESCENT_TIME_S = 80.0
+HAND_PLANNING_FOV_HALF_ANGLE_RAD = float(np.deg2rad(45.0))
+
+
+def first_local_minimum(values: np.ndarray, *, last_index: int) -> int:
+    """Return the first interior discrete local minimum up to ``last_index``."""
+
+    samples = np.asarray(values, dtype=np.float64)
+    upper = min(int(last_index), samples.size - 2)
+    for index in range(1, upper + 1):
+        if samples[index] <= samples[index - 1] and samples[index] < samples[index + 1]:
+            return index
+    raise ValueError("nominal forecast contains no admissible local-minimum window")
 
 
 class HandGuidancePlan:
@@ -57,68 +67,32 @@ class HandGuidancePlan:
             )
         self._forecast = tuple(forecast)
 
-        match_steps = int(round(MATCH_TIME_S / self._dt_s))
-        tumble_rate = float(np.linalg.norm(command_target.omega))
-        if tumble_rate <= 1.0e-9:
+        self.match_steps = int(round(MATCH_TIME_S / self._dt_s))
+        if float(np.linalg.norm(command_target.omega)) <= 1.0e-9:
             raise ValueError("hand guidance requires non-zero target tumble")
-        self.wait_period_s = float(2.0 * np.pi / tumble_rate)
-        # The rate-matching segment occupies the final 40 s of the full-period
-        # wait. Entry is still withheld until one complete nominal tumble has
-        # elapsed, while the lower layer retains enough time to descend.
-        first = int(np.ceil(self.wait_period_s / self._dt_s))
-        # Leave the same 80 s allowance used by the feasibility construction,
-        # but hand only the terminal waypoint to MPC: the lower layer owns the
-        # closed-loop descent rate because external_local carries positions,
-        # not an open-loop radial velocity profile.
-        latest = int(
+        latest_start = int(
             np.floor(
-                (max_time_s - FINAL_DESCENT_TIME_S - FINISH_RESERVE_S)
-                / self._dt_s
+                (
+                    max_time_s
+                    - MATCH_TIME_S
+                    - FINAL_DESCENT_TIME_S
+                    - FINISH_RESERVE_S
+                ) / self._dt_s
             )
         )
-        if first > latest:
-            raise ValueError("episode is too short for frozen hand guidance")
-        # The classical comparison takes the first full-period window. Unlike
-        # the feasibility plan it does not search later windows for a cheaper
-        # alignment; that decision is left to the learned upper layer.
-        self.match_end_steps = first
-        self.match_end_time_s = self.match_end_steps * self._dt_s
-        self.match_steps = match_steps
-        self.match_start_steps = self.match_end_steps - match_steps
+        axis_directions = np.asarray(
+            [state.rotation @ self._axis for state in self._forecast]
+        )
+        angles = np.arccos(
+            np.clip(axis_directions @ self.initial_direction, -1.0, 1.0)
+        )
+        self.match_start_steps = first_local_minimum(
+            angles, last_index=latest_start
+        )
         self.match_start_time_s = self.match_start_steps * self._dt_s
-        self._match_directions = self._match_direction_track(
-            self.match_end_steps, match_steps
-        )
-        self.match_entry_direction = self._match_directions[0]
-        self.match_alignment_angle_rad = float(
-            np.arccos(
-                np.clip(
-                    self.initial_direction @ self.match_entry_direction,
-                    -1.0,
-                    1.0,
-                )
-            )
-        )
-
-    def _blend(self, offset_steps: int, match_steps: int) -> float:
-        return _smoothstep(offset_steps / match_steps)
-
-    def _match_direction_track(self, end_index: int, match_steps: int) -> np.ndarray:
-        directions = np.zeros((match_steps + 1, 3), dtype=np.float64)
-        direction = self._forecast[end_index].rotation @ self._axis
-        directions[match_steps] = direction
-        for offset in range(match_steps, 0, -1):
-            index = end_index - offset
-            sample = self._forecast[max(index, 0)]
-            omega_inertial = sample.rotation @ sample.omega
-            rate = self._blend(offset, match_steps) * omega_inertial
-            direction = so3_exp(-rate * self._dt_s) @ direction
-            direction /= np.linalg.norm(direction)
-            directions[offset - 1] = direction
-        return directions
-
-    def _match_entry_direction(self, end_index: int, match_steps: int) -> np.ndarray:
-        return self._match_direction_track(end_index, match_steps)[0]
+        self.match_end_steps = self.match_start_steps + self.match_steps
+        self.match_end_time_s = self.match_end_steps * self._dt_s
+        self.window_alignment_angle_rad = float(angles[self.match_start_steps])
 
     def _target_rotation(self, time_s: float) -> np.ndarray:
         index = int(round(time_s / self._dt_s))
@@ -133,28 +107,23 @@ class HandGuidancePlan:
         return "cross"
 
     def _radius(self, time_s: float) -> float:
-        if time_s <= HAND_OUTER_DESCENT_TIME_S:
-            fraction = _smoothstep(time_s / HAND_OUTER_DESCENT_TIME_S)
-            return self.initial_radius_m + fraction * (
-                OUTER_STAGING_RADIUS_M - self.initial_radius_m
-            )
         if time_s <= self.match_end_time_s:
-            return OUTER_STAGING_RADIUS_M
+            return self.initial_radius_m
         return FINAL_RADIUS_M
 
     def _inertial_direction(self, time_s: float) -> np.ndarray:
         if time_s <= self.match_start_time_s:
-            fraction = _smoothstep(
-                time_s / max(self.match_start_time_s, self._dt_s)
-            )
-            return _slerp_direction(
-                self.initial_direction, self.match_entry_direction, fraction
-            )
+            return self.initial_direction
         if time_s >= self.match_end_time_s:
             return self._target_rotation(time_s) @ self._axis
-        offset = int(round((time_s - self.match_start_time_s) / self._dt_s))
-        offset = int(np.clip(offset, 0, self.match_steps))
-        return self._match_directions[offset]
+        fraction = _smoothstep(
+            (time_s - self.match_start_time_s) / MATCH_TIME_S
+        )
+        return _slerp_direction(
+            self.initial_direction,
+            self._target_rotation(time_s) @ self._axis,
+            fraction,
+        )
 
     def _position_reference(self, time_s: float) -> np.ndarray:
         time_s = max(float(time_s), 0.0)
@@ -168,14 +137,13 @@ class HandGuidancePlan:
     def metadata(self) -> dict[str, float | str]:
         return {
             "policy": "frozen_online_nominal_coast_match_cross",
-            "outer_staging_radius_m": OUTER_STAGING_RADIUS_M,
-            "outer_descent_time_s": HAND_OUTER_DESCENT_TIME_S,
-            "full_tumble_wait_s": self.wait_period_s,
+            "fixed_reposition_radius_m": self.initial_radius_m,
             "match_duration_s": MATCH_TIME_S,
             "selected_match_start_s": self.match_start_time_s,
             "selected_match_end_s": self.match_end_time_s,
             "closed_loop_descent_allowance_s": FINAL_DESCENT_TIME_S,
             "terminal_waypoint_switch_s": self.match_end_time_s,
-            "match_alignment_angle_rad": self.match_alignment_angle_rad,
-            "window_rule": "first_full_nominal_tumble_period",
+            "window_alignment_angle_rad": self.window_alignment_angle_rad,
+            "window_rule": "first_local_minimum_of_axis_to_chaser_direction",
+            "planning_fov_half_angle_rad": HAND_PLANNING_FOV_HALF_ANGLE_RAD,
         }
