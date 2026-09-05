@@ -24,8 +24,16 @@ Artifacts:
 - `logs/precapture_planning_v2/pure_mpc_h050_tw1000_5seeds.json`
 - `logs/precapture_planning_v2/curve_a_divergence_seed99.json`
 
-The curve-A artifact is a separate fixed diagnostic required by M3: at 16 m,
-the initial target-frame angular rate is 0.08 rad/s and the applied wrench is
-zero. It reaches 30.083 m at 19.9 s and terminates as `distance_failure`, not
-`outer_speed_failure`. It demonstrates the force-limited outer-divergence
-mechanism and must not be labeled as a Pure-MPC rollout.
+The curve-A artifact is a separate, constructed mechanism illustration required
+by M3: at 16 m, the initial target-frame angular rate is 0.08 rad/s and the
+applied wrench is zero. It reaches 30.083 m at 19.9 s and terminates as
+`distance_failure`, not `outer_speed_failure`. Because the zero action is imposed
+as an initial-condition diagnostic rather than produced by a controller, this
+artifact is not an action-driven failure curve and must not be labeled as a
+Pure-MPC rollout or used as the controller-performance denominator. A genuine
+action-driven curve A remains unmeasured in S3.
+
+The proposed 3 x 3 timing scan is **NOT DONE** as a reportable experiment. A
+discarded diagnostic draft selected the same downstream window at all nine
+points, so it did not identify a timing-cost surface. It is not committed
+evidence and supports no comparative or optimality claim.
