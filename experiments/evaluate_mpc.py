@@ -764,12 +764,18 @@ def evaluate(
                     )
                     if (
                         entry_metrics is None
-                        and bool(info["terminal_region_active"])
+                        and bool(info["terminal_entry_legal"])
                     ):
                         entry_metrics = {
                             "terminal_region_entry_time_s": float(info["time_seconds"]),
                             "entry_target_frame_speed_m_s": float(
-                                info["target_frame_speed_m_s"]
+                                info["entry_crossing_target_frame_speed_m_s"]
+                            ),
+                            "entry_closing_speed_m_s": float(
+                                info["entry_crossing_closing_speed_m_s"]
+                            ),
+                            "entry_disc_radial_distance_m": float(
+                                info["entry_crossing_radial_distance_m"]
                             ),
                             "entry_attitude_error_rad": float(
                                 info["attitude_error_rad"]
@@ -799,7 +805,7 @@ def evaluate(
                             relative_to_vector(env.relative),
                             config.precapture_task,
                             target_angular_velocity_rad_s=env.target_state.omega,
-                            terminal_latched=bool(controller_terminal_latched),
+                            terminal_latched=bool(info["terminal_region_active"]),
                         )
                         if config.precapture_task is not None
                         else normalized_truth_margins(
@@ -809,7 +815,11 @@ def evaluate(
                     predicted_margins = np.asarray(
                         diagnostics.predicted_first_step_margins
                     )
-                    if predicted_margins.size:
+                    # The entry event changes the active row set after this
+                    # command was solved; compare like-for-like on all other steps.
+                    if predicted_margins.size and not bool(
+                        info.get("terminal_entry_crossed", False)
+                    ):
                         predicted_safe_truth_violation_count += int(
                             np.any(
                                 (predicted_margins >= 0.0)
@@ -860,6 +870,9 @@ def evaluate(
                     "position_success": bool(info["position_success"]),
                     "distance_failure": bool(info["distance_failure"]),
                     "time_failure": bool(info["time_failure"]),
+                    "illegal_terminal_entry_count": int(
+                        info.get("illegal_terminal_entry_count", 0)
+                    ),
                     "truth_geometry_zero_violation_completed": bool(
                         info["completed"] and zero_violation
                     ),
@@ -959,6 +972,9 @@ def evaluate(
         "time_failure",
     )
     rates = {key: mean(float(row[key]) for row in records) for key in rate_keys}
+    rates["illegal_terminal_entry"] = mean(
+        float(row["illegal_terminal_entry_count"] > 0) for row in records
+    )
     if config.task is not None or config.precapture_task is not None:
         rates["constraint_success"] = mean(
             float(row["constraint_success"]) for row in records
@@ -1002,6 +1018,26 @@ def evaluate(
             "total_speed_violation_steps",
             "closing_speed_violation_steps",
         )
+    }
+    failure_mode_episode_counts = {
+        "distance_failure": sum(bool(row["distance_failure"]) for row in records),
+        "illegal_terminal_entry": sum(
+            int(row["illegal_terminal_entry_count"] > 0) for row in records
+        ),
+        "timeout": sum(bool(row["time_failure"]) for row in records),
+        "corridor": violation_episode_counts["corridor_violation_steps"],
+        "speed": sum(
+            any(
+                int(row.get(name, 0)) > 0
+                for name in (
+                    "outer_speed_violation_steps",
+                    "outer_radial_violation_steps",
+                    "total_speed_violation_steps",
+                    "closing_speed_violation_steps",
+                )
+            )
+            for row in records
+        ),
     }
     perception_metrics = None
     if env_config.perception is not None:
@@ -1094,6 +1130,7 @@ def evaluate(
                 "truth_geometry_zero_violation_completion"
             ],
             "violation_episode_counts": violation_episode_counts,
+            "failure_mode_episode_counts": failure_mode_episode_counts,
         },
         "perception": perception_metrics,
         "controller_compute": {

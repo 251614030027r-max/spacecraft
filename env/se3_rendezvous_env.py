@@ -72,9 +72,11 @@ from env.task import (
     PrecaptureMetrics,
     PrecaptureTaskConfig,
     TaskMetrics,
+    TerminalEntryEvaluation,
     compute_mission_metrics,
     compute_task_metrics,
     compute_precapture_metrics,
+    evaluate_terminal_entry_crossing,
 )
 from env.termination import ErrorMetrics, SuccessThresholds, compute_error_metrics
 
@@ -367,6 +369,8 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._phase1_curriculum_window_successes = 0
         self._mission_phase = 0
         self._terminal_region_entered = False
+        self._illegal_terminal_entry_count = 0
+        self._terminal_entry_evaluation: TerminalEntryEvaluation | None = None
         self._waypoint_reached = False
         self._constraint_success = True
         constraint_names = (
@@ -889,6 +893,8 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._resolve_episode_envelope()
         self._select_phase2_stage()
         self._terminal_region_entered = False
+        self._illegal_terminal_entry_count = 0
+        self._terminal_entry_evaluation = None
         if self.config.phase2_mission_enabled:
             # single_phase starts already in the terminal phase, so the task
             # constraints are live from the first step and the Waypoint, its bonus
@@ -942,8 +948,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         # reproducible from the episode seed and recorded in info. None keeps the
         # single deterministic realisation used everywhere else.
         if self.config.phase2_target_phase_sampling:
-            self._episode_target_phase_seed = int(
-                self.np_random.integers(0, 2**31 - 1)
+            self._episode_target_phase_seed = (
+                int(seed)
+                if self.config.precapture_planning_enabled and seed is not None
+                else int(self.np_random.integers(0, 2**31 - 1))
             )
         else:
             self._episode_target_phase_seed = None
@@ -1162,8 +1170,8 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 self.config.precapture_initial_range_min_m
                 <= precapture_metrics.target_center_distance_m
                 <= self.config.precapture_initial_range_max_m
-                and precapture_metrics.target_center_distance_m
-                > self.config.precapture_task.terminal_activation_range_m
+                and precapture_metrics.port_axial_distance_m
+                > self.config.precapture_task.entry_port_axial_distance_m
                 and precapture_metrics.corridor_lateral_margin_m < 0.0
                 and precapture_metrics.keepout_margin_m > 0.0
                 and precapture_metrics.fov_margin_rad >= 0.0
@@ -1295,6 +1303,35 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 <= self.config.precapture_task.completion_speed_m_s
             ),
             "terminal_region_active": metrics.terminal_region_active,
+            "terminal_entry_crossed": bool(
+                self._terminal_entry_evaluation is not None
+                and self._terminal_entry_evaluation.crossed
+            ),
+            "terminal_entry_legal": bool(
+                self._terminal_entry_evaluation is not None
+                and self._terminal_entry_evaluation.legal
+            ),
+            "illegal_terminal_entry": bool(
+                self._terminal_entry_evaluation is not None
+                and self._terminal_entry_evaluation.crossed
+                and not self._terminal_entry_evaluation.legal
+            ),
+            "illegal_terminal_entry_count": self._illegal_terminal_entry_count,
+            "entry_crossing_radial_distance_m": (
+                None
+                if self._terminal_entry_evaluation is None
+                else self._terminal_entry_evaluation.radial_distance_m
+            ),
+            "entry_crossing_target_frame_speed_m_s": (
+                None
+                if self._terminal_entry_evaluation is None
+                else self._terminal_entry_evaluation.target_frame_speed_m_s
+            ),
+            "entry_crossing_closing_speed_m_s": (
+                None
+                if self._terminal_entry_evaluation is None
+                else self._terminal_entry_evaluation.closing_speed_m_s
+            ),
             "transition_speed_active": metrics.transition_speed_active,
             "active_constraints_satisfied": metrics.active_constraints_satisfied,
             "all_truth_safety_satisfied": metrics.all_truth_safety_satisfied,
@@ -1534,6 +1571,19 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         assert self.chaser_state is not None
         assert self.target_parameters is not None
         assert self.chaser_parameters is not None
+        precapture_previous = (
+            compute_precapture_metrics(
+                self.target_state,
+                self.chaser_state,
+                self.relative,
+                self.config.precapture_task,
+                terminal_region_active=False,
+            )
+            if self.config.precapture_planning_enabled
+            and not self._terminal_region_entered
+            else None
+        )
+        self._terminal_entry_evaluation = None
         chaser_previous = self.chaser_state
         transition_start_time = self.time_seconds
         control = self.scale_action(action)
@@ -1602,19 +1652,24 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 self.config.precapture_task,
                 terminal_region_active=self._terminal_region_entered,
             )
-            if (
-                not self._terminal_region_entered
-                and precapture.target_center_distance_m
-                <= self.config.precapture_task.terminal_activation_range_m
-            ):
-                self._terminal_region_entered = True
-                precapture = compute_precapture_metrics(
-                    self.target_state,
-                    self.chaser_state,
-                    self.relative,
+            if not self._terminal_region_entered and precapture_previous is not None:
+                self._terminal_entry_evaluation = evaluate_terminal_entry_crossing(
+                    precapture_previous,
+                    precapture,
                     self.config.precapture_task,
-                    terminal_region_active=True,
                 )
+                if self._terminal_entry_evaluation.crossed:
+                    if self._terminal_entry_evaluation.legal:
+                        self._terminal_region_entered = True
+                        precapture = compute_precapture_metrics(
+                            self.target_state,
+                            self.chaser_state,
+                            self.relative,
+                            self.config.precapture_task,
+                            terminal_region_active=True,
+                        )
+                    else:
+                        self._illegal_terminal_entry_count += 1
             active_margins = {
                 "keepout": precapture.keepout_margin_m,
                 "fov": precapture.fov_margin_rad,

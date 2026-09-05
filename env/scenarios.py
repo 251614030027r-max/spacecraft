@@ -437,8 +437,10 @@ def sample_precapture_planning_chaser_state(
 
     if not 0.0 < initial_range_min_m < initial_range_max_m:
         raise ValueError("precapture initial range bounds are invalid")
-    if initial_range_min_m <= task.terminal_activation_range_m:
-        raise ValueError("precapture initial range must start outside the terminal region")
+    if initial_range_min_m <= (
+        task.keepout_radius_m + task.entry_port_axial_distance_m
+    ):
+        raise ValueError("precapture initial range must start outside the entry section")
     if min(
         initial_inertial_relative_speed_max_m_s,
         pointing_error_max_rad,
@@ -459,7 +461,12 @@ def sample_precapture_planning_chaser_state(
         )
         maximum_polar = np.arccos(
             np.clip(
-                (float(axis @ task.port_position) + 0.05) / radius,
+                (
+                    float(axis @ task.port_position)
+                    + task.entry_port_axial_distance_m
+                    + 0.05
+                )
+                / radius,
                 -1.0,
                 1.0,
             )
@@ -525,7 +532,7 @@ def sample_precapture_planning_chaser_state(
         metrics = compute_precapture_metrics(target, chaser, relative, task)
         if (
             initial_range_min_m <= metrics.target_center_distance_m <= initial_range_max_m
-            and metrics.port_axial_distance_m > 0.0
+            and metrics.port_axial_distance_m > task.entry_port_axial_distance_m
             and metrics.corridor_lateral_margin_m < 0.0
             and metrics.keepout_margin_m > 0.0
             and metrics.fov_margin_rad >= 0.0

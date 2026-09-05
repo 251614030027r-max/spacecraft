@@ -227,7 +227,7 @@ def normalized_precapture_truth_margins(
         raise ValueError("target angular velocity must be finite and shape=(3,)")
     rotation, position, _ = _pose(x)
     range_m = float(np.linalg.norm(position))
-    terminal = bool(terminal_latched or range_m <= task.terminal_activation_range_m)
+    terminal = bool(terminal_latched)
     position_rate = rotation @ x[9:]
     target_frame_speed = float(np.linalg.norm(position_rate))
     inertial_relative_velocity_target = position_rate + np.cross(target_omega, position)
@@ -289,7 +289,7 @@ def normalized_precapture_constraint_margins(
     geometry = _corridor_geometry(task, corridor_facets, distance_scale_m)
     rotation, position, _ = _pose(x)
     range_m = float(np.linalg.norm(position))
-    terminal = bool(terminal_latched or range_m <= task.terminal_activation_range_m)
+    terminal = bool(terminal_latched)
     position_rate = rotation @ x[9:]
     speed = float(np.linalg.norm(position_rate))
     count = corridor_facets + 7
@@ -486,7 +486,7 @@ def linearize_precapture_constraint_margins(
     rotation, position, left_jacobian = _pose(x)
     right_jacobian = left_jacobian.T
     range_m = float(np.linalg.norm(position))
-    terminal = bool(terminal_latched or range_m <= task.terminal_activation_range_m)
+    terminal = bool(terminal_latched)
     count = corridor_facets + 7
     position_gradient = np.zeros((count, 3), dtype=np.float64)
     rate_gradient = np.zeros((count, 3), dtype=np.float64)

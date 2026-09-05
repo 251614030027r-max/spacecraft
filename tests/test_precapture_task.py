@@ -8,14 +8,22 @@ from env.scenarios import (
     sample_precapture_planning_chaser_state,
     target_initial_state,
 )
-from env.task import PrecaptureTaskConfig, compute_precapture_metrics
+from env.task import (
+    PrecaptureTaskConfig,
+    compute_precapture_metrics,
+    evaluate_terminal_entry_crossing,
+)
 from env.se3_rendezvous_env import SE3RendezvousEnv
 
 
 def test_precapture_outer_braking_profile_is_self_consistent() -> None:
     task = PrecaptureTaskConfig()
-    assert task.outer_inertial_speed_limit_m_s == 1.20
-    assert task.terminal_activation_range_m == 6.0
+    assert task.outer_inertial_speed_limit_m_s == 2.00
+    assert task.entry_port_axial_distance_m == 4.5
+    assert np.isclose(
+        task.entry_disc_radius_m,
+        task.entry_port_axial_distance_m * np.tan(task.corridor_half_angle_rad),
+    )
     assert np.isclose(task.outer_radial_closing_speed_limit(20.0), np.sqrt(0.72))
     assert np.isclose(task.outer_radial_closing_speed_limit(15.0), np.sqrt(0.52))
     assert np.isclose(task.outer_radial_closing_speed_limit(10.0), np.sqrt(0.32))
@@ -35,7 +43,7 @@ def test_precapture_sampler_restores_non_corotating_outer_states() -> None:
         metrics = compute_precapture_metrics(target, chaser, relative, task)
         assert np.all(np.isfinite(chaser.position))
         assert 15.0 <= metrics.target_center_distance_m <= 20.0
-        assert metrics.target_center_distance_m > task.terminal_activation_range_m
+        assert metrics.port_axial_distance_m > task.entry_port_axial_distance_m
         assert metrics.port_axial_distance_m > 0.0
         assert metrics.corridor_lateral_margin_m < 0.0
         assert metrics.keepout_margin_m > 0.0
@@ -85,7 +93,7 @@ def test_precapture_five_semantic_states() -> None:
     assert not outer_metrics.terminal_region_active
 
     outer_fast = outer.copy()
-    outer_fast.velocity += outer_fast.rotation.T @ np.array([1.3, 0.0, 0.0])
+    outer_fast.velocity += outer_fast.rotation.T @ np.array([2.1, 0.0, 0.0])
     outer_fast_metrics = compute_precapture_metrics(
         target, outer_fast, relative_state(target, outer_fast), task
     )
@@ -125,12 +133,54 @@ def test_precapture_five_semantic_states() -> None:
     assert completed_metrics.active_constraints_satisfied
 
 
-def test_environment_latches_terminal_region_on_entry() -> None:
-    config = replace(
-        precapture_planning_environment_config(), cache_target_trajectory=False
+def _entry_metrics(target, task, position, velocity):
+    relative = RelativeState(
+        make_transform(np.eye(3), np.asarray(position, dtype=float)),
+        np.concatenate((np.zeros(3), np.asarray(velocity, dtype=float))),
     )
-    target = target_initial_state(tumble_scale=config.phase2_target_tumble_scale)
-    chaser = _corotating_chaser(target, [-5.5, 0.0, 0.0])
+    chaser = reconstruct_chaser_state(target, relative)
+    return compute_precapture_metrics(target, chaser, relative_state(target, chaser), task)
+
+
+def test_entry_disc_crossing_semantics() -> None:
+    task = PrecaptureTaskConfig()
+    target = target_initial_state(tumble_scale=0.0)
+    previous = _entry_metrics(target, task, [-6.01, 0.0, 0.0], [0.20, 0.0, 0.0])
+    legal = _entry_metrics(target, task, [-5.99, 0.0, 0.0], [0.20, 0.0, 0.0])
+    result = evaluate_terminal_entry_crossing(previous, legal, task)
+    assert result.crossed and result.legal
+    assert result.radial_distance_m == 0.0
+
+    outside_disc_previous = _entry_metrics(
+        target, task, [-6.01, task.entry_disc_radius_m + 0.1, 0.0], [0.20, 0.0, 0.0]
+    )
+    outside_disc_current = _entry_metrics(
+        target, task, [-5.99, task.entry_disc_radius_m + 0.1, 0.0], [0.20, 0.0, 0.0]
+    )
+    illegal = evaluate_terminal_entry_crossing(
+        outside_disc_previous, outside_disc_current, task
+    )
+    assert illegal.crossed and not illegal.legal
+
+    already_inside = _entry_metrics(
+        target, task, [-5.8, 0.0, 0.0], [0.10, 0.0, 0.0]
+    )
+    assert not evaluate_terminal_entry_crossing(legal, already_inside, task).crossed
+
+
+def test_environment_latches_only_on_legal_entry_disc_crossing() -> None:
+    config = replace(
+        precapture_planning_environment_config(),
+        cache_target_trajectory=False,
+        phase2_target_phase_sampling=False,
+        include_j2=False,
+    )
+    target = target_initial_state(tumble_scale=0.0)
+    relative = RelativeState(
+        make_transform(np.eye(3), np.array([-6.005, 0.0, 0.0])),
+        np.array([0.0, 0.0, 0.0, 0.10, 0.0, 0.0]),
+    )
+    chaser = reconstruct_chaser_state(target, relative)
     env = SE3RendezvousEnv(config)
     _, reset_info = env.reset(
         seed=11, options={"target_state": target, "chaser_state": chaser}
@@ -141,6 +191,74 @@ def test_environment_latches_terminal_region_on_entry() -> None:
     assert env._terminal_region_entered
     assert not terminated
     assert not truncated
+    retreat = RelativeState(
+        make_transform(np.eye(3), np.array([-6.10, 0.0, 0.0])),
+        np.array([0.0, 0.0, 0.0, -0.10, 0.0, 0.0]),
+    )
+    env.chaser_state = reconstruct_chaser_state(env.target_state, retreat)
+    env.relative = relative_state(env.target_state, env.chaser_state)
+    _, _, _, _, retreat_info = env.step(np.zeros(6, dtype=np.float32))
+    assert retreat_info["terminal_region_active"]
+    assert env._terminal_region_entered
+    env.close()
+
+
+def test_illegal_entry_is_counted_without_latching_or_termination() -> None:
+    config = replace(
+        precapture_planning_environment_config(),
+        cache_target_trajectory=False,
+        phase2_target_phase_sampling=False,
+        include_j2=False,
+    )
+    target = target_initial_state(tumble_scale=0.0)
+    lateral = config.precapture_task.entry_disc_radius_m + 0.1
+    relative = RelativeState(
+        make_transform(np.eye(3), np.array([-6.005, lateral, 0.0])),
+        np.array([0.0, 0.0, 0.0, 0.10, 0.0, 0.0]),
+    )
+    env = SE3RendezvousEnv(config)
+    try:
+        env.reset(
+            seed=12,
+            options={
+                "target_state": target,
+                "chaser_state": reconstruct_chaser_state(target, relative),
+            },
+        )
+        _, _, terminated, truncated, info = env.step(np.zeros(6, dtype=np.float32))
+        assert info["illegal_terminal_entry"]
+        assert info["illegal_terminal_entry_count"] == 1
+        assert not info["terminal_region_active"]
+        assert not terminated and not truncated
+    finally:
+        env.close()
+
+
+def test_precapture_completion_requires_a_prior_legal_latch() -> None:
+    config = replace(
+        precapture_planning_environment_config(),
+        cache_target_trajectory=False,
+        phase2_target_phase_sampling=False,
+        include_j2=False,
+    )
+    target = target_initial_state(tumble_scale=0.0)
+    chaser = _corotating_chaser(target, config.precapture_task.desired_position)
+    env = SE3RendezvousEnv(config)
+    try:
+        env.reset(
+            seed=13,
+            options={"target_state": target, "chaser_state": chaser},
+        )
+        for _ in range(config.precapture_task.completion_required_steps(config.dt_s) + 1):
+            _, _, terminated, truncated, info = env.step(
+                np.zeros(6, dtype=np.float32)
+            )
+            assert not terminated and not truncated
+        assert info["joint_success"]
+        assert not info["completed"]
+        assert not info["terminal_region_active"]
+    finally:
+        env.close()
 
 
 def test_precapture_episode_runs_at_the_configured_tumble_rate() -> None:
@@ -160,17 +278,82 @@ def test_precapture_episode_runs_at_the_configured_tumble_rate() -> None:
     try:
         env.reset(seed=262000)
         assert env._episode_tumble_scale == config.phase2_target_tumble_scale
-        expected = target_initial_state(
-            tumble_scale=config.phase2_target_tumble_scale
-        )
-        assert np.allclose(env.target_state.omega, expected.omega)
         rate = float(np.linalg.norm(env.target_state.omega))
         assert np.isclose(rate, 0.04123105625617661)
+        assert env._episode_target_phase_seed == 262000
         # The co-rotation force the outer staging radius demands stays inside
         # the guaranteed single-axis authority, which is what makes the task
         # solvable by something other than a body-diagonal manoeuvre.
         chaser_mass = env.chaser_parameters.mass
         assert chaser_mass * rate * rate * 7.5 < config.max_force_per_axis_n
+    finally:
+        env.close()
+
+
+def test_precapture_phase_sampling_uses_episode_seed_and_varies_beta() -> None:
+    config = precapture_planning_environment_config()
+    env = SE3RendezvousEnv(config)
+    samples = []
+    try:
+        for seed in (262000, 262001, 262002):
+            env.reset(seed=seed)
+            assert env._episode_target_phase_seed == seed
+            rate = float(np.linalg.norm(env.target_state.omega))
+            assert np.isclose(rate, 0.04123105625617661)
+            angular_momentum = env.target_state.rotation @ (
+                env.target_parameters.inertia @ env.target_state.omega
+            )
+            angular_momentum /= np.linalg.norm(angular_momentum)
+            axis_inertial = (
+                env.target_state.rotation @ config.precapture_task.approach_axis
+            )
+            beta = float(
+                np.arccos(np.clip(angular_momentum @ axis_inertial, -1.0, 1.0))
+            )
+            samples.append((env.target_state.rotation.copy(), beta))
+        env.reset(seed=262000)
+        assert np.array_equal(env.target_state.rotation, samples[0][0])
+        assert len({round(beta, 10) for _, beta in samples}) == len(samples)
+    finally:
+        env.close()
+
+
+def test_unsustainable_outer_rotation_ends_as_distance_failure() -> None:
+    """At 16 m, omega'=0.08 needs more centripetal force than one 5 N axis."""
+
+    config = replace(
+        precapture_planning_environment_config(),
+        max_time_s=60.0,
+        cache_target_trajectory=False,
+        phase2_target_phase_sampling=False,
+        precapture_fov_violation_terminates=False,
+        include_j2=False,
+    )
+    target = target_initial_state(tumble_scale=0.0)
+    commanded_rate = 0.08
+    relative = RelativeState(
+        make_transform(np.eye(3), np.array([-16.0, 0.0, 0.0])),
+        np.array([0.0, 0.0, commanded_rate, 0.0, -16.0 * commanded_rate, 0.0]),
+    )
+    env = SE3RendezvousEnv(config)
+    try:
+        env.reset(
+            seed=99,
+            options={
+                "target_state": target,
+                "chaser_state": reconstruct_chaser_state(target, relative),
+            },
+        )
+        # With no feasible centripetal command supplied, this is the limiting
+        # outward branch a short-sighted controller can expose. The 2 m/s
+        # numerical guard must not hide it as an outer-speed violation.
+        action = np.zeros(6, dtype=np.float32)
+        terminated = truncated = False
+        while not (terminated or truncated):
+            _, _, terminated, truncated, info = env.step(action)
+        assert info["distance_failure"]
+        assert not info["outer_speed_failure"]
+        assert 15.0 <= info["time_seconds"] <= 30.0
     finally:
         env.close()
 

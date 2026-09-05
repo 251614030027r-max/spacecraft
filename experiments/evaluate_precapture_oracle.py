@@ -467,6 +467,9 @@ def rollout(
                             info["outer_radial_margin_m_s"]
                         ),
                         "terminal_region_active": bool(info["terminal_region_active"]),
+                        "illegal_terminal_entry_count": int(
+                            info.get("illegal_terminal_entry_count", 0)
+                        ),
                         "force_norm_n": force_norm,
                     }
                 )
@@ -517,6 +520,21 @@ def rollout(
             "completed": bool(info["completed"]),
             "zero_truth_violation_completed": bool(info["completed"] and zero_violation),
             "zero_truth_violation": zero_violation,
+            "illegal_terminal_entry_count": int(
+                info.get("illegal_terminal_entry_count", 0)
+            ),
+            "violation_steps": {
+                name: int(info[f"{name}_violation_steps"])
+                for name in (
+                    "keepout",
+                    "fov",
+                    "outer_speed",
+                    "outer_radial",
+                    "corridor",
+                    "total_speed",
+                    "closing_speed",
+                )
+            },
             "time_s": float(info["time_seconds"]),
             "termination": {
                 key: bool(info.get(key, False))
@@ -616,6 +634,30 @@ def evaluate(
             "minimum_fov_margin_rad": min(
                 row["minimum_fov_margin_rad"] for row in records
             ),
+            "failure_mode_episode_counts": {
+                "distance_failure": sum(
+                    row["termination"]["distance_failure"] for row in records
+                ),
+                "illegal_terminal_entry": sum(
+                    row["illegal_terminal_entry_count"] > 0 for row in records
+                ),
+                "timeout": sum(row["termination"]["time_failure"] for row in records),
+                "corridor": sum(
+                    row["violation_steps"]["corridor"] > 0 for row in records
+                ),
+                "speed": sum(
+                    any(
+                        row["violation_steps"][name] > 0
+                        for name in (
+                            "outer_speed",
+                            "outer_radial",
+                            "total_speed",
+                            "closing_speed",
+                        )
+                    )
+                    for row in records
+                ),
+            },
         },
         "acceptance": {"checks": checks, "passed": all(checks.values())},
     }

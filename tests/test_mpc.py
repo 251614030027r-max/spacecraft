@@ -528,7 +528,7 @@ def test_precapture_mpc_requires_explicit_latch_and_solves() -> None:
     assert not diagnostics.used_zero_fallback
 
 
-def test_precapture_constraint_rows_follow_prediction_and_one_way_latch() -> None:
+def test_precapture_constraint_rows_follow_only_the_explicit_one_way_latch() -> None:
     from controllers.mpc.constraints import normalized_precapture_constraint_margins
     from env.task import PrecaptureTaskConfig
 
@@ -544,7 +544,7 @@ def test_precapture_constraint_rows_follow_prediction_and_one_way_latch() -> Non
         terminal_latched=False,
         corridor_facets=8,
     )
-    predicted_terminal = normalized_precapture_constraint_margins(
+    unlatched_inside = normalized_precapture_constraint_margins(
         inside,
         task,
         target_angular_velocity_rad_s=target_omega,
@@ -559,7 +559,8 @@ def test_precapture_constraint_rows_follow_prediction_and_one_way_latch() -> Non
         corridor_facets=8,
     )
     assert np.all(outer[2:4] < 1.0e3) and np.all(outer[4:] == 1.0e3)
-    assert predicted_terminal[2] == 1.0e3 and np.all(predicted_terminal[4:] < 1.0e3)
+    assert np.all(unlatched_inside[2:4] < 1.0e3)
+    assert np.all(unlatched_inside[4:] == 1.0e3)
     assert latched_outside[2] == 1.0e3 and np.all(latched_outside[4:] < 1.0e3)
 
 

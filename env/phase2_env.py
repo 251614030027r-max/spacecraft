@@ -140,6 +140,7 @@ def precapture_planning_environment_config() -> SE3RendezvousConfig:
         precapture_task=PrecaptureTaskConfig(),
         phase2_observation_schema=PRECAPTURE_PLANNING_FULL_STATE_SCHEMA,
         curriculum_enabled=False,
+        phase2_target_phase_sampling=True,
         phase2_target_tumble_scale=0.20,
         phase2_warmup_steps=0,
         observation_attitude_scale_rad=float(np.deg2rad(60.0)),

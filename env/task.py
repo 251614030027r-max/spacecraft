@@ -123,8 +123,9 @@ class PrecaptureTaskConfig:
     approach_axis_target: tuple[float, float, float] = (-1.0, 0.0, 0.0)
     camera_boresight_chaser: tuple[float, float, float] = (1.0, 0.0, 0.0)
     keepout_radius_m: float = 2.0
-    terminal_activation_range_m: float = 6.0
-    outer_inertial_speed_limit_m_s: float = 1.20
+    entry_port_axial_distance_m: float = 4.5
+    entry_disc_radius_m: float = float(4.5 * np.tan(np.deg2rad(35.0)))
+    outer_inertial_speed_limit_m_s: float = 2.00
     outer_radial_brake_accel_m_s2: float = 0.020
     corridor_half_angle_rad: float = float(np.deg2rad(35.0))
     fov_half_angle_rad: float = float(np.deg2rad(50.0))
@@ -153,7 +154,8 @@ class PrecaptureTaskConfig:
             raise ValueError("camera boresight must be unit length")
         positive = (
             self.keepout_radius_m,
-            self.terminal_activation_range_m,
+            self.entry_port_axial_distance_m,
+            self.entry_disc_radius_m,
             self.outer_inertial_speed_limit_m_s,
             self.outer_radial_brake_accel_m_s2,
             self.corridor_half_angle_rad,
@@ -461,6 +463,74 @@ class PrecaptureMetrics:
     all_truth_safety_satisfied: bool
 
 
+@dataclass(frozen=True)
+class TerminalEntryEvaluation:
+    """Truth-geometry result for one outside-to-inside entry-plane crossing."""
+
+    crossed: bool
+    legal: bool
+    interpolation_fraction: float | None
+    radial_distance_m: float | None
+    target_frame_speed_m_s: float | None
+    closing_speed_m_s: float | None
+    closing_speed_limit_m_s: float | None
+
+
+def evaluate_terminal_entry_crossing(
+    previous: PrecaptureMetrics,
+    current: PrecaptureMetrics,
+    config: PrecaptureTaskConfig,
+) -> TerminalEntryEvaluation:
+    """Evaluate a rotating target-frame entry-disc crossing from two RK45 states.
+
+    A crossing occurs only when the port-referenced axial coordinate moves from
+    outside the entry plane to its inside. Illegal crossings are diagnostic
+    events, not safety violations; the caller keeps the outer-region rules live.
+    """
+
+    plane = config.entry_port_axial_distance_m
+    previous_offset = previous.port_axial_distance_m - plane
+    current_offset = current.port_axial_distance_m - plane
+    crossed = bool(previous_offset > 0.0 and current_offset <= 0.0)
+    if not crossed:
+        return TerminalEntryEvaluation(False, False, None, None, None, None, None)
+    denominator = previous_offset - current_offset
+    fraction = float(np.clip(previous_offset / denominator, 0.0, 1.0))
+
+    def interpolate(before: float, after: float) -> float:
+        return float(before + fraction * (after - before))
+
+    radial_distance = interpolate(
+        previous.corridor_radial_distance_m,
+        current.corridor_radial_distance_m,
+    )
+    target_frame_speed = interpolate(
+        previous.target_frame_speed_m_s,
+        current.target_frame_speed_m_s,
+    )
+    closing_speed = interpolate(previous.closing_speed_m_s, current.closing_speed_m_s)
+    entry_position = config.port_position + plane * config.approach_axis
+    axial_remaining = float(
+        config.approach_axis @ (entry_position - config.desired_position)
+    )
+    closing_speed_limit = config.closing_speed_limit(axial_remaining)
+    tolerance = config.constraint_tolerance
+    legal = bool(
+        radial_distance < config.entry_disc_radius_m + tolerance
+        and target_frame_speed <= config.terminal_total_speed_limit_m_s + tolerance
+        and closing_speed <= closing_speed_limit + tolerance
+    )
+    return TerminalEntryEvaluation(
+        True,
+        legal,
+        fraction,
+        radial_distance,
+        target_frame_speed,
+        closing_speed,
+        closing_speed_limit,
+    )
+
+
 def orthogonal_plane_basis(unit_axis: FloatArray) -> tuple[FloatArray, FloatArray]:
     """Return a deterministic right-handed basis orthogonal to a unit axis."""
 
@@ -574,7 +644,8 @@ def compute_precapture_metrics(
 
     Region A limits inertial COM-relative total speed and inward radial speed
     through a dynamically self-consistent braking envelope. Target-frame speed
-    is unconstrained until the one-way terminal latch activates at 6 m.
+    is unconstrained until a legal outside-to-inside entry-disc crossing latches
+    the terminal region.
     """
 
     rotation = relative.rotation

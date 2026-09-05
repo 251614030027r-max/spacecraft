@@ -37,24 +37,29 @@ batch reported was measuring the thruster limit, not a planning defect. Every
 `tests/test_precapture_task.py::test_precapture_episode_runs_at_the_configured_tumble_rate`
 pins the rate so this cannot regress silently.
 
-## Frozen V0.2 defaults
+## Frozen V0.3 defaults
 
 - Control period 0.1 s; episode limit 300 s; distance failure at 30 m.
-- Target tumble 0.041231 rad/s; chaser 106 kg; +-5 N and +-0.6 N*m per axis.
-- Keepout radius 2 m; terminal latch radius **6 m** (was 8 m).
+- Target tumble magnitude 0.041231 rad/s; its initial attitude and angular-velocity
+  direction are sampled reproducibly from the episode seed. Chaser mass is 106 kg;
+  authority is +-5 N and +-0.6 N*m per axis.
+- Keepout radius 2 m. The terminal latch is a legal outside-to-inside crossing of the
+  rotating target-frame entry disc: port-referenced axial distance 4.5 m and disc radius
+  `4.5*tan(35 deg) = 3.15 m`. Crossing additionally requires target-frame total speed
+  <=0.35 m/s and the existing closing-speed law. An illegal crossing is counted, does
+  not latch, does not terminate and leaves the outer rules active.
 - Outside the latch two limits apply, both on the *inertial* COM-relative velocity:
-  total speed <= **1.20 m/s**, and inward radial speed <=
+  total speed <= **2.00 m/s**, and inward radial speed <=
   `sqrt(2 * 0.020 * (r - 2))` -- a braking envelope that is dynamically self-consistent
   (following it needs a constant 0.020 m/s^2, 42% of the guaranteed single-axis
   authority) and that does not constrain the tangential component, so when to begin
   co-rotating stays a free decision. It meets the terminal closing-speed limit at the
-  latch (0.400 vs 0.20 m/s at 6 m).
+  entry section (0.400 vs 0.20 m/s on its axis at 6 m centre range).
 - The 14--8 m target-frame speed transition band is **withdrawn**. It was dynamically
   infeasible: sailing along it needed 0.075--0.1375 m/s^2 against a 0.0472 m/s^2
   guarantee. Target-frame speed is unconstrained until the latch.
 - After latch, corridor, FOV, 0.35 m/s target-frame total-speed and the existing
-  range-dependent closing-speed law remain active even if a prediction retreats beyond
-  6 m.
+  range-dependent closing-speed law remain active; the latch never releases.
 - Completion remains 0.25 m position, 10 deg attitude, 0.05 m/s target-frame speed,
   0.02 rad/s relative angular speed, held for 1 s.
 - The diagnostic full-state observation is 24D. It is not the final learned-policy
@@ -66,10 +71,10 @@ pins the rate so this cannot regress silently.
 ## MPC contract
 
 Pure MPC and the future hybrid share model, horizon, solver, constraints, limits and
-terminal cost. The new QP has a fixed row count; inactive rows have zero Jacobian and a
-large positive margin. Before latch, each nominal horizon state independently activates
-terminal rows when its predicted range crosses 6 m. After latch, all horizon indices use
-terminal rows. `MPCController.command()` therefore requires an explicit
+terminal cost. The QP has a fixed row count; inactive rows have zero Jacobian and a
+large positive margin. Before a legal entry-disc event, all predicted states retain the
+outer rows; after the environment latches, all horizon indices use terminal rows.
+`MPCController.command()` therefore requires an explicit
 `terminal_latched` argument for this task.
 
 The future SAC action is a 3D waypoint in a target-centred, inertially oriented frame.
@@ -85,9 +90,11 @@ rows were filled with a target-frame rate; since the chaser's roll at reset is u
 (about 0.9 m/s at 16 m against a 1.10 scale), and it saturated the first step of every
 episode that used the interface.
 
-## Fair Pure-MPC baseline
+## Historical Pure-MPC tuning evidence
 
-The Pure-MPC row is **horizon 20 with `terminal_weight = 1000`**, fixed setpoint. A
+The following V0.2 result predates entry-disc geometry and per-episode tumble-direction
+sampling and is not a V0.3 baseline. It only records why `terminal_weight=1000` was
+frozen for the next fair comparison. The Pure-MPC row was horizon 20, fixed setpoint. A
 declared sensitivity sweep over `input_weight` and `terminal_weight` established that the
 default weighting (`0.01 / 100`) fails for a reason that is not structural: it parks
 0.264 m short of a 0.25 m tolerance even when given 400 s, which is a steady-state offset

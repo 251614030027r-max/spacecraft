@@ -42,7 +42,7 @@ def main() -> None:
             15.0 <= row.target_center_distance_m <= 20.0 for row in rows
         ),
         "outside_terminal_region": all(
-            row.target_center_distance_m > task.terminal_activation_range_m
+            row.port_axial_distance_m > task.entry_port_axial_distance_m
             for row in rows
         ),
         "outside_corridor": all(row.corridor_lateral_margin_m < 0.0 for row in rows),
