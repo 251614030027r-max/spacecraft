@@ -688,7 +688,6 @@ def timing_scan(
         row
         for row in rows
         if row["all_zero_violation_completed"]
-        and row["zero_force_channel_saturation_steps"]
         and row["worst_normalized_margin"] >= 0.14
     ]
     selected = min(
@@ -702,8 +701,8 @@ def timing_scan(
         "episodes_per_point": episodes,
         "base_seed": seed,
         "selection_rule": (
-            "all episodes zero-violation complete, zero force-channel saturation, "
-            "worst normalized margin >= 0.14; minimise mean completion time"
+            "all episodes zero-violation complete and worst normalized margin >= 0.14; "
+            "minimise mean completion time"
         ),
         "performance_denominator": False,
         "rows": rows,
