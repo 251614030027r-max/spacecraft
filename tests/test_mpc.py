@@ -592,24 +592,34 @@ def test_external_local_waypoint_is_inertially_oriented() -> None:
         )
 
 
-def test_external_local_accepts_moving_inertial_waypoint() -> None:
+def test_external_local_previews_motion_from_consecutive_3d_waypoints() -> None:
     from controllers.mpc import precapture_mpc_config
     from dynamics.lie import se3_exp, so3_exp
     from env.scenarios import target_initial_state
 
     config = precapture_mpc_config(
-        horizon_steps=5, reference_source="external_local"
+        horizon_steps=5,
+        reference_source="external_local",
+        external_reference_hold_steps=2,
     )
     controller = MPCController(
         config, LocalRelativePredictionModel(chaser_parameters())
     )
     target = target_initial_state(tumble_scale=0.20)
-    position = np.array([-12.0, 3.0, 1.0])
+    initial = np.array([-12.0, 3.0, 1.0])
     velocity = np.array([0.0, 0.2, -0.1])
+    controller._reference_trajectory(
+        np.zeros(12),
+        target_state=target,
+        external_reference=initial,
+        terminal_latched=False,
+    )
+    controller._control_step = config.external_reference_hold_steps
+    position = initial + 2.0 * config.dt_s * velocity
     reference = controller._reference_trajectory(
         np.zeros(12),
         target_state=target,
-        external_reference=np.concatenate((position, velocity)),
+        external_reference=position,
         terminal_latched=False,
     )
     for index in range(config.horizon_steps + 1):

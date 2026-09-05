@@ -159,6 +159,7 @@ class MPCController:
         self._episode_plan_initial_state: FloatArray | None = None
         self._episode_plan_start_time_s: float | None = None
         self._held_external_reference: FloatArray | None = None
+        self._held_external_velocity = np.zeros(3, dtype=np.float64)
 
     def reset(self) -> None:
         self._nominal_controls.fill(0.0)
@@ -168,6 +169,7 @@ class MPCController:
         self._episode_plan_initial_state = None
         self._episode_plan_start_time_s = None
         self._held_external_reference = None
+        self._held_external_velocity.fill(0.0)
 
     def _precapture_los_rotation(self, state: FloatArray) -> FloatArray:
         """Nearest current-roll attitude whose camera boresight points at port."""
@@ -300,21 +302,28 @@ class MPCController:
             if target_state is None:
                 raise ValueError("external_local reference requires target_state")
             waypoint = np.asarray(external_reference, dtype=np.float64)
-            if waypoint.shape not in {(3,), (6,)} or not np.all(np.isfinite(waypoint)):
+            if waypoint.shape != (3,) or not np.all(np.isfinite(waypoint)):
                 raise ValueError(
                     "external_local reference must be a finite inertial-oriented "
-                    "3D position or 6D position/velocity waypoint"
+                    "3D waypoint"
                 )
             if (
                 self._held_external_reference is None
                 or self._control_step % self.config.external_reference_hold_steps == 0
             ):
+                if self._held_external_reference is None:
+                    self._held_external_velocity.fill(0.0)
+                else:
+                    hold_time_s = (
+                        self.config.external_reference_hold_steps
+                        * self.config.dt_s
+                    )
+                    self._held_external_velocity = (
+                        waypoint - self._held_external_reference
+                    ) / hold_time_s
                 self._held_external_reference = waypoint.copy()
             waypoint = self._held_external_reference
-            waypoint_position = waypoint[:3]
-            waypoint_velocity = (
-                waypoint[3:] if waypoint.shape == (6,) else np.zeros(3)
-            )
+            waypoint_velocity = self._held_external_velocity
             # The state is (se3_log(T_rel), twist), so the reference has to be
             # written in those coordinates too: rows 3:6 are the *exponential*
             # translation rho = J_l(phi)^-1 p, not the position, and rows 9:12
@@ -335,7 +344,7 @@ class MPCController:
                     index * self.config.dt_s * target_state.omega
                 )
                 inertial_position = (
-                    waypoint_position
+                    waypoint
                     + index * self.config.dt_s * waypoint_velocity
                 )
                 positions[:, index] = target_rotation.T @ inertial_position

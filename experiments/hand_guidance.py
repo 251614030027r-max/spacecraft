@@ -161,21 +161,9 @@ class HandGuidancePlan:
         return self._radius(time_s) * self._inertial_direction(time_s)
 
     def reference(self, time_s: float) -> np.ndarray:
-        """Return one inertially oriented position/velocity waypoint."""
+        """Return the declared inertially oriented 3D waypoint action."""
 
-        time_s = max(float(time_s), 0.0)
-        position = self._position_reference(time_s)
-        step = self._dt_s
-        if time_s < step:
-            velocity = (self._position_reference(time_s + step) - position) / step
-        elif time_s < self.match_end_time_s <= time_s + step:
-            velocity = (position - self._position_reference(time_s - step)) / step
-        else:
-            velocity = (
-                self._position_reference(time_s + step)
-                - self._position_reference(time_s - step)
-            ) / (2.0 * step)
-        return np.concatenate((position, velocity))
+        return self._position_reference(time_s)
 
     def metadata(self) -> dict[str, float | str]:
         return {
