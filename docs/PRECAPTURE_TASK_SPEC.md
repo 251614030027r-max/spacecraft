@@ -93,8 +93,9 @@ default weighting (`0.01 / 100`) fails for a reason that is not structural: it p
 0.264 m short of a 0.25 m tolerance even when given 400 s, which is a steady-state offset
 of a quadratic-cost regulator. One weight change removes it. On seed 262000 the fair row
 completes in 113.1 s with equivalent delta-v 2.426 m/s, worst normalised margin +0.145
-and 81.5 ms per step (0.82x of the control period) -- faster than the offline oracle
-(228.5 s), as safe as it (+0.148), and 1.60x more expensive in propellant (1.512 m/s).
+and 81.5 ms per step (0.82x of the control period). The old comparison against the
+open-loop feasibility plan's 228.5 s is withdrawn: its coast duration contains a
+manually chosen wait and is not a valid performance denominator.
 Do not use the default-weight rows as a baseline; they are sensitivity evidence.
 
 ## Reproducible checks
@@ -104,18 +105,25 @@ python -B -m eval.validate_precapture_semantics
 python -B -m pytest -q
 ```
 
-The offline feasibility gate is the coast-then-match oracle:
+The offline feasibility certificate is a manually parameterised coast-then-match plan:
 
 ```powershell
 python -B -m experiments.evaluate_precapture_oracle --episodes 5 --seed 262000 --output OUT.json
 ```
 
-It must clear all five acceptance checks before any Pure-MPC comparison row is read as
-evidence, and before any training starts. Its purpose is narrow: it certifies that a
-cheap admissible path *exists*, so a controller that fails to find one has a planning
-defect rather than an infeasible task. It is truth-aware and offline by construction --
-it reads the cached target trajectory to choose when to synchronize -- and is therefore
-never a baseline row.
+Its radial descent takes a fixed `OUTER_DESCENT_TIME_S`; arriving early therefore means
+holding the staging radius rather than silently commanding a faster descent. Its search
+window begins no earlier than `OUTER_DESCENT_TIME_S + MATCH_TIME_S` and extends to 220 s.
+The one-dimensional timing study is a `coast_min x outer_descent_time` grid, and selects
+the fastest point that remains 5/5 zero-violation with worst normalised margin at least
++0.14. That selected time is reference data only, never a performance denominator.
+
+The target forecast is the deterministic nominal model propagated from t=0 because
+model mismatch is zero. The plan uses manually fixed constants and selects the coast
+endpoint that minimises the initial-to-match direction change. It therefore proves only
+that a cheap admissible path *exists*. It does not select an entry window for performance,
+does not access an uncertain future truth, and must not be called an optimal oracle or a
+baseline row.
 
 Long training remains prohibited until the Pure-MPC comparison block establishes the
 planning-timescale structure and supports the single Commit-5 Go/No-Go decision.

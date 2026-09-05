@@ -20,13 +20,15 @@ from eval.metrics import summarize
 
 
 # --- plan geometry -----------------------------------------------------------
-# The coast window spans more than one target rotation period (152.4 s at the
-# nominal 0.0412 rad/s tumble) so an alignment optimum always exists inside it.
-COAST_MIN_TIME_S = 90.0
-COAST_MAX_TIME_S = 170.0
+# The manually fixed open-loop plan searches a deterministic nominal target
+# forecast.  The search chooses the cheapest direction change; it is not an
+# entry-timing policy and it is not an optimal-control oracle.
+COAST_MIN_TIME_S = 120.0
+COAST_MAX_TIME_S = 220.0
 MATCH_TIME_S = 40.0
 OUTER_STAGING_RADIUS_M = 7.5
-DESCENT_TIME_S = 80.0
+OUTER_DESCENT_TIME_S = 80.0
+FINAL_DESCENT_TIME_S = 80.0
 FINAL_RADIUS_M = 3.0
 ATTITUDE_BLEND_OUTER_M = 8.0
 ATTITUDE_BLEND_INNER_M = 4.0
@@ -84,7 +86,13 @@ def _los_rotation(relative_rotation: np.ndarray, position: np.ndarray, port: np.
 
 
 class CoastThenMatchPlan:
-    """One offline, truth-aware path; deliberately not a reusable planner.
+    """One manually parameterised open-loop feasibility path.
+
+    The target forecast is deterministic because the task has zero model
+    mismatch.  The plan uses that nominal forecast to minimise the direction
+    change into the match segment.  It therefore proves only that a cheap safe
+    path exists; it does not demonstrate online entry-timing decisions and must
+    not be described as an optimal oracle.
 
     The mission is a single twice-differentiable curve in *inertial* relative
     coordinates, written as a radius profile times a unit direction:
@@ -107,13 +115,25 @@ class CoastThenMatchPlan:
     same endpoint and costs 0.0116 m/s^2.
     """
 
-    def __init__(self, env: SE3RendezvousEnv) -> None:
+    def __init__(
+        self,
+        env: SE3RendezvousEnv,
+        *,
+        coast_min_time_s: float = COAST_MIN_TIME_S,
+        coast_max_time_s: float = COAST_MAX_TIME_S,
+        outer_descent_time_s: float = OUTER_DESCENT_TIME_S,
+    ) -> None:
         assert env.relative is not None and env.target_state is not None
         trajectory = env._target_trajectory
         if trajectory is None:
-            raise RuntimeError("oracle requires the cached truth target trajectory")
+            raise RuntimeError("feasibility plan requires the cached nominal forecast")
+        if min(coast_min_time_s, coast_max_time_s, outer_descent_time_s) <= 0.0:
+            raise ValueError("plan timing constants must be positive")
+        if coast_max_time_s <= coast_min_time_s:
+            raise ValueError("coast_max_time_s must exceed coast_min_time_s")
         self._trajectory = trajectory
         self._dt_s = env.config.dt_s
+        self.outer_descent_time_s = float(outer_descent_time_s)
         task = env.config.precapture_task
         self._axis = task.approach_axis
         initial = env.target_state.rotation @ env.relative.position
@@ -121,10 +141,18 @@ class CoastThenMatchPlan:
         self.initial_direction = initial / self.initial_radius_m
 
         match_steps = int(round(MATCH_TIME_S / self._dt_s))
-        first = int(np.ceil(COAST_MIN_TIME_S / self._dt_s))
-        last = min(len(trajectory) - 1, int(np.floor(COAST_MAX_TIME_S / self._dt_s)))
+        earliest_match_end_s = self.outer_descent_time_s + MATCH_TIME_S
+        first = int(
+            np.ceil(max(float(coast_min_time_s), earliest_match_end_s) / self._dt_s)
+        )
+        last = min(
+            len(trajectory) - 1,
+            int(np.floor(float(coast_max_time_s) / self._dt_s)),
+        )
         stride = int(round(1.0 / self._dt_s))
         candidates = list(range(first, last + 1, stride))
+        if not candidates:
+            raise ValueError("coast search window contains no feasible match endpoint")
         entries = [self._match_entry_direction(index, match_steps) for index in candidates]
         scores = [float(self.initial_direction @ entry) for entry in entries]
         best = int(np.argmax(scores))
@@ -183,12 +211,16 @@ class CoastThenMatchPlan:
         return "cross"
 
     def _radius(self, time_s: float) -> float:
-        if time_s <= self.coast_time_s:
-            fraction = _smoothstep(time_s / max(self.match_start_time_s, self._dt_s))
+        if time_s <= self.outer_descent_time_s:
+            fraction = _smoothstep(time_s / self.outer_descent_time_s)
             return self.initial_radius_m + fraction * (
                 OUTER_STAGING_RADIUS_M - self.initial_radius_m
             )
-        descent = _smoothstep((time_s - self.coast_time_s) / DESCENT_TIME_S)
+        if time_s <= self.coast_time_s:
+            return OUTER_STAGING_RADIUS_M
+        descent = _smoothstep(
+            (time_s - self.coast_time_s) / FINAL_DESCENT_TIME_S
+        )
         return OUTER_STAGING_RADIUS_M + descent * (
             FINAL_RADIUS_M - OUTER_STAGING_RADIUS_M
         )
@@ -377,11 +409,22 @@ def _oracle_action(
     return action, phase, force_norm
 
 
-def rollout(seed: int) -> dict[str, Any]:
+def rollout(
+    seed: int,
+    *,
+    coast_min_time_s: float = COAST_MIN_TIME_S,
+    coast_max_time_s: float = COAST_MAX_TIME_S,
+    outer_descent_time_s: float = OUTER_DESCENT_TIME_S,
+) -> dict[str, Any]:
     env = SE3RendezvousEnv(precapture_planning_environment_config())
     try:
         _, info = env.reset(seed=seed)
-        plan = CoastThenMatchPlan(env)
+        plan = CoastThenMatchPlan(
+            env,
+            coast_min_time_s=coast_min_time_s,
+            coast_max_time_s=coast_max_time_s,
+            outer_descent_time_s=outer_descent_time_s,
+        )
         force_impulse = 0.0
         torque_impulse = 0.0
         force_norms: list[float] = []
@@ -502,8 +545,10 @@ def rollout(seed: int) -> dict[str, Any]:
             "phase_time_s": phase_time,
             "plan": {
                 "coast_time_s": plan.coast_time_s,
+                "outer_descent_time_s": plan.outer_descent_time_s,
                 "initial_radius_m": plan.initial_radius_m,
                 "match_alignment_angle_rad": plan.match_alignment_angle_rad,
+                "selection_objective": "minimise_initial_to_match_direction_change",
             },
             "trace": trace,
         }
@@ -511,30 +556,50 @@ def rollout(seed: int) -> dict[str, Any]:
         env.close()
 
 
-def evaluate(episodes: int, seed: int) -> dict[str, Any]:
-    records = [rollout(seed + episode) for episode in range(episodes)]
+def evaluate(
+    episodes: int,
+    seed: int,
+    *,
+    coast_min_time_s: float = COAST_MIN_TIME_S,
+    coast_max_time_s: float = COAST_MAX_TIME_S,
+    outer_descent_time_s: float = OUTER_DESCENT_TIME_S,
+) -> dict[str, Any]:
+    records = [
+        rollout(
+            seed + episode,
+            coast_min_time_s=coast_min_time_s,
+            coast_max_time_s=coast_max_time_s,
+            outer_descent_time_s=outer_descent_time_s,
+        )
+        for episode in range(episodes)
+    ]
     accepted = [row for row in records if row["zero_truth_violation_completed"]]
     checks = {
-        "at_least_3_of_5_zero_violation_completed": len(accepted) >= 3,
-        "accepted_delta_v_at_most_3_m_s": bool(accepted) and all(
-            row["equivalent_delta_v_m_s"] <= 3.0 for row in accepted
-        ),
-        "accepted_mean_force_at_most_2p5_n": bool(accepted) and all(
-            row["force_norm_n"]["mean"] <= 2.5 for row in accepted
-        ),
-        "accepted_fov_margin_strictly_positive": bool(accepted) and all(
-            row["minimum_fov_margin_rad"] > 0.0 for row in accepted
-        ),
-        "accepted_time_at_most_300_s": bool(accepted) and all(
-            row["time_s"] <= 300.0 for row in accepted
+        "at_least_five_episodes_evaluated": episodes >= 5,
+        "all_evaluated_episodes_zero_violation_completed": len(accepted) == episodes,
+        "zero_force_channel_saturation_steps": all(
+            row["force_channel_saturation_step_fraction"] == 0.0 for row in records
         ),
     }
     return {
         "schema_version": 1,
         "evaluated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "experiment": "precapture_coast_then_match_offline_oracle",
+        "experiment": "precapture_coast_then_match_open_loop_feasibility",
+        "interpretation": {
+            "plan_type": "manually_parameterised_open_loop_plan",
+            "forecast": "deterministic_nominal_model_from_t0",
+            "selection_objective": "minimise_direction_change_not_entry_timing",
+            "not_claimed": ["optimal_control", "online_timing_policy", "future_truth_access"],
+        },
         "episodes": episodes,
         "base_seed": seed,
+        "plan_timing": {
+            "coast_min_time_s": float(coast_min_time_s),
+            "coast_max_time_s": float(coast_max_time_s),
+            "outer_descent_time_s": float(outer_descent_time_s),
+            "match_time_s": MATCH_TIME_S,
+            "final_descent_time_s": FINAL_DESCENT_TIME_S,
+        },
         "environment": asdict(precapture_planning_environment_config()),
         "records": records,
         "aggregate": {
@@ -556,19 +621,141 @@ def evaluate(episodes: int, seed: int) -> dict[str, Any]:
     }
 
 
+def timing_scan(
+    episodes: int,
+    seed: int,
+    *,
+    coast_min_times_s: list[float],
+    outer_descent_times_s: list[float],
+    coast_max_time_s: float = COAST_MAX_TIME_S,
+) -> dict[str, Any]:
+    """Scan fixed plan timings; results are reference data, not a denominator."""
+
+    rows: list[dict[str, Any]] = []
+    for coast_min_time_s in coast_min_times_s:
+        for outer_descent_time_s in outer_descent_times_s:
+            result = evaluate(
+                episodes,
+                seed,
+                coast_min_time_s=coast_min_time_s,
+                coast_max_time_s=coast_max_time_s,
+                outer_descent_time_s=outer_descent_time_s,
+            )
+            records = result["records"]
+            all_clean = all(
+                bool(record["zero_truth_violation_completed"]) for record in records
+            )
+            worst_margin = min(
+                float(record["minimum_normalized_margin"]) for record in records
+            )
+            completion_times = [
+                float(record["time_s"]) for record in records if record["completed"]
+            ]
+            rows.append(
+                {
+                    "coast_min_time_s": float(coast_min_time_s),
+                    "outer_descent_time_s": float(outer_descent_time_s),
+                    "all_zero_violation_completed": all_clean,
+                    "worst_normalized_margin": worst_margin,
+                    "mean_completion_time_s": (
+                        mean(completion_times) if len(completion_times) == episodes else None
+                    ),
+                    "max_completion_time_s": (
+                        max(completion_times) if len(completion_times) == episodes else None
+                    ),
+                    "zero_force_channel_saturation_steps": all(
+                        record["force_channel_saturation_step_fraction"] == 0.0
+                        for record in records
+                    ),
+                    "per_seed": [
+                        {
+                            key: record[key]
+                            for key in (
+                                "seed",
+                                "completed",
+                                "zero_truth_violation_completed",
+                                "time_s",
+                                "equivalent_delta_v_m_s",
+                                "minimum_normalized_margin",
+                                "force_channel_saturation_step_fraction",
+                            )
+                        }
+                        for record in records
+                    ],
+                }
+            )
+    qualifying = [
+        row
+        for row in rows
+        if row["all_zero_violation_completed"]
+        and row["zero_force_channel_saturation_steps"]
+        and row["worst_normalized_margin"] >= 0.14
+    ]
+    selected = min(
+        qualifying,
+        key=lambda row: (row["mean_completion_time_s"], row["max_completion_time_s"]),
+        default=None,
+    )
+    return {
+        "schema_version": 1,
+        "experiment": "precapture_open_loop_timing_scan",
+        "episodes_per_point": episodes,
+        "base_seed": seed,
+        "selection_rule": (
+            "all episodes zero-violation complete, zero force-channel saturation, "
+            "worst normalized margin >= 0.14; minimise mean completion time"
+        ),
+        "performance_denominator": False,
+        "rows": rows,
+        "selected": selected,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--episodes", type=int, default=5)
     parser.add_argument("--seed", type=int, default=262000)
+    parser.add_argument("--coast-min-time", type=float, default=COAST_MIN_TIME_S)
+    parser.add_argument("--coast-max-time", type=float, default=COAST_MAX_TIME_S)
+    parser.add_argument(
+        "--outer-descent-time", type=float, default=OUTER_DESCENT_TIME_S
+    )
+    parser.add_argument("--scan-coast-min-times", type=float, nargs="+")
+    parser.add_argument("--scan-outer-descent-times", type=float, nargs="+")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.output.exists():
         raise FileExistsError(args.output)
-    result = evaluate(args.episodes, args.seed)
+    scan_requested = bool(
+        args.scan_coast_min_times or args.scan_outer_descent_times
+    )
+    if scan_requested:
+        if not args.scan_coast_min_times or not args.scan_outer_descent_times:
+            parser.error("both scan timing lists are required")
+        result = timing_scan(
+            args.episodes,
+            args.seed,
+            coast_min_times_s=args.scan_coast_min_times,
+            outer_descent_times_s=args.scan_outer_descent_times,
+            coast_max_time_s=args.coast_max_time,
+        )
+    else:
+        result = evaluate(
+            args.episodes,
+            args.seed,
+            coast_min_time_s=args.coast_min_time,
+            coast_max_time_s=args.coast_max_time,
+            outer_descent_time_s=args.outer_descent_time,
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(json.dumps({"aggregate": result["aggregate"], "acceptance": result["acceptance"]}, indent=2))
-    print(f"Precapture oracle result: {args.output.resolve()}")
+    summary = (
+        {"selected": result["selected"], "points": len(result["rows"])}
+        if scan_requested
+        else {"aggregate": result["aggregate"], "acceptance": result["acceptance"]}
+    )
+    print(json.dumps(summary, indent=2))
+    print(f"Precapture feasibility-plan result: {args.output.resolve()}")
 
 
 if __name__ == "__main__":

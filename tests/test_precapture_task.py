@@ -173,3 +173,46 @@ def test_precapture_episode_runs_at_the_configured_tumble_rate() -> None:
         assert chaser_mass * rate * rate * 7.5 < config.max_force_per_axis_n
     finally:
         env.close()
+
+
+def test_open_loop_plan_decouples_outer_descent_from_coast_wait() -> None:
+    from experiments.evaluate_precapture_oracle import (
+        MATCH_TIME_S,
+        OUTER_STAGING_RADIUS_M,
+        CoastThenMatchPlan,
+    )
+
+    env = SE3RendezvousEnv(precapture_planning_environment_config())
+    try:
+        env.reset(seed=262000)
+        plan = CoastThenMatchPlan(
+            env,
+            coast_min_time_s=160.0,
+            coast_max_time_s=220.0,
+            outer_descent_time_s=60.0,
+        )
+        assert plan.match_start_time_s >= 60.0
+        assert plan.coast_time_s >= 160.0
+        assert plan.coast_time_s <= 220.0
+        assert plan.coast_time_s - plan.match_start_time_s == MATCH_TIME_S
+        assert np.isclose(plan._radius(60.0), OUTER_STAGING_RADIUS_M)
+        assert np.isclose(plan._radius(plan.match_start_time_s), OUTER_STAGING_RADIUS_M)
+    finally:
+        env.close()
+
+
+def test_open_loop_plan_rejects_search_before_descent_and_match_fit() -> None:
+    from experiments.evaluate_precapture_oracle import CoastThenMatchPlan
+
+    env = SE3RendezvousEnv(precapture_planning_environment_config())
+    try:
+        env.reset(seed=262000)
+        with np.testing.assert_raises(ValueError):
+            CoastThenMatchPlan(
+                env,
+                coast_min_time_s=20.0,
+                coast_max_time_s=100.0,
+                outer_descent_time_s=80.0,
+            )
+    finally:
+        env.close()
