@@ -592,6 +592,37 @@ def test_external_local_waypoint_is_inertially_oriented() -> None:
         )
 
 
+def test_external_local_accepts_moving_inertial_waypoint() -> None:
+    from controllers.mpc import precapture_mpc_config
+    from dynamics.lie import se3_exp, so3_exp
+    from env.scenarios import target_initial_state
+
+    config = precapture_mpc_config(
+        horizon_steps=5, reference_source="external_local"
+    )
+    controller = MPCController(
+        config, LocalRelativePredictionModel(chaser_parameters())
+    )
+    target = target_initial_state(tumble_scale=0.20)
+    position = np.array([-12.0, 3.0, 1.0])
+    velocity = np.array([0.0, 0.2, -0.1])
+    reference = controller._reference_trajectory(
+        np.zeros(12),
+        target_state=target,
+        external_reference=np.concatenate((position, velocity)),
+        terminal_latched=False,
+    )
+    for index in range(config.horizon_steps + 1):
+        target_rotation = target.rotation @ so3_exp(
+            index * config.dt_s * target.omega
+        )
+        reference_transform = se3_exp(reference[:6, index])
+        expected = position + index * config.dt_s * velocity
+        assert np.allclose(
+            target_rotation @ reference_transform[:3, 3], expected
+        )
+
+
 def test_precapture_outer_reference_points_camera_at_port_and_holds_waypoint() -> None:
     from controllers.mpc import precapture_mpc_config
     from dynamics.lie import se3_exp

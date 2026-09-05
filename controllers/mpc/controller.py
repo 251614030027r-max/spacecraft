@@ -300,9 +300,10 @@ class MPCController:
             if target_state is None:
                 raise ValueError("external_local reference requires target_state")
             waypoint = np.asarray(external_reference, dtype=np.float64)
-            if waypoint.shape != (3,) or not np.all(np.isfinite(waypoint)):
+            if waypoint.shape not in {(3,), (6,)} or not np.all(np.isfinite(waypoint)):
                 raise ValueError(
-                    "external_local reference must be a finite inertial-oriented 3D waypoint"
+                    "external_local reference must be a finite inertial-oriented "
+                    "3D position or 6D position/velocity waypoint"
                 )
             if (
                 self._held_external_reference is None
@@ -310,6 +311,10 @@ class MPCController:
             ):
                 self._held_external_reference = waypoint.copy()
             waypoint = self._held_external_reference
+            waypoint_position = waypoint[:3]
+            waypoint_velocity = (
+                waypoint[3:] if waypoint.shape == (6,) else np.zeros(3)
+            )
             # The state is (se3_log(T_rel), twist), so the reference has to be
             # written in those coordinates too: rows 3:6 are the *exponential*
             # translation rho = J_l(phi)^-1 p, not the position, and rows 9:12
@@ -329,7 +334,11 @@ class MPCController:
                 target_rotation = target_state.rotation @ so3_exp(
                     index * self.config.dt_s * target_state.omega
                 )
-                positions[:, index] = target_rotation.T @ waypoint
+                inertial_position = (
+                    waypoint_position
+                    + index * self.config.dt_s * waypoint_velocity
+                )
+                positions[:, index] = target_rotation.T @ inertial_position
             position_rates = np.zeros((3, n + 1), dtype=np.float64)
             position_rates[:, :-1] = np.diff(positions, axis=1) / self.config.dt_s
             position_rates[:, -1] = position_rates[:, -2]

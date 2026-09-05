@@ -81,8 +81,10 @@ class MPCConfig:
     # in-QP safety constraints are identical, while evaluation scores truth
     # margins externally.
     runtime_diagnostics: bool = True
-    # external_local is target-centred and inertially oriented. A waypoint is
-    # held for one high-level period before a replacement is accepted.
+    # external_local is target-centred and inertially oriented. It accepts a
+    # 3D position or a 6D position/velocity waypoint; the latter lets a high
+    # layer express a moving local target. One command is held for one high-level
+    # period before a replacement is accepted.
     external_reference_hold_steps: int = 20
 
     def __post_init__(self) -> None:

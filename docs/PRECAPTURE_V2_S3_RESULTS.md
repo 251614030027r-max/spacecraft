@@ -1,8 +1,8 @@
 # Precapture v2 S3 development results
 
-Date: 2026-09-05  
-Seed block: 262000--262004  
-Episode limit: 300 s  
+Date: 2026-09-05
+Seed block: 262000--262004
+Episode limit: 300 s
 Terminal weight: 1000 (frozen)
 
 These are five-seed development results on the M1--M3 geometry. They are not

@@ -52,6 +52,7 @@ from env.scenarios import (
     target_parameters,
 )
 from experiments.evaluate_precapture_oracle import CoastThenMatchPlan
+from experiments.hand_guidance import HandGuidancePlan
 from eval.metrics import main_table_metrics, summarize
 from train.configs import PURE_SAC
 
@@ -138,7 +139,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--external-guidance",
-        choices=("two_stage", "oracle_plan"),
+        choices=("two_stage", "oracle_plan", "hand_guidance"),
         default=None,
         help=(
             "Oracle diagnostic for precapture_planning only. two_stage first "
@@ -148,7 +149,9 @@ def parse_args() -> argparse.Namespace:
             "open-loop coast-then-match feasibility path "
             "path through the declared waypoint interface, which measures what "
             "a perfect upper layer would be worth to this MPC at this horizon. "
-            "Neither is the learned high-level policy."
+            "hand_guidance uses a frozen coast--match--cross rule and an online "
+            "nominal free-rigid-body forecast; it never reads cached future "
+            "truth. None is the learned high-level policy."
         ),
     )
     parser.add_argument(
@@ -457,7 +460,7 @@ def evaluate(
         raise ValueError("controller_model_source must be 'nominal' or 'truth'")
     if control_state_source not in {"oracle", "estimate"}:
         raise ValueError("control_state_source must be 'oracle' or 'estimate'")
-    if external_guidance not in {None, "two_stage", "oracle_plan"}:
+    if external_guidance not in {None, "two_stage", "oracle_plan", "hand_guidance"}:
         raise ValueError("unsupported external_guidance")
     if (config.reference_source == "external_local") != (
         external_guidance is not None
@@ -565,6 +568,7 @@ def evaluate(
             oracle_plan = (
                 CoastThenMatchPlan(env) if external_guidance == "oracle_plan" else None
             )
+            hand_guidance_plan: HandGuidancePlan | None = None
             no_measurement_steps = 0
             longest_no_measurement_steps = 0
             if env_config.perception is not None:
@@ -655,6 +659,18 @@ def evaluate(
                             env_config,
                             final_stage_latched=final_guidance_stage_latched,
                         )
+                    )
+                elif external_guidance == "hand_guidance":
+                    if hand_guidance_plan is None:
+                        hand_guidance_plan = HandGuidancePlan(
+                            command_state,
+                            command_target,
+                            estimator_reference,
+                            env_config.precapture_task,
+                            max_time_s=env_config.max_time_s,
+                        )
+                    external_reference = hand_guidance_plan.reference(
+                        env.time_seconds
                     )
                 command_started = perf_counter()
                 wrench_vector, diagnostics = controller.command(
@@ -872,6 +888,11 @@ def evaluate(
                     "time_failure": bool(info["time_failure"]),
                     "illegal_terminal_entry_count": int(
                         info.get("illegal_terminal_entry_count", 0)
+                    ),
+                    "guidance_plan": (
+                        hand_guidance_plan.metadata()
+                        if hand_guidance_plan is not None
+                        else None
                     ),
                     "truth_geometry_zero_violation_completed": bool(
                         info["completed"] and zero_violation
