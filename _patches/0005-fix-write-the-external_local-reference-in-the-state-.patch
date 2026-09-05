@@ -1,0 +1,113 @@
+From 0ad0e1d099388871148f09814fbdf0ebdbe37823 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 4 Sep 2026 15:21:07 +0000
+Subject: [PATCH 5/7] fix: write the external_local reference in the state's
+ own coordinates
+
+external_local is the reference source the learned upper layer is specified to
+drive: one target-centred, inertially oriented 3D waypoint, held for
+external_reference_hold_steps. Its reference was built as
+
+    reference[3:6, index] = target_rotation.T @ waypoint
+    reference[9:12, :-1] = np.diff(reference[3:6], axis=1) / dt
+
+but the MPC state is (se3_log(T_rel), twist): rows 3:6 are the exponential
+translation rho = J_l(phi)^-1 p rather than the position, and rows 9:12 are the
+relative velocity in the *chaser body* frame rather than the target-frame
+position rate. The pose happened to survive, because
+_apply_precapture_attitude_reference round-tripped it through se3_exp/se3_log,
+but the velocity reference reached the QP in the target frame. The chaser's
+roll at reset is uniform on [-pi, pi], so that is an arbitrarily rotated
+velocity command worth up to 2 * omega * r -- about 0.9 m/s at 16 m against a
+1.10 scale.
+
+Measured with the chaser sitting exactly on its own waypoint and moving with
+it, the normalised state-versus-reference error on the velocity rows was
+0.71 / 0.37 / 0.31; it saturated the first step and pushed the optimiser off
+any waypoint it was handed, so every oracle-plan row dived from 16.4 m to 6.0 m
+in 43 s and left the corridor. After this change the same check reads
+0.002 / 0.008 / 0.004.
+
+The reference now follows the convention _endpoint_plan already used:
+se3_log(make_transform(rotation, p)) for the pose and rotation.T @ position_rate
+for the velocity, with the desired relative attitude held constant across the
+horizon so the zero relative-rate rows stay self-consistent.
+
+logs/precapture_planning_baseline/two_stage_h050.json was measured through this
+path and is void for this reason as well as for the tumble rate.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SVNZyLKYXA8fCFMPr2GXFY
+---
+ controllers/mpc/controller.py | 44 +++++++++++++++++++++++++++++------
+ 1 file changed, 37 insertions(+), 7 deletions(-)
+
+diff --git a/controllers/mpc/controller.py b/controllers/mpc/controller.py
+index 33e2d5d..2960ab4 100644
+--- a/controllers/mpc/controller.py
++++ b/controllers/mpc/controller.py
+@@ -195,6 +195,15 @@ class MPCController:
+         axis = cross / sine
+         return so3_exp(np.arctan2(sine, cosine) * axis) @ current_rotation
+ 
++    def _precapture_reference_rotation(
++        self, state: FloatArray, *, terminal_latched: bool | None
++    ) -> FloatArray:
++        """Relative attitude the reference asks for: LOS outside, docking inside."""
++
++        if self.config.precapture_task is None or bool(terminal_latched):
++            return np.eye(3)
++        return self._precapture_los_rotation(state)
++
+     def _apply_precapture_attitude_reference(
+         self,
+         reference: FloatArray,
+@@ -301,17 +310,38 @@ class MPCController:
+             ):
+                 self._held_external_reference = waypoint.copy()
+             waypoint = self._held_external_reference
+-            reference = np.zeros((12, n + 1), dtype=np.float64)
++            # The state is (se3_log(T_rel), twist), so the reference has to be
++            # written in those coordinates too: rows 3:6 are the *exponential*
++            # translation rho = J_l(phi)^-1 p, not the position, and rows 9:12
++            # are the relative velocity in the *chaser body* frame, not the
++            # target-frame position rate. Assigning p into rho and differencing
++            # it left the velocity reference expressed in the target frame; the
++            # chaser's roll at reset is uniform on [-pi, pi], so that was an
++            # arbitrarily rotated velocity command -- up to 2 * omega * r of
++            # pure error, which at 16 m saturated the first step and pushed the
++            # optimiser off any waypoint it was given. This follows the same
++            # convention as _endpoint_plan.
++            rotation = self._precapture_reference_rotation(
++                state, terminal_latched=terminal_latched
++            )
++            positions = np.zeros((3, n + 1), dtype=np.float64)
+             for index in range(n + 1):
+                 target_rotation = target_state.rotation @ so3_exp(
+                     index * self.config.dt_s * target_state.omega
+                 )
+-                reference[3:6, index] = target_rotation.T @ waypoint
+-            reference[9:12, :-1] = np.diff(reference[3:6], axis=1) / self.config.dt_s
+-            reference[9:12, -1] = reference[9:12, -2]
+-            return self._apply_precapture_attitude_reference(
+-                reference, state, terminal_latched=terminal_latched
+-            )
++                positions[:, index] = target_rotation.T @ waypoint
++            position_rates = np.zeros((3, n + 1), dtype=np.float64)
++            position_rates[:, :-1] = np.diff(positions, axis=1) / self.config.dt_s
++            position_rates[:, -1] = position_rates[:, -2]
++            reference = np.zeros((12, n + 1), dtype=np.float64)
++            for index in range(n + 1):
++                reference[:6, index] = se3_log(
++                    make_transform(rotation, positions[:, index])
++                )
++                reference[9:12, index] = rotation.T @ position_rates[:, index]
++            # A constant desired relative attitude means zero relative rate, so
++            # rows 6:9 stay zero.
++            return reference
+         if self.config.reference_source == "fixed":
+             reference = np.tile(
+                 self.config.reference_state.reshape(12, 1), (1, n + 1)
+-- 
+2.43.0
+

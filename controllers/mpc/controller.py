@@ -195,6 +195,15 @@ class MPCController:
         axis = cross / sine
         return so3_exp(np.arctan2(sine, cosine) * axis) @ current_rotation
 
+    def _precapture_reference_rotation(
+        self, state: FloatArray, *, terminal_latched: bool | None
+    ) -> FloatArray:
+        """Relative attitude the reference asks for: LOS outside, docking inside."""
+
+        if self.config.precapture_task is None or bool(terminal_latched):
+            return np.eye(3)
+        return self._precapture_los_rotation(state)
+
     def _apply_precapture_attitude_reference(
         self,
         reference: FloatArray,
@@ -301,17 +310,38 @@ class MPCController:
             ):
                 self._held_external_reference = waypoint.copy()
             waypoint = self._held_external_reference
-            reference = np.zeros((12, n + 1), dtype=np.float64)
+            # The state is (se3_log(T_rel), twist), so the reference has to be
+            # written in those coordinates too: rows 3:6 are the *exponential*
+            # translation rho = J_l(phi)^-1 p, not the position, and rows 9:12
+            # are the relative velocity in the *chaser body* frame, not the
+            # target-frame position rate. Assigning p into rho and differencing
+            # it left the velocity reference expressed in the target frame; the
+            # chaser's roll at reset is uniform on [-pi, pi], so that was an
+            # arbitrarily rotated velocity command -- up to 2 * omega * r of
+            # pure error, which at 16 m saturated the first step and pushed the
+            # optimiser off any waypoint it was given. This follows the same
+            # convention as _endpoint_plan.
+            rotation = self._precapture_reference_rotation(
+                state, terminal_latched=terminal_latched
+            )
+            positions = np.zeros((3, n + 1), dtype=np.float64)
             for index in range(n + 1):
                 target_rotation = target_state.rotation @ so3_exp(
                     index * self.config.dt_s * target_state.omega
                 )
-                reference[3:6, index] = target_rotation.T @ waypoint
-            reference[9:12, :-1] = np.diff(reference[3:6], axis=1) / self.config.dt_s
-            reference[9:12, -1] = reference[9:12, -2]
-            return self._apply_precapture_attitude_reference(
-                reference, state, terminal_latched=terminal_latched
-            )
+                positions[:, index] = target_rotation.T @ waypoint
+            position_rates = np.zeros((3, n + 1), dtype=np.float64)
+            position_rates[:, :-1] = np.diff(positions, axis=1) / self.config.dt_s
+            position_rates[:, -1] = position_rates[:, -2]
+            reference = np.zeros((12, n + 1), dtype=np.float64)
+            for index in range(n + 1):
+                reference[:6, index] = se3_log(
+                    make_transform(rotation, positions[:, index])
+                )
+                reference[9:12, index] = rotation.T @ position_rates[:, index]
+            # A constant desired relative attitude means zero relative rate, so
+            # rows 6:9 stay zero.
+            return reference
         if self.config.reference_source == "fixed":
             reference = np.tile(
                 self.config.reference_state.reshape(12, 1), (1, n + 1)

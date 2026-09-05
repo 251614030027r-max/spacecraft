@@ -1,0 +1,611 @@
+From fcb277fe8af67cf6c53592a49c2c6aac3abe9922 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 4 Sep 2026 14:16:55 +0000
+Subject: [PATCH 1/3] fix: run the precapture task at its configured tumble
+ rate, and rebuild the oracle
+
+_select_phase2_stage returns early for the precapture task, so the episode kept
+the constructor's target_tumble_scale (0.5) and ran at 0.1031 rad/s while
+precapture_planning_environment_config asked for 0.20 * 0.20616 = 0.0412 -- the
+frozen S1-v2 rate every other number in this project is measured at. At 0.1031
+rad/s sustained co-rotation costs m*omega^2*r = 1.13 N per metre, so the 5 N
+per-axis authority runs out at 4.4 m and the 8.66 N body diagonal at 7.7 m: the
+outer region was not hard, it was actuator-infeasible, which is what the 8-9 m
+MPC stall was measuring.
+
+The coast-then-match oracle is rebuilt on three defects the failing run exposed:
+
+- per-axis clipping of an over-scaled request rotated the applied force away
+  from the commanded direction, turning saturation into an outward spiral;
+  forces are now scaled by the largest normalised component, and the
+  feedforward is served before the feedback where the box binds;
+- the rotating-frame laws had no centrifugal, Coriolis or Euler feedforward, so
+  the servo had to raise the whole co-rotation bias from tracking error at a
+  gain (0.8 /s) whose linear range was 0.06 m/s;
+- the match interpolated the direction forwards in the body frame, which has to
+  sweep whatever angle the target turned through during the window (1.6 rad
+  over 40 s) and demanded 0.0545 m/s^2 against the 0.0472 m/s^2 one axis can
+  guarantee. The match is now integrated backwards from the moment the body
+  axis is where the plan needs it, ramping the rate instead of the angle:
+  0.0116 m/s^2 for the same endpoint.
+
+Oracle acceptance on seed block 262000, 5 episodes: 5/5 completed with zero
+truth violations, equivalent delta-v 1.51-2.58 m/s, mean force 0.70-1.71 N,
+worst normalised margin +0.148, worst FOV margin +0.710 rad, 159.5-239.5 s.
+All five gate checks pass.
+
+The pre-fix logs/precapture_planning_baseline/*.json were measured at 0.1031
+rad/s and cannot be compared with anything produced after this commit.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SVNZyLKYXA8fCFMPr2GXFY
+---
+ env/se3_rendezvous_env.py                 |  14 +-
+ experiments/evaluate_precapture_oracle.py | 433 ++++++++++++++--------
+ tests/test_precapture_task.py             |  32 ++
+ 3 files changed, 319 insertions(+), 160 deletions(-)
+
+diff --git a/env/se3_rendezvous_env.py b/env/se3_rendezvous_env.py
+index ec82879..5d5b4a6 100644
+--- a/env/se3_rendezvous_env.py
++++ b/env/se3_rendezvous_env.py
+@@ -543,10 +543,22 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
+             raise ValueError("Phase-2 distance-failure penalty must be non-positive")
+ 
+     def _select_phase2_stage(self) -> None:
++        if self.config.precapture_planning_enabled:
++            # The precapture task has no warmup stage and no Phase-2 reward, but
++            # its target is still a Phase-2 target. Returning here without this
++            # assignment left the episode on the constructor's
++            # `target_tumble_scale` (0.5), so the task silently ran at 0.1031
++            # rad/s while its own config asked for 0.20 * 0.20616 = 0.0412 --
++            # the frozen S1-v2 rate every other number in this project uses.
++            # At 0.1031 rad/s co-rotation needs m * omega^2 * r = 1.13 N per
++            # metre, so the 5 N per-axis authority runs out at 4.4 m and the
++            # 8.66 N body diagonal at 7.7 m: no controller can hold the outer
++            # region, which is not the difficulty this task is meant to pose.
++            self._episode_tumble_scale = self.config.phase2_target_tumble_scale
++            return
+         if (
+             not self.config.phase2_enabled
+             or self.config.phase2_mission_enabled
+-            or self.config.precapture_planning_enabled
+         ):
+             return
+         warmup = self.total_transition_count < self.config.phase2_warmup_steps
+diff --git a/experiments/evaluate_precapture_oracle.py b/experiments/evaluate_precapture_oracle.py
+index df1de9e..bc95112 100644
+--- a/experiments/evaluate_precapture_oracle.py
++++ b/experiments/evaluate_precapture_oracle.py
+@@ -13,25 +13,35 @@ from typing import Any
+ 
+ import numpy as np
+ 
+-from dynamics.lie import make_transform, se3_log
++from dynamics.lie import make_transform, se3_log, so3_exp, so3_log
+ from env.phase2_env import precapture_planning_environment_config
+ from env.se3_rendezvous_env import SE3RendezvousEnv
+ from eval.metrics import summarize
+ 
+ 
+-COAST_MIN_TIME_S = 100.0
+-COAST_MAX_TIME_S = 190.0
++# --- plan geometry -----------------------------------------------------------
++# The coast window spans more than one target rotation period (152.4 s at the
++# nominal 0.0412 rad/s tumble) so an alignment optimum always exists inside it.
++COAST_MIN_TIME_S = 90.0
++COAST_MAX_TIME_S = 170.0
++MATCH_TIME_S = 40.0
+ OUTER_STAGING_RADIUS_M = 7.5
+-MATCH_HOLD_TIME_S = 20.0
+-MATCH_CROSS_TIME_S = 10.0
+-TERMINAL_RADIUS_M = 5.8
+-OUTER_POSITION_GAIN_PER_S = 0.12
+-OUTER_VELOCITY_GAIN_PER_S = 0.80
+-TERMINAL_VELOCITY_GAIN_PER_S = 1.5
+-TERMINAL_LATERAL_GAIN_PER_S = 0.4
+-TERMINAL_AXIAL_GAIN_PER_S = 0.5
++DESCENT_TIME_S = 80.0
++FINAL_RADIUS_M = 3.0
++ATTITUDE_BLEND_OUTER_M = 8.0
++ATTITUDE_BLEND_INNER_M = 4.0
++
++# --- tracking law ------------------------------------------------------------
++# The feedforward carries the rotating-frame bias (centrifugal, Coriolis and
++# Euler terms), so the feedback only has to remove the sampled initial error.
++# Guaranteed single-axis authority is 5 N / 106 kg = 0.0472 m/s^2; the gains are
++# sized so a 0.10 m/s initial velocity error stays inside that box.
++POSITION_GAIN_PER_S2 = 0.015
++VELOCITY_GAIN_PER_S = 0.25
++FEEDBACK_ACCEL_LIMIT_M_S2 = 0.040
+ ATTITUDE_GAIN = 2.0
+ ANGULAR_RATE_GAIN = 8.0
++DERIVATIVE_STEP_S = 0.2
+ 
+ 
+ def _smoothstep(value: float) -> float:
+@@ -74,188 +84,293 @@ def _los_rotation(relative_rotation: np.ndarray, position: np.ndarray, port: np.
+ 
+ 
+ class CoastThenMatchPlan:
+-    """One offline, truth-aware path; deliberately not a reusable planner."""
++    """One offline, truth-aware path; deliberately not a reusable planner.
++
++    The mission is a single twice-differentiable curve in *inertial* relative
++    coordinates, written as a radius profile times a unit direction:
++
++    * coast -- the direction slews slowly between two inertially fixed rays
++      while the radius slides in, so the chaser pays almost nothing to hold it;
++    * match -- the direction's inertial rate ramps from zero to the target's own
++      ``omega``, which is where co-rotation is bought, once, at one radius;
++    * descent -- the direction is the body-fixed approach axis and the radius
++      slides to the desired pose, slow enough for the closing-speed limit.
++
++    The match is integrated *backwards* from the moment the body axis is where
++    the plan needs it. That is what makes it affordable: interpolating the
++    direction forwards instead (a body-frame slerp between a frozen ray and the
++    axis) has to sweep whatever angle the target has turned through during the
++    window -- 1.6 rad over 40 s here -- and the reference then swings at nearly
++    the tumble rate. Measured, that reference demanded 0.0545 m/s^2 against the
++    0.0472 m/s^2 a single axis can guarantee, so no controller could have held
++    it. Ramping the *rate* and solving for the entry direction instead keeps the
++    same endpoint and costs 0.0116 m/s^2.
++    """
+ 
+     def __init__(self, env: SE3RendezvousEnv) -> None:
+         assert env.relative is not None and env.target_state is not None
+         trajectory = env._target_trajectory
+         if trajectory is None:
+             raise RuntimeError("oracle requires the cached truth target trajectory")
++        self._trajectory = trajectory
++        self._dt_s = env.config.dt_s
+         task = env.config.precapture_task
++        self._axis = task.approach_axis
+         initial = env.target_state.rotation @ env.relative.position
+         self.initial_radius_m = float(np.linalg.norm(initial))
+         self.initial_direction = initial / self.initial_radius_m
+-        first = int(np.ceil(COAST_MIN_TIME_S / env.config.dt_s))
+-        last = min(
+-            len(trajectory) - 1 - int(0.5 * MATCH_HOLD_TIME_S / env.config.dt_s),
+-            int(np.floor(COAST_MAX_TIME_S / env.config.dt_s)),
+-        )
+-        lead_steps = int(0.5 * MATCH_HOLD_TIME_S / env.config.dt_s)
+-        scores = np.array(
+-            [
+-                self.initial_direction
+-                @ (trajectory[index + lead_steps].rotation @ task.approach_axis)
+-                for index in range(first, last + 1)
+-            ]
+-        )
+-        self.coast_steps = first + int(np.argmax(scores))
+-        self.coast_time_s = self.coast_steps * env.config.dt_s
+-        target_at_match = trajectory[self.coast_steps + lead_steps]
+-        self.match_direction = target_at_match.rotation @ task.approach_axis
++
++        match_steps = int(round(MATCH_TIME_S / self._dt_s))
++        first = int(np.ceil(COAST_MIN_TIME_S / self._dt_s))
++        last = min(len(trajectory) - 1, int(np.floor(COAST_MAX_TIME_S / self._dt_s)))
++        stride = int(round(1.0 / self._dt_s))
++        candidates = list(range(first, last + 1, stride))
++        entries = [self._match_entry_direction(index, match_steps) for index in candidates]
++        scores = [float(self.initial_direction @ entry) for entry in entries]
++        best = int(np.argmax(scores))
++        self.coast_steps = candidates[best]
++        self.coast_time_s = self.coast_steps * self._dt_s
++        self.match_steps = match_steps
++        self.match_start_steps = self.coast_steps - match_steps
++        self.match_start_time_s = self.match_start_steps * self._dt_s
++        self._match_directions = self._match_direction_track(self.coast_steps, match_steps)
++        self.match_entry_direction = self._match_directions[0]
++        self.match_direction = self._match_directions[-1]
+         self.match_alignment_angle_rad = float(
+-            np.arccos(np.clip(np.max(scores), -1.0, 1.0))
++            np.arccos(np.clip(scores[best], -1.0, 1.0))
+         )
+ 
+-    def desired_position(
+-        self,
+-        time_s: float,
+-        target_rotation: np.ndarray,
+-        approach_axis: np.ndarray,
+-    ) -> tuple[np.ndarray, str]:
++    # -- match construction ---------------------------------------------------
++    def _blend(self, offset_steps: int, match_steps: int) -> float:
++        return _smoothstep(offset_steps / match_steps)
++
++    def _match_direction_track(self, end_index: int, match_steps: int) -> np.ndarray:
++        """Unit directions over the match window, integrated backwards.
++
++        ``e(t_end)`` is the body axis; going backwards the inertial rate is
++        ``blend(t) * omega x e``, so the ramp starts inertially frozen and ends
++        exactly co-rotating, with the endpoint fixed.
++        """
++
++        directions = np.zeros((match_steps + 1, 3), dtype=np.float64)
++        state = self._trajectory[end_index]
++        direction = state.rotation @ self._axis
++        directions[match_steps] = direction
++        for offset in range(match_steps, 0, -1):
++            index = end_index - offset
++            sample = self._trajectory[max(index, 0)]
++            omega_inertial = sample.rotation @ sample.omega
++            rate = self._blend(offset, match_steps) * omega_inertial
++            direction = so3_exp(-rate * self._dt_s) @ direction
++            direction /= np.linalg.norm(direction)
++            directions[offset - 1] = direction
++        return directions
++
++    def _match_entry_direction(self, end_index: int, match_steps: int) -> np.ndarray:
++        return self._match_direction_track(end_index, match_steps)[0]
++
++    # -- trajectory -----------------------------------------------------------
++    def _target_rotation(self, time_s: float) -> np.ndarray:
++        index = int(round(time_s / self._dt_s))
++        index = int(np.clip(index, 0, len(self._trajectory) - 1))
++        return self._trajectory[index].rotation
++
++    def phase(self, time_s: float) -> str:
++        if time_s <= self.match_start_time_s:
++            return "coast"
++        if time_s <= self.coast_time_s:
++            return "match"
++        return "cross"
++
++    def _radius(self, time_s: float) -> float:
+         if time_s <= self.coast_time_s:
+-            fraction = _smoothstep(time_s / self.coast_time_s)
+-            radius = self.initial_radius_m + fraction * (
++            fraction = _smoothstep(time_s / max(self.match_start_time_s, self._dt_s))
++            return self.initial_radius_m + fraction * (
+                 OUTER_STAGING_RADIUS_M - self.initial_radius_m
+             )
+-            direction = _slerp_direction(
+-                self.initial_direction, self.match_direction, fraction
+-            )
+-            return radius * direction, "coast"
+-        match_elapsed = time_s - self.coast_time_s
+-        rotating_axis = target_rotation @ approach_axis
+-        if match_elapsed <= MATCH_HOLD_TIME_S:
+-            return OUTER_STAGING_RADIUS_M * rotating_axis, "match"
+-        cross_elapsed = match_elapsed - MATCH_HOLD_TIME_S
+-        fraction = _smoothstep(cross_elapsed / MATCH_CROSS_TIME_S)
+-        radius = OUTER_STAGING_RADIUS_M + fraction * (
+-            TERMINAL_RADIUS_M - OUTER_STAGING_RADIUS_M
++        descent = _smoothstep((time_s - self.coast_time_s) / DESCENT_TIME_S)
++        return OUTER_STAGING_RADIUS_M + descent * (
++            FINAL_RADIUS_M - OUTER_STAGING_RADIUS_M
+         )
+-        return radius * rotating_axis, "cross"
+ 
++    def _inertial_direction(self, time_s: float) -> np.ndarray:
++        if time_s <= self.match_start_time_s:
++            fraction = _smoothstep(time_s / max(self.match_start_time_s, self._dt_s))
++            return _slerp_direction(
++                self.initial_direction, self.match_entry_direction, fraction
++            )
++        if time_s >= self.coast_time_s:
++            return self._target_rotation(time_s) @ self._axis
++        offset = int(round((time_s - self.match_start_time_s) / self._dt_s))
++        offset = int(np.clip(offset, 0, self.match_steps))
++        return self._match_directions[offset]
+ 
+-def _terminal_target_velocity(env: SE3RendezvousEnv) -> np.ndarray:
+-    relative = env.relative
+-    assert relative is not None
+-    task = env.config.precapture_task
+-    error = relative.position - task.desired_position
+-    axial_remaining = float(task.approach_axis @ error)
+-    lateral = error - axial_remaining * task.approach_axis
+-    axial_speed = min(
+-        0.5 * task.closing_speed_limit(axial_remaining),
+-        TERMINAL_AXIAL_GAIN_PER_S * max(axial_remaining, 0.0),
+-    )
+-    desired = (
+-        -axial_speed * task.approach_axis
+-        - TERMINAL_LATERAL_GAIN_PER_S * lateral
++    def body_position(self, time_s: float) -> np.ndarray:
++        """Desired relative position in target body coordinates."""
++
++        time_s = float(time_s)
++        radius = self._radius(max(time_s, 0.0))
++        direction = self._inertial_direction(max(time_s, 0.0))
++        return radius * (self._target_rotation(max(time_s, 0.0)).T @ direction)
++
++    def body_reference(self, time_s: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
++        """Return ``(p_d, dp_d/dt, d2p_d/dt2)`` in target body coordinates."""
++
++        step = DERIVATIVE_STEP_S
++        centre = self.body_position(time_s)
++        if time_s < step:
++            # The cached target trajectory does not extend before t = 0, so a
++            # central difference there silently differentiates a constant and
++            # reports an acceleration two orders too large.
++            first = self.body_position(time_s + step)
++            second = self.body_position(time_s + 2.0 * step)
++            third = self.body_position(time_s + 3.0 * step)
++            velocity = (-3.0 * centre + 4.0 * first - second) / (2.0 * step)
++            acceleration = (
++                2.0 * centre - 5.0 * first + 4.0 * second - third
++            ) / (step * step)
++            return centre, velocity, acceleration
++        ahead = self.body_position(time_s + step)
++        behind = self.body_position(time_s - step)
++        velocity = (ahead - behind) / (2.0 * step)
++        acceleration = (ahead - 2.0 * centre + behind) / (step * step)
++        return centre, velocity, acceleration
++
++    def target_angular_acceleration(self, time_s: float) -> np.ndarray:
++        index = int(round(time_s / self._dt_s))
++        last = len(self._trajectory) - 1
++        ahead = int(np.clip(index + 1, 0, last))
++        behind = int(np.clip(index - 1, 0, last))
++        span = (ahead - behind) * self._dt_s
++        if span <= 0.0:
++            return np.zeros(3)
++        return (self._trajectory[ahead].omega - self._trajectory[behind].omega) / span
++
++
++def _desired_relative_rotation(
++    relative_rotation: np.ndarray,
++    position: np.ndarray,
++    port: np.ndarray,
++    range_m: float,
++) -> np.ndarray:
++    """LOS pointing far out, blended onto the docking attitude inside 8 m.
++
++    Completion is scored against ``R_rel = I``, so the free roll the LOS law
++    keeps has to be spent before the desired pose. Blending along the geodesic
++    from ``I`` avoids the discontinuity a hard switch at the latch would inject
++    into the attitude servo.
++    """
++
++    line_of_sight = _los_rotation(relative_rotation, position, port)
++    blend = _smoothstep(
++        (ATTITUDE_BLEND_OUTER_M - float(range_m))
++        / (ATTITUDE_BLEND_OUTER_M - ATTITUDE_BLEND_INNER_M)
+     )
+-    cap = 0.6 * task.terminal_total_speed_limit_m_s
+-    norm = float(np.linalg.norm(desired))
+-    return desired if norm <= cap else desired * (cap / norm)
++    if blend <= 0.0:
++        return line_of_sight
++    if blend >= 1.0:
++        return np.eye(3)
++    return so3_exp((1.0 - blend) * so3_log(line_of_sight, project=True))
++
++
++def _normalized_force(body_force: np.ndarray, max_force_per_axis_n: float) -> np.ndarray:
++    """Scale into the actuator box without rotating the commanded direction.
++
++    Per-axis clipping is what turned the previous oracle's saturated approach
++    into an outward spiral: once the request exceeded the box the applied force
++    no longer pointed where the law asked. Dividing by the largest normalised
++    component keeps the direction exactly and still reaches the box corner.
++    """
++
++    normalized = body_force / max_force_per_axis_n
++    peak = float(np.max(np.abs(normalized)))
++    if peak > 1.0:
++        normalized = normalized / peak
++    return normalized
++
++
++def _allocate_force(
++    feedforward_n: np.ndarray,
++    feedback_n: np.ndarray,
++    max_force_per_axis_n: float,
++) -> np.ndarray:
++    """Spend the actuator box on the feedforward first, then on the feedback.
++
++    The feedforward is what holds the chaser on a rotating orbit at all; giving
++    up part of it to serve a transient tracking error is how a saturated step
++    turns into a divergence. Where the sum does not fit, the feedback is scaled
++    -- never rotated -- until it does.
++    """
++
++    if float(np.max(np.abs(feedforward_n))) >= max_force_per_axis_n:
++        return _normalized_force(feedforward_n + feedback_n, max_force_per_axis_n)
++    scale = 1.0
++    for axis in range(3):
++        demand = float(feedback_n[axis])
++        if abs(demand) <= 1.0e-12:
++            continue
++        bound = max_force_per_axis_n if demand > 0.0 else -max_force_per_axis_n
++        scale = min(scale, (bound - float(feedforward_n[axis])) / demand)
++    scale = float(np.clip(scale, 0.0, 1.0))
++    return (feedforward_n + scale * feedback_n) / max_force_per_axis_n
+ 
+ 
+ def _oracle_action(
+     env: SE3RendezvousEnv, plan: CoastThenMatchPlan
+ ) -> tuple[np.ndarray, str, float]:
++    """Feedback-linearising tracker for ``plan`` in the rotating target frame.
++
++    With ``p`` the relative position in target body coordinates and ``omega``
++    the target body rate, the inertial acceleration the thrusters must produce
++    is ``p_ddot + 2 omega x p_dot + omega_dot x p + omega x (omega x p)``. The
++    three fictitious terms are the whole cost of co-rotation, so feeding them
++    forward leaves the feedback loop with nothing but the sampled initial error
++    -- and keeps the loop stable when it does saturate.
++    """
++
+     assert env.relative is not None and env.target_state is not None
+     assert env.chaser_state is not None and env.chaser_parameters is not None
+     task = env.config.precapture_task
+     relative = env.relative
+-    if env._terminal_region_entered:
+-        phase = "terminal"
+-        desired_target_velocity = _terminal_target_velocity(env)
+-        target_velocity = relative.rotation @ relative.velocity
+-        target_force = env.chaser_parameters.mass * TERMINAL_VELOCITY_GAIN_PER_S * (
+-            desired_target_velocity - target_velocity
+-        )
+-        body_force = relative.rotation.T @ target_force
+-        desired_relative_rotation = np.eye(3)
+-    else:
+-        desired_position, phase = plan.desired_position(
+-            env.time_seconds,
+-            env.target_state.rotation,
+-            task.approach_axis,
+-        )
+-        desired_relative_rotation = _los_rotation(
+-            relative.rotation, relative.position, task.port_position
+-        )
+-        if phase == "cross":
+-            staging_position = TERMINAL_RADIUS_M * task.approach_axis
+-            error = relative.position - staging_position
+-            axial_remaining = float(task.approach_axis @ error)
+-            lateral = error - axial_remaining * task.approach_axis
+-            axial_speed = min(0.10, 0.15 * max(axial_remaining, 0.0))
+-            desired_target_velocity = (
+-                -axial_speed * task.approach_axis - 0.25 * lateral
+-            )
+-            speed = float(np.linalg.norm(desired_target_velocity))
+-            if speed > 0.18:
+-                desired_target_velocity *= 0.18 / speed
+-            target_velocity = relative.rotation @ relative.velocity
+-            target_force = env.chaser_parameters.mass * 0.8 * (
+-                desired_target_velocity - target_velocity
+-            )
+-            body_force = relative.rotation.T @ target_force
+-        else:
+-            next_position, _ = plan.desired_position(
+-                env.time_seconds + env.config.dt_s,
+-                env._target_trajectory[
+-                    min(env.step_count + 1, len(env._target_trajectory) - 1)
+-                ].rotation,
+-                task.approach_axis,
+-            )
+-            desired_velocity = (next_position - desired_position) / env.config.dt_s
+-            actual_position = env.chaser_state.position - env.target_state.position
+-            actual_velocity = (
+-                env.chaser_state.rotation @ env.chaser_state.velocity
+-                - env.target_state.rotation @ env.target_state.velocity
+-            )
+-            position_gain = OUTER_POSITION_GAIN_PER_S
+-            velocity_gain = OUTER_VELOCITY_GAIN_PER_S
+-            if phase == "match":
+-                elapsed = env.time_seconds - plan.coast_time_s
+-                match_fraction = _smoothstep(elapsed / MATCH_HOLD_TIME_S)
+-                target_omega_inertial = (
+-                    env.target_state.rotation @ env.target_state.omega
+-                )
+-                desired_velocity = match_fraction * np.cross(
+-                    target_omega_inertial, actual_position
+-                )
+-                position_gain = 0.0
+-                velocity_gain = 0.55
+-            commanded_velocity = desired_velocity + position_gain * (
+-                desired_position - actual_position
+-            )
+-            radial_direction = actual_position / np.linalg.norm(actual_position)
+-            radial_closing = float(-radial_direction @ commanded_velocity)
+-            radial_limit = 0.75 * task.outer_radial_closing_speed_limit(
+-                np.linalg.norm(actual_position)
+-            )
+-            if radial_closing > radial_limit:
+-                commanded_velocity += (
+-                    radial_closing - radial_limit
+-                ) * radial_direction
+-            speed = float(np.linalg.norm(commanded_velocity))
+-            speed_cap = 0.75 * task.outer_inertial_speed_limit_m_s
+-            if speed > speed_cap:
+-                commanded_velocity *= speed_cap / speed
+-            inertial_force = env.chaser_parameters.mass * velocity_gain * (
+-                commanded_velocity - actual_velocity
+-            )
+-            body_force = env.chaser_state.rotation.T @ inertial_force
++    position = relative.position
++    velocity = relative.rotation @ relative.velocity
++    range_m = float(np.linalg.norm(position))
++
++    reference, reference_rate, reference_accel = plan.body_reference(env.time_seconds)
++    feedback = POSITION_GAIN_PER_S2 * (reference - position) + VELOCITY_GAIN_PER_S * (
++        reference_rate - velocity
++    )
++    magnitude = float(np.linalg.norm(feedback))
++    if magnitude > FEEDBACK_ACCEL_LIMIT_M_S2:
++        feedback *= FEEDBACK_ACCEL_LIMIT_M_S2 / magnitude
++    omega = env.target_state.omega
++    omega_rate = plan.target_angular_acceleration(env.time_seconds)
++    feedforward = (
++        reference_accel
++        + 2.0 * np.cross(omega, velocity)
++        + np.cross(omega_rate, position)
++        + np.cross(omega, np.cross(omega, position))
++    )
++    mass = env.chaser_parameters.mass
++    body_feedforward = relative.rotation.T @ (mass * feedforward)
++    body_feedback = relative.rotation.T @ (mass * feedback)
++
++    desired_relative_rotation = _desired_relative_rotation(
++        relative.rotation, position, task.port_position, range_m
++    )
+     rotation_error = se3_log(
+         make_transform(desired_relative_rotation.T @ relative.rotation, np.zeros(3))
+     )[:3]
+     body_torque = -ATTITUDE_GAIN * rotation_error - ANGULAR_RATE_GAIN * relative.omega
+-    action = np.clip(
+-        np.concatenate(
+-            (
+-                body_torque / env.config.max_torque_per_axis_nm,
+-                body_force / env.config.max_force_per_axis_n,
+-            )
+-        ),
+-        -1.0,
+-        1.0,
++    action = np.concatenate(
++        (
++            np.clip(body_torque / env.config.max_torque_per_axis_nm, -1.0, 1.0),
++            _allocate_force(
++                body_feedforward, body_feedback, env.config.max_force_per_axis_n
++            ),
++        )
+     )
++    phase = "terminal" if env._terminal_region_entered else plan.phase(env.time_seconds)
+     force_norm = float(
+         np.linalg.norm(action[3:] * env.config.max_force_per_axis_n)
+     )
+diff --git a/tests/test_precapture_task.py b/tests/test_precapture_task.py
+index 6edb192..4831891 100644
+--- a/tests/test_precapture_task.py
++++ b/tests/test_precapture_task.py
+@@ -141,3 +141,35 @@ def test_environment_latches_terminal_region_on_entry() -> None:
+     assert env._terminal_region_entered
+     assert not terminated
+     assert not truncated
++
++
++def test_precapture_episode_runs_at_the_configured_tumble_rate() -> None:
++    """The task must tumble at its own config's rate, not the class default.
++
++    ``_select_phase2_stage`` returns early for the precapture task, so the
++    episode used to keep the constructor's ``target_tumble_scale`` (0.5) and run
++    at 0.1031 rad/s while ``precapture_planning_environment_config`` asked for
++    0.20. That is 2.5x the frozen S1-v2 rate, and it makes sustained co-rotation
++    need ``m * omega^2 * r = 1.13 N`` per metre -- past the 8.66 N body diagonal
++    beyond 7.7 m, so no controller can hold the outer region at all. Every
++    documented number in this project is measured at 0.0412 rad/s.
++    """
++
++    config = precapture_planning_environment_config()
++    env = SE3RendezvousEnv(config)
++    try:
++        env.reset(seed=262000)
++        assert env._episode_tumble_scale == config.phase2_target_tumble_scale
++        expected = target_initial_state(
++            tumble_scale=config.phase2_target_tumble_scale
++        )
++        assert np.allclose(env.target_state.omega, expected.omega)
++        rate = float(np.linalg.norm(env.target_state.omega))
++        assert np.isclose(rate, 0.04123105625617661)
++        # The co-rotation force the outer staging radius demands stays inside
++        # the guaranteed single-axis authority, which is what makes the task
++        # solvable by something other than a body-diagonal manoeuvre.
++        chaser_mass = env.chaser_parameters.mass
++        assert chaser_mass * rate * rate * 7.5 < config.max_force_per_axis_n
++    finally:
++        env.close()
+-- 
+2.43.0
+

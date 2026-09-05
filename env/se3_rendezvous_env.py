@@ -543,10 +543,22 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             raise ValueError("Phase-2 distance-failure penalty must be non-positive")
 
     def _select_phase2_stage(self) -> None:
+        if self.config.precapture_planning_enabled:
+            # The precapture task has no warmup stage and no Phase-2 reward, but
+            # its target is still a Phase-2 target. Returning here without this
+            # assignment left the episode on the constructor's
+            # `target_tumble_scale` (0.5), so the task silently ran at 0.1031
+            # rad/s while its own config asked for 0.20 * 0.20616 = 0.0412 --
+            # the frozen S1-v2 rate every other number in this project uses.
+            # At 0.1031 rad/s co-rotation needs m * omega^2 * r = 1.13 N per
+            # metre, so the 5 N per-axis authority runs out at 4.4 m and the
+            # 8.66 N body diagonal at 7.7 m: no controller can hold the outer
+            # region, which is not the difficulty this task is meant to pose.
+            self._episode_tumble_scale = self.config.phase2_target_tumble_scale
+            return
         if (
             not self.config.phase2_enabled
             or self.config.phase2_mission_enabled
-            or self.config.precapture_planning_enabled
         ):
             return
         warmup = self.total_transition_count < self.config.phase2_warmup_steps

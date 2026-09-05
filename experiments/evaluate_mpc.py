@@ -51,6 +51,7 @@ from env.scenarios import (
     fixed_prediction_target_parameters,
     target_parameters,
 )
+from experiments.evaluate_precapture_oracle import CoastThenMatchPlan
 from eval.metrics import main_table_metrics, summarize
 from train.configs import PURE_SAC
 
@@ -88,6 +89,16 @@ def parse_args() -> argparse.Namespace:
         "lower compute p95",
     )
     parser.add_argument("--outer-iterations", type=int)
+    parser.add_argument(
+        "--external-hold-steps",
+        type=int,
+        help=(
+            "How long one external waypoint is held before a replacement is "
+            "accepted, in control steps. The declared learned-policy interface "
+            "is 20 (2 s); 1 is a diagnostic upper bound that separates the "
+            "plan's quality from the interface's coarseness."
+        ),
+    )
     parser.add_argument("--input-weight", type=float)
     parser.add_argument("--terminal-weight", type=float)
     parser.add_argument("--quiet", action="store_true")
@@ -127,14 +138,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--external-guidance",
-        choices=("two_stage",),
+        choices=("two_stage", "oracle_plan"),
         default=None,
         help=(
             "Oracle diagnostic for precapture_planning only. two_stage first "
             "commands a target-body staging point at 10 m on the approach axis, "
             "then latches the final desired pose once the staging point is "
-            "reached slowly. It is a hand-designed feasibility baseline, not "
-            "the learned high-level policy."
+            "reached slowly. oracle_plan replays the offline coast-then-match "
+            "path through the declared waypoint interface, which measures what "
+            "a perfect upper layer would be worth to this MPC at this horizon. "
+            "Neither is the learned high-level policy."
         ),
     )
     parser.add_argument(
@@ -443,7 +456,7 @@ def evaluate(
         raise ValueError("controller_model_source must be 'nominal' or 'truth'")
     if control_state_source not in {"oracle", "estimate"}:
         raise ValueError("control_state_source must be 'oracle' or 'estimate'")
-    if external_guidance not in {None, "two_stage"}:
+    if external_guidance not in {None, "two_stage", "oracle_plan"}:
         raise ValueError("unsupported external_guidance")
     if (config.reference_source == "external_local") != (
         external_guidance is not None
@@ -548,6 +561,9 @@ def evaluate(
             )
             control_step = 0
             final_guidance_stage_latched = False
+            oracle_plan = (
+                CoastThenMatchPlan(env) if external_guidance == "oracle_plan" else None
+            )
             no_measurement_steps = 0
             longest_no_measurement_steps = 0
             if env_config.perception is not None:
@@ -619,7 +635,18 @@ def evaluate(
                     else None
                 )
                 external_reference = None
-                if external_guidance == "two_stage":
+                if external_guidance == "oracle_plan":
+                    # The offline coast-then-match path, delivered through the
+                    # *declared* learned-policy interface: one target-centred,
+                    # inertially oriented 3D waypoint, held for
+                    # ``external_reference_hold_steps``. This is the ceiling a
+                    # perfect upper layer could hand this MPC, so the only thing
+                    # that differs from the fixed-setpoint row is the reference.
+                    assert oracle_plan is not None
+                    external_reference = command_target.rotation @ (
+                        oracle_plan.body_position(env.time_seconds)
+                    )
+                elif external_guidance == "two_stage":
                     external_reference, final_guidance_stage_latched = (
                         _two_stage_precapture_reference(
                             command_state,
@@ -1156,6 +1183,11 @@ def main() -> None:
             args.exact_refresh_steps
             if args.exact_refresh_steps is not None
             else base_config.exact_linearization_refresh_steps
+        ),
+        external_reference_hold_steps=(
+            args.external_hold_steps
+            if args.external_hold_steps is not None
+            else base_config.external_reference_hold_steps
         ),
     )
     if args.control_state_source is not None:

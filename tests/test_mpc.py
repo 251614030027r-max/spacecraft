@@ -660,3 +660,42 @@ def test_two_stage_precapture_guidance_latches_only_after_slow_staging() -> None
     )
     assert latched
     assert np.allclose(final_after_departure, final)
+
+
+def test_oracle_plan_guidance_matches_the_offline_path_through_the_waypoint_interface() -> None:
+    """The oracle-plan row must deliver the offline path, unaltered, as waypoints.
+
+    The declared learned-policy action is one target-centred, inertially
+    oriented 3D waypoint. This row replays the offline coast-then-match path
+    through exactly that interface, so the only thing separating it from the
+    fixed-setpoint row is the reference -- same horizon, weights, solver and
+    constraints. If the conversion drifted from the oracle's own trajectory the
+    row would stop measuring what a perfect upper layer is worth.
+    """
+
+    from env.phase2_env import precapture_planning_environment_config
+    from env.se3_rendezvous_env import SE3RendezvousEnv
+    from experiments.evaluate_precapture_oracle import CoastThenMatchPlan
+
+    env = SE3RendezvousEnv(precapture_planning_environment_config())
+    try:
+        env.reset(seed=262000)
+        plan = CoastThenMatchPlan(env)
+        for time_s in (0.0, 20.0, plan.coast_time_s, plan.coast_time_s + 30.0):
+            body = plan.body_position(time_s)
+            rotation = plan._target_rotation(time_s)
+            waypoint = rotation @ body
+            # Round trip through the interface returns the same body-frame point.
+            assert np.allclose(rotation.T @ waypoint, body, atol=1.0e-12)
+        # The path starts where the chaser is and ends at the desired pose.
+        assert np.allclose(
+            plan.body_position(0.0), env.relative.position, atol=1.0e-9
+        )
+        task = env.config.precapture_task
+        assert np.allclose(
+            plan.body_position(plan.coast_time_s + 200.0),
+            task.desired_position,
+            atol=1.0e-9,
+        )
+    finally:
+        env.close()

@@ -141,3 +141,35 @@ def test_environment_latches_terminal_region_on_entry() -> None:
     assert env._terminal_region_entered
     assert not terminated
     assert not truncated
+
+
+def test_precapture_episode_runs_at_the_configured_tumble_rate() -> None:
+    """The task must tumble at its own config's rate, not the class default.
+
+    ``_select_phase2_stage`` returns early for the precapture task, so the
+    episode used to keep the constructor's ``target_tumble_scale`` (0.5) and run
+    at 0.1031 rad/s while ``precapture_planning_environment_config`` asked for
+    0.20. That is 2.5x the frozen S1-v2 rate, and it makes sustained co-rotation
+    need ``m * omega^2 * r = 1.13 N`` per metre -- past the 8.66 N body diagonal
+    beyond 7.7 m, so no controller can hold the outer region at all. Every
+    documented number in this project is measured at 0.0412 rad/s.
+    """
+
+    config = precapture_planning_environment_config()
+    env = SE3RendezvousEnv(config)
+    try:
+        env.reset(seed=262000)
+        assert env._episode_tumble_scale == config.phase2_target_tumble_scale
+        expected = target_initial_state(
+            tumble_scale=config.phase2_target_tumble_scale
+        )
+        assert np.allclose(env.target_state.omega, expected.omega)
+        rate = float(np.linalg.norm(env.target_state.omega))
+        assert np.isclose(rate, 0.04123105625617661)
+        # The co-rotation force the outer staging radius demands stays inside
+        # the guaranteed single-axis authority, which is what makes the task
+        # solvable by something other than a body-diagonal manoeuvre.
+        chaser_mass = env.chaser_parameters.mass
+        assert chaser_mass * rate * rate * 7.5 < config.max_force_per_axis_n
+    finally:
+        env.close()
