@@ -234,6 +234,17 @@ def test_illegal_entry_is_counted_without_latching_or_termination() -> None:
         env.close()
 
 
+def test_illegal_entry_can_retreat_and_reenter_legally() -> None:
+    from experiments.diagnose_precapture_reentry import run
+
+    result = run()
+    assert result["illegal_crossing_count"] == 1
+    assert not result["latched_after_illegal_crossing"]
+    assert not result["latched_after_retreat"]
+    assert result["latched_after_legal_reentry"]
+    assert result["illegal_count_after_legal_reentry"] == 1
+
+
 def test_precapture_completion_requires_a_prior_legal_latch() -> None:
     config = replace(
         precapture_planning_environment_config(),

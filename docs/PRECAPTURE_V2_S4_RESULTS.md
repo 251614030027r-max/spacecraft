@@ -4,6 +4,12 @@ Date: 2026-09-05
 Lower layer: MPC h20, terminal weight 1000
 Public upper-layer action: target-centred inertially oriented 3D waypoint, 2 s hold
 
+Status note (2026-09-06): the numeric blocks below predate F1 predictive
+entry-plane activation and are no longer a current MPC comparison row. Their
+action-driven outer-distance failures remain valid mechanism evidence. The F3
+feasibility-screen rerun is reported separately in
+`docs/PRECAPTURE_V2_FASTTRACK_RESULTS.md`.
+
 ## Frozen rule after S4-R
 
 The rule receives only the current controller-visible relative state and target

@@ -212,6 +212,22 @@ def normalized_constraint_margins(
 _INACTIVE_MARGIN = 1.0e3
 
 
+def _predicted_terminal_active(
+    position: FloatArray,
+    task: PrecaptureTaskConfig,
+    *,
+    terminal_latched: bool,
+) -> bool:
+    """Activate MPC terminal rows at predicted entry, without changing truth latch."""
+
+    port_displacement = position - task.port_position
+    port_axial_distance = float(task.approach_axis @ port_displacement)
+    return bool(
+        terminal_latched
+        or port_axial_distance < task.entry_port_axial_distance_m
+    )
+
+
 def normalized_precapture_truth_margins(
     state: ArrayLike,
     task: PrecaptureTaskConfig,
@@ -289,7 +305,9 @@ def normalized_precapture_constraint_margins(
     geometry = _corridor_geometry(task, corridor_facets, distance_scale_m)
     rotation, position, _ = _pose(x)
     range_m = float(np.linalg.norm(position))
-    terminal = bool(terminal_latched)
+    terminal = _predicted_terminal_active(
+        position, task, terminal_latched=terminal_latched
+    )
     position_rate = rotation @ x[9:]
     speed = float(np.linalg.norm(position_rate))
     count = corridor_facets + 7
@@ -486,7 +504,9 @@ def linearize_precapture_constraint_margins(
     rotation, position, left_jacobian = _pose(x)
     right_jacobian = left_jacobian.T
     range_m = float(np.linalg.norm(position))
-    terminal = bool(terminal_latched)
+    terminal = _predicted_terminal_active(
+        position, task, terminal_latched=terminal_latched
+    )
     count = corridor_facets + 7
     position_gradient = np.zeros((count, 3), dtype=np.float64)
     rate_gradient = np.zeros((count, 3), dtype=np.float64)

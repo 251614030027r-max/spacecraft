@@ -19,6 +19,8 @@ from experiments.evaluate_precapture_oracle import (
 
 FINISH_RESERVE_S = 5.0
 HAND_PLANNING_FOV_HALF_ANGLE_RAD = float(np.deg2rad(45.0))
+HAND_AXIS_ACCEL_M_S2 = 5.0 / 106.0
+WINDOW_FEASIBILITY_MARGIN = 0.7
 
 
 def first_local_minimum(values: np.ndarray, *, last_index: int) -> int:
@@ -30,6 +32,38 @@ def first_local_minimum(values: np.ndarray, *, last_index: int) -> int:
         if samples[index] <= samples[index - 1] and samples[index] < samples[index + 1]:
             return index
     raise ValueError("nominal forecast contains no admissible local-minimum window")
+
+
+def first_feasible_local_minimum(
+    values: np.ndarray,
+    *,
+    last_index: int,
+    dt_s: float,
+    radius_m: float,
+    acceleration_m_s2: float = HAND_AXIS_ACCEL_M_S2,
+    margin: float = WINDOW_FEASIBILITY_MARGIN,
+) -> tuple[int, float, float, int]:
+    """Return the first local minimum that passes the fixed reachability screen."""
+
+    samples = np.asarray(values, dtype=np.float64)
+    if dt_s <= 0.0 or radius_m <= 0.0 or acceleration_m_s2 <= 0.0:
+        raise ValueError("window feasibility inputs must be positive")
+    if not 0.0 < margin <= 1.0:
+        raise ValueError("window feasibility margin must be in (0, 1]")
+    omega_max = float(margin * np.sqrt(acceleration_m_s2 / radius_m))
+    upper = min(int(last_index), samples.size - 2)
+    rejected = 0
+    for index in range(1, upper + 1):
+        if not (
+            samples[index] <= samples[index - 1]
+            and samples[index] < samples[index + 1]
+        ):
+            continue
+        required = float(samples[index] / (index * dt_s))
+        if required <= omega_max:
+            return index, required, omega_max, rejected
+        rejected += 1
+    raise ValueError("nominal forecast contains no feasible local-minimum window")
 
 
 class HandGuidancePlan:
@@ -86,8 +120,16 @@ class HandGuidancePlan:
         angles = np.arccos(
             np.clip(axis_directions @ self.initial_direction, -1.0, 1.0)
         )
-        self.match_start_steps = first_local_minimum(
-            angles, last_index=latest_start
+        (
+            self.match_start_steps,
+            self.window_required_omega_rad_s,
+            self.window_omega_limit_rad_s,
+            self.rejected_window_count,
+        ) = first_feasible_local_minimum(
+            angles,
+            last_index=latest_start,
+            dt_s=self._dt_s,
+            radius_m=self.initial_radius_m,
         )
         self.match_start_time_s = self.match_start_steps * self._dt_s
         self.match_end_steps = self.match_start_steps + self.match_steps
@@ -144,6 +186,10 @@ class HandGuidancePlan:
             "closed_loop_descent_allowance_s": FINAL_DESCENT_TIME_S,
             "terminal_waypoint_switch_s": self.match_end_time_s,
             "window_alignment_angle_rad": self.window_alignment_angle_rad,
-            "window_rule": "first_local_minimum_of_axis_to_chaser_direction",
+            "window_required_omega_rad_s": self.window_required_omega_rad_s,
+            "window_omega_limit_rad_s": self.window_omega_limit_rad_s,
+            "window_feasibility_margin": WINDOW_FEASIBILITY_MARGIN,
+            "rejected_window_count": self.rejected_window_count,
+            "window_rule": "first_feasible_local_minimum_of_axis_to_chaser_direction",
             "planning_fov_half_angle_rad": HAND_PLANNING_FOV_HALF_ANGLE_RAD,
         }

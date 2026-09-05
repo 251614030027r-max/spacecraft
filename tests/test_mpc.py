@@ -528,8 +528,11 @@ def test_precapture_mpc_requires_explicit_latch_and_solves() -> None:
     assert not diagnostics.used_zero_fallback
 
 
-def test_precapture_constraint_rows_follow_only_the_explicit_one_way_latch() -> None:
-    from controllers.mpc.constraints import normalized_precapture_constraint_margins
+def test_precapture_mpc_rows_preview_predicted_entry_without_changing_truth() -> None:
+    from controllers.mpc.constraints import (
+        normalized_precapture_constraint_margins,
+        normalized_precapture_truth_margins,
+    )
     from env.task import PrecaptureTaskConfig
 
     task = PrecaptureTaskConfig()
@@ -559,9 +562,18 @@ def test_precapture_constraint_rows_follow_only_the_explicit_one_way_latch() -> 
         corridor_facets=8,
     )
     assert np.all(outer[2:4] < 1.0e3) and np.all(outer[4:] == 1.0e3)
-    assert np.all(unlatched_inside[2:4] < 1.0e3)
-    assert np.all(unlatched_inside[4:] == 1.0e3)
+    assert np.all(unlatched_inside[2:4] == 1.0e3)
+    assert np.all(unlatched_inside[4:] < 1.0e3)
     assert latched_outside[2] == 1.0e3 and np.all(latched_outside[4:] < 1.0e3)
+
+    truth_inside = normalized_precapture_truth_margins(
+        inside,
+        task,
+        target_angular_velocity_rad_s=target_omega,
+        terminal_latched=False,
+    )
+    assert np.all(truth_inside[2:4] < 1.0e3)
+    assert np.all(truth_inside[4:] == 1.0e3)
 
 
 def test_external_local_waypoint_is_inertially_oriented() -> None:
@@ -638,6 +650,50 @@ def test_first_local_minimum_returns_first_interior_turn() -> None:
 
     samples = np.array([3.0, 2.0, 1.0, 1.5, 0.5, 0.7])
     assert first_local_minimum(samples, last_index=4) == 2
+
+
+def test_window_screen_skips_only_infeasible_local_minima() -> None:
+    from experiments.hand_guidance import first_feasible_local_minimum
+
+    samples = np.array([1.0, 0.8, 0.9, 0.4, 0.5])
+    index, required, limit, rejected = first_feasible_local_minimum(
+        samples,
+        last_index=3,
+        dt_s=10.0,
+        radius_m=16.0,
+        acceleration_m_s2=5.0 / 106.0,
+        margin=0.7,
+    )
+    assert index == 3
+    assert rejected == 1
+    assert required <= limit
+
+
+def test_piecewise_guidance_keeps_the_public_action_three_dimensional() -> None:
+    from env.se3_rendezvous_env import SE3RendezvousConfig
+    from env.scenarios import target_initial_state
+    from env.task import PrecaptureTaskConfig
+    from experiments.piecewise_guidance import (
+        PiecewiseGuidanceParameters,
+        PiecewiseWaypointPlan,
+    )
+
+    target = target_initial_state(tumble_scale=0.20)
+    state = np.zeros(12)
+    state[3] = -16.0
+    parameters = PiecewiseGuidanceParameters(8.0, 6.0, 60.0, 140.0)
+    plan = PiecewiseWaypointPlan(
+        state,
+        target,
+        _reference(SE3RendezvousConfig(curriculum_enabled=False)),
+        PrecaptureTaskConfig(),
+        parameters,
+        max_time_s=160.0,
+    )
+    assert plan.reference(0.0).shape == (3,)
+    assert plan.phase(0.0) == "outer_gate"
+    assert plan.phase(60.0) == "reposition"
+    assert plan.phase(140.0) == "terminal"
 
 
 def test_precapture_outer_reference_points_camera_at_port_and_holds_waypoint() -> None:

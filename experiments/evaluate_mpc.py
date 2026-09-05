@@ -56,6 +56,11 @@ from experiments.hand_guidance import (
     HAND_PLANNING_FOV_HALF_ANGLE_RAD,
     HandGuidancePlan,
 )
+from experiments.piecewise_guidance import (
+    PIECEWISE_PLANNING_FOV_HALF_ANGLE_RAD,
+    PiecewiseGuidanceParameters,
+    PiecewiseWaypointPlan,
+)
 from eval.metrics import main_table_metrics, summarize
 from train.configs import PURE_SAC
 
@@ -455,6 +460,7 @@ def evaluate(
     observation_filter: str = "hold",
     control_state_source: str = "oracle",
     external_guidance: str | None = None,
+    piecewise_parameters: PiecewiseGuidanceParameters | None = None,
     progress: bool = False,
 ) -> dict[str, Any]:
     if episodes <= 0:
@@ -463,22 +469,34 @@ def evaluate(
         raise ValueError("controller_model_source must be 'nominal' or 'truth'")
     if control_state_source not in {"oracle", "estimate"}:
         raise ValueError("control_state_source must be 'oracle' or 'estimate'")
-    if external_guidance not in {None, "two_stage", "oracle_plan", "hand_guidance"}:
+    if external_guidance not in {
+        None,
+        "two_stage",
+        "oracle_plan",
+        "hand_guidance",
+        "piecewise",
+    }:
         raise ValueError("unsupported external_guidance")
+    if (external_guidance == "piecewise") != (piecewise_parameters is not None):
+        raise ValueError("piecewise guidance requires exactly one parameter set")
     if (config.reference_source == "external_local") != (
         external_guidance is not None
     ):
         raise ValueError(
             "external_local reference and --external-guidance must be used together"
         )
-    if external_guidance == "hand_guidance":
+    if external_guidance in {"hand_guidance", "piecewise"}:
         if config.precapture_task is None:
             raise ValueError("hand guidance requires a precapture MPC task")
         config = replace(
             config,
             precapture_task=replace(
                 config.precapture_task,
-                fov_half_angle_rad=HAND_PLANNING_FOV_HALF_ANGLE_RAD,
+                fov_half_angle_rad=(
+                    HAND_PLANNING_FOV_HALF_ANGLE_RAD
+                    if external_guidance == "hand_guidance"
+                    else PIECEWISE_PLANNING_FOV_HALF_ANGLE_RAD
+                ),
             ),
         )
     observed_target = (
@@ -582,6 +600,7 @@ def evaluate(
                 CoastThenMatchPlan(env) if external_guidance == "oracle_plan" else None
             )
             hand_guidance_plan: HandGuidancePlan | None = None
+            piecewise_plan: PiecewiseWaypointPlan | None = None
             no_measurement_steps = 0
             longest_no_measurement_steps = 0
             if env_config.perception is not None:
@@ -686,6 +705,18 @@ def evaluate(
                     external_reference = hand_guidance_plan.reference(
                         env.time_seconds
                     )
+                elif external_guidance == "piecewise":
+                    if piecewise_plan is None:
+                        assert piecewise_parameters is not None
+                        piecewise_plan = PiecewiseWaypointPlan(
+                            command_state,
+                            command_target,
+                            estimator_reference,
+                            env_config.precapture_task,
+                            piecewise_parameters,
+                            max_time_s=env_config.max_time_s,
+                        )
+                    external_reference = piecewise_plan.reference(env.time_seconds)
                 command_started = perf_counter()
                 wrench_vector, diagnostics = controller.command(
                     command_state,
@@ -933,7 +964,11 @@ def evaluate(
                     "guidance_plan": (
                         hand_guidance_plan.metadata()
                         if hand_guidance_plan is not None
-                        else None
+                        else (
+                            piecewise_plan.metadata()
+                            if piecewise_plan is not None
+                            else None
+                        )
                     ),
                     "truth_geometry_zero_violation_completed": bool(
                         info["completed"] and zero_violation

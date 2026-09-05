@@ -6,7 +6,9 @@ Episode limit: 300 s
 Terminal weight: 1000 (frozen)
 
 These are five-seed development results on the M1--M3 geometry. They are not
-the required 20-episode formal report.
+the required 20-episode formal report. They predate the predictive entry-plane
+activation added after Q1 and are retained only as pre-F1 comparison data; they
+are not the current Pure-MPC baseline.
 
 | Controller | Completed | Zero-truth-violation completion | Timeout | Illegal entry events | Mean / p95 command time |
 |---|---:|---:|---:|---:|---:|

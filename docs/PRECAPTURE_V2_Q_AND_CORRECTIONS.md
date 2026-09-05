@@ -78,6 +78,7 @@ mean and p95. No causal compute attribution has been established.
 - S4-R is frozen and closed at 3/5 on reporting seeds, with 5/5 zero active
   constraint violations. It fails as a stable classical baseline; no further
   S4 tuning is authorized by this close-out.
-- S5/S6 and all 20-episode formal evaluations remain unexecuted. This document
-  closes only the requested event extraction, static checks, and evidence
-  corrections.
+- Superseding status (2026-09-06): S5 was executed after F1--F3 and failed its
+  interface-improvement gate; S6 training was therefore not started. See
+  `docs/PRECAPTURE_V2_FASTTRACK_RESULTS.md`. No 20-episode formal evaluation
+  was run.

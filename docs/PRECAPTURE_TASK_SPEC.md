@@ -72,10 +72,13 @@ pins the rate so this cannot regress silently.
 
 Pure MPC and the future hybrid share model, horizon, solver, constraints, limits and
 terminal cost. The QP has a fixed row count; inactive rows have zero Jacobian and a
-large positive margin. Before a legal entry-disc event, all predicted states retain the
-outer rows; after the environment latches, all horizon indices use terminal rows.
-`MPCController.command()` therefore requires an explicit
-`terminal_latched` argument for this task.
+large positive margin. Before the environment latch, each nominal horizon state uses
+outer rows while its predicted port-axial distance is outside the entry plane, and uses
+terminal corridor and speed rows when the prediction reaches the inside of that plane.
+After a legal entry-disc event latches the environment, all horizon indices use terminal
+rows. This predictive MPC activation does not alter truth semantics: only a legal
+outside-to-inside crossing latches the environment. `MPCController.command()` therefore
+still requires an explicit `terminal_latched` argument for this task.
 
 The future SAC action is a 3D waypoint in a target-centred, inertially oriented frame.
 Holding that waypoint fixed means inertial holding, not implicit co-rotation. No learned
