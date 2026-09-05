@@ -66,6 +66,29 @@ to the classical baseline:
 ## Evidence boundary
 
 The earlier 262000--262004 result at commit `b6c388d` used a fixed 152.4 s wait
-and is superseded as the S4 baseline. The post-freeze 262000 reporting-block
-result is recorded separately below after it is run. Five-seed batches are
-development probes, not the required 20-episode formal report.
+and is superseded as the S4 baseline. Five-seed batches are development probes,
+not the required 20-episode formal report.
+
+## Frozen reporting block
+
+Seeds 262000--262004 were run after the development block without changing any
+rule or parameter.
+
+- completion: 3/5; zero-active-constraint episodes: 5/5;
+- failures: distance 2 / illegal-entry episodes 2 / timeout 0 / corridor 0 / speed 0;
+- successful completion time: mean 252.667 s, range 224.9--298.2 s;
+- successful equivalent delta-v: mean 6.079 m/s, max 6.677 m/s;
+- worst real-geometry FOV margin: +0.5603 rad;
+- minimum normalized truth margin across episodes: +0.1497;
+- serial single-process command time: mean 0.0501 s, p95 0.0608 s,
+  max 0.2813 s;
+- first local-minimum times: 0.9, 14.2, 15.2, 113.8, and 117.5 s.
+
+Artifact:
+`logs/precapture_planning_v2/hand_guidance_s4r_report_262000_5seeds.json`.
+
+Verdict: **FAIL** as a stable classical baseline. R-2 successfully removed the
+FOV-edge violation, but R-1 combined with fixed-radius repositioning exposes
+action-driven outer divergence in two reporting episodes. Per the frozen-block
+rule, this result does not trigger another S4 tuning pass and does not block the
+separate S5 interface test.
