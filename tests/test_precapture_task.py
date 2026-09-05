@@ -399,3 +399,20 @@ def test_open_loop_plan_rejects_search_before_descent_and_match_fit() -> None:
             )
     finally:
         env.close()
+
+
+def test_open_loop_force_allocator_reserves_nonbinding_headroom() -> None:
+    from experiments.evaluate_precapture_oracle import (
+        FORCE_COMMAND_HEADROOM,
+        _allocate_force,
+        _normalized_force,
+    )
+
+    direct = _normalized_force(np.array([10.0, 5.0, 0.0]), 5.0)
+    allocated = _allocate_force(
+        np.array([4.8, 0.0, 0.0]),
+        np.array([1.0, 0.5, 0.0]),
+        5.0,
+    )
+    assert np.isclose(np.max(np.abs(direct)), FORCE_COMMAND_HEADROOM)
+    assert np.max(np.abs(allocated)) <= FORCE_COMMAND_HEADROOM

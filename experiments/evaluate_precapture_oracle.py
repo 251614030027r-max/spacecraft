@@ -41,6 +41,7 @@ ATTITUDE_BLEND_INNER_M = 4.0
 POSITION_GAIN_PER_S2 = 0.015
 VELOCITY_GAIN_PER_S = 0.25
 FEEDBACK_ACCEL_LIMIT_M_S2 = 0.040
+FORCE_COMMAND_HEADROOM = 0.99
 ATTITUDE_GAIN = 2.0
 ANGULAR_RATE_GAIN = 8.0
 DERIVATIVE_STEP_S = 0.2
@@ -316,8 +317,8 @@ def _normalized_force(body_force: np.ndarray, max_force_per_axis_n: float) -> np
 
     normalized = body_force / max_force_per_axis_n
     peak = float(np.max(np.abs(normalized)))
-    if peak > 1.0:
-        normalized = normalized / peak
+    if peak > FORCE_COMMAND_HEADROOM:
+        normalized = normalized * (FORCE_COMMAND_HEADROOM / peak)
     return normalized
 
 
@@ -334,14 +335,15 @@ def _allocate_force(
     -- never rotated -- until it does.
     """
 
-    if float(np.max(np.abs(feedforward_n))) >= max_force_per_axis_n:
+    command_limit_n = FORCE_COMMAND_HEADROOM * max_force_per_axis_n
+    if float(np.max(np.abs(feedforward_n))) >= command_limit_n:
         return _normalized_force(feedforward_n + feedback_n, max_force_per_axis_n)
     scale = 1.0
     for axis in range(3):
         demand = float(feedback_n[axis])
         if abs(demand) <= 1.0e-12:
             continue
-        bound = max_force_per_axis_n if demand > 0.0 else -max_force_per_axis_n
+        bound = command_limit_n if demand > 0.0 else -command_limit_n
         scale = min(scale, (bound - float(feedforward_n[axis])) / demand)
     scale = float(np.clip(scale, 0.0, 1.0))
     return (feedforward_n + scale * feedback_n) / max_force_per_axis_n
@@ -434,6 +436,7 @@ def rollout(
         minimum_normalized_margin = float("inf")
         phase_impulse = {name: 0.0 for name in ("coast", "match", "cross", "terminal")}
         phase_time = {name: 0.0 for name in phase_impulse}
+        entry_events: list[dict[str, Any]] = []
         trace: list[dict[str, Any]] = []
         terminated = truncated = False
         while not (terminated or truncated):
@@ -474,6 +477,22 @@ def rollout(
                     }
                 )
             _, _, terminated, truncated, info = env.step(action)
+            if bool(info.get("terminal_entry_crossed", False)):
+                entry_events.append(
+                    {
+                        "time_s": float(info["time_seconds"]),
+                        "legal": bool(info["terminal_entry_legal"]),
+                        "radial_distance_m": float(
+                            info["entry_crossing_radial_distance_m"]
+                        ),
+                        "target_frame_speed_m_s": float(
+                            info["entry_crossing_target_frame_speed_m_s"]
+                        ),
+                        "closing_speed_m_s": float(
+                            info["entry_crossing_closing_speed_m_s"]
+                        ),
+                    }
+                )
             minimum_fov_margin = min(minimum_fov_margin, float(info["fov_margin_rad"]))
             active_margins = [
                 float(info["keepout_margin_m"]) / env.config.precapture_task.keepout_radius_m,
@@ -561,6 +580,7 @@ def rollout(
                 name: value / mass for name, value in phase_impulse.items()
             },
             "phase_time_s": phase_time,
+            "entry_events": entry_events,
             "plan": {
                 "coast_time_s": plan.coast_time_s,
                 "outer_descent_time_s": plan.outer_descent_time_s,
