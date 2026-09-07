@@ -74,6 +74,8 @@ class MPCConfig:
     terminal_cost_source: str = "fixed_quadratic"
     terminal_value: ConvexQuadraticTerminalValue | None = None
     corridor_facets: int = 8
+    precapture_attitude_reference: str = "frozen"
+    external_reference_frame: str = "inertial"
     constraint_slack_weight: float = 1.0e4
     constraint_slack_limit: float = 2.0
     constraint_tightening: float = 0.02
@@ -143,6 +145,14 @@ class MPCConfig:
             self.planning_min_duration_s,
         ) <= 0.0:
             raise ValueError("planning settings must be positive")
+        if self.external_reference_frame not in {"inertial", "target"}:
+            raise ValueError("external reference frame must be inertial or target")
+        if self.precapture_attitude_reference not in {
+            "frozen",
+            "swept",
+            "aimed",
+        }:
+            raise ValueError("unknown precapture attitude reference mode")
         if min(self.constraint_slack_weight, self.constraint_slack_limit) <= 0.0:
             raise ValueError("constraint slack settings must be positive")
         if self.constraint_tightening < 0.0:

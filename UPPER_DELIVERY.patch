@@ -1,0 +1,2279 @@
+diff --git a/controllers/mpc/config.py b/controllers/mpc/config.py
+index 56be69f..e8cf316 100644
+--- a/controllers/mpc/config.py
++++ b/controllers/mpc/config.py
+@@ -74,6 +74,8 @@ class MPCConfig:
+     terminal_cost_source: str = "fixed_quadratic"
+     terminal_value: ConvexQuadraticTerminalValue | None = None
+     corridor_facets: int = 8
++    precapture_attitude_reference: str = "frozen"
++    external_reference_frame: str = "inertial"
+     constraint_slack_weight: float = 1.0e4
+     constraint_slack_limit: float = 2.0
+     constraint_tightening: float = 0.02
+@@ -143,6 +145,14 @@ class MPCConfig:
+             self.planning_min_duration_s,
+         ) <= 0.0:
+             raise ValueError("planning settings must be positive")
++        if self.external_reference_frame not in {"inertial", "target"}:
++            raise ValueError("external reference frame must be inertial or target")
++        if self.precapture_attitude_reference not in {
++            "frozen",
++            "swept",
++            "aimed",
++        }:
++            raise ValueError("unknown precapture attitude reference mode")
+         if min(self.constraint_slack_weight, self.constraint_slack_limit) <= 0.0:
+             raise ValueError("constraint slack settings must be positive")
+         if self.constraint_tightening < 0.0:
+diff --git a/controllers/mpc/controller.py b/controllers/mpc/controller.py
+index e42f443..8be4ab3 100644
+--- a/controllers/mpc/controller.py
++++ b/controllers/mpc/controller.py
+@@ -55,6 +55,31 @@ class MPCStepDiagnostics:
+     predicted_first_step_margins: tuple[float, ...]
+ 
+ 
++def _unit_or_none(vector: FloatArray) -> FloatArray | None:
++    norm = float(np.linalg.norm(vector))
++    if norm <= 1.0e-12:
++        return None
++    return np.asarray(vector, dtype=np.float64) / norm
++
++
++def _align_rotation(start: FloatArray, goal: FloatArray) -> FloatArray:
++    """Minimal rotation carrying unit vector ``start`` onto unit vector ``goal``."""
++
++    cosine = float(np.clip(start @ goal, -1.0, 1.0))
++    cross = np.cross(start, goal)
++    sine = float(np.linalg.norm(cross))
++    if sine <= 1.0e-12:
++        if cosine > 0.0:
++            return np.eye(3)
++        seed = np.array([1.0, 0.0, 0.0])
++        if abs(float(seed @ start)) > 0.9:
++            seed = np.array([0.0, 1.0, 0.0])
++        axis = np.cross(start, seed)
++        axis /= np.linalg.norm(axis)
++        return so3_exp(np.pi * axis)
++    return so3_exp(np.arctan2(sine, cosine) * (cross / sine))
++
++
+ class MPCController:
+     def __init__(
+         self,
+@@ -206,6 +231,98 @@ class MPCController:
+             return np.eye(3)
+         return self._precapture_los_rotation(state)
+ 
++    def _precapture_reference_rotations(
++        self,
++        state: FloatArray,
++        positions: FloatArray,
++        *,
++        terminal_latched: bool | None,
++    ) -> FloatArray:
++        """One reference attitude per horizon index, under the configured mode.
++
++        Reference positions are written in the *target* body frame, so a
++        waypoint held fixed in inertial space sweeps through that frame at the
++        target's tumble rate -- 0.0412 rad/s, 2.36 deg/s here. The three modes
++        differ only in whether the attitude half of the reference is allowed to
++        follow that sweep:
++
++        ``frozen``
++            One attitude, aimed from the *state*, held across the horizon, and
++            (through ``_reference_angular_rates``) a zero relative rate. This
++            is the behaviour every recorded precapture row was measured under
++            and stays the default, so no prior number moves.
++        ``swept``
++            Index 0 as in ``frozen``, later indices carried by the rotation the
++            *reference* sightline itself undergoes. Pose and rate then describe
++            the same motion, but only for a chaser that is on its reference:
++            under a large position lag the swept rate aims from where the
++            reference is, not from where the chaser is.
++        ``aimed``
++            Every index aimed from its own reference position, so the reference
++            is one self-consistent trajectory -- at the cost of a parallax step
++            at index 0 whenever the chaser is not yet on the waypoint.
++        """
++
++        count = int(positions.shape[1])
++        rotations = np.zeros((count, 3, 3), dtype=np.float64)
++        if self.config.precapture_task is None or bool(terminal_latched):
++            rotations[:] = np.eye(3)
++            return rotations
++        mode = self.config.precapture_attitude_reference
++        task = self.config.precapture_task
++        rotation = self._precapture_los_rotation(state)
++        if mode == "frozen":
++            rotations[:] = rotation
++            return rotations
++        previous = _unit_or_none(task.port_position - positions[:, 0])
++        for index in range(count):
++            if mode == "aimed":
++                # Aim index 0 too: the parallax between the chaser and its own
++                # waypoint belongs in the tracking error, not in the first rate
++                # row, where it would appear as a step of order 1 rad/s.
++                rotation = self._aim_rotation(rotation, positions[:, index])
++            elif index > 0:
++                current = _unit_or_none(task.port_position - positions[:, index])
++                if previous is not None and current is not None:
++                    rotation = _align_rotation(previous, current) @ rotation
++                if current is not None:
++                    previous = current
++            rotations[index] = rotation
++        return rotations
++
++    def _aim_rotation(
++        self, rotation: FloatArray, position: FloatArray
++    ) -> FloatArray:
++        """Nearest rotation to ``rotation`` whose boresight points at the port."""
++
++        task = self.config.precapture_task
++        if task is None:
++            raise ValueError("LOS reference requires a precapture task")
++        line_of_sight = _unit_or_none(task.port_position - position)
++        if line_of_sight is None:
++            return rotation
++        boresight = _unit_or_none(rotation @ task.camera_boresight)
++        if boresight is None:
++            return rotation
++        return _align_rotation(boresight, line_of_sight) @ rotation
++
++    def _reference_angular_rates(
++        self, rotations: FloatArray
++    ) -> FloatArray:
++        """Body-frame relative rate the reference attitude sequence implies."""
++
++        count = int(rotations.shape[0])
++        rates = np.zeros((3, count), dtype=np.float64)
++        if count < 2:
++            return rates
++        for index in range(count - 1):
++            rates[:, index] = (
++                so3_log(rotations[index].T @ rotations[index + 1])
++                / self.config.dt_s
++            )
++        rates[:, count - 1] = rates[:, count - 2]
++        return rates
++
+     def _apply_precapture_attitude_reference(
+         self,
+         reference: FloatArray,
+@@ -215,11 +332,18 @@ class MPCController:
+     ) -> FloatArray:
+         if self.config.precapture_task is None or bool(terminal_latched):
+             return reference
+-        rotation = self._precapture_los_rotation(state)
++        positions = np.zeros((3, reference.shape[1]), dtype=np.float64)
++        for index in range(reference.shape[1]):
++            positions[:, index] = se3_exp(reference[:6, index])[:3, 3]
++        rotations = self._precapture_reference_rotations(
++            state, positions, terminal_latched=terminal_latched
++        )
+         adjusted = reference.copy()
+         for index in range(reference.shape[1]):
+-            position = se3_exp(reference[:6, index])[:3, 3]
+-            adjusted[:6, index] = se3_log(make_transform(rotation, position))
++            adjusted[:6, index] = se3_log(
++                make_transform(rotations[index], positions[:, index])
++            )
++        adjusted[6:9, :] = self._reference_angular_rates(rotations)
+         return adjusted
+ 
+     def _endpoint_plan(
+@@ -335,30 +459,41 @@ class MPCController:
+             # pure error, which at 16 m saturated the first step and pushed the
+             # optimiser off any waypoint it was given. This follows the same
+             # convention as _endpoint_plan.
+-            rotation = self._precapture_reference_rotation(
+-                state, terminal_latched=terminal_latched
+-            )
+             positions = np.zeros((3, n + 1), dtype=np.float64)
+             for index in range(n + 1):
++                offset = index * self.config.dt_s
++                if self.config.external_reference_frame == "target":
++                    # The waypoint is already a target-body-frame point, so it
++                    # is constant in the frame the state is written in. Under
++                    # the "inertial" contract the same body-fixed goal has to
++                    # be re-issued as a rotating inertial point, and the map
++                    # below turns it into a circular reference the optimiser
++                    # then tracks with a standing lag -- 1.3 m at the 3 m
++                    # desired pose, against a 0.25 m completion tolerance.
++                    positions[:, index] = waypoint + offset * waypoint_velocity
++                    continue
+                 target_rotation = target_state.rotation @ so3_exp(
+-                    index * self.config.dt_s * target_state.omega
+-                )
+-                inertial_position = (
+-                    waypoint
+-                    + index * self.config.dt_s * waypoint_velocity
++                    offset * target_state.omega
+                 )
++                inertial_position = waypoint + offset * waypoint_velocity
+                 positions[:, index] = target_rotation.T @ inertial_position
+             position_rates = np.zeros((3, n + 1), dtype=np.float64)
+             position_rates[:, :-1] = np.diff(positions, axis=1) / self.config.dt_s
+             position_rates[:, -1] = position_rates[:, -2]
++            rotations = self._precapture_reference_rotations(
++                state, positions, terminal_latched=terminal_latched
++            )
+             reference = np.zeros((12, n + 1), dtype=np.float64)
+             for index in range(n + 1):
+                 reference[:6, index] = se3_log(
+-                    make_transform(rotation, positions[:, index])
++                    make_transform(rotations[index], positions[:, index])
++                )
++                reference[9:12, index] = (
++                    rotations[index].T @ position_rates[:, index]
+                 )
+-                reference[9:12, index] = rotation.T @ position_rates[:, index]
+-            # A constant desired relative attitude means zero relative rate, so
+-            # rows 6:9 stay zero.
++            # Rows 6:9 carry whatever relative rate that attitude sequence
++            # implies -- zero under "frozen", the sightline sweep otherwise.
++            reference[6:9, :] = self._reference_angular_rates(rotations)
+             return reference
+         if self.config.reference_source == "fixed":
+             reference = np.tile(
+diff --git a/docs/PRECAPTURE_ENTRY_WINDOW_GAP.md b/docs/PRECAPTURE_ENTRY_WINDOW_GAP.md
+new file mode 100644
+index 0000000..2500ce1
+--- /dev/null
++++ b/docs/PRECAPTURE_ENTRY_WINDOW_GAP.md
+@@ -0,0 +1,91 @@
++# The gap is the entry window, and every failure is the same failure
++
++Measured 2026-09-07 in the upper-level sandbox on `1fe5549` (**no F1** -- see
++*What F1 changes*). 24 episodes: `precapture_planning`, fixed-setpoint
++reference (no upper layer), `terminal_weight=1000`, `input_weight=0.01`,
++`analytic_local`, truth state, seeds 262000-262011, horizons 20 and 50. Runs
++were parallel, so **no compute number is taken from them**.
++
++## 1. The result
++
++| horizon | completed | failed |
++|---|---:|---:|
++| h20 (2 s) | **8/12** | 4 |
++| h50 (5 s) | **1/12** | 11 |
++
++**All 15 failures are the same failure**, and it is not a violation:
++
++- 15/15 crossed the 6 m entry plane **illegally** and never latched
++- **0/15** had any truth-geometry violation -- no keepout, no corridor, no
++  speed, no FOV, nothing
++- after failing to latch, the chaser flew to the desired pose anyway and
++  **parked on it**: median distance to the goal when the 300 s clock ran out is
++  **0.000 m** (max 0.005 m), attitude error 0.0-0.1 deg, relative rate
++  0.0001-0.0014 rad/s
++
++So the vehicle is sitting exactly where the task wants it, holding a pose the
++completion test would accept on every other criterion, and it gets nothing --
++because it came through the door wrong once, 200 s earlier, and a fixed-setpoint
++regulator has no notion of backing out and coming round again.
++
++Seed 262001 at h20 shows the recovery is available: it entered illegally,
++retreated and re-entered legally, and completed in 121.8 s. So this is a
++**decision** deficiency, not an impossibility.
++
++## 2. Why this is the gap the method needs
++
++The entry plane is a one-shot legal crossing: cross it too fast or too far
++off-axis and the episode is quietly unwinnable while every instantaneous
++constraint stays satisfied. Nothing in a receding-horizon regulator's cost
++represents "this crossing was the last one that counted". The decision the
++task actually poses -- *take this window, or wait and come round with the
++tumble* -- has no representation in the lower layer at all.
++
++That is what an upper layer is for, and it is a schedule decision, not a
++tracking one: the same interface pattern as `References/北航编队.pdf`.
++
++## 3. The horizon result is measuring the absence of F1, not the horizon
++
++h50 being **worse** than h20 (1/12 against 8/12) is not a claim about
++horizons. Without F1 the MPC cannot see the entry disc's closing-speed limit
++before it latches, so a longer horizon simply drives harder at the goal and
++busts the gate more reliably. The lower window's own S3' on `e212b4a`, with
++F1, reports the opposite ordering (h50 3/3, h20 2/3), which is consistent:
++F1 restores the anticipation, and then the longer horizon helps.
++
++**So the h20-vs-h50 question cannot be settled here.** It needs `e212b4a`.
++What survives without F1 is section 1's failure signature, which is about the
++gate itself and is the same under both horizons.
++
++## 4. What to do with it
++
++1. Re-run this 12-seed sweep on `e212b4a`, both horizons. The number that
++   matters is how many failures remain *with* F1 and whether they are still
++   entry-gate failures. F1 gives the MPC 2 s (h20) or 5 s (h50) of preview;
++   the window decision needs more lead time than that, so failures are
++   expected to persist.
++2. The learned upper layer's job statement follows directly: **choose the
++   entry time**, expressed through the 3D waypoint channel, which
++   `docs/PRECAPTURE_REFERENCE_TRACKING_DIAGNOSIS.md` now shows is lossless in
++   the target body frame.
++3. The comparison table writes itself: Pure MPC busts the gate on a fixed
++   fraction of seeds and cannot recover; the coupled method times the entry.
++   Completion rate separates them, which is what the four main-table metrics
++   were chosen for.
++
++## 5. Reproduce
++
++```
++python -B -m experiments.diagnose_precapture_reference \
++  --seed 262003 --horizon 20 --guidance fixed --output OUT.json
++```
++
++Read `completed`, `terminal_region_active`, `illegal_terminal_entry_count`,
++`violation_steps`. Evidence for all 24 episodes is under
++`logs/precapture_planning_v2/upper_diagnosis/`.
++
++## 6. Limits
++
++One episode per cell, 12 seeds, one configuration, no F1, truth state, no
++estimator. This locates a mechanism and sizes it; it is not a reportable row
++and no training conclusion rests on it.
+diff --git a/docs/PRECAPTURE_REFERENCE_TRACKING_DIAGNOSIS.md b/docs/PRECAPTURE_REFERENCE_TRACKING_DIAGNOSIS.md
+new file mode 100644
+index 0000000..9c6f09d
+--- /dev/null
++++ b/docs/PRECAPTURE_REFERENCE_TRACKING_DIAGNOSIS.md
+@@ -0,0 +1,210 @@
++# Why the 3D waypoint interface does not steer the precapture MPC
++
++Measured 2026-09-05 in the upper-level sandbox, on `1fe5549` (**not** on
++`e212b4a` -- see *What this does not cover*). One episode per row, `h20`,
++`terminal_weight=1000`, `input_weight=0.01`, `analytic_local`, oracle
++`CoastThenMatchPlan` delivered through the declared interface: one
++target-centred, inertially oriented 3D waypoint held two seconds. Truth drives
++the environment and every margin below; only what the controller is asked to
++track changes. Runs were executed in parallel, so **no compute number is
++reported from them** -- serial single-process timing is the only admissible
++real-time evidence and none was taken here.
++
++Reproduce with `experiments/diagnose_precapture_reference.py`.
++
++## 1. The question this answers
++
++The S5 stop asked whether the h20 lower layer can enforce attitude and
++field-of-view at all, and whether a 3D translational waypoint can influence
++that behaviour. The evaluation path never recorded the one quantity that
++decides it: **how far the chaser actually is from the waypoint it was given.**
++That is now recorded per step, split into radial and tangential parts.
++
++## 2. The chaser does not fly the waypoint it is handed
++
++`frozen` attitude reference, oracle waypoint, three seeds, two settings of the
++position entry of `state_scales`:
++
++| seed | position scale | end | r_end | lag median | of which tangential | lag max | FOV max | latched | illegal entries | violation |
++|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
++| 262001 | 20 m (default) | 299.9 s cap | 3.41 m | **4.32 m** | 2.60 m | 7.28 m | 15.26 deg | no | 2 | none |
++| 262001 | 10 m | 299.9 s cap | 3.02 m | 1.61 m | 1.32 m | 4.63 m | 16.00 deg | no | 2 | none |
++| 262002 | 20 m (default) | 299.9 s cap | 6.34 m | **3.32 m** | 2.53 m | 9.93 m | 16.12 deg | no | 2 | none |
++| 262002 | 10 m | 299.9 s cap | 2.99 m | 2.03 m | 1.53 m | 7.25 m | 34.08 deg | no | 2 | none |
++| 262004 | 20 m (default) | 98.9 s | 2.79 m | **6.35 m** | 4.50 m | 7.91 m | **49.75 deg** | no | 1 | FOV, 1 step |
++| 262004 | 10 m | 86.1 s | 5.83 m | 3.69 m | 2.78 m | 5.52 m | **49.99 deg** | no | 1 | FOV, 1 step |
++
++Two things follow immediately.
++
++**The interface is being diluted, not used.** At the default scale the chaser
++sits a median 3.3-6.4 m from the waypoint it was just handed, on a task whose
++whole working range is 17 m down to 3 m. Decomposed against the chaser's own
++radial direction on 262001, the median lag is **-3.08 m radial** (the chaser is
++*outside* its own waypoint, behind on the descent) and **2.60 m tangential**,
++which at that range is **22.0 deg of co-rotation phase behind**. 60% of the
++error is phase. An upper layer -- learned or oracle -- cannot steer a lower
++layer that answers a waypoint with a 22 deg phase lag.
++
++**Most of that lag is cost normalisation, not actuation.** The position entry
++of `state_scales` is 20 m. A 4 m position error therefore normalises to 0.2,
++while the angular-rate entry is 0.05 rad/s, so a 0.02 rad/s rate error
++normalises to 0.4 -- the objective weighs a small rate error twice as heavily
++as being 4 m off the waypoint. Halving the position scale to 10 m cuts the
++median lag by 63% / 39% / 42% on the three seeds. **This is a diagnostic
++sweep, not an adopted setting**: 10 m was not evaluated as a factor, it has no
++three-seed formal row behind it, and on 262002 it raised peak FOV from 16.1 to
++34.1 deg. It is reported because it identifies where the lag comes from.
++
++## 3. The FOV failure is a close-range saturation, not a pointing bug
++
++Seed 262004 is the seed that loses the camera. The last twelve seconds, scale
++20 m:
++
++| t | r | FOV | tangential lag | relative rate | torque | force |
++|---:|---:|---:|---:|---:|---:|---:|
++| 87.0 s | 4.62 m | 12.8 deg | 6.75 m | 0.029 rad/s | 0.02 N*m | 3.19 N |
++| 91.8 s | 3.45 m | 18.2 deg | 6.39 m | 0.041 rad/s | 0.12 N*m | 4.17 N |
++| 93.0 s | 3.23 m | 20.8 deg | 6.14 m | 0.041 rad/s | **1.04 N*m** | **8.63 N** |
++| 95.4 s | 2.88 m | 30.2 deg | 5.89 m | 0.094 rad/s | 0.85 N*m | 5.90 N |
++| 97.8 s | 2.72 m | 44.7 deg | 6.07 m | 0.098 rad/s | 0.84 N*m | **8.66 N** |
++| 98.9 s | 2.79 m | **49.7 deg** | 6.20 m | 0.058 rad/s | 0.86 N*m | **8.66 N** |
++
++The chaser arrives at 3 m still **6 m off in phase**. The port sits 1.5 m from
++the target centre, so the sightline's angular rate grows as `1/r`: the same
++tangential error that was 5 deg of pointing at 16 m is tens of degrees at 3 m.
++The FOV angle goes 12.8 -> 49.7 deg in twelve seconds, and it accelerates.
++Through the last six of them the force is at **8.66 N, the full three-axis
++envelope (5*sqrt(3))**, and the torque touches **1.04 N*m, the full three-axis
++torque envelope (0.6*sqrt(3))**.
++
++So the answer to "why does a 40 deg planning cone not change the control" is
++that by then **nothing can**: the actuator is saturated in both channels and
++the required slew is larger than +-0.6 N*m per axis can deliver. The
++constraint is not being ignored and the row is not inert -- the vehicle has run
++out of authority. Tightening the planned cone cannot buy back a slew rate the
++thrusters cannot produce. The lever that works is upstream: do not arrive at
++3 m with 6 m of phase error.
++
++This is an internal, action-dependent failure. Nothing was scripted into it.
++
++## 4. The attitude reference was suspected, and is not the cause
++
++`_apply_precapture_attitude_reference` and the `external_local` branch aim one
++attitude from the current state, hold it across the horizon, and leave the
++relative-rate rows at zero. Reference positions are written in the *target*
++body frame, so a waypoint held fixed inertially sweeps through that frame at
++the target's tumble rate (0.0412 rad/s, 2.36 deg/s), and the old code comment
++justified the zero rate rows with "a constant desired relative attitude means
++zero relative rate". That looked like a feed-forward omission, so two
++alternatives were built and measured rather than argued:
++
++- `swept` -- index 0 unchanged, later indices carried by the rotation the
++  *reference* sightline undergoes, rate rows differenced from that sequence;
++- `aimed` -- every index aimed from its own reference position, so the
++  reference is one self-consistent trajectory.
++
++Seed 262001, oracle waypoint, scale 20 m:
++
++| mode | FOV max | lag median | attitude error median | mean torque | mean force |
++|---|---:|---:|---:|---:|---:|
++| **frozen** (default) | **15.26 deg** | 4.32 m | 6.40 deg | 0.0165 N*m | 1.49 N |
++| swept | 40.85 deg | 3.06 m | 8.36 deg | 0.0353 N*m | 1.26 N |
++| aimed | 49.29 deg | 6.52 m | 13.18 deg | 0.3454 N*m | 2.17 N |
++
++**The existing mode is the best of the three, and the ordering is monotone in
++how much of the reference position the attitude trusts.** The reason is the
++lag measured in section 2: aiming the camera from the waypoint, when the
++chaser is 4-7 m away from it, points the boresight at a place the port is not.
++`aimed` costs 21x the torque of `frozen` and ends the episode 11 m out.
++
++The hypothesis is therefore falsified, and the honest conclusion is that
++`frozen` should stay. The two alternatives are kept as a validated option --
++default `"frozen"`, so nothing already measured moves -- because if the lag is
++ever closed, the feed-forward argument becomes live again and the experiment
++should be one flag, not a rewrite.
++
++## 4b. The interface itself was the defect, and it is now measured as lossless
++
++Sections 2-4 all measure the *inertially oriented* waypoint contract. A
++control the evaluation path never ran settles what that contract costs. Send
++the MPC the one point it already flies well -- the task's own desired pose --
++and change nothing but how it is delivered. Three seeds, `h20`, scale 20 m:
++
++| how the same point is delivered | completed | completion time | FOV max |
++|---|---:|---|---:|
++| directly, as the `fixed` reference (no upper layer) | **3/3** | 121.8 / 115.8 / 126.5 s | 12.3 / 7.0 / 8.0 deg |
++| through the 3D waypoint channel, **inertially oriented** | **0/3** | all hit the 299.9 s cap at r = 3.9 / 3.7 / 3.6 m | 32.7 / 10.2 / 32.4 deg |
++| through the 3D waypoint channel, **target body frame** | **3/3** | 121.8 / 115.8 / 126.5 s | 12.3 / 7.0 / 8.0 deg |
++
++The third row is not merely equal to the first, it is **bitwise identical**:
++max `|dr|` over the full episode is `0.000e+00 m` on all three seeds. So the
++channel is capable of carrying a reference losslessly, and under the declared
++contract it was not.
++
++The mechanism is visible in the endgame of the failing row. The desired pose
++is body-fixed on a target turning at 0.0412 rad/s, so an upper layer that
++wants the chaser there must re-issue a *rotating* inertial waypoint every
++step. The channel holds each one for 2 s and maps it forward across the
++horizon with `so3_exp(-index * dt * omega)`, which turns the stationary goal
++into a circular reference. The optimiser then tracks a circle with a standing
++lag: on seed 262001 the last 60 s sit at a **1.33 m mean offset** (radial
++-1.05 m, tangential +0.95 m) with a 0.08 m sawtooth whose autocorrelation
++peaks at exactly **20 steps = 2.0 s = the hold period**. The completion
++tolerance is **0.25 m**. The chaser parks at 3.90 m and stays there for the
++rest of the episode.
++
++`external_reference_frame` now selects the contract. The default stays
++`"inertial"`, so nothing already measured moves.
++
++### What this does to the S5 stop
++
++S5 stopped because a continuous oracle plan, delivered through this channel,
++could not be made to work and neither could any waypoint family the search
++found. Re-run with the frame corrected and nothing else changed:
++
++| oracle plan through the channel | completed | completion time |
++|---|---:|---|
++| inertially oriented, scale 20 / 10 / 5 m | **0/9** | 300 s cap, one FOV loss, one escape to 29.95 m |
++| target body frame, scale 20 m | **3/3** | 226.4 / 276.1 / 259.4 s |
++
++**The S5 search was measuring the frame error, not the waypoint family.** No
++conclusion drawn from it about what an upper layer can express survives.
++
++### One thing this exposes that is not good news
++
++With the channel transparent, the `fixed` row -- a myopic fixed-setpoint MPC
++with no upper layer at all -- completes 3/3 in **116-127 s**, while the
++scripted oracle plan through the same channel takes **226-276 s**. The oracle
++is not an upper bound on this task; it is twice as slow as tracking the goal
++directly. Any headroom for a learned upper layer has to be argued against the
++116-127 s row, not against the oracle. Three seeds, no F1, truth state, so
++this is a direction, not a row -- but it is the number the coupling design
++now has to beat.
++
++## 5. What changed in the code
++
++| file | change |
++|---|---|
++| `controllers/mpc/config.py` | new `precapture_attitude_reference: str = "frozen"` over `{frozen, swept, aimed}`, and `external_reference_frame: str = "inertial"` over `{inertial, target}`; both default to the measured behaviour |
++| `controllers/mpc/controller.py` | `_precapture_reference_rotations` / `_reference_angular_rates` build a per-index attitude sequence and the relative rate it implies; `frozen` reproduces the old path exactly. The `external_local` horizon map skips the inertial-to-target rotation when the frame is `"target"` |
++| `tests/test_precapture_attitude_reference.py` | new -- pins both defaults, pins that `frozen` and `swept` are bitwise equal on a target-frame-stationary reference, pins that the swept rate rows carry the tumble rate with no parallax step in the first column, and pins that the target-frame channel reproduces the direct reference while the inertial one turns a stationary goal into a moving one |
++| `experiments/diagnose_precapture_reference.py` | new -- the per-step lag / attitude / saturation recorder used above |
++
++Regression evidence for "nothing already measured moves": a full `fixed`
++reference h20 episode on seed 262001, 1219 steps, run before and after the
++change -- **max |dFOV| = 0.000e+00 deg, max |dtorque| = 0.000e+00 N*m**, same
++step count, same end state. `python -B -m pytest -q` is **181 passed**.
++
++## 6. What this does not cover
++
++- **This is `1fe5549`, not `e212b4a`.** F1's MPC entry preview is absent here,
++  which is exactly the mechanism that should stop the illegal entries seen in
++  every row of section 2. The lag and saturation findings are upstream of the
++  entry plane and are not expected to move, but the entry and latch columns
++  should be re-read on `e212b4a` before anything is concluded from them.
++- **The reported FOV failure was not reproduced on its own seed.** On this
++  commit seed 262001 does not lose the camera (15.3 deg peak); 262004 does.
++  The 30.6 s / -0.001269 rad event belongs to code this sandbox does not have.
++- One episode per cell, three seeds. Enough to locate a mechanism, not enough
++  to report a row. Nothing here is a formal result.
++- No compute number is taken from these runs.
+diff --git a/docs/SAC_MPC_COUPLING_DESIGN.md b/docs/SAC_MPC_COUPLING_DESIGN.md
+new file mode 100644
+index 0000000..ea5af89
+--- /dev/null
++++ b/docs/SAC_MPC_COUPLING_DESIGN.md
+@@ -0,0 +1,177 @@
++# The SAC-MPC coupling: what it is, what it closes, and what it must not do
++
++Built 2026-09-07 on `1fe5549`. Entry points:
++`env/hybrid_env.py`, `train/hybrid_configs.py`, `train/train_hybrid.py`,
++`experiments/evaluate_hybrid_scripted.py`.
++
++## 1. The gap it closes
++
++Twelve seeds, fixed-setpoint MPC, no upper layer: 8/12 completed at horizon 20
++and 1/12 at horizon 50. **All fifteen failures were one failure** -- an illegal
++crossing of the 6 m entry plane that never re-latched -- with **zero**
++truth-geometry violations of any kind, after which the chaser flew to the
++desired pose anyway and parked on it to a median 0.000 m. Seed 262001 shows
++the recovery is available; the regulator simply has no term for "that crossing
++was the last one that counted".
++
++That is a *scheduling* decision sitting on top of a tracking problem, which is
++the interface pattern `References/北航编队.pdf` uses, and the thing
++`References/南航.pdf` lists as future work is one layer below it. See
++`docs/PRECAPTURE_ENTRY_WINDOW_GAP.md`.
++
++## 2. The interface
++
++One 3D waypoint in the **target body frame**, held for 2 s (20 control steps).
++This is the interface that was already declared, with the frame corrected --
++under the older inertially oriented reading the channel could not carry even
++the task's own desired pose (0/3 against 3/3 direct), because a body-fixed
++goal has to be re-issued as a rotating inertial point, which the horizon map
++turns into a circular reference tracked with a 1.33 m standing lag against a
++0.25 m completion tolerance. In the target frame the channel is bitwise
++transparent. See `docs/PRECAPTURE_REFERENCE_TRACKING_DIAGNOSIS.md`.
++
++The waypoint is **absolute, not a displacement**. A displacement
++parametrisation biases the policy toward moving, and "hold and let the target
++turn" is exactly one of the two answers the task poses.
++
++**Waiting means inertially still.** The approach axis is body-fixed, so a
++chaser holding a fixed *target-frame* point co-rotates with it and the entry
++geometry never changes -- there is no window to wait for, only fuel to spend.
++Holding position is therefore a *sequence* of target-frame waypoints, one per
++decision, tracing the frozen inertial point. The 2 s channel carries this
++because the policy re-issues the waypoint every decision. This is not a
++limitation of the interface, it is what the interface is for, and a scripted
++policy that got it wrong is recorded in section 5 as the check that caught it.
++
++## 3. Why the coarse step is the mechanism, not a convenience
++
++A Pure SAC step is one 0.1 s control step, so a 300 s episode is about 950 of
++them and at `gamma = 0.997` the completion bonus is worth `0.997**950 = 0.057`
++at reset. That is the documented reason hovering captures most of the scripted
++return without ever finishing.
++
++A coupled step is one 2 s decision, so the same episode is about 150 steps. At
++`gamma = 0.99` the bonus is worth `0.99**150 = 0.22` -- **four times** what
++Pure SAC ever sees -- with an effective horizon of 100 decisions (200 s) that
++covers the episode. The credit-assignment path from an entry decision to the
++completion it enables is six times shorter. That is a structural consequence
++of the temporal abstraction, and it is the reason the coupling can represent a
++decision made 100 s before it pays.
++
++## 4. Three things held deliberately fixed
++
++- **One architecture for the whole mission.** The MPC is the only thing that
++  touches the actuators, from 17 m to contact. No phase switch, no hand-off,
++  so no result can be confounded with one.
++- **The reward is the environment's own**, summed over the decision period.
++  Nothing rewards entering legally, waiting, or approaching a window. If the
++  policy learns to time the entry it is because completing pays and being
++  locked out does not.
++- **The observation is unchanged** -- the same 24D schema Pure SAC uses, which
++  already carries relative attitude, relative rate and target angular
++  velocity. Nothing about the window is precomputed and handed over. Time
++  remaining is *not* in the schema, which is a real limitation and a candidate
++  single factor later; it is not being smuggled in now.
++
++## 5. The feasibility gate, and the error it caught
++
++`experiments/evaluate_hybrid_scripted.py` runs hand-written waypoint policies
++through the identical wrapper. Neither is a reportable baseline; their job is
++to bound what the action space can express.
++
++`desired_pose` -- one constant waypoint at the desired pose -- reproduces the
++no-upper-layer result seed for seed, **8/12**, with completion times matching
++the direct row to 0.1 s (one decision boundary). So the wrapper adds nothing
++and loses nothing.
++
++The first version of `hold_then_enter` evaluated the entry alignment in the
++target body frame and commanded the chaser's current target-frame point while
++waiting. Both are wrong for the same reason -- in that frame a co-rotating
++chaser is stationary and the window never opens -- and it scored 3/12 with the
++commit criterion never firing on eight seeds. It is recorded here because the
++failure is instructive: **"wait" is the action most easily got wrong, and it is
++half the decision the paper claims.** The corrected rule holds the frozen
++inertial point and tests the alignment inertially.
++
++## 5b. Is a solution even in there? Sweeping the one decision variable
++
++The gate that matters is not whether a hand rule is good, it is whether the
++action space **contains** a solution on the seeds the lower layer loses. So on
++exactly those four seeds, the entry time was swept directly -- hold the frozen
++inertial point until `t`, then command the desired pose. One scalar, delivered
++through the same 3D channel.
++
++| seed | commit at 0 | 20 | 40 | 60 | 80 | 100 | 120 | 140 s | result |
++|---|---|---|---|---|---|---|---|---|---|
++| 262003 | -- | **yes** | yes | yes | yes | yes | yes | yes | completes at 175.3 s |
++| 262005 | -- | -- | -- | -- | -- | **yes** | yes | yes | completes at 257.1 s |
++| 262006 | -- | -- | -- | -- | -- | -- | -- | -- | no commit time works |
++| 262011 | -- | -- | -- | **yes** | -- | -- | -- | -- | completes at 224.0 s |
++
++**Three of the four are solved by choosing the entry time alone.** The ceiling
++through this interface is therefore **11/12** against the lower layer's 8/12,
++and that difference is the headroom the learned layer has to earn.
++
++Seed 262011 is the one to keep in front of the reader: **only** the 60 s commit
++works, and 40 s and 80 s both fail. The window is narrow, it is not where a
++greedy controller would look, and a fixed rule steps straight over it -- which
++is why the hand rule in section 5 scores 4/12 while a per-seed choice of the
++same variable scores 11/12. The decision is real, it is sharp, and it has to be
++learned rather than written down.
++
++Seed 262006 is not solved by entry time alone on this grid. It is recorded as
++a limit, not smoothed over: the sweep is coarse (20 s), the hold radius is
++whatever the episode started at, and both are free parameters a learned policy
++has that this sweep does not.
++
++## 6. Running it
++
++```
++python -B -m train.train_hybrid --steps 60000 --seed 262100 \
++    --run-name sac_mpc_hybrid_262100
++```
++
++Cost: one decision step is 20 MPC solves plus 20 RK45 truth steps, measured at
++**0.90 s** in this sandbox, so 60k decisions is about 15 hours serial per seed.
++Training may be vectorised -- that touches no red line, because **real-time
++compute is only ever reported from serial single-process evaluation**, never
++from training. Evaluation stays serial.
++
++Every run starts from zero: fresh actor, critic and replay, no checkpoint
++input, reproducible from the manifest plus its seed.
++
++## 6b. Reading the result
++
++``experiments/evaluate_hybrid_policy.py`` produces the row, through the shared
++``eval.metrics.main_table_metrics`` path, so the coupled row is assembled by
++the same code as the Pure MPC and scripted rows. It also runs the two controls
++without a model: ``--control desired_pose`` is the fixed-setpoint lower layer
++delivered through the wrapper -- the row the policy has to beat -- and
++``--control random`` is the floor.
++
++Compute is charged the way a flight computer would pay it: the MPC every
++0.1 s control step, the policy once per 2 s decision, charged to the first
++control step of that decision. Measured serially in this sandbox on the
++``desired_pose`` control, the h20 coupled controller's p95 is **0.47x** the
++control period. Absolute milliseconds are not comparable across machines and a
++spacecraft processor is one to two orders slower, so state the ratio with the
++platform beside it -- but at horizon 20 this configuration is inside budget,
++which horizon 50 was not.
++
++**Run the evaluation serially, single process.** A parallel run's timings are
++not a real-time claim.
++
++## 7. Acceptance
++
++Three training seeds, evaluated on the same 12-seed block as section 1,
++through the shared `eval/metrics.py` path, reported as a distribution and
++never as the best seed. The coupled row has to beat **8/12 at 116-142 s**, not
++the scripted oracle -- the oracle takes 226-276 s through the same channel and
++is not an upper bound on anything here. Section 5b puts the ceiling at
++**11/12**, so the honest way to read a trained row is against both numbers:
++8/12 is what it must beat, 11/12 is what choosing the entry time can buy, and
++anything above 11/12 means the policy found something the entry-time sweep did
++not.
++
++The claim the table has to support is narrow and should stay narrow: the
++learned layer times the entry, and completion rate is where that shows up.
+diff --git a/env/hybrid_env.py b/env/hybrid_env.py
+new file mode 100644
+index 0000000..f3136a4
+--- /dev/null
++++ b/env/hybrid_env.py
+@@ -0,0 +1,286 @@
++"""SAC-MPC coupling: the learned layer chooses where, the optimiser flies there.
++
++The measured gap this exists to close is the *entry window*. On twelve seeds a
++fixed-setpoint MPC failed four times at horizon 20 and eleven times at horizon
++50, and every one of those fifteen failures was the same event: an illegal
++crossing of the 6 m entry plane that never re-latched, with zero
++truth-geometry violations of any kind. Afterwards the chaser flew to the
++desired pose anyway and parked on it -- median distance to the goal when the
++clock ran out was 0.000 m. A receding-horizon regulator has no term for "that
++crossing was the last one that counted", so it cannot decide to back out and
++come round with the tumble. That decision is what the learned layer supplies.
++See ``docs/PRECAPTURE_ENTRY_WINDOW_GAP.md``.
++
++The interface is the one already declared, with the frame corrected: a single
++3D waypoint in the **target body frame**, held for the decision period. Under
++the older inertially oriented reading the same channel could not even carry
++the task's own desired pose -- 0/3 completions against 3/3 direct -- because a
++body-fixed goal has to be re-issued as a rotating inertial point, which the
++horizon map turns into a circular reference. In the target frame the channel
++is bitwise transparent. See
++``docs/PRECAPTURE_REFERENCE_TRACKING_DIAGNOSIS.md``.
++
++Three properties are deliberate, because each one is a place this could have
++been made to look better than it is:
++
++* **One architecture for the whole mission.** The MPC is the only thing that
++  ever touches the actuators, from 17 m to contact. There is no phase switch
++  and no hand-off, so a result cannot be confounded with one.
++* **The reward is the environment's own, summed over the decision period.**
++  Nothing here rewards entering legally, waiting, or approaching a window.
++  If the policy learns to time the entry it is because completing pays and
++  being locked out does not.
++* **The action is an absolute waypoint, not a displacement.** A displacement
++  parametrisation would bias the policy toward moving, and "hold position and
++  let the target turn" is exactly one of the two answers the task poses.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field, replace
++from typing import Any
++
++import gymnasium as gym
++import numpy as np
++from gymnasium import spaces
++from numpy.typing import NDArray
++
++from controllers.mpc import MPCController
++from controllers.mpc.config import MPCConfig, precapture_mpc_config
++from controllers.mpc.prediction import (
++    LocalRelativePredictionModel,
++    RelativePredictionModel,
++    relative_to_vector,
++)
++from dynamics.gravity import GravityOptions
++from dynamics.integrator import RK45Settings
++from dynamics.types import GeneralizedForce
++from env.action import wrench_to_normalized
++from env.phase2_env import precapture_planning_environment_config
++from env.scenarios import chaser_parameters, target_parameters
++from env.se3_rendezvous_env import SE3RendezvousConfig, SE3RendezvousEnv
++
++FloatArray = NDArray[np.float64]
++
++
++@dataclass(frozen=True)
++class PrecaptureHybridConfig:
++    """Everything the coupling adds on top of the frozen precapture task."""
++
++    #: Control steps the learned waypoint is held for. 20 steps is 2.0 s, and
++    #: it must equal the controller's ``external_reference_hold_steps`` so the
++    #: optimiser adopts a new waypoint exactly on a decision boundary.
++    decision_period_steps: int = 20
++    #: The action is ``a * waypoint_scale_m`` in the target body frame, so the
++    #: box reaches past the 17-20 m start without reaching the 30 m distance
++    #: failure. It is an absolute point, not a displacement.
++    waypoint_scale_m: float = 18.0
++    #: Radial clip applied after scaling. The lower bound keeps the commanded
++    #: point outside the 2 m keepout by a margin the optimiser can hold; the
++    #: upper bound keeps it inside the episode's distance limit.
++    minimum_waypoint_radius_m: float = 2.5
++    maximum_waypoint_radius_m: float = 25.0
++    horizon_steps: int = 20
++    terminal_weight: float = 1000.0
++    input_weight: float = 0.01
++
++    def __post_init__(self) -> None:
++        if self.decision_period_steps < 1:
++            raise ValueError("decision period must be at least one control step")
++        if self.waypoint_scale_m <= 0.0:
++            raise ValueError("waypoint scale must be positive")
++        if not (
++            0.0
++            < self.minimum_waypoint_radius_m
++            < self.maximum_waypoint_radius_m
++        ):
++            raise ValueError("waypoint radius bounds must be ordered and positive")
++        if self.horizon_steps < 1:
++            raise ValueError("horizon must be at least one step")
++
++
++def hybrid_mpc_config(
++    hybrid: PrecaptureHybridConfig,
++    environment: SE3RendezvousConfig,
++) -> MPCConfig:
++    """The lower layer, pinned to the corrected channel and the measured mode."""
++
++    return replace(
++        precapture_mpc_config(),
++        horizon_steps=hybrid.horizon_steps,
++        outer_iterations=1,
++        input_weight=hybrid.input_weight,
++        terminal_weight=hybrid.terminal_weight,
++        reference_source="external_local",
++        # The frame the channel is lossless in. Under "inertial" the same
++        # channel cannot carry a body-fixed point at all.
++        external_reference_frame="target",
++        # Measured best of three formulations; see the diagnosis document.
++        precapture_attitude_reference="frozen",
++        external_reference_hold_steps=hybrid.decision_period_steps,
++    )
++
++
++class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
++    """One learned waypoint per decision period, flown by the constrained MPC.
++
++    The observation is the underlying environment's own, unchanged, so the
++    learned layer sees exactly what Pure SAC sees. The reward is the sum of
++    the environment's rewards over the decision period, so a return here and a
++    return there differ only by the discounting the coarser step implies --
++    which is the point: the episode is about 150 decisions instead of about
++    950 control steps, so the completion bonus is worth ``gamma**150`` at
++    reset rather than ``gamma**950``. The credit-assignment path to the entry
++    decision is six times shorter, and that is a structural property of the
++    coupling, not a tuned one.
++    """
++
++    metadata = {"render_modes": []}
++
++    def __init__(
++        self,
++        environment_config: SE3RendezvousConfig | None = None,
++        hybrid_config: PrecaptureHybridConfig | None = None,
++    ) -> None:
++        self.hybrid_config = hybrid_config or PrecaptureHybridConfig()
++        self.environment_config = (
++            environment_config or precapture_planning_environment_config()
++        )
++        if not self.environment_config.precapture_planning_enabled:
++            raise ValueError("the hybrid requires the precapture planning task")
++        self.env = SE3RendezvousEnv(self.environment_config)
++        self.mpc_config = hybrid_mpc_config(
++            self.hybrid_config, self.environment_config
++        )
++        reference_model = RelativePredictionModel(
++            target_parameters=target_parameters(),
++            chaser_parameters=chaser_parameters(),
++            dt_s=self.environment_config.dt_s,
++            gravity_options=GravityOptions(
++                include_j2=self.environment_config.include_j2
++            ),
++            solver_settings=RK45Settings(
++                rtol=self.environment_config.solver_rtol,
++                atol=self.environment_config.solver_atol,
++                max_step=self.environment_config.dt_s,
++            ),
++        )
++        self.controller = MPCController(
++            self.mpc_config,
++            LocalRelativePredictionModel(
++                reference_model.chaser_parameters, self.environment_config.dt_s
++            ),
++            reference_model,
++        )
++        self.action_space = spaces.Box(-1.0, 1.0, shape=(3,), dtype=np.float32)
++        self.observation_space = self.env.observation_space
++        self._last_info: dict[str, Any] = {}
++
++    # -- waypoint ---------------------------------------------------------
++
++    def waypoint_from_action(self, action: np.ndarray) -> FloatArray:
++        """Map a bounded action to a target-body-frame point.
++
++        Absolute, not relative: the policy names a place to be, and "stay out
++        here while the target turns" is as expressible as "close on the port".
++        The radial clip is a safety envelope on the *command*, not on the
++        vehicle -- the MPC's own constraints remain the only thing that keeps
++        the trajectory legal, and the truth geometry remains the only thing
++        that adjudicates it.
++        """
++
++        raw = np.asarray(action, dtype=np.float64).reshape(3)
++        if not np.all(np.isfinite(raw)):
++            raise ValueError("action must be finite")
++        point = np.clip(raw, -1.0, 1.0) * self.hybrid_config.waypoint_scale_m
++        radius = float(np.linalg.norm(point))
++        if radius < 1.0e-9:
++            # A degenerate command would ask for the target's own centre; hold
++            # the current relative position instead of inventing a direction.
++            assert self.env.relative is not None
++            from dynamics.lie import se3_exp
++
++            point = se3_exp(relative_to_vector(self.env.relative)[:6])[:3, 3]
++            radius = float(np.linalg.norm(point))
++            if radius < 1.0e-9:
++                return np.array([self.hybrid_config.minimum_waypoint_radius_m, 0.0, 0.0])
++        clipped = float(
++            np.clip(
++                radius,
++                self.hybrid_config.minimum_waypoint_radius_m,
++                self.hybrid_config.maximum_waypoint_radius_m,
++            )
++        )
++        return point * (clipped / radius)
++
++    # -- gymnasium --------------------------------------------------------
++
++    def reset(
++        self, *, seed: int | None = None, options: dict[str, Any] | None = None
++    ) -> tuple[np.ndarray, dict[str, Any]]:
++        observation, info = self.env.reset(seed=seed, options=options)
++        self.controller.reset()
++        self._last_info = dict(info)
++        return observation, info
++
++    def step(
++        self, action: np.ndarray
++    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
++        waypoint = self.waypoint_from_action(action)
++        reward = 0.0
++        terminated = truncated = False
++        observation = None
++        info: dict[str, Any] = self._last_info
++        control_steps = 0
++        zero_fallbacks = 0
++        for _ in range(self.hybrid_config.decision_period_steps):
++            assert self.env.relative is not None and self.env.target_state is not None
++            state = relative_to_vector(self.env.relative)
++            wrench, diagnostics = self.controller.command(
++                state,
++                target_state=self.env.target_state,
++                time_seconds=self.env.time_seconds,
++                terminal_latched=bool(info["terminal_region_active"]),
++                external_reference=waypoint,
++            )
++            zero_fallbacks += int(diagnostics.used_zero_fallback)
++            observation, step_reward, terminated, truncated, info = self.env.step(
++                wrench_to_normalized(
++                    GeneralizedForce.from_vector(wrench),
++                    max_torque_per_axis_nm=(
++                        self.environment_config.max_torque_per_axis_nm
++                    ),
++                    max_force_per_axis_n=(
++                        self.environment_config.max_force_per_axis_n
++                    ),
++                )
++            )
++            reward += float(step_reward)
++            control_steps += 1
++            if terminated or truncated:
++                break
++        assert observation is not None
++        info = dict(info)
++        info["hybrid_waypoint_target_frame"] = [float(v) for v in waypoint]
++        info["hybrid_waypoint_radius_m"] = float(np.linalg.norm(waypoint))
++        info["hybrid_control_steps"] = control_steps
++        info["hybrid_qp_zero_fallbacks"] = zero_fallbacks
++        self._last_info = info
++        return observation, reward, terminated, truncated, info
++
++    def close(self) -> None:
++        self.env.close()
++
++
++def make_precapture_hybrid_env(
++    hybrid_config: PrecaptureHybridConfig | None = None,
++) -> PrecaptureHybridEnv:
++    return PrecaptureHybridEnv(hybrid_config=hybrid_config)
++
++
++__all__ = [
++    "PrecaptureHybridConfig",
++    "PrecaptureHybridEnv",
++    "hybrid_mpc_config",
++    "make_precapture_hybrid_env",
++]
+diff --git a/experiments/diagnose_precapture_reference.py b/experiments/diagnose_precapture_reference.py
+new file mode 100644
+index 0000000..93fba52
+--- /dev/null
++++ b/experiments/diagnose_precapture_reference.py
+@@ -0,0 +1,278 @@
++"""Measure how well the precapture MPC tracks a 3D waypoint, and why it does not.
++
++The declared learned-policy interface hands the MPC one target-centred,
++inertially oriented 3D waypoint held for two seconds. Whether a coupled upper
++layer can steer anything through that interface depends on a quantity nothing
++in the evaluation path reported: how far the chaser actually sits from the
++waypoint it was given. This records that lag per step, together with the
++attitude quantities the field-of-view margin is a function of, so a reference
++formulation can be judged on measurements rather than on argument.
++
++Two settings are exposed because both were suspected of the same symptom:
++
++``--attitude-reference``
++    ``frozen`` (the default everywhere) aims one attitude from the current
++    state and holds it across the horizon with a zero relative-rate reference.
++    ``swept`` and ``aimed`` instead let the reference attitude follow the
++    sightline as the reference position sweeps the target frame.
++``--position-scale``
++    The position entry of ``state_scales``, which normalises the tracking cost.
++    The default 20 m is coarse against a task that runs from 17 m to 3 m.
++
++Truth still drives the environment and every margin below; this changes only
++what the controller is asked to track.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from dataclasses import replace
++from pathlib import Path
++from statistics import median
++
++import numpy as np
++
++from controllers.mpc import MPCController
++from controllers.mpc.config import precapture_mpc_config
++from controllers.mpc.prediction import (
++    LocalRelativePredictionModel,
++    RelativePredictionModel,
++    relative_to_vector,
++)
++from dynamics.gravity import GravityOptions
++from dynamics.integrator import RK45Settings
++from dynamics.lie import se3_exp
++from dynamics.types import GeneralizedForce
++from env.action import wrench_to_normalized
++from env.phase2_env import precapture_planning_environment_config
++from env.scenarios import chaser_parameters, target_parameters
++from env.se3_rendezvous_env import SE3RendezvousEnv
++from experiments.evaluate_precapture_oracle import CoastThenMatchPlan
++
++
++def _angle_between(first: np.ndarray, second: np.ndarray) -> float:
++    return float(
++        np.arctan2(
++            float(np.linalg.norm(np.cross(first, second))),
++            float(np.clip(first @ second, -1.0, 1.0)),
++        )
++    )
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--seed", type=int, required=True)
++    parser.add_argument("--horizon", type=int, default=20)
++    parser.add_argument("--terminal-weight", type=float, default=1000.0)
++    parser.add_argument("--input-weight", type=float, default=0.01)
++    parser.add_argument(
++        "--guidance",
++        choices=["fixed", "oracle_plan", "desired_pose"],
++        default="oracle_plan",
++        help=(
++            "'fixed' tracks the desired pose directly, with no upper layer. "
++            "'desired_pose' sends that same point through the declared 3D "
++            "waypoint channel instead, so the two differ only by the channel "
++            "-- the 2 s hold, the inertial-to-target-frame mapping and the "
++            "differenced velocity feed-forward. 'oracle_plan' sends the "
++            "coast-then-match plan through the same channel."
++        ),
++    )
++    parser.add_argument(
++        "--attitude-reference",
++        choices=["frozen", "swept", "aimed"],
++        default="frozen",
++    )
++    parser.add_argument(
++        "--waypoint-frame", choices=["inertial", "target"], default="inertial"
++    )
++    parser.add_argument("--position-scale", type=float, default=20.0)
++    parser.add_argument("--output", type=Path, required=True)
++    return parser.parse_args()
++
++
++def main() -> None:
++    args = parse_args()
++    if args.output.exists():
++        raise FileExistsError(args.output)
++
++    env_config = precapture_planning_environment_config()
++    task = env_config.precapture_task
++    config = replace(
++        precapture_mpc_config(),
++        horizon_steps=args.horizon,
++        outer_iterations=1,
++        input_weight=args.input_weight,
++        terminal_weight=args.terminal_weight,
++        reference_source=(
++            "fixed" if args.guidance == "fixed" else "external_local"
++        ),
++        precapture_attitude_reference=args.attitude_reference,
++        external_reference_frame=args.waypoint_frame,
++        state_scales=np.array(
++            [
++                *([np.deg2rad(75.0)] * 3),
++                *([args.position_scale] * 3),
++                *([0.05] * 3),
++                *([1.10] * 3),
++            ],
++            dtype=np.float64,
++        ),
++    )
++
++    env = SE3RendezvousEnv(env_config)
++    _, info = env.reset(seed=args.seed)
++    reference_model = RelativePredictionModel(
++        target_parameters=target_parameters(),
++        chaser_parameters=chaser_parameters(),
++        dt_s=env_config.dt_s,
++        gravity_options=GravityOptions(include_j2=env_config.include_j2),
++        solver_settings=RK45Settings(
++            rtol=env_config.solver_rtol,
++            atol=env_config.solver_atol,
++            max_step=env_config.dt_s,
++        ),
++    )
++    controller = MPCController(
++        config,
++        LocalRelativePredictionModel(
++            reference_model.chaser_parameters, env_config.dt_s
++        ),
++        reference_model,
++    )
++    controller.reset()
++    oracle_plan = (
++        CoastThenMatchPlan(env) if args.guidance == "oracle_plan" else None
++    )
++    desired_position = task.desired_position
++
++    port = task.port_position
++    boresight_body = task.camera_boresight
++    trace: list[dict[str, object]] = []
++    terminated = truncated = False
++    while not (terminated or truncated):
++        state = relative_to_vector(env.relative)
++        latched = bool(info["terminal_region_active"])
++        transform = se3_exp(state[:6])
++        rotation, position = transform[:3, :3], transform[:3, 3]
++        if oracle_plan is not None:
++            # ``body_position`` is already a target-body-frame point; the
++            # inertial contract needs it rotated out and the channel then
++            # rotates it back, which is where the frame error enters.
++            body_waypoint = oracle_plan.body_position(env.time_seconds)
++            external_reference = (
++                body_waypoint
++                if args.waypoint_frame == "target"
++                else env.target_state.rotation @ body_waypoint
++            )
++        elif args.guidance == "desired_pose":
++            external_reference = (
++                desired_position
++                if args.waypoint_frame == "target"
++                else env.target_state.rotation @ desired_position
++            )
++        else:
++            external_reference = None
++        reference = controller._reference_trajectory(
++            state,
++            env.time_seconds,
++            target_state=env.target_state,
++            external_reference=external_reference,
++            terminal_latched=latched,
++        )
++        reference_position = se3_exp(reference[:6, 0])[:3, 3]
++        reference_rotation = se3_exp(reference[:6, 0])[:3, :3]
++        lag = reference_position - position
++        radial = position / max(float(np.linalg.norm(position)), 1.0e-12)
++        radial_lag = float(lag @ radial)
++
++        wrench, diagnostics = controller.command(
++            state,
++            target_state=env.target_state,
++            time_seconds=env.time_seconds,
++            terminal_latched=latched,
++            external_reference=external_reference,
++        )
++        trace.append(
++            {
++                "t": float(env.time_seconds),
++                "range_m": float(np.linalg.norm(position)),
++                "fov_angle_deg": float(np.rad2deg(info["fov_angle_rad"])),
++                "reference_position_lag_m": float(np.linalg.norm(lag)),
++                "reference_radial_lag_m": radial_lag,
++                "reference_tangential_lag_m": float(
++                    np.linalg.norm(lag - radial_lag * radial)
++                ),
++                "reference_attitude_error_deg": float(
++                    np.rad2deg(
++                        _angle_between(
++                            rotation @ boresight_body,
++                            reference_rotation @ boresight_body,
++                        )
++                    )
++                ),
++                "reference_angular_rate_rad_s": float(
++                    np.linalg.norm(reference[6:9, -1])
++                ),
++                "relative_angular_rate_rad_s": float(np.linalg.norm(state[6:9])),
++                "target_angular_rate_rad_s": float(
++                    np.linalg.norm(env.target_state.omega)
++                ),
++                "torque_norm_nm": float(np.linalg.norm(wrench[:3])),
++                "force_norm_n": float(np.linalg.norm(wrench[3:])),
++                "maximum_slack": float(diagnostics.maximum_slack),
++                "status": str(diagnostics.status),
++            }
++        )
++        action = wrench_to_normalized(
++            GeneralizedForce.from_vector(wrench),
++            max_torque_per_axis_nm=env_config.max_torque_per_axis_nm,
++            max_force_per_axis_n=env_config.max_force_per_axis_n,
++        )
++        _, _, terminated, truncated, info = env.step(action)
++
++    def column(name: str) -> list[float]:
++        return [float(sample[name]) for sample in trace]
++
++    summary = {
++        "seed": args.seed,
++        "horizon": args.horizon,
++        "guidance": args.guidance,
++        "attitude_reference": args.attitude_reference,
++        "position_scale_m": args.position_scale,
++        "waypoint_frame": args.waypoint_frame,
++        "steps": len(trace),
++        "final_time_s": trace[-1]["t"],
++        "final_range_m": trace[-1]["range_m"],
++        "reference_position_lag_median_m": median(column("reference_position_lag_m")),
++        "reference_position_lag_max_m": max(column("reference_position_lag_m")),
++        "reference_tangential_lag_median_m": median(
++            column("reference_tangential_lag_m")
++        ),
++        "fov_angle_max_deg": max(column("fov_angle_deg")),
++        "torque_mean_nm": float(np.mean(column("torque_norm_nm"))),
++        "force_mean_n": float(np.mean(column("force_norm_n"))),
++        "completed": bool(info["completed"]),
++        "terminal_region_active": float(info["terminal_region_active"]),
++        "illegal_terminal_entry_count": float(info["illegal_terminal_entry_count"]),
++        "violation_steps": {
++            key: float(value)
++            for key, value in info.items()
++            if key.endswith("violation_steps") and float(value) > 0.0
++        },
++        "trace": trace,
++    }
++    args.output.write_text(json.dumps(summary, indent=1))
++    print(
++        f"seed={args.seed} mode={args.attitude_reference} frame={args.waypoint_frame} "
++        f"scale={args.position_scale} "
++        f"completed={summary['completed']} "
++        f"t={summary['final_time_s']:.1f}s r={summary['final_range_m']:.2f}m "
++        f"lag_med={summary['reference_position_lag_median_m']:.2f}m "
++        f"fov_max={summary['fov_angle_max_deg']:.2f}deg"
++    )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/experiments/evaluate_hybrid_policy.py b/experiments/evaluate_hybrid_policy.py
+new file mode 100644
+index 0000000..818ca7f
+--- /dev/null
++++ b/experiments/evaluate_hybrid_policy.py
+@@ -0,0 +1,231 @@
++"""Evaluate a trained coupled policy on the same block, through the same metrics.
++
++This is the row the paper's table takes from. It emits the shared
++``eval.metrics.main_table_metrics`` block, so the coupled row is assembled by
++the same code as the Pure MPC and scripted rows and cannot drift into a private
++convention.
++
++Compute accounting, which is the column most easily got wrong here: the MPC
++still runs once per 0.1 s control step, and the learned layer runs once per
++decision. So the per-control-step controller cost is the MPC solve, plus the
++policy's forward pass charged to the first control step of its decision. That
++is what a flight computer would actually pay.
++
++**Run this serially, single process.** A parallel run's timings are not a
++real-time claim and must not be reported as one.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from pathlib import Path
++from time import perf_counter
++from typing import Any
++
++import numpy as np
++
++from controllers.mpc.prediction import relative_to_vector
++from dynamics.types import GeneralizedForce
++from env.action import wrench_to_normalized
++from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
++from eval.metrics import PRECAPTURE_MARGIN_KEYS, main_table_metrics
++from train.hybrid_configs import SAC_MPC_HYBRID
++
++VIOLATION_STEP_KEYS = (
++    "keepout_violation_steps",
++    "fov_violation_steps",
++    "outer_speed_violation_steps",
++    "outer_radial_violation_steps",
++    "corridor_violation_steps",
++    "total_speed_violation_steps",
++    "closing_speed_violation_steps",
++)
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--episodes", type=int, required=True)
++    parser.add_argument("--seed", type=int, required=True)
++    parser.add_argument("--output", type=Path, required=True)
++    parser.add_argument("--horizon", type=int, default=20)
++    parser.add_argument(
++        "--model",
++        type=Path,
++        help="Trained SAC checkpoint. Omit to run one of the controls.",
++    )
++    parser.add_argument(
++        "--control",
++        choices=["desired_pose", "random"],
++        help=(
++            "Run without a model. 'desired_pose' is the fixed-setpoint lower "
++            "layer delivered through the wrapper -- the row the coupled policy "
++            "has to beat. 'random' is the floor."
++        ),
++    )
++    return parser.parse_args()
++
++
++def main() -> None:
++    args = parse_args()
++    if args.output.exists():
++        raise FileExistsError(args.output)
++    if (args.model is None) == (args.control is None):
++        raise ValueError("give exactly one of --model or --control")
++
++    policy = None
++    if args.model is not None:
++        from stable_baselines3 import SAC
++
++        policy = SAC.load(args.model, device="cpu")
++
++    records: list[dict[str, Any]] = []
++    controller_times_s: list[float] = []
++    environment_times_s: list[float] = []
++    generator = np.random.default_rng(args.seed)
++
++    for episode in range(args.episodes):
++        seed = args.seed + episode
++        env = PrecaptureHybridEnv(
++            hybrid_config=PrecaptureHybridConfig(horizon_steps=args.horizon)
++        )
++        observation, info = env.reset(seed=seed)
++        desired = env.environment_config.precapture_task.desired_position
++        minimum_margins = {
++            key: float(info[key]) for key in PRECAPTURE_MARGIN_KEYS if key in info
++        }
++        force_impulse = torque_impulse = 0.0
++        waypoints: list[list[float]] = []
++        terminated = truncated = False
++        while not (terminated or truncated):
++            if policy is not None:
++                started = perf_counter()
++                action, _ = policy.predict(observation, deterministic=True)
++                inference_s = perf_counter() - started
++            elif args.control == "desired_pose":
++                started = perf_counter()
++                action = np.clip(
++                    desired / env.hybrid_config.waypoint_scale_m, -1.0, 1.0
++                )
++                inference_s = perf_counter() - started
++            else:
++                started = perf_counter()
++                action = generator.uniform(-1.0, 1.0, size=3)
++                inference_s = perf_counter() - started
++
++            waypoint = env.waypoint_from_action(action)
++            waypoints.append([float(v) for v in waypoint])
++            # Inline the decision so each control step's cost is separable.
++            for index in range(env.hybrid_config.decision_period_steps):
++                assert env.env.relative is not None
++                assert env.env.target_state is not None
++                started = perf_counter()
++                wrench, _ = env.controller.command(
++                    relative_to_vector(env.env.relative),
++                    target_state=env.env.target_state,
++                    time_seconds=env.env.time_seconds,
++                    terminal_latched=bool(info["terminal_region_active"]),
++                    external_reference=waypoint,
++                )
++                controller_s = perf_counter() - started
++                # The policy is charged to the first control step of its
++                # decision, which is when a flight computer would pay it.
++                controller_times_s.append(
++                    controller_s + (inference_s if index == 0 else 0.0)
++                )
++                force_impulse += (
++                    float(np.linalg.norm(wrench[3:])) * env.environment_config.dt_s
++                )
++                torque_impulse += (
++                    float(np.linalg.norm(wrench[:3])) * env.environment_config.dt_s
++                )
++                started = perf_counter()
++                observation, _, terminated, truncated, info = env.env.step(
++                    wrench_to_normalized(
++                        GeneralizedForce.from_vector(wrench),
++                        max_torque_per_axis_nm=(
++                            env.environment_config.max_torque_per_axis_nm
++                        ),
++                        max_force_per_axis_n=(
++                            env.environment_config.max_force_per_axis_n
++                        ),
++                    )
++                )
++                environment_times_s.append(perf_counter() - started)
++                for key in PRECAPTURE_MARGIN_KEYS:
++                    if key in info:
++                        minimum_margins[key] = min(
++                            minimum_margins.get(key, float(info[key])),
++                            float(info[key]),
++                        )
++                if terminated or truncated:
++                    break
++
++        zero_violation = all(
++            int(info[key]) == 0 for key in VIOLATION_STEP_KEYS if key in info
++        )
++        records.append(
++            {
++                "episode": episode,
++                "seed": seed,
++                "completed": bool(info["completed"]),
++                "truth_geometry_zero_violation_completed": bool(
++                    info["completed"] and zero_violation
++                ),
++                "constraint_violated": not zero_violation,
++                "survival_s": float(env.env.time_seconds),
++                "steps": int(env.env.step_count),
++                "decisions": len(waypoints),
++                "force_impulse_n_s": force_impulse,
++                "torque_impulse_nm_s": torque_impulse,
++                "equivalent_delta_v_m_s": (
++                    force_impulse / env.env.chaser_parameters.mass
++                ),
++                "minimum_margins": minimum_margins,
++                "illegal_terminal_entry_count": int(
++                    info.get("illegal_terminal_entry_count", 0)
++                ),
++                "terminal_region_active": float(info["terminal_region_active"]),
++                "time_failure": bool(info.get("time_failure", False)),
++                "distance_failure": bool(info.get("distance_failure", False)),
++                "waypoints_target_frame": waypoints,
++            }
++        )
++        env.close()
++        last = records[-1]
++        print(
++            f"episode {episode + 1}/{args.episodes} seed={seed} "
++            f"completed={last['completed']} t={last['survival_s']:.1f}s "
++            f"dv={last['equivalent_delta_v_m_s']:.3f} "
++            f"illegal={last['illegal_terminal_entry_count']}"
++        )
++
++    payload = {
++        "source": str(args.model) if args.model is not None else args.control,
++        "episodes": args.episodes,
++        "seed_block": args.seed,
++        "horizon": args.horizon,
++        "hyperparameters": {"gamma": SAC_MPC_HYBRID.gamma},
++        "compute_note": (
++            "valid only if this ran serially in a single process; the MPC is "
++            "charged every control step and the policy once per decision"
++        ),
++        "records": records,
++        "main_table": main_table_metrics(
++            records,
++            controller_times_s=controller_times_s,
++            environment_step_times_s=environment_times_s,
++            control_period_s=0.1,
++        ),
++    }
++    args.output.write_text(json.dumps(payload, indent=1))
++    table = payload["main_table"]
++    print(
++        f"\ncompleted {table['completed_episodes']}/{table['episodes']}  "
++        f"controller p95/budget "
++        f"{table['per_step_compute_s']['controller_p95_over_budget']:.2f}x"
++    )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/experiments/evaluate_hybrid_scripted.py b/experiments/evaluate_hybrid_scripted.py
+new file mode 100644
+index 0000000..9725b7a
+--- /dev/null
++++ b/experiments/evaluate_hybrid_scripted.py
+@@ -0,0 +1,189 @@
++"""Scripted upper layers through the coupling interface: the feasibility gate.
++
++Before any training is authorised the project rules ask for two things: that
++the lower layer genuinely fails, and that an ideal controller can still solve
++the task through the *same* interface the learned layer will use. This
++supplies the second. Nothing here is a reportable baseline row -- these are
++hand-written waypoint policies whose only job is to bound what the 3D action
++space can express.
++
++Policies
++--------
++``desired_pose``
++    One constant waypoint at the task's own desired pose. This is the
++    fixed-setpoint MPC, delivered through the coupling wrapper, and it should
++    reproduce the no-upper-layer result. It is the control that says the
++    wrapper adds nothing and loses nothing.
++
++``hold_then_enter``
++    The window decision made by hand, and the only policy here that uses more
++    than a constant. Waiting has to mean *inertially* still: the approach axis
++    is body-fixed on the target, so a chaser that holds a fixed target-frame
++    point co-rotates with it and the entry geometry never changes -- there is
++    no window to wait for, only fuel to spend. So the hold command is the
++    chaser's frozen inertial position, re-expressed in the target frame on
++    every decision, which the 2 s channel can carry because the policy
++    re-issues it. The rule commits to the desired pose once the body-fixed
++    approach axis has swung to within ``--entry-alignment-deg`` of that held
++    inertial direction. It is fixed before the run and not tuned against the
++    outcome.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from pathlib import Path
++
++import numpy as np
++
++from dynamics.lie import se3_exp
++from controllers.mpc.prediction import relative_to_vector
++from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
++
++
++def _unit(vector: np.ndarray) -> np.ndarray:
++    norm = float(np.linalg.norm(vector))
++    return vector / norm if norm > 1.0e-12 else vector
++
++
++class ScriptedWaypointPolicy:
++    def __init__(
++        self,
++        env: PrecaptureHybridEnv,
++        kind: str,
++        alignment_deg: float,
++        commit_time_s: float = 0.0,
++    ):
++        self.commit_time_s = float(commit_time_s)
++        self.env = env
++        self.kind = kind
++        self.cosine_threshold = float(np.cos(np.deg2rad(alignment_deg)))
++        self.task = env.environment_config.precapture_task
++        self.scale = env.hybrid_config.waypoint_scale_m
++        self.committed = False
++        self.held_inertial: np.ndarray | None = None
++
++    def _action_for(self, point: np.ndarray) -> np.ndarray:
++        return np.clip(np.asarray(point, dtype=np.float64) / self.scale, -1.0, 1.0)
++
++    def act(self) -> tuple[np.ndarray, bool]:
++        desired = self.task.desired_position
++        if self.kind == "desired_pose":
++            return self._action_for(desired), True
++        assert self.env.env.relative is not None
++        assert self.env.env.target_state is not None
++        rotation = self.env.env.target_state.rotation
++        state = relative_to_vector(self.env.env.relative)
++        position = se3_exp(state[:6])[:3, 3]
++        if self.held_inertial is None:
++            self.held_inertial = rotation @ position
++        # The window is an inertial-frame alignment: the approach axis is
++        # body-fixed and sweeps a cone as the target turns, and it opens when
++        # that axis swings towards where the chaser is holding.
++        if self.kind == "commit_at":
++            ready = float(self.env.env.time_seconds) >= self.commit_time_s
++        else:
++            axis_inertial = _unit(rotation @ self.task.approach_axis)
++            ready = (
++                float(axis_inertial @ _unit(self.held_inertial))
++                >= self.cosine_threshold
++            )
++        if self.committed or ready:
++            self.committed = True
++            return self._action_for(desired), True
++        # Wait: name the frozen inertial point, expressed in the target frame
++        # for this decision. It is a different target-frame point every time,
++        # which is exactly what "stay put while the target turns" requires.
++        return self._action_for(rotation.T @ self.held_inertial), False
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--seed", type=int, required=True)
++    parser.add_argument("--episodes", type=int, default=1)
++    parser.add_argument(
++        "--policy",
++        choices=["desired_pose", "hold_then_enter", "commit_at"],
++        required=True,
++    )
++    parser.add_argument("--entry-alignment-deg", type=float, default=40.0)
++    parser.add_argument(
++        "--commit-time-s",
++        type=float,
++        default=0.0,
++        help=(
++            "``commit_at`` only: hold the frozen inertial point until this "
++            "time, then command the desired pose. One decision variable -- the "
++            "entry time -- so a sweep over it says whether the action space "
++            "contains a solution at all, independently of any rule for "
++            "choosing it."
++        ),
++    )
++    parser.add_argument("--horizon", type=int, default=20)
++    parser.add_argument("--output", type=Path, required=True)
++    return parser.parse_args()
++
++
++def main() -> None:
++    args = parse_args()
++    if args.output.exists():
++        raise FileExistsError(args.output)
++    records = []
++    for episode in range(args.episodes):
++        seed = args.seed + episode
++        env = PrecaptureHybridEnv(
++            hybrid_config=PrecaptureHybridConfig(horizon_steps=args.horizon)
++        )
++        _, info = env.reset(seed=seed)
++        policy = ScriptedWaypointPolicy(
++            env, args.policy, args.entry_alignment_deg, args.commit_time_s
++        )
++        total_reward = 0.0
++        decisions = 0
++        commit_time_s = None
++        terminated = truncated = False
++        while not (terminated or truncated):
++            action, committed = policy.act()
++            if committed and commit_time_s is None:
++                commit_time_s = float(env.env.time_seconds)
++            _, reward, terminated, truncated, info = env.step(action)
++            total_reward += reward
++            decisions += 1
++        records.append(
++            {
++                "seed": seed,
++                "policy": args.policy,
++                "entry_alignment_deg": args.entry_alignment_deg,
++                "commit_time_s_setting": args.commit_time_s,
++                "horizon": args.horizon,
++                "completed": bool(info["completed"]),
++                "final_time_s": float(env.env.time_seconds),
++                "commit_time_s": commit_time_s,
++                "decisions": decisions,
++                "undiscounted_reward": total_reward,
++                "terminal_region_active": float(info["terminal_region_active"]),
++                "illegal_terminal_entry_count": float(
++                    info["illegal_terminal_entry_count"]
++                ),
++                "violation_steps": {
++                    key: float(value)
++                    for key, value in info.items()
++                    if key.endswith("violation_steps") and float(value) > 0.0
++                },
++                "qp_zero_fallbacks": int(info["hybrid_qp_zero_fallbacks"]),
++            }
++        )
++        env.close()
++        last = records[-1]
++        print(
++            f"seed={last['seed']} policy={args.policy} completed={last['completed']} "
++            f"t={last['final_time_s']:.1f}s commit={last['commit_time_s']} "
++            f"latch={last['terminal_region_active']:.0f} "
++            f"illegal={last['illegal_terminal_entry_count']:.0f}"
++        )
++    args.output.write_text(json.dumps({"records": records}, indent=1))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tests/test_hybrid_env.py b/tests/test_hybrid_env.py
+new file mode 100644
+index 0000000..ad76c86
+--- /dev/null
++++ b/tests/test_hybrid_env.py
+@@ -0,0 +1,115 @@
++"""What the coupling wrapper promises, pinned.
++
++The three properties worth a test are the three that make a result mean
++something: the wrapper does not change what the policy sees, the action is an
++absolute waypoint in the frame the channel is lossless in, and one decision is
++exactly the hold the optimiser was configured for.
++"""
++
++from __future__ import annotations
++
++import numpy as np
++
++from env.hybrid_env import (
++    PrecaptureHybridConfig,
++    PrecaptureHybridEnv,
++    hybrid_mpc_config,
++)
++from env.phase2_env import precapture_planning_environment_config
++
++
++def test_hybrid_action_is_three_dimensional_and_observation_is_unchanged() -> None:
++    """The learned layer sees exactly what Pure SAC sees, and names a place."""
++
++    env = PrecaptureHybridEnv()
++    assert env.action_space.shape == (3,)
++    assert env.observation_space == env.env.observation_space
++    observation, _ = env.reset(seed=262000)
++    assert env.observation_space.contains(observation.astype(np.float32))
++    env.close()
++
++
++def test_hybrid_pins_the_channel_the_diagnosis_measured_as_lossless() -> None:
++    """Target body frame, frozen attitude, hold equal to the decision period.
++
++    Under the inertially oriented reading the same channel could not carry the
++    task's own desired pose at all, and a hold that disagreed with the decision
++    period would adopt a waypoint part way through a decision.
++    """
++
++    hybrid = PrecaptureHybridConfig()
++    config = hybrid_mpc_config(hybrid, precapture_planning_environment_config())
++    assert config.reference_source == "external_local"
++    assert config.external_reference_frame == "target"
++    assert config.precapture_attitude_reference == "frozen"
++    assert config.external_reference_hold_steps == hybrid.decision_period_steps
++
++
++def test_waypoint_is_absolute_and_radially_clipped() -> None:
++    """Absolute, so "hold out here" is as expressible as "close on the port".
++
++    A displacement parametrisation would bias the policy toward moving, and
++    holding position is one of the two answers the task poses.
++    """
++
++    env = PrecaptureHybridEnv()
++    env.reset(seed=262000)
++    hybrid = env.hybrid_config
++
++    far = env.waypoint_from_action(np.array([1.0, 1.0, 1.0]))
++    assert np.isclose(
++        float(np.linalg.norm(far)), hybrid.maximum_waypoint_radius_m
++    )
++    assert np.all(far > 0.0)
++
++    near = env.waypoint_from_action(np.array([0.01, 0.0, 0.0]))
++    assert np.isclose(
++        float(np.linalg.norm(near)), hybrid.minimum_waypoint_radius_m
++    )
++    assert near[0] > 0.0 and np.allclose(near[1:], 0.0)
++
++    # Same action, same waypoint: the map carries no state of its own.
++    action = np.array([-0.2, 0.1, 0.05])
++    assert np.array_equal(
++        env.waypoint_from_action(action), env.waypoint_from_action(action)
++    )
++
++    # A degenerate command must not ask for the target's own centre.
++    degenerate = env.waypoint_from_action(np.zeros(3))
++    assert float(np.linalg.norm(degenerate)) >= hybrid.minimum_waypoint_radius_m
++    env.close()
++
++
++def test_one_decision_is_the_configured_number_of_control_steps() -> None:
++    env = PrecaptureHybridEnv()
++    env.reset(seed=262000)
++    started = env.env.time_seconds
++    _, reward, terminated, truncated, info = env.step(np.array([-0.2, 0.0, 0.0]))
++    assert not (terminated or truncated)
++    assert info["hybrid_control_steps"] == env.hybrid_config.decision_period_steps
++    assert np.isclose(
++        env.env.time_seconds - started,
++        env.hybrid_config.decision_period_steps * env.environment_config.dt_s,
++    )
++    assert np.isfinite(reward)
++    # The waypoint actually flown is reported, so a trajectory can be audited
++    # against the decision that produced it.
++    assert np.allclose(
++        info["hybrid_waypoint_target_frame"],
++        env.waypoint_from_action(np.array([-0.2, 0.0, 0.0])),
++    )
++    env.close()
++
++
++def test_hybrid_config_rejects_incoherent_settings() -> None:
++    for bad in (
++        {"decision_period_steps": 0},
++        {"waypoint_scale_m": 0.0},
++        {"minimum_waypoint_radius_m": 30.0},
++        {"horizon_steps": 0},
++    ):
++        try:
++            PrecaptureHybridConfig(**bad)
++        except ValueError:
++            continue
++        raise AssertionError(f"expected ValueError for {bad}")
+diff --git a/tests/test_precapture_attitude_reference.py b/tests/test_precapture_attitude_reference.py
+new file mode 100644
+index 0000000..e9b7cb1
+--- /dev/null
++++ b/tests/test_precapture_attitude_reference.py
+@@ -0,0 +1,161 @@
++"""The precapture attitude reference, and what each mode asks the chaser to do.
++
++Reference positions for this task are written in the *target* body frame, so a
++waypoint held fixed in inertial space sweeps through that frame at the target's
++tumble rate. ``frozen`` -- the default, and what every recorded precapture row
++was measured under -- answers that sweep with one held attitude and a zero
++relative-rate reference. These pin what the two diagnostic alternatives change
++and, more importantly, what they must not change.
++"""
++
++from __future__ import annotations
++
++import numpy as np
++
++from controllers.mpc import MPCController
++from controllers.mpc.prediction import LocalRelativePredictionModel
++from env.scenarios import chaser_parameters
++
++
++def _precapture_reference_for_mode(mode: str, *, reference_source: str):
++    from controllers.mpc import precapture_mpc_config
++    from env.scenarios import target_initial_state
++
++    config = precapture_mpc_config(
++        horizon_steps=4,
++        reference_source=reference_source,
++        precapture_attitude_reference=mode,
++    )
++    controller = MPCController(
++        config, LocalRelativePredictionModel(chaser_parameters())
++    )
++    target = target_initial_state(tumble_scale=0.20)
++    state = np.zeros(12)
++    state[3:6] = np.array([-12.0, 4.0, 1.0])
++    waypoint = target.rotation @ np.array([-11.0, 2.0, 0.5])
++    return config, target, controller._reference_trajectory(
++        state,
++        target_state=target,
++        external_reference=waypoint,
++        terminal_latched=False,
++    )
++
++
++def test_precapture_attitude_reference_defaults_to_the_measured_frozen_mode() -> None:
++    """The default is the mode every recorded precapture row was measured under.
++
++    ``swept`` and ``aimed`` were added as diagnostics; making either of them the
++    default would silently move F1, S3' and every earlier MPC number.
++    """
++
++    from controllers.mpc import precapture_mpc_config
++
++    assert precapture_mpc_config().precapture_attitude_reference == "frozen"
++
++
++def test_precapture_attitude_modes_agree_when_the_reference_does_not_move() -> None:
++    """A target-frame-stationary reference has no sightline sweep to follow.
++
++    ``frozen`` and ``swept`` are then bitwise identical, which is what keeps
++    the ``fixed`` reference row -- and every number measured on it -- unmoved
++    by this option existing. ``aimed`` still differs, and only in the way it is
++    defined to: it aims from the *reference* position rather than the state's,
++    so it carries the parallax between the two as a constant pose offset with
++    the rate rows still zero.
++    """
++
++    _, _, frozen = _precapture_reference_for_mode("frozen", reference_source="fixed")
++    _, _, swept = _precapture_reference_for_mode("swept", reference_source="fixed")
++    _, _, aimed = _precapture_reference_for_mode("aimed", reference_source="fixed")
++    assert np.array_equal(frozen, swept)
++    assert np.array_equal(frozen[6:9, :], np.zeros_like(frozen[6:9, :]))
++    assert np.array_equal(aimed[6:9, :], np.zeros_like(aimed[6:9, :]))
++    # Rows 3:6 are the exponential translation rho = J_l(phi)^-1 p, not the
++    # position, so a different attitude moves them even at the same point;
++    # compare the poses themselves.
++    from dynamics.lie import se3_exp
++
++    for index in range(frozen.shape[1]):
++        assert np.allclose(
++            se3_exp(aimed[:6, index])[:3, 3], se3_exp(frozen[:6, index])[:3, 3]
++        )
++    assert not np.allclose(aimed[:3, :], frozen[:3, :])
++
++
++def test_precapture_swept_reference_rate_matches_the_target_tumble_rate() -> None:
++    """An inertially held waypoint sweeps the target frame at ``omega``.
++
++    ``frozen`` answers that sweep with a zero relative-rate reference, so the
++    pose and rate halves of the reference describe different motions. The two
++    new modes ask for the sweep itself, which is the target's own tumble rate.
++    """
++
++    config, target, frozen = _precapture_reference_for_mode(
++        "frozen", reference_source="external_local"
++    )
++    tumble_rate = float(np.linalg.norm(target.omega))
++    assert np.allclose(frozen[6:9, :], 0.0)
++    for mode in ("swept", "aimed"):
++        _, _, reference = _precapture_reference_for_mode(
++            mode, reference_source="external_local"
++        )
++        rates = np.linalg.norm(reference[6:9, :], axis=0)
++        assert np.all(rates > 0.5 * tumble_rate)
++        assert np.all(rates < 2.0 * tumble_rate)
++        # No parallax step in the first rate row -- see _precapture_reference_rotations.
++        assert abs(float(rates[0] - rates[1])) < 0.1 * tumble_rate
++
++
++def test_target_frame_channel_reproduces_the_direct_reference() -> None:
++    """The 3D waypoint channel is lossless only in the target body frame.
++
++    Handing the channel the same point the ``fixed`` row tracks must produce
++    the same reference, otherwise no upper layer can express through it even
++    the guidance the lower layer already flies. Under the ``inertial``
++    contract it does not: a body-fixed goal has to be re-issued as a rotating
++    inertial point, which the horizon map turns back into a circular reference.
++    """
++
++    from controllers.mpc import precapture_mpc_config
++    from env.scenarios import target_initial_state
++
++    task = precapture_mpc_config().precapture_task
++    target = target_initial_state(tumble_scale=0.20)
++    state = np.zeros(12)
++    state[3:6] = np.array([-9.0, 3.0, 1.0])
++
++    def reference_for(source: str, frame: str, waypoint):
++        config = precapture_mpc_config(
++            horizon_steps=6,
++            reference_source=source,
++            external_reference_frame=frame,
++        )
++        controller = MPCController(
++            config, LocalRelativePredictionModel(chaser_parameters())
++        )
++        return controller._reference_trajectory(
++            state,
++            target_state=target,
++            external_reference=waypoint,
++            terminal_latched=False,
++        )
++
++    direct = reference_for("fixed", "inertial", None)
++    through_target_frame = reference_for(
++        "external_local", "target", task.desired_position
++    )
++    assert np.allclose(direct, through_target_frame)
++
++    through_inertial = reference_for(
++        "external_local", "inertial", target.rotation @ task.desired_position
++    )
++    assert not np.allclose(direct, through_inertial)
++    # The inertial contract turns the stationary goal into a moving one.
++    assert np.linalg.norm(through_inertial[9:12, -1]) > 0.05
++    assert np.linalg.norm(direct[9:12, -1]) < 1.0e-12
++
++
++def test_external_reference_frame_defaults_to_the_measured_contract() -> None:
++    from controllers.mpc import precapture_mpc_config
++
++    assert precapture_mpc_config().external_reference_frame == "inertial"
+diff --git a/train/hybrid_configs.py b/train/hybrid_configs.py
+new file mode 100644
+index 0000000..f860d17
+--- /dev/null
++++ b/train/hybrid_configs.py
+@@ -0,0 +1,83 @@
++"""SAC hyperparameters for the coupled run, and why they differ from Pure SAC.
++
++Only two values move against ``train.configs.PURE_SAC``, and both move because
++the *step* means something different, not because they were tuned.
++
++``gamma`` 0.997 -> 0.99
++    A Pure SAC step is one 0.1 s control step, so a 300 s episode is about 950
++    of them and the completion bonus is worth ``0.997**950 = 0.057`` at reset
++    -- the documented reason hovering captures most of the scripted return
++    without ever finishing. A coupled step is one 2 s decision, so the same
++    episode is about 150 steps. Holding 0.997 there would give an effective
++    horizon of 333 decisions, longer than the whole episode, which flattens
++    the discount and removes any pressure to finish early. At 0.99 the horizon
++    is 100 decisions -- 200 s, covering the episode -- and the bonus is worth
++    ``0.99**150 = 0.22``, four times what Pure SAC ever sees. That is a
++    structural consequence of the temporal abstraction and is the mechanism by
++    which the coupling can represent a decision made 100 s before it pays.
++
++``learning_starts`` 5000 -> 2000
++    5000 coarse steps is 33 whole episodes of uniform random waypoints before
++    the first gradient. 2000 is about 13, which is enough to seed the buffer.
++
++``ent_coef`` stays pinned at 0.005. The entropy temperature is the one factor
++this project has measured to destruction: automatic tuning raised alpha
++monotonically in every run ever made here and drove the critic calibration
++error to 45.7. It is not reopened.
++
++Known deviation, recorded rather than fixed: at one update per decision step
++the update-to-data ratio per second of simulated time is about five times
++lower than Pure SAC's. Raising ``gradient_steps`` is the obvious lever and is
++also the factor that made alpha diverge once, so it is left alone until there
++is a measured reason to move it.
++"""
++
++from __future__ import annotations
++
++from dataclasses import asdict, dataclass
++from typing import Any
++
++import torch.nn as nn
++
++
++@dataclass(frozen=True)
++class HybridSACConfig:
++    learning_rate: float = 1.0e-4
++    buffer_size: int = 300_000
++    learning_starts: int = 2_000
++    batch_size: int = 256
++    tau: float = 0.001
++    gamma: float = 0.99
++    train_freq: int = 1
++    gradient_steps: int = 1
++    ent_coef: str | float = 0.005
++    target_entropy: float = -3.0
++    target_update_interval: int = 1
++    net_arch: tuple[int, ...] = (256, 256, 256, 256)
++
++
++SAC_MPC_HYBRID = HybridSACConfig()
++
++
++def hybrid_model_kwargs(config: HybridSACConfig = SAC_MPC_HYBRID) -> dict[str, Any]:
++    values = asdict(config)
++    net_arch = list(values.pop("net_arch"))
++    values["policy_kwargs"] = {"net_arch": net_arch, "activation_fn": nn.ReLU}
++    return values
++
++
++def serializable_hybrid_hyperparameters(
++    config: HybridSACConfig = SAC_MPC_HYBRID,
++) -> dict[str, Any]:
++    values = asdict(config)
++    values["net_arch"] = list(values["net_arch"])
++    values["activation_fn"] = "ReLU"
++    return values
++
++
++__all__ = [
++    "SAC_MPC_HYBRID",
++    "HybridSACConfig",
++    "hybrid_model_kwargs",
++    "serializable_hybrid_hyperparameters",
++]
+diff --git a/train/train_hybrid.py b/train/train_hybrid.py
+new file mode 100644
+index 0000000..8ab64f6
+--- /dev/null
++++ b/train/train_hybrid.py
+@@ -0,0 +1,153 @@
++"""Train the coupled SAC-MPC upper layer. Every run starts from zero.
++
++The learned layer emits one 3D waypoint in the target body frame per 2 s
++decision; the constrained MPC flies it and is the only thing that touches the
++actuators. The manifest written here is the reproduction record: config plus
++seed is enough to rebuild the run, which is why no checkpoint is ever an input.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import sys
++from dataclasses import asdict
++from datetime import datetime, timezone
++from pathlib import Path
++
++from stable_baselines3 import SAC
++from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
++from stable_baselines3.common.monitor import Monitor
++
++from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv, hybrid_mpc_config
++from env.phase2_env import precapture_planning_environment_config
++from train.hybrid_configs import (
++    SAC_MPC_HYBRID,
++    hybrid_model_kwargs,
++    serializable_hybrid_hyperparameters,
++)
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--steps", type=int, required=True, help="decision steps")
++    parser.add_argument("--seed", type=int, required=True)
++    parser.add_argument("--run-name", type=str, required=True)
++    parser.add_argument("--log-root", type=Path, default=Path("logs"))
++    parser.add_argument("--checkpoint-freq", type=int, default=5_000)
++    parser.add_argument("--horizon", type=int, default=20)
++    parser.add_argument("--device", type=str, default="auto")
++    return parser.parse_args()
++
++
++def main() -> None:
++    args = parse_args()
++    log_dir = args.log_root / args.run_name
++    if log_dir.exists():
++        raise FileExistsError(log_dir)
++    checkpoint_dir = log_dir / "checkpoints"
++    checkpoint_dir.mkdir(parents=True)
++
++    environment_config = precapture_planning_environment_config()
++    hybrid_config = PrecaptureHybridConfig(horizon_steps=args.horizon)
++    mpc_config = hybrid_mpc_config(hybrid_config, environment_config)
++
++    manifest = {
++        "run_name": args.run_name,
++        "created_at_utc": datetime.now(timezone.utc).isoformat(),
++        "seed": args.seed,
++        "requested_decision_steps": args.steps,
++        "fresh_initialization": True,
++        "critic_initialization": "fresh",
++        "initial_replay_buffer_transitions": 0,
++        "architecture": "one architecture for the whole mission: the MPC is the "
++        "only actuator path from 17 m to contact; there is no phase switch",
++        "action_space": "3D absolute waypoint in the target body frame, "
++        f"scaled by {hybrid_config.waypoint_scale_m} m and radially clipped to "
++        f"[{hybrid_config.minimum_waypoint_radius_m}, "
++        f"{hybrid_config.maximum_waypoint_radius_m}] m",
++        "decision_period_s": hybrid_config.decision_period_steps
++        * environment_config.dt_s,
++        "reward": "the environment's own reward, summed over the decision "
++        "period; nothing rewards entering legally or waiting",
++        "training_environment": asdict(environment_config),
++        "hybrid": asdict(hybrid_config),
++        "mpc": {
++            "horizon_steps": mpc_config.horizon_steps,
++            "reference_source": mpc_config.reference_source,
++            "external_reference_frame": mpc_config.external_reference_frame,
++            "external_reference_hold_steps": mpc_config.external_reference_hold_steps,
++            "precapture_attitude_reference": mpc_config.precapture_attitude_reference,
++            "terminal_weight": mpc_config.terminal_weight,
++            "input_weight": mpc_config.input_weight,
++            "linearization_source": mpc_config.linearization_source,
++            "solver": mpc_config.solver,
++        },
++        "hyperparameters": serializable_hybrid_hyperparameters(),
++        "command": [sys.executable, "-B", "-m", "train.train_hybrid", *sys.argv[1:]],
++        "status": "running",
++    }
++    manifest_path = log_dir / "manifest.json"
++    manifest_path.write_text(json.dumps(manifest, indent=1, default=str))
++
++    raw_env = PrecaptureHybridEnv(environment_config, hybrid_config)
++    raw_env.reset(seed=args.seed)
++    env = Monitor(
++        raw_env,
++        filename=str(log_dir / "train"),
++        info_keywords=(
++            "completed",
++            "terminal_region_active",
++            "illegal_terminal_entry_count",
++            "hybrid_waypoint_radius_m",
++            "hybrid_qp_zero_fallbacks",
++        ),
++    )
++    model = SAC(
++        "MlpPolicy",
++        env,
++        seed=args.seed,
++        device=args.device,
++        verbose=1,
++        tensorboard_log=str(log_dir / "tensorboard"),
++        **hybrid_model_kwargs(SAC_MPC_HYBRID),
++    )
++    callbacks = CallbackList(
++        [
++            CheckpointCallback(
++                save_freq=args.checkpoint_freq,
++                save_path=str(checkpoint_dir),
++                name_prefix="sac_mpc",
++                save_replay_buffer=False,
++                save_vecnormalize=False,
++            )
++        ]
++    )
++    try:
++        model.learn(
++            total_timesteps=args.steps,
++            callback=callbacks,
++            reset_num_timesteps=True,
++            progress_bar=False,
++        )
++        model.save(log_dir / "final_model")
++        manifest.update(
++            status="completed",
++            completed_at_utc=datetime.now(timezone.utc).isoformat(),
++            actual_decision_steps=int(model.num_timesteps),
++        )
++    except KeyboardInterrupt:
++        model.save(log_dir / "interrupted_model")
++        manifest.update(
++            status="interrupted",
++            interrupted_at_utc=datetime.now(timezone.utc).isoformat(),
++            actual_decision_steps=int(model.num_timesteps),
++        )
++        raise
++    finally:
++        manifest_path.write_text(json.dumps(manifest, indent=1, default=str))
++        env.close()
++
++
++if __name__ == "__main__":
++    main()

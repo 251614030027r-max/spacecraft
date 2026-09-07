@@ -55,6 +55,31 @@ class MPCStepDiagnostics:
     predicted_first_step_margins: tuple[float, ...]
 
 
+def _unit_or_none(vector: FloatArray) -> FloatArray | None:
+    norm = float(np.linalg.norm(vector))
+    if norm <= 1.0e-12:
+        return None
+    return np.asarray(vector, dtype=np.float64) / norm
+
+
+def _align_rotation(start: FloatArray, goal: FloatArray) -> FloatArray:
+    """Minimal rotation carrying unit vector ``start`` onto unit vector ``goal``."""
+
+    cosine = float(np.clip(start @ goal, -1.0, 1.0))
+    cross = np.cross(start, goal)
+    sine = float(np.linalg.norm(cross))
+    if sine <= 1.0e-12:
+        if cosine > 0.0:
+            return np.eye(3)
+        seed = np.array([1.0, 0.0, 0.0])
+        if abs(float(seed @ start)) > 0.9:
+            seed = np.array([0.0, 1.0, 0.0])
+        axis = np.cross(start, seed)
+        axis /= np.linalg.norm(axis)
+        return so3_exp(np.pi * axis)
+    return so3_exp(np.arctan2(sine, cosine) * (cross / sine))
+
+
 class MPCController:
     def __init__(
         self,
@@ -206,6 +231,98 @@ class MPCController:
             return np.eye(3)
         return self._precapture_los_rotation(state)
 
+    def _precapture_reference_rotations(
+        self,
+        state: FloatArray,
+        positions: FloatArray,
+        *,
+        terminal_latched: bool | None,
+    ) -> FloatArray:
+        """One reference attitude per horizon index, under the configured mode.
+
+        Reference positions are written in the *target* body frame, so a
+        waypoint held fixed in inertial space sweeps through that frame at the
+        target's tumble rate -- 0.0412 rad/s, 2.36 deg/s here. The three modes
+        differ only in whether the attitude half of the reference is allowed to
+        follow that sweep:
+
+        ``frozen``
+            One attitude, aimed from the *state*, held across the horizon, and
+            (through ``_reference_angular_rates``) a zero relative rate. This
+            is the behaviour every recorded precapture row was measured under
+            and stays the default, so no prior number moves.
+        ``swept``
+            Index 0 as in ``frozen``, later indices carried by the rotation the
+            *reference* sightline itself undergoes. Pose and rate then describe
+            the same motion, but only for a chaser that is on its reference:
+            under a large position lag the swept rate aims from where the
+            reference is, not from where the chaser is.
+        ``aimed``
+            Every index aimed from its own reference position, so the reference
+            is one self-consistent trajectory -- at the cost of a parallax step
+            at index 0 whenever the chaser is not yet on the waypoint.
+        """
+
+        count = int(positions.shape[1])
+        rotations = np.zeros((count, 3, 3), dtype=np.float64)
+        if self.config.precapture_task is None or bool(terminal_latched):
+            rotations[:] = np.eye(3)
+            return rotations
+        mode = self.config.precapture_attitude_reference
+        task = self.config.precapture_task
+        rotation = self._precapture_los_rotation(state)
+        if mode == "frozen":
+            rotations[:] = rotation
+            return rotations
+        previous = _unit_or_none(task.port_position - positions[:, 0])
+        for index in range(count):
+            if mode == "aimed":
+                # Aim index 0 too: the parallax between the chaser and its own
+                # waypoint belongs in the tracking error, not in the first rate
+                # row, where it would appear as a step of order 1 rad/s.
+                rotation = self._aim_rotation(rotation, positions[:, index])
+            elif index > 0:
+                current = _unit_or_none(task.port_position - positions[:, index])
+                if previous is not None and current is not None:
+                    rotation = _align_rotation(previous, current) @ rotation
+                if current is not None:
+                    previous = current
+            rotations[index] = rotation
+        return rotations
+
+    def _aim_rotation(
+        self, rotation: FloatArray, position: FloatArray
+    ) -> FloatArray:
+        """Nearest rotation to ``rotation`` whose boresight points at the port."""
+
+        task = self.config.precapture_task
+        if task is None:
+            raise ValueError("LOS reference requires a precapture task")
+        line_of_sight = _unit_or_none(task.port_position - position)
+        if line_of_sight is None:
+            return rotation
+        boresight = _unit_or_none(rotation @ task.camera_boresight)
+        if boresight is None:
+            return rotation
+        return _align_rotation(boresight, line_of_sight) @ rotation
+
+    def _reference_angular_rates(
+        self, rotations: FloatArray
+    ) -> FloatArray:
+        """Body-frame relative rate the reference attitude sequence implies."""
+
+        count = int(rotations.shape[0])
+        rates = np.zeros((3, count), dtype=np.float64)
+        if count < 2:
+            return rates
+        for index in range(count - 1):
+            rates[:, index] = (
+                so3_log(rotations[index].T @ rotations[index + 1])
+                / self.config.dt_s
+            )
+        rates[:, count - 1] = rates[:, count - 2]
+        return rates
+
     def _apply_precapture_attitude_reference(
         self,
         reference: FloatArray,
@@ -215,11 +332,18 @@ class MPCController:
     ) -> FloatArray:
         if self.config.precapture_task is None or bool(terminal_latched):
             return reference
-        rotation = self._precapture_los_rotation(state)
+        positions = np.zeros((3, reference.shape[1]), dtype=np.float64)
+        for index in range(reference.shape[1]):
+            positions[:, index] = se3_exp(reference[:6, index])[:3, 3]
+        rotations = self._precapture_reference_rotations(
+            state, positions, terminal_latched=terminal_latched
+        )
         adjusted = reference.copy()
         for index in range(reference.shape[1]):
-            position = se3_exp(reference[:6, index])[:3, 3]
-            adjusted[:6, index] = se3_log(make_transform(rotation, position))
+            adjusted[:6, index] = se3_log(
+                make_transform(rotations[index], positions[:, index])
+            )
+        adjusted[6:9, :] = self._reference_angular_rates(rotations)
         return adjusted
 
     def _endpoint_plan(
@@ -335,30 +459,41 @@ class MPCController:
             # pure error, which at 16 m saturated the first step and pushed the
             # optimiser off any waypoint it was given. This follows the same
             # convention as _endpoint_plan.
-            rotation = self._precapture_reference_rotation(
-                state, terminal_latched=terminal_latched
-            )
             positions = np.zeros((3, n + 1), dtype=np.float64)
             for index in range(n + 1):
+                offset = index * self.config.dt_s
+                if self.config.external_reference_frame == "target":
+                    # The waypoint is already a target-body-frame point, so it
+                    # is constant in the frame the state is written in. Under
+                    # the "inertial" contract the same body-fixed goal has to
+                    # be re-issued as a rotating inertial point, and the map
+                    # below turns it into a circular reference the optimiser
+                    # then tracks with a standing lag -- 1.3 m at the 3 m
+                    # desired pose, against a 0.25 m completion tolerance.
+                    positions[:, index] = waypoint + offset * waypoint_velocity
+                    continue
                 target_rotation = target_state.rotation @ so3_exp(
-                    index * self.config.dt_s * target_state.omega
+                    offset * target_state.omega
                 )
-                inertial_position = (
-                    waypoint
-                    + index * self.config.dt_s * waypoint_velocity
-                )
+                inertial_position = waypoint + offset * waypoint_velocity
                 positions[:, index] = target_rotation.T @ inertial_position
             position_rates = np.zeros((3, n + 1), dtype=np.float64)
             position_rates[:, :-1] = np.diff(positions, axis=1) / self.config.dt_s
             position_rates[:, -1] = position_rates[:, -2]
+            rotations = self._precapture_reference_rotations(
+                state, positions, terminal_latched=terminal_latched
+            )
             reference = np.zeros((12, n + 1), dtype=np.float64)
             for index in range(n + 1):
                 reference[:6, index] = se3_log(
-                    make_transform(rotation, positions[:, index])
+                    make_transform(rotations[index], positions[:, index])
                 )
-                reference[9:12, index] = rotation.T @ position_rates[:, index]
-            # A constant desired relative attitude means zero relative rate, so
-            # rows 6:9 stay zero.
+                reference[9:12, index] = (
+                    rotations[index].T @ position_rates[:, index]
+                )
+            # Rows 6:9 carry whatever relative rate that attitude sequence
+            # implies -- zero under "frozen", the sightline sweep otherwise.
+            reference[6:9, :] = self._reference_angular_rates(rotations)
             return reference
         if self.config.reference_source == "fixed":
             reference = np.tile(
