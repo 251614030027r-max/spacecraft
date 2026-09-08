@@ -65,7 +65,46 @@ class ScriptedWaypointPolicy:
         self.held_inertial: np.ndarray | None = None
 
     def _action_for(self, point: np.ndarray) -> np.ndarray:
-        return np.clip(np.asarray(point, dtype=np.float64) / self.scale, -1.0, 1.0)
+        """Invert the parametrisation: the action that names ``point``.
+
+        Under ``radial_local`` a single decision cannot always name an
+        arbitrary point -- the radius moves by at most a factor of e**0.7 and
+        the direction tilts by at most about 41 deg -- so this returns the
+        closest reachable command and the policy converges over a few
+        decisions. That is a property of the parametrisation, not a
+        shortcoming of the script: the optimiser could not fly a bigger jump
+        in 2 s either.
+        """
+
+        target = np.asarray(point, dtype=np.float64)
+        if self.env.hybrid_config.waypoint_parametrization == "absolute":
+            return np.clip(target / self.scale, -1.0, 1.0)
+        current = self.env._current_position()
+        radius = float(np.linalg.norm(current))
+        goal_radius = float(np.linalg.norm(target))
+        if radius < 1.0e-9 or goal_radius < 1.0e-9:
+            return np.zeros(4)
+        direction = current / radius
+        radial = float(
+            np.clip(
+                np.log(goal_radius / radius)
+                / self.env.hybrid_config.radial_action_gain,
+                -1.0,
+                1.0,
+            )
+        )
+        goal_direction = target / goal_radius
+        cosine = float(goal_direction @ direction)
+        perpendicular = goal_direction - cosine * direction
+        if cosine > 1.0e-3:
+            nudge = perpendicular / (
+                self.env.hybrid_config.lateral_action_gain * cosine
+            )
+        else:
+            # More than 90 deg away: steer as hard as the box allows.
+            norm = float(np.linalg.norm(perpendicular))
+            nudge = perpendicular / norm if norm > 1.0e-9 else np.zeros(3)
+        return np.clip(np.concatenate(([radial], nudge)), -1.0, 1.0)
 
     def act(self) -> tuple[np.ndarray, bool]:
         desired = self.task.desired_position
@@ -121,6 +160,9 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--horizon", type=int, default=20)
+    parser.add_argument(
+        "--parametrization", choices=["absolute", "radial_local"], default="absolute"
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 
@@ -133,7 +175,10 @@ def main() -> None:
     for episode in range(args.episodes):
         seed = args.seed + episode
         env = PrecaptureHybridEnv(
-            hybrid_config=PrecaptureHybridConfig(horizon_steps=args.horizon)
+            hybrid_config=PrecaptureHybridConfig(
+                horizon_steps=args.horizon,
+                waypoint_parametrization=args.parametrization,
+            )
         )
         _, info = env.reset(seed=seed)
         policy = ScriptedWaypointPolicy(

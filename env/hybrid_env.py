@@ -71,6 +71,37 @@ class PrecaptureHybridConfig:
     #: it must equal the controller's ``external_reference_hold_steps`` so the
     #: optimiser adopts a new waypoint exactly on a decision boundary.
     decision_period_steps: int = 20
+    #: ``"absolute"`` maps the action straight onto a target-frame point,
+    #: ``a * waypoint_scale_m``. It is the parametrisation the first training
+    #: attempt used and it is kept as the default so that run stays
+    #: reproducible, but it is **measured to be unlearnable**: sampled
+    #: uniformly, 70% of that box commands a point beyond 15 m -- outward,
+    #: away from the target -- only 1.94% commands anything inside the 6 m
+    #: entry sphere, and 0.24% lands within 3 m of the desired pose. A policy
+    #: exploring it spends most of its decisions pushing the chaser out of the
+    #: episode, and 400 episodes of SAC moved neither reward (-27.00 to
+    #: -27.74) nor episode length (48.0 to 49.9).
+    #:
+    #: ``"radial_local"`` names the same kind of point -- an absolute
+    #: target-frame waypoint, still not a displacement -- in coordinates built
+    #: from where the chaser currently is: one radial component and a
+    #: three-component lateral nudge, so the action is 4D while the *interface*
+    #: to the MPC is the unchanged 3D waypoint. Every action in the box is then
+    #: a sane command. The zero action commands exactly the chaser's present
+    #: target-frame point, which is the co-rotating hold; the inertially frozen
+    #: hold -- the one that actually opens an entry window -- is the small
+    #: lateral offset that undoes ``omega * 2 s = 4.7 deg`` per decision.
+    #: **This biases exploration toward holding.** That is stated rather than
+    #: hidden: the alternative bias, which the absolute box has, is 70% toward
+    #: flying out, and it was measured to be fatal.
+    waypoint_parametrization: str = "absolute"
+    #: ``a = +-1`` scales the commanded radius by ``exp(+-0.7)``, about
+    #: double or half per decision. Reaching 3 m from a 17 m start therefore
+    #: takes three sustained decisions rather than one jump -- which is also
+    #: what the optimiser can actually fly in 2 s.
+    radial_action_gain: float = 0.7
+    #: A full-scale lateral nudge tilts the commanded direction by about 41 deg.
+    lateral_action_gain: float = 0.5
     #: The action is ``a * waypoint_scale_m`` in the target body frame, so the
     #: box reaches past the 17-20 m start without reaching the 30 m distance
     #: failure. It is an absolute point, not a displacement.
@@ -97,6 +128,14 @@ class PrecaptureHybridConfig:
             raise ValueError("waypoint radius bounds must be ordered and positive")
         if self.horizon_steps < 1:
             raise ValueError("horizon must be at least one step")
+        if self.waypoint_parametrization not in {"absolute", "radial_local"}:
+            raise ValueError("unknown waypoint parametrisation")
+        if min(self.radial_action_gain, self.lateral_action_gain) <= 0.0:
+            raise ValueError("action gains must be positive")
+
+    @property
+    def action_dimension(self) -> int:
+        return 3 if self.waypoint_parametrization == "absolute" else 4
 
 
 def hybrid_mpc_config(
@@ -172,38 +211,83 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             ),
             reference_model,
         )
-        self.action_space = spaces.Box(-1.0, 1.0, shape=(3,), dtype=np.float32)
+        self.action_space = spaces.Box(
+            -1.0,
+            1.0,
+            shape=(self.hybrid_config.action_dimension,),
+            dtype=np.float32,
+        )
         self.observation_space = self.env.observation_space
         self._last_info: dict[str, Any] = {}
 
     # -- waypoint ---------------------------------------------------------
 
+    def _current_position(self) -> FloatArray:
+        from dynamics.lie import se3_exp
+
+        assert self.env.relative is not None
+        return se3_exp(relative_to_vector(self.env.relative)[:6])[:3, 3]
+
     def waypoint_from_action(self, action: np.ndarray) -> FloatArray:
         """Map a bounded action to a target-body-frame point.
 
-        Absolute, not relative: the policy names a place to be, and "stay out
-        here while the target turns" is as expressible as "close on the port".
-        The radial clip is a safety envelope on the *command*, not on the
-        vehicle -- the MPC's own constraints remain the only thing that keeps
-        the trajectory legal, and the truth geometry remains the only thing
-        that adjudicates it.
+        Absolute under both parametrisations: the policy names a place to be,
+        and "stay out here while the target turns" is as expressible as "close
+        on the port". The radial clip is a safety envelope on the *command*,
+        not on the vehicle -- the MPC's own constraints remain the only thing
+        that keeps the trajectory legal, and the truth geometry remains the
+        only thing that adjudicates it.
         """
 
-        raw = np.asarray(action, dtype=np.float64).reshape(3)
+        raw = np.asarray(action, dtype=np.float64).reshape(-1)
+        if raw.size != self.hybrid_config.action_dimension:
+            raise ValueError("action has the wrong dimension")
         if not np.all(np.isfinite(raw)):
             raise ValueError("action must be finite")
-        point = np.clip(raw, -1.0, 1.0) * self.hybrid_config.waypoint_scale_m
+        raw = np.clip(raw, -1.0, 1.0)
+        if self.hybrid_config.waypoint_parametrization == "radial_local":
+            return self._radial_local_waypoint(raw)
+        return self._clip_radius(raw * self.hybrid_config.waypoint_scale_m)
+
+    def _radial_local_waypoint(self, action: FloatArray) -> FloatArray:
+        position = self._current_position()
+        radius = float(np.linalg.norm(position))
+        if radius < 1.0e-9:
+            return np.array(
+                [self.hybrid_config.minimum_waypoint_radius_m, 0.0, 0.0]
+            )
+        direction = position / radius
+        commanded_radius = float(
+            np.clip(
+                radius
+                * float(np.exp(self.hybrid_config.radial_action_gain * action[0])),
+                self.hybrid_config.minimum_waypoint_radius_m,
+                self.hybrid_config.maximum_waypoint_radius_m,
+            )
+        )
+        nudge = np.asarray(action[1:4], dtype=np.float64)
+        # Project the nudge into the plane perpendicular to the current
+        # direction. Doing it this way rather than through a chosen basis keeps
+        # the map continuous everywhere -- a basis picked from "the least
+        # aligned axis" would flip meaning across a switching surface.
+        lateral = nudge - float(nudge @ direction) * direction
+        tilted = direction + self.hybrid_config.lateral_action_gain * lateral
+        norm = float(np.linalg.norm(tilted))
+        if norm < 1.0e-9:
+            tilted, norm = direction, 1.0
+        return commanded_radius * (tilted / norm)
+
+    def _clip_radius(self, point: FloatArray) -> FloatArray:
         radius = float(np.linalg.norm(point))
         if radius < 1.0e-9:
             # A degenerate command would ask for the target's own centre; hold
             # the current relative position instead of inventing a direction.
-            assert self.env.relative is not None
-            from dynamics.lie import se3_exp
-
-            point = se3_exp(relative_to_vector(self.env.relative)[:6])[:3, 3]
+            point = self._current_position()
             radius = float(np.linalg.norm(point))
             if radius < 1.0e-9:
-                return np.array([self.hybrid_config.minimum_waypoint_radius_m, 0.0, 0.0])
+                return np.array(
+                    [self.hybrid_config.minimum_waypoint_radius_m, 0.0, 0.0]
+                )
         clipped = float(
             np.clip(
                 radius,

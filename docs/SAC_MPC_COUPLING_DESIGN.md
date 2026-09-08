@@ -175,3 +175,96 @@ not.
 
 The claim the table has to support is narrow and should stay narrow: the
 learned layer times the entry, and completion rate is where that shows up.
+
+---
+
+## 8. The first training run failed, and why: the action space was unlearnable
+
+Seed 262100, 18,680 decision steps, 396 episodes, about ten hours. The result
+is not a slow start, it is a flat line:
+
+| | first 100 episodes | last 100 episodes |
+|---|---:|---:|
+| episode reward | -27.00 | -27.74 |
+| episode length | 48.0 decisions | 49.9 decisions |
+| completed | 0 | 0 |
+| terminal region latched | 0 | 0 |
+
+Four hundred episodes in, the policy behaved exactly as it did while the buffer
+was still being filled with uniform random actions. The reward decomposes
+cleanly and confirms it: 1020 control steps of time penalty is -10, the
+failure event is -20, force is about -4, shaping about +7. Every episode ended
+in a failure, and none of them ended at the 300 s cap, so they were ending
+*early* -- driven out of the episode rather than running out of clock. The
+safety penalty is 1.0 per control step with an active warning and is not scaled
+by the step, so a policy grazing constraints would score in the hundreds
+negative; at -27 it is not grazing anything. It is simply flying away.
+
+The cause is the action space, sampled and counted:
+
+| uniform action in the absolute box | |
+|---|---:|
+| commands a point beyond 15 m -- outward, away from the target | **69.8%** |
+| commands anything inside the 6 m entry sphere | 1.94% |
+| lands within 3 m of the desired pose | 0.24% |
+| lands within 1 m of the desired pose | 0.0055% |
+| median commanded radius | 17.7 m, from a 16-17 m start |
+
+Seventy per cent of every exploratory decision pushed the chaser out of the
+episode, and the set of useful commands had measure near zero. There was no
+gradient to follow because there was no experience worth following. This was a
+design error in sizing the box to "reach past the 17-20 m start" without ever
+counting how much of it was admissible.
+
+### The replacement: `radial_local`
+
+Same kind of object -- an absolute target-frame waypoint, still not a
+displacement, still the same 3D interface to the MPC -- named in coordinates
+built from where the chaser currently is. One radial component (`+-1` scales
+the commanded radius by `exp(+-0.7)`, about double or half) and a
+three-component lateral nudge projected perpendicular to the current direction
+(a full-scale nudge tilts about 41 deg). The action is 4D; the waypoint the
+optimiser receives is unchanged.
+
+| uniform action in the radial_local box | | absolute |
+|---|---:|---:|
+| commands inward | **49.9%** | 30.2% |
+| median commanded radius | **equal to the current radius** | 17.7 m |
+| lateral tilt per decision, median | 21.8 deg | -- |
+
+The zero action names the chaser's own present target-frame point, so the
+co-rotating hold is the centre of the box and the inertially frozen hold --
+the one that actually opens an entry window -- is the small lateral offset
+that undoes `omega * 2 s = 4.7 deg`. **This biases exploration toward
+holding.** That is stated rather than hidden; the alternative bias is 70%
+toward flying out and has been measured to be fatal. No basis is chosen for
+the lateral plane: the nudge is projected directly against the current
+direction, so a small action change is always a small waypoint change.
+
+### What the replacement is worth, measured
+
+Twelve seeds, scripted controls through the new parametrisation:
+
+| | completion | mean time |
+|---|---:|---:|
+| `desired_pose` (no window decision) | **8/12** | **99.9 s** |
+| entry-time sweep, per seed | **10/12** | -- |
+
+The completion count of the baseline is unchanged at 8/12, but its **failure
+set moved** -- 262003 now completes and 262001 no longer does -- and its mean
+completion time improved from about 124 s to **99.9 s**, because a radius that
+shrinks by a bounded factor per decision is a better-conditioned reference than
+a distant fixed setpoint.
+
+**The honest consequence is that the headroom is narrower than first reported.**
+Under the absolute parametrisation the entry-time sweep reached 11/12 against a
+slower baseline. Under `radial_local` the same sweep reaches **10/12** against a
+faster one: 262005 (commit at 60 s) and 262011 (commit at 20 s) are rescued;
+262001 and 262006 are not solved by entry time alone on this grid. The target
+the coupled row has to beat is therefore **8/12 at a mean of 99.9 s**, and the
+one-scalar ceiling above it is **10/12**.
+
+One thing that ceiling does *not* bound: the sweep moves a single scalar, while
+the policy has four dimensions every two seconds and can steer laterally as
+well as choose when to commit. 262001 and 262006 may be reachable that way.
+So 10/12 is the ceiling of the hand-scripted decision, not of the action space.

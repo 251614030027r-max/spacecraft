@@ -36,6 +36,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log-root", type=Path, default=Path("logs"))
     parser.add_argument("--checkpoint-freq", type=int, default=5_000)
     parser.add_argument("--horizon", type=int, default=20)
+    parser.add_argument(
+        "--parametrization",
+        choices=["absolute", "radial_local"],
+        default="radial_local",
+        help=(
+            "How the action names the waypoint. 'absolute' is what the first "
+            "training attempt used and is measured to be unlearnable -- 70%% of "
+            "that box commands a point further out than the chaser starts. "
+            "'radial_local' is the default now."
+        ),
+    )
     parser.add_argument("--device", type=str, default="auto")
     return parser.parse_args()
 
@@ -49,7 +60,10 @@ def main() -> None:
     checkpoint_dir.mkdir(parents=True)
 
     environment_config = precapture_planning_environment_config()
-    hybrid_config = PrecaptureHybridConfig(horizon_steps=args.horizon)
+    hybrid_config = PrecaptureHybridConfig(
+        horizon_steps=args.horizon,
+        waypoint_parametrization=args.parametrization,
+    )
     mpc_config = hybrid_mpc_config(hybrid_config, environment_config)
 
     manifest = {
@@ -62,10 +76,14 @@ def main() -> None:
         "initial_replay_buffer_transitions": 0,
         "architecture": "one architecture for the whole mission: the MPC is the "
         "only actuator path from 17 m to contact; there is no phase switch",
-        "action_space": "3D absolute waypoint in the target body frame, "
-        f"scaled by {hybrid_config.waypoint_scale_m} m and radially clipped to "
-        f"[{hybrid_config.minimum_waypoint_radius_m}, "
-        f"{hybrid_config.maximum_waypoint_radius_m}] m",
+        "action_space": (
+            f"{hybrid_config.action_dimension}D action, "
+            f"parametrisation={hybrid_config.waypoint_parametrization}, "
+            "naming an absolute waypoint in the target body frame, radially "
+            f"clipped to [{hybrid_config.minimum_waypoint_radius_m}, "
+            f"{hybrid_config.maximum_waypoint_radius_m}] m. The interface to "
+            "the MPC is the unchanged 3D waypoint either way."
+        ),
         "decision_period_s": hybrid_config.decision_period_steps
         * environment_config.dt_s,
         "reward": "the environment's own reward, summed over the decision "

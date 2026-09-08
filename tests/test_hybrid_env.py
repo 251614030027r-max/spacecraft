@@ -113,3 +113,99 @@ def test_hybrid_config_rejects_incoherent_settings() -> None:
         except ValueError:
             continue
         raise AssertionError(f"expected ValueError for {bad}")
+
+
+def test_absolute_parametrisation_is_measured_unlearnable_and_kept_only_as_default() -> None:
+    """The density that killed the first training run, pinned as a fact.
+
+    Sampled uniformly, most of the absolute box commands a point further out
+    than the chaser starts, and almost none of it commands anything near the
+    goal. This is not a style complaint -- 400 episodes of SAC on it moved
+    neither reward nor episode length. The test exists so the number cannot
+    quietly drift back.
+    """
+
+    env = PrecaptureHybridEnv()
+    env.reset(seed=262000)
+    generator = np.random.default_rng(0)
+    radii = np.array(
+        [
+            float(np.linalg.norm(env.waypoint_from_action(action)))
+            for action in generator.uniform(-1.0, 1.0, size=(2000, 3))
+        ]
+    )
+    assert float(np.mean(radii > 15.0)) > 0.6
+    assert float(np.mean(radii < 6.0)) < 0.05
+    env.close()
+
+
+def test_radial_local_zero_action_holds_and_the_box_is_radially_unbiased() -> None:
+    """Every command is a sane one, and none of them is a jump.
+
+    Zero names the chaser's own present point, so the co-rotating hold is
+    exactly the centre of the box and the inertially frozen hold -- the one
+    that opens an entry window -- is the small lateral offset that undoes
+    ``omega * 2 s``. Half the box commands inward, against 30% for the
+    absolute parametrisation.
+    """
+
+    env = PrecaptureHybridEnv(
+        hybrid_config=PrecaptureHybridConfig(
+            waypoint_parametrization="radial_local"
+        )
+    )
+    env.reset(seed=262000)
+    assert env.action_space.shape == (4,)
+    position = env._current_position()
+    assert np.allclose(env.waypoint_from_action(np.zeros(4)), position)
+
+    radius = float(np.linalg.norm(position))
+    inward = float(
+        np.linalg.norm(env.waypoint_from_action(np.array([-1.0, 0.0, 0.0, 0.0])))
+    )
+    outward = float(
+        np.linalg.norm(env.waypoint_from_action(np.array([1.0, 0.0, 0.0, 0.0])))
+    )
+    assert inward < radius < outward
+    assert np.isclose(inward, radius * np.exp(-0.7), rtol=1e-9)
+
+    generator = np.random.default_rng(0)
+    radii = np.array(
+        [
+            float(np.linalg.norm(env.waypoint_from_action(action)))
+            for action in generator.uniform(-1.0, 1.0, size=(2000, 4))
+        ]
+    )
+    assert 0.4 < float(np.mean(radii < radius)) < 0.6
+    env.close()
+
+
+def test_radial_local_lateral_nudge_is_continuous_in_the_action() -> None:
+    """No basis switching: a small action change is a small waypoint change.
+
+    A lateral basis chosen from "the least aligned axis" would flip meaning
+    across a switching surface, so the projection is taken directly against the
+    current direction instead.
+    """
+
+    env = PrecaptureHybridEnv(
+        hybrid_config=PrecaptureHybridConfig(
+            waypoint_parametrization="radial_local"
+        )
+    )
+    env.reset(seed=262000)
+    base = np.array([0.0, 0.3, -0.2, 0.1])
+    previous = env.waypoint_from_action(base)
+    for step in np.linspace(0.0, 0.4, 40)[1:]:
+        current = env.waypoint_from_action(base + np.array([0.0, step, 0.0, 0.0]))
+        assert float(np.linalg.norm(current - previous)) < 0.5
+        previous = current
+    env.close()
+
+
+def test_hybrid_config_rejects_an_unknown_parametrisation() -> None:
+    try:
+        PrecaptureHybridConfig(waypoint_parametrization="polar")
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError")
