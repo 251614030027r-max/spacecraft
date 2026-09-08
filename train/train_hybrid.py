@@ -63,6 +63,7 @@ def main() -> None:
     hybrid_config = PrecaptureHybridConfig(
         horizon_steps=args.horizon,
         waypoint_parametrization=args.parametrization,
+        decision_discount_factor=SAC_MPC_HYBRID.gamma,
     )
     mpc_config = hybrid_mpc_config(hybrid_config, environment_config)
 
@@ -86,8 +87,10 @@ def main() -> None:
         ),
         "decision_period_s": hybrid_config.decision_period_steps
         * environment_config.dt_s,
-        "reward": "the environment's own reward, summed over the decision "
-        "period; nothing rewards entering legally or waiting",
+        "reward": "time, force, torque, safety, and event terms are summed "
+        "over the decision period; potential shaping is evaluated once at "
+        "the decision boundary as weight * (gamma_SAC * Phi(s_next) - "
+        "Phi(s)); nothing rewards entering legally or waiting",
         "training_environment": asdict(environment_config),
         "hybrid": asdict(hybrid_config),
         "mpc": {

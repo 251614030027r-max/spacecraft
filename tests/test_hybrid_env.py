@@ -84,6 +84,7 @@ def test_one_decision_is_the_configured_number_of_control_steps() -> None:
     env = PrecaptureHybridEnv()
     env.reset(seed=262000)
     started = env.env.time_seconds
+    initial_potential = env._current_reward_potential()
     _, reward, terminated, truncated, info = env.step(np.array([-0.2, 0.0, 0.0]))
     assert not (terminated or truncated)
     assert info["hybrid_control_steps"] == env.hybrid_config.decision_period_steps
@@ -92,6 +93,18 @@ def test_one_decision_is_the_configured_number_of_control_steps() -> None:
         env.hybrid_config.decision_period_steps * env.environment_config.dt_s,
     )
     assert np.isfinite(reward)
+    expected_shaping = env.environment_config.precapture_reward.potential_weight * (
+        env.hybrid_config.decision_discount_factor * info["reward_potential"]
+        - initial_potential
+    )
+    assert np.isclose(info["hybrid_reward_shaping"], expected_shaping)
+    assert np.isclose(
+        reward,
+        info["hybrid_integrated_reward_without_shaping"] + expected_shaping,
+    )
+    assert not np.isclose(
+        info["hybrid_removed_micro_shaping"], expected_shaping
+    )
     # The waypoint actually flown is reported, so a trajectory can be audited
     # against the decision that produced it.
     assert np.allclose(
@@ -104,6 +117,7 @@ def test_one_decision_is_the_configured_number_of_control_steps() -> None:
 def test_hybrid_config_rejects_incoherent_settings() -> None:
     for bad in (
         {"decision_period_steps": 0},
+        {"decision_discount_factor": 0.0},
         {"waypoint_scale_m": 0.0},
         {"minimum_waypoint_radius_m": 30.0},
         {"horizon_steps": 0},

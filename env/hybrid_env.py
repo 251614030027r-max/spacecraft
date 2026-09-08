@@ -26,10 +26,11 @@ been made to look better than it is:
 * **One architecture for the whole mission.** The MPC is the only thing that
   ever touches the actuators, from 17 m to contact. There is no phase switch
   and no hand-off, so a result cannot be confounded with one.
-* **The reward is the environment's own, summed over the decision period.**
+* **The physical reward terms are summed over the decision period.** Time,
+  force, torque, safety and event terms keep their micro-step integral. The
+  potential term is evaluated once at the 2 s decision boundary with the SAC
+  discount, so it telescopes at the level the policy actually optimises.
   Nothing here rewards entering legally, waiting, or approaching a window.
-  If the policy learns to time the entry it is because completing pays and
-  being locked out does not.
 * **The action is an absolute waypoint, not a displacement.** A displacement
   parametrisation would bias the policy toward moving, and "hold position and
   let the target turn" is exactly one of the two answers the task poses.
@@ -57,8 +58,10 @@ from dynamics.integrator import RK45Settings
 from dynamics.types import GeneralizedForce
 from env.action import wrench_to_normalized
 from env.phase2_env import precapture_planning_environment_config
+from env.reward import PrecaptureReward
 from env.scenarios import chaser_parameters, target_parameters
 from env.se3_rendezvous_env import SE3RendezvousConfig, SE3RendezvousEnv
+from env.task import compute_precapture_metrics
 
 FloatArray = NDArray[np.float64]
 
@@ -71,6 +74,9 @@ class PrecaptureHybridConfig:
     #: it must equal the controller's ``external_reference_hold_steps`` so the
     #: optimiser adopts a new waypoint exactly on a decision boundary.
     decision_period_steps: int = 20
+    #: Discount used by the upper policy and therefore by the potential term
+    #: evaluated at one complete decision boundary.
+    decision_discount_factor: float = 0.99
     #: ``"absolute"`` maps the action straight onto a target-frame point,
     #: ``a * waypoint_scale_m``. It is the parametrisation the first training
     #: attempt used and it is kept as the default so that run stays
@@ -118,6 +124,8 @@ class PrecaptureHybridConfig:
     def __post_init__(self) -> None:
         if self.decision_period_steps < 1:
             raise ValueError("decision period must be at least one control step")
+        if not 0.0 < self.decision_discount_factor <= 1.0:
+            raise ValueError("decision discount factor must lie in (0, 1]")
         if self.waypoint_scale_m <= 0.0:
             raise ValueError("waypoint scale must be positive")
         if not (
@@ -164,14 +172,12 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
     """One learned waypoint per decision period, flown by the constrained MPC.
 
     The observation is the underlying environment's own, unchanged, so the
-    learned layer sees exactly what Pure SAC sees. The reward is the sum of
-    the environment's rewards over the decision period, so a return here and a
-    return there differ only by the discounting the coarser step implies --
-    which is the point: the episode is about 150 decisions instead of about
-    950 control steps, so the completion bonus is worth ``gamma**150`` at
-    reset rather than ``gamma**950``. The credit-assignment path to the entry
-    decision is six times shorter, and that is a structural property of the
-    coupling, not a tuned one.
+    learned layer sees exactly what Pure SAC sees. Time, force, torque, safety
+    and event rewards are summed over the decision period. Micro-step potential
+    shaping is removed and replaced by
+    ``w * (gamma_decision * Phi(s_20) - Phi(s_0))``. The episode is therefore
+    about 150 consistently discounted decisions instead of about 950 control
+    steps, while the physical path costs retain their original integrals.
     """
 
     metadata = {"render_modes": []}
@@ -188,6 +194,11 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         if not self.environment_config.precapture_planning_enabled:
             raise ValueError("the hybrid requires the precapture planning task")
         self.env = SE3RendezvousEnv(self.environment_config)
+        self._potential_evaluator = PrecaptureReward(
+            task=self.environment_config.precapture_task,
+            settings=self.environment_config.precapture_reward,
+            time_step_s=self.environment_config.dt_s,
+        )
         self.mpc_config = hybrid_mpc_config(
             self.hybrid_config, self.environment_config
         )
@@ -219,6 +230,21 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         )
         self.observation_space = self.env.observation_space
         self._last_info: dict[str, Any] = {}
+
+    def _current_reward_potential(self) -> float:
+        assert self.env.target_state is not None
+        assert self.env.chaser_state is not None
+        assert self.env.relative is not None
+        metrics = compute_precapture_metrics(
+            self.env.target_state,
+            self.env.chaser_state,
+            self.env.relative,
+            self.environment_config.precapture_task,
+            terminal_region_active=bool(
+                self._last_info.get("terminal_region_active", False)
+            ),
+        )
+        return self._potential_evaluator.potential(metrics)
 
     # -- waypoint ---------------------------------------------------------
 
@@ -347,7 +373,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self, action: np.ndarray
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         waypoint = self.waypoint_from_action(action)
-        reward = 0.0
+        initial_potential = self._current_reward_potential()
+        integrated_reward_without_shaping = 0.0
+        removed_micro_shaping = 0.0
         terminated = truncated = False
         observation = None
         info: dict[str, Any] = self._last_info
@@ -375,16 +403,29 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                     ),
                 )
             )
-            reward += float(step_reward)
+            micro_shaping = float(info["reward_shaping"])
+            removed_micro_shaping += micro_shaping
+            integrated_reward_without_shaping += float(step_reward) - micro_shaping
             control_steps += 1
             if terminated or truncated:
                 break
         assert observation is not None
+        final_potential = float(info["reward_potential"])
+        macro_shaping = self.environment_config.precapture_reward.potential_weight * (
+            self.hybrid_config.decision_discount_factor * final_potential
+            - initial_potential
+        )
+        reward = integrated_reward_without_shaping + macro_shaping
         info = dict(info)
         info["hybrid_waypoint_target_frame"] = [float(v) for v in waypoint]
         info["hybrid_waypoint_radius_m"] = float(np.linalg.norm(waypoint))
         info["hybrid_control_steps"] = control_steps
         info["hybrid_qp_zero_fallbacks"] = zero_fallbacks
+        info["hybrid_reward_shaping"] = macro_shaping
+        info["hybrid_removed_micro_shaping"] = removed_micro_shaping
+        info["hybrid_integrated_reward_without_shaping"] = (
+            integrated_reward_without_shaping
+        )
         self._last_info = info
         return observation, reward, terminated, truncated, info
 

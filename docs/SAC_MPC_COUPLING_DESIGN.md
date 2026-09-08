@@ -383,3 +383,11 @@ torque and safety-warning terms stay as sums over the 20 micro steps, because
 those are genuine per-step integrals -- fuel is an impulse, a safety warning is
 a per-step exposure -- and summing an integral over a block is what an integral
 does. Moving them would change what they measure.
+
+**Implemented, 2026-09-09.** The hybrid wrapper now removes the twenty
+micro-step shaping terms from the accumulated reward and adds exactly one
+decision-boundary term
+`potential_weight * (decision_discount_factor * Phi(s_next) - Phi(s))`.
+`train.train_hybrid` sets `decision_discount_factor` directly from
+`SAC_MPC_HYBRID.gamma`, and the value is recorded in the manifest's `hybrid`
+block. The other five reward components remain unmodified micro-step sums.
