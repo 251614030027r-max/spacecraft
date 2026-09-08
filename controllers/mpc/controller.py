@@ -646,7 +646,8 @@ class MPCController:
             exact_refresh_time = perf_counter() - started_exact
         elif not use_exact and self._control_step % self.config.drift_refresh_steps == 0:
             self._refresh_drift(state, target_state, time_seconds)
-        controls = np.vstack((self._nominal_controls[1:], np.zeros((1, 6))))
+        warm_start = np.vstack((self._nominal_controls[1:], np.zeros((1, 6))))
+        controls = warm_start.copy()
         status = "not_solved"
         total_solve_time = 0.0
         constraint_linearization_time = 0.0
@@ -762,8 +763,15 @@ class MPCController:
             self._nominal_controls = controls
             used_fallback = False
         except (cp.SolverError, RuntimeError, FloatingPointError, ValueError):
-            command = np.zeros(6, dtype=np.float64)
-            self._nominal_controls.fill(0.0)
+            if self.config.infeasible_fallback == "shift":
+                # Keep flying the last feasible plan rather than abandoning a
+                # part-finished manoeuvre.  Its final row is zero, so after one
+                # full horizon of consecutive failures this decays to the zero
+                # fallback on its own.
+                self._nominal_controls = warm_start
+            else:
+                self._nominal_controls.fill(0.0)
+            command = self._nominal_controls[0].copy()
             used_fallback = True
         if self._slack is not None and self._slack.value is not None:
             slack_values = np.asarray(self._slack.value, dtype=np.float64)

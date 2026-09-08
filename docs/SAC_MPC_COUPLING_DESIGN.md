@@ -268,3 +268,118 @@ One thing that ceiling does *not* bound: the sweep moves a single scalar, while
 the policy has four dimensions every two seconds and can steer laterally as
 well as choose when to commit. 262001 and 262006 may be reachable that way.
 So 10/12 is the ceiling of the hand-scripted decision, not of the action space.
+
+## 9. Three boundaries this design carries into the paper
+
+None of these is a defect to fix before the coupled row runs. Each is a limit
+on what the row is allowed to claim, and each is written down here because the
+place a boundary gets lost is the gap between the experiment and its sentence
+in the paper.
+
+### 9.1 The evidence is full-state, so no perception claim is available
+
+Every number in this document, and every number the coupled row will produce,
+comes from `precapture_planning_environment_config()` with `perception=None`.
+That path builds the observation from the truth state; the camera/EKF chain of
+`phase2_perception_environment_config()` is not in the loop and draws no
+randomness. The upper layer therefore sees a target pose and rate no onboard
+sensor produced.
+
+What this permits: a claim about **decision** -- that a learned upper layer
+choosing when and along what radius to close beats a fixed setpoint through the
+same constrained MPC, with the constraint and dynamics fidelity unchanged.
+
+What it forbids, without a further experiment: any claim that the coupling
+works under local vision, under estimation error, under measurement dropout, or
+that it is robust to the FOV-driven observability the A1 chain models. The
+A1/A2 rounds established that chain separately on the `single_phase` task; the
+precapture task has not been re-run through it, and the two must not be spliced
+in a sentence. If the paper wants the perception claim it is a separate
+single-factor round: same policy, `perception` enabled, reported as its own
+distribution.
+
+### 9.2 The target-frame waypoint factor has no independent single-factor commit
+
+The rule is one interpretable factor per experiment, in its own commit. The
+frame correction of the `external_local` channel -- the change that took the
+declared interface from 0/3 to 3/3 -- does not have one. It reached the shared
+history inside the merge `884c686`, alongside the attitude-reference options and
+the diagnostic scripts, and by the time the omission was noticed the merge was
+already the base both windows build on.
+
+Fabricating a retroactive commit would put a false timestamp in the audit trail,
+which is worse than the missing one. So the factor is recorded here instead,
+with the measurement that isolates it, which is what the commit would have
+carried anyway: **same waypoint, same MPC, same seeds, only the frame in which
+the 3D point is interpreted differs** -- direct `fixed` reference 3/3
+(113.5-126.5 s); the 3D channel read as inertial 0/3 (all three at the 300 s
+cap, parked 3.6-3.9 m out); the 3D channel read in the target body frame 3/3
+and bitwise identical to the direct reference, `max|dr| = 0.000e+00`. The
+mechanism is in
+`docs/PRECAPTURE_REFERENCE_TRACKING_DIAGNOSIS.md`: a body-fixed goal re-issued
+as an inertial point and held for 2 s becomes a circular reference, tracked with
+a 1.33 m standing offset and a 0.08 m sawtooth whose autocorrelation peaks at
+exactly 20 steps, against a 0.25 m completion tolerance.
+
+The rule holds for everything after this point; this is the one exception, and
+it is named rather than hidden.
+
+### 9.3 The discount is not consistent between the shaping and the coupled step
+
+**Correction, 2026-09-08.** An earlier draft of this section said the precapture
+potential shaping was designed at `gamma = 0.997`. It is **0.999**:
+`PrecaptureRewardConfig.discount_factor = 0.999`, and all three v2 training
+manifests carry that value. `0.997` belongs to `Phase2MissionReward` on the
+`single_phase` task and to `train.configs.PURE_SAC`; it is not this task's
+number. The lower window caught this against the code and the manifests. The
+structural problem below is unchanged, but the arithmetic is.
+
+The reward's potential shaping is discount-consistent for the environment it was
+written in: one 0.1 s step at `gamma = 0.999`, so
+`F = 0.999 * Phi(s') - Phi(s)` telescopes and the shaping is policy-invariant
+over the micro step.
+
+The coupling breaks that identity in two places at once. The upper layer's step
+is 20 environment steps and its rewards are **summed** over those steps with no
+discount inside the block; and the SAC discount over that coarse step is
+`gamma = 0.99`. Two separate mismatches follow:
+
+- **Scale.** A faithful macro discount for 20 micro steps at 0.999 is
+  `0.999**20 = 0.98019`, not 0.99. SAC therefore discounts roughly twice as
+  hard per decision as the shaping was built for.
+- **Aggregation.** Even at the right macro discount, summing the block
+  undiscounted does not telescope: the block's shaping is
+  `sum_k [0.999 * Phi(s_{k+1}) - Phi(s_k)]`, which is neither
+  `0.99 * Phi(s_20) - Phi(s_0)` nor a constant offset from it.
+
+So the potential is not provably policy-invariant at the level the policy
+optimises. **The size of the deviation is now measured, and it is not small.**
+The potential is minus the sum of four errors normalised by their completion
+tolerances. Evaluated at reset over the twelve 262000 seeds it is
+`Phi = -87.4` (median; -103.5 to -73.4). The non-telescoping remainder is the
+discount leak `(1 - 0.999) * |Phi|` per micro step, weighted by
+`potential_weight = 0.05`: **0.0044 per micro step, 0.087 per 2 s decision, and
+-13.1 over a 150-decision episode**. The entire telescoping signal for actually
+solving the task -- `Phi` from -87.4 to about -4 at the completion tolerances --
+is `0.05 * 83 = +4.2`. **The leak is about three times the size of the signal it
+is attached to**, and it is a pure function of how long the chaser stays far
+away rather than of what it does. Reproduce with `PrecaptureReward.potential`
+on a reset environment; no controller is involved.
+
+This is a defect of construction, not a tuning preference, so it is a
+legitimate single factor to correct. The correction chosen is **to define the
+potential at the decision boundary**: evaluate `Phi` once per 2 s decision and
+apply `F = potential_weight * (gamma_SAC * Phi(s_20) - Phi(s_0))` with
+`gamma_SAC = 0.99`, which telescopes exactly at the level SAC optimises and is
+therefore policy-invariant by construction. The alternative -- keep the micro
+step and set the macro discount to `0.999**20 = 0.98019` with discounted
+in-block aggregation -- is rejected because it is faithful to the wrong thing:
+an effective horizon of about 50 decisions against a 150-decision episode
+(`0.98019**150 = 0.050`) reproduces exactly the horizon starvation section 3
+introduced the coarse step to escape.
+
+**Scope of the correction.** Only the potential term moves. The time, force,
+torque and safety-warning terms stay as sums over the 20 micro steps, because
+those are genuine per-step integrals -- fuel is an impulse, a safety warning is
+a per-step exposure -- and summing an integral over a block is what an integral
+does. Moving them would change what they measure.

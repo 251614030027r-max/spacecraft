@@ -88,6 +88,22 @@ def parse_args() -> argparse.Namespace:
         "--waypoint-frame", choices=["inertial", "target"], default="inertial"
     )
     parser.add_argument("--position-scale", type=float, default=20.0)
+    parser.add_argument(
+        "--slack-limit",
+        type=float,
+        default=None,
+        help=(
+            "constraint_slack_limit; the default 2.0 caps the softening, so a "
+            "linearised margin worse than -2.0 makes the QP infeasible even "
+            "though every constraint is nominally soft"
+        ),
+    )
+    parser.add_argument(
+        "--infeasible-fallback",
+        choices=("zero", "shift"),
+        default="zero",
+        help="what the MPC commands when the QP does not solve",
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 
@@ -109,6 +125,12 @@ def main() -> None:
             "fixed" if args.guidance == "fixed" else "external_local"
         ),
         precapture_attitude_reference=args.attitude_reference,
+        infeasible_fallback=args.infeasible_fallback,
+        **(
+            {}
+            if args.slack_limit is None
+            else {"constraint_slack_limit": args.slack_limit}
+        ),
         external_reference_frame=args.waypoint_frame,
         state_scales=np.array(
             [
@@ -242,6 +264,8 @@ def main() -> None:
         "attitude_reference": args.attitude_reference,
         "position_scale_m": args.position_scale,
         "waypoint_frame": args.waypoint_frame,
+        "infeasible_fallback": args.infeasible_fallback,
+        "constraint_slack_limit": float(config.constraint_slack_limit),
         "steps": len(trace),
         "final_time_s": trace[-1]["t"],
         "final_range_m": trace[-1]["range_m"],

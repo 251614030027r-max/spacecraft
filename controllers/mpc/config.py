@@ -47,6 +47,14 @@ class MPCConfig:
     solver_max_iter: int = 10_000
     solver_eps_abs: float = 1.0e-4
     solver_eps_rel: float = 1.0e-4
+    # What to command when the QP does not solve. ``zero`` is the historical
+    # behaviour and stays the default so every measured number reproduces.
+    # ``shift`` instead commands the previous solution advanced one step, i.e.
+    # it keeps flying the last feasible plan.  The distinction matters here
+    # because zero wrench is not a neutral action on a co-rotating approach:
+    # angular momentum is conserved, so it freezes whatever rate the last
+    # feasible solve was part-way through establishing.
+    infeasible_fallback: str = "zero"
     reference_state: np.ndarray = field(
         default_factory=lambda: np.zeros(12, dtype=np.float64)
     )
@@ -109,6 +117,8 @@ class MPCConfig:
             self.external_reference_hold_steps,
         ) <= 0:
             raise ValueError("MPC integer settings must be positive")
+        if self.infeasible_fallback not in {"zero", "shift"}:
+            raise ValueError("infeasible_fallback must be zero or shift")
         if self.linearization_source not in {"exact", "local", "analytic_local"}:
             raise ValueError(
                 "linearization_source must be exact, local or analytic_local"

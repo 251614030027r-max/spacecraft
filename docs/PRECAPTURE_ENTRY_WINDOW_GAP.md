@@ -32,6 +32,33 @@ Seed 262001 at h20 shows the recovery is available: it entered illegally,
 retreated and re-entered legally, and completed in 121.8 s. So this is a
 **decision** deficiency, not an impossibility.
 
+## 1b. Correction (2026-09-08): the lockout is behavioural, not a rule
+
+Section 2 below says the entry plane is "a one-shot legal crossing" and that an
+illegal one leaves the episode "quietly unwinnable". **Read against the code,
+that overstates the rule.** In `SE3RendezvousEnv._step`, the crossing test runs
+on every step for which `self._terminal_region_entered` is still false. An
+illegal crossing increments `_illegal_terminal_entry_count` and does nothing
+else -- it sets no flag, and it does not close the latch. Leave the disc and
+cross it legally later and the episode latches normally.
+
+The measurements agree. Section 1's own seed 262001 did exactly that on
+`1fe5549`. In the F1 re-run (`docs/PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md`)
+seed 262003 records `illegal_terminal_entry_count = 1`,
+`terminal_region_active = 1` and `completed = true` in the same episode.
+
+What is true is the behavioural half, and it is the half that matters for the
+method. While inside the disc without having latched, `terminal_region_active`
+is false, so the terminal constraints never come on and the completion test can
+never pass; and a fixed-setpoint regulator that has arrived at the desired pose
+has no reason to ever leave it again. It therefore parks inside a region it
+cannot score in, forever, because backing out and coming round with the tumble
+is not a motion its cost function can want. **The door is not locked. The lower
+layer has no representation of walking back out and knocking again.** That is
+still an upper-layer decision, and it is a cleaner statement of the same gap:
+the failure is not a rule the chaser tripped, it is a manoeuvre it cannot
+conceive of.
+
 ## 2. Why this is the gap the method needs
 
 The entry plane is a one-shot legal crossing: cross it too fast or too far
