@@ -50,6 +50,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument(
+        "--parametrization",
+        choices=["absolute", "radial_local"],
+        default="radial_local",
+        help="Action parametrisation used by the trained policy or control.",
+    )
+    parser.add_argument(
         "--model",
         type=Path,
         help="Trained SAC checkpoint. Omit to run one of the controls.",
@@ -87,7 +93,10 @@ def main() -> None:
     for episode in range(args.episodes):
         seed = args.seed + episode
         env = PrecaptureHybridEnv(
-            hybrid_config=PrecaptureHybridConfig(horizon_steps=args.horizon)
+            hybrid_config=PrecaptureHybridConfig(
+                horizon_steps=args.horizon,
+                waypoint_parametrization=args.parametrization,
+            )
         )
         observation, info = env.reset(seed=seed)
         desired = env.environment_config.precapture_task.desired_position
@@ -104,13 +113,11 @@ def main() -> None:
                 inference_s = perf_counter() - started
             elif args.control == "desired_pose":
                 started = perf_counter()
-                action = np.clip(
-                    desired / env.hybrid_config.waypoint_scale_m, -1.0, 1.0
-                )
+                action = env.action_for_waypoint(desired)
                 inference_s = perf_counter() - started
             else:
                 started = perf_counter()
-                action = generator.uniform(-1.0, 1.0, size=3)
+                action = generator.uniform(-1.0, 1.0, size=env.action_space.shape)
                 inference_s = perf_counter() - started
 
             waypoint = env.waypoint_from_action(action)
@@ -205,6 +212,7 @@ def main() -> None:
         "episodes": args.episodes,
         "seed_block": args.seed,
         "horizon": args.horizon,
+        "waypoint_parametrization": args.parametrization,
         "hyperparameters": {"gamma": SAC_MPC_HYBRID.gamma},
         "compute_note": (
             "valid only if this ran serially in a single process; the MPC is "

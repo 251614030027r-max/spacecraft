@@ -249,6 +249,42 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             return self._radial_local_waypoint(raw)
         return self._clip_radius(raw * self.hybrid_config.waypoint_scale_m)
 
+    def action_for_waypoint(self, waypoint: np.ndarray) -> FloatArray:
+        """Return the closest bounded action that names an absolute waypoint."""
+
+        target = np.asarray(waypoint, dtype=np.float64).reshape(3)
+        if not np.all(np.isfinite(target)):
+            raise ValueError("waypoint must be finite")
+        if self.hybrid_config.waypoint_parametrization == "absolute":
+            return np.clip(
+                target / self.hybrid_config.waypoint_scale_m, -1.0, 1.0
+            )
+        current = self._current_position()
+        radius = float(np.linalg.norm(current))
+        goal_radius = float(np.linalg.norm(target))
+        if radius < 1.0e-9 or goal_radius < 1.0e-9:
+            return np.zeros(4, dtype=np.float64)
+        direction = current / radius
+        radial = float(
+            np.clip(
+                np.log(goal_radius / radius)
+                / self.hybrid_config.radial_action_gain,
+                -1.0,
+                1.0,
+            )
+        )
+        goal_direction = target / goal_radius
+        cosine = float(goal_direction @ direction)
+        perpendicular = goal_direction - cosine * direction
+        if cosine > 1.0e-3:
+            nudge = perpendicular / (
+                self.hybrid_config.lateral_action_gain * cosine
+            )
+        else:
+            norm = float(np.linalg.norm(perpendicular))
+            nudge = perpendicular / norm if norm > 1.0e-9 else np.zeros(3)
+        return np.clip(np.concatenate(([radial], nudge)), -1.0, 1.0)
+
     def _radial_local_waypoint(self, action: FloatArray) -> FloatArray:
         position = self._current_position()
         radius = float(np.linalg.norm(position))

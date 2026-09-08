@@ -203,6 +203,30 @@ def test_radial_local_lateral_nudge_is_continuous_in_the_action() -> None:
     env.close()
 
 
+def test_action_for_waypoint_respects_each_parametrisation() -> None:
+    absolute = PrecaptureHybridEnv(
+        hybrid_config=PrecaptureHybridConfig(waypoint_parametrization="absolute")
+    )
+    absolute.reset(seed=262000)
+    absolute_target = np.array([-6.0, 2.0, -1.0])
+    assert np.allclose(
+        absolute.waypoint_from_action(absolute.action_for_waypoint(absolute_target)),
+        absolute_target,
+    )
+    absolute.close()
+
+    radial = PrecaptureHybridEnv(
+        hybrid_config=PrecaptureHybridConfig(waypoint_parametrization="radial_local")
+    )
+    radial.reset(seed=262000)
+    current = radial._current_position()
+    reachable_target = 0.75 * current
+    action = radial.action_for_waypoint(reachable_target)
+    assert action.shape == radial.action_space.shape == (4,)
+    assert np.allclose(radial.waypoint_from_action(action), reachable_target)
+    radial.close()
+
+
 def test_hybrid_config_rejects_an_unknown_parametrisation() -> None:
     try:
         PrecaptureHybridConfig(waypoint_parametrization="polar")

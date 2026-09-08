@@ -60,7 +60,6 @@ class ScriptedWaypointPolicy:
         self.kind = kind
         self.cosine_threshold = float(np.cos(np.deg2rad(alignment_deg)))
         self.task = env.environment_config.precapture_task
-        self.scale = env.hybrid_config.waypoint_scale_m
         self.committed = False
         self.held_inertial: np.ndarray | None = None
 
@@ -76,35 +75,7 @@ class ScriptedWaypointPolicy:
         in 2 s either.
         """
 
-        target = np.asarray(point, dtype=np.float64)
-        if self.env.hybrid_config.waypoint_parametrization == "absolute":
-            return np.clip(target / self.scale, -1.0, 1.0)
-        current = self.env._current_position()
-        radius = float(np.linalg.norm(current))
-        goal_radius = float(np.linalg.norm(target))
-        if radius < 1.0e-9 or goal_radius < 1.0e-9:
-            return np.zeros(4)
-        direction = current / radius
-        radial = float(
-            np.clip(
-                np.log(goal_radius / radius)
-                / self.env.hybrid_config.radial_action_gain,
-                -1.0,
-                1.0,
-            )
-        )
-        goal_direction = target / goal_radius
-        cosine = float(goal_direction @ direction)
-        perpendicular = goal_direction - cosine * direction
-        if cosine > 1.0e-3:
-            nudge = perpendicular / (
-                self.env.hybrid_config.lateral_action_gain * cosine
-            )
-        else:
-            # More than 90 deg away: steer as hard as the box allows.
-            norm = float(np.linalg.norm(perpendicular))
-            nudge = perpendicular / norm if norm > 1.0e-9 else np.zeros(3)
-        return np.clip(np.concatenate(([radial], nudge)), -1.0, 1.0)
+        return self.env.action_for_waypoint(point)
 
     def act(self) -> tuple[np.ndarray, bool]:
         desired = self.task.desired_position
