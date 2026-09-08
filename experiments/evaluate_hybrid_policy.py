@@ -105,6 +105,10 @@ def main() -> None:
         }
         force_impulse = torque_impulse = 0.0
         waypoints: list[list[float]] = []
+        qp_infeasible_steps_total = 0
+        first_infeasible_time_s: float | None = None
+        consecutive_zero_wrench_steps = 0
+        max_consecutive_zero_wrench_steps = 0
         terminated = truncated = False
         while not (terminated or truncated):
             if policy is not None:
@@ -127,7 +131,7 @@ def main() -> None:
                 assert env.env.relative is not None
                 assert env.env.target_state is not None
                 started = perf_counter()
-                wrench, _ = env.controller.command(
+                wrench, diagnostics = env.controller.command(
                     relative_to_vector(env.env.relative),
                     target_state=env.env.target_state,
                     time_seconds=env.env.time_seconds,
@@ -135,6 +139,18 @@ def main() -> None:
                     external_reference=waypoint,
                 )
                 controller_s = perf_counter() - started
+                if str(diagnostics.status).startswith("infeasible"):
+                    qp_infeasible_steps_total += 1
+                    if first_infeasible_time_s is None:
+                        first_infeasible_time_s = float(env.env.time_seconds)
+                if np.count_nonzero(wrench) == 0:
+                    consecutive_zero_wrench_steps += 1
+                    max_consecutive_zero_wrench_steps = max(
+                        max_consecutive_zero_wrench_steps,
+                        consecutive_zero_wrench_steps,
+                    )
+                else:
+                    consecutive_zero_wrench_steps = 0
                 # The policy is charged to the first control step of its
                 # decision, which is when a flight computer would pay it.
                 controller_times_s.append(
@@ -195,6 +211,11 @@ def main() -> None:
                 "terminal_region_active": float(info["terminal_region_active"]),
                 "time_failure": bool(info.get("time_failure", False)),
                 "distance_failure": bool(info.get("distance_failure", False)),
+                "qp_infeasible_steps_total": qp_infeasible_steps_total,
+                "first_infeasible_time_s": first_infeasible_time_s,
+                "max_consecutive_zero_wrench_steps": (
+                    max_consecutive_zero_wrench_steps
+                ),
                 "waypoints_target_frame": waypoints,
             }
         )
