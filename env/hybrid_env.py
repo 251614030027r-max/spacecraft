@@ -120,6 +120,16 @@ class PrecaptureHybridConfig:
     horizon_steps: int = 20
     terminal_weight: float = 1000.0
     input_weight: float = 0.01
+    #: Post-solve rollout, truth-margin and predicted-cost reporting.  It never
+    #: participates in the QP or selected command; training disables it while
+    #: evaluation/profiling chooses explicitly whether those diagnostics matter.
+    runtime_diagnostics: bool = True
+    #: V4 single factor: expose the target's absolute attitude phase and the
+    #: remaining episode budget to the scheduling policy.  The first two
+    #: inertial columns of the target rotation are a continuous, non-redundant
+    #: 6D rotation representation; the seventh value is remaining time in
+    #: [0, 1].  It changes only the upper policy observation.
+    include_target_phase_and_time_observation: bool = False
 
     def __post_init__(self) -> None:
         if self.decision_period_steps < 1:
@@ -165,6 +175,7 @@ def hybrid_mpc_config(
         # Measured best of three formulations; see the diagnosis document.
         precapture_attitude_reference="frozen",
         external_reference_hold_steps=hybrid.decision_period_steps,
+        runtime_diagnostics=hybrid.runtime_diagnostics,
     )
 
 
@@ -228,8 +239,39 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             shape=(self.hybrid_config.action_dimension,),
             dtype=np.float32,
         )
-        self.observation_space = self.env.observation_space
+        if self.hybrid_config.include_target_phase_and_time_observation:
+            base = self.env.observation_space
+            assert isinstance(base, spaces.Box)
+            self.observation_space = spaces.Box(
+                low=np.concatenate((base.low, -np.ones(6), np.zeros(1))).astype(
+                    np.float32
+                ),
+                high=np.concatenate((base.high, np.ones(7))).astype(np.float32),
+                dtype=np.float32,
+            )
+        else:
+            self.observation_space = self.env.observation_space
         self._last_info: dict[str, Any] = {}
+
+    def _policy_observation(self, observation: np.ndarray) -> np.ndarray:
+        """Add only the V4 scheduling state; preserve the canonical 24D core."""
+
+        if not self.hybrid_config.include_target_phase_and_time_observation:
+            return observation
+        assert self.env.target_state is not None
+        target_phase_6d = self.env.target_state.rotation[:, :2].reshape(-1)
+        remaining_fraction = np.clip(
+            (self.environment_config.max_time_s - self.env.time_seconds)
+            / self.environment_config.max_time_s,
+            0.0,
+            1.0,
+        )
+        augmented = np.concatenate(
+            (observation, target_phase_6d, np.array([remaining_fraction]))
+        ).astype(np.float32)
+        if not self.observation_space.contains(augmented):
+            raise RuntimeError("invalid V4 target-phase/time observation")
+        return augmented
 
     def _current_reward_potential(self) -> float:
         assert self.env.target_state is not None
@@ -367,7 +409,7 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         observation, info = self.env.reset(seed=seed, options=options)
         self.controller.reset()
         self._last_info = dict(info)
-        return observation, info
+        return self._policy_observation(observation), info
 
     def step(
         self, action: np.ndarray
@@ -427,7 +469,13 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             integrated_reward_without_shaping
         )
         self._last_info = info
-        return observation, reward, terminated, truncated, info
+        return (
+            self._policy_observation(observation),
+            reward,
+            terminated,
+            truncated,
+            info,
+        )
 
     def close(self) -> None:
         self.env.close()

@@ -8,14 +8,20 @@ exactly the hold the optimiser was configured for.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 
+from controllers.mpc.prediction import relative_to_vector
 from env.hybrid_env import (
     PrecaptureHybridConfig,
     PrecaptureHybridEnv,
     hybrid_mpc_config,
 )
 from env.phase2_env import precapture_planning_environment_config
+from env.se3_rendezvous_env import SE3RendezvousEnv
+from experiments.evaluate_hybrid_policy import summarize_entry_channel
+from train.train_hybrid import accelerated_training_configs
 
 
 def test_hybrid_action_is_three_dimensional_and_observation_is_unchanged() -> None:
@@ -43,6 +49,194 @@ def test_hybrid_pins_the_channel_the_diagnosis_measured_as_lossless() -> None:
     assert config.external_reference_frame == "target"
     assert config.precapture_attitude_reference == "frozen"
     assert config.external_reference_hold_steps == hybrid.decision_period_steps
+
+
+def test_runtime_diagnostics_switch_does_not_change_the_mpc_command() -> None:
+    environment = replace(
+        precapture_planning_environment_config(), cache_target_trajectory=False
+    )
+    enabled = PrecaptureHybridEnv(
+        environment_config=environment,
+        hybrid_config=PrecaptureHybridConfig(
+            waypoint_parametrization="radial_local", runtime_diagnostics=True
+        ),
+    )
+    disabled = PrecaptureHybridEnv(
+        environment_config=environment,
+        hybrid_config=PrecaptureHybridConfig(
+            waypoint_parametrization="radial_local", runtime_diagnostics=False
+        ),
+    )
+    try:
+        _, enabled_info = enabled.reset(seed=262000)
+        _, disabled_info = disabled.reset(seed=262000)
+        action = np.zeros(4)
+        enabled_waypoint = enabled.waypoint_from_action(action)
+        disabled_waypoint = disabled.waypoint_from_action(action)
+        assert np.array_equal(enabled_waypoint, disabled_waypoint)
+        enabled_command, enabled_diagnostics = enabled.controller.command(
+            relative_to_vector(enabled.env.relative),
+            target_state=enabled.env.target_state,
+            time_seconds=enabled.env.time_seconds,
+            terminal_latched=bool(enabled_info["terminal_region_active"]),
+            external_reference=enabled_waypoint,
+        )
+        disabled_command, disabled_diagnostics = disabled.controller.command(
+            relative_to_vector(disabled.env.relative),
+            target_state=disabled.env.target_state,
+            time_seconds=disabled.env.time_seconds,
+            terminal_latched=bool(disabled_info["terminal_region_active"]),
+            external_reference=disabled_waypoint,
+        )
+        assert np.array_equal(enabled_command, disabled_command)
+        assert enabled_diagnostics.status == disabled_diagnostics.status
+        assert (
+            enabled_diagnostics.used_zero_fallback
+            == disabled_diagnostics.used_zero_fallback
+        )
+    finally:
+        enabled.close()
+        disabled.close()
+
+
+def test_on_demand_target_propagation_matches_eager_cache_bitwise() -> None:
+    base = replace(
+        precapture_planning_environment_config(),
+        max_time_s=0.3,
+        phase2_target_phase_sampling=True,
+    )
+    eager = SE3RendezvousEnv(replace(base, cache_target_trajectory=True))
+    on_demand = SE3RendezvousEnv(replace(base, cache_target_trajectory=False))
+    try:
+        eager.reset(seed=262000)
+        on_demand.reset(seed=262000)
+        action = np.zeros(6)
+        for _ in range(3):
+            _, _, _, _, eager_info = eager.step(action)
+            _, _, _, _, on_demand_info = on_demand.step(action)
+            # This is expected bitwise equality, not an empirical tolerance: the
+            # two branches call the same propagate_rk45 with identical target
+            # parameters, gravity, RK45Settings, dt_s and step time stamps.
+            assert np.array_equal(eager.target_state.position, on_demand.target_state.position)
+            assert np.array_equal(eager.target_state.velocity, on_demand.target_state.velocity)
+            assert np.array_equal(eager.target_state.rotation, on_demand.target_state.rotation)
+            assert np.array_equal(eager.target_state.omega, on_demand.target_state.omega)
+            assert eager_info["target_nfev"] == 0
+            assert on_demand_info["target_nfev"] > 0
+    finally:
+        eager.close()
+        on_demand.close()
+
+
+def test_hybrid_training_selects_only_engineering_acceleration_switches() -> None:
+    environment, hybrid = accelerated_training_configs(
+        horizon_steps=20, waypoint_parametrization="radial_local"
+    )
+    assert not environment.cache_target_trajectory
+    assert not hybrid.runtime_diagnostics
+    assert hybrid.include_target_phase_and_time_observation
+    assert not hybrid_mpc_config(hybrid, environment).runtime_diagnostics
+    canonical = precapture_planning_environment_config()
+    assert canonical.cache_target_trajectory
+    assert PrecaptureHybridConfig().runtime_diagnostics
+    assert not PrecaptureHybridConfig().include_target_phase_and_time_observation
+
+
+def test_v4_observation_adds_target_phase_and_remaining_time_only() -> None:
+    environment = replace(
+        precapture_planning_environment_config(), cache_target_trajectory=False
+    )
+    legacy = PrecaptureHybridEnv(
+        environment_config=environment,
+        hybrid_config=PrecaptureHybridConfig(waypoint_parametrization="radial_local"),
+    )
+    v4 = PrecaptureHybridEnv(
+        environment_config=environment,
+        hybrid_config=PrecaptureHybridConfig(
+            waypoint_parametrization="radial_local",
+            include_target_phase_and_time_observation=True,
+        ),
+    )
+    try:
+        legacy_observation, _ = legacy.reset(seed=262000)
+        v4_observation, _ = v4.reset(seed=262000)
+        assert legacy_observation.shape == (24,)
+        assert v4_observation.shape == (31,)
+        np.testing.assert_array_equal(v4_observation[:24], legacy_observation)
+        np.testing.assert_array_equal(
+            v4_observation[24:30],
+            v4.env.target_state.rotation[:, :2].reshape(-1).astype(np.float32),
+        )
+        assert v4_observation[-1] == 1.0
+        next_observation, _, _, _, _ = v4.step(np.zeros(4))
+        assert next_observation[-1] < 1.0
+        assert v4.observation_space.contains(next_observation)
+    finally:
+        legacy.close()
+        v4.close()
+
+
+def test_v4_phase_encoding_distinguishes_sampled_absolute_target_attitude() -> None:
+    config = PrecaptureHybridConfig(
+        waypoint_parametrization="radial_local",
+        include_target_phase_and_time_observation=True,
+    )
+    environment = replace(
+        precapture_planning_environment_config(), cache_target_trajectory=False
+    )
+    env = PrecaptureHybridEnv(environment_config=environment, hybrid_config=config)
+    try:
+        first, _ = env.reset(seed=262000)
+        second, _ = env.reset(seed=262001)
+        assert not np.array_equal(first[24:30], second[24:30])
+        assert first[-1] == second[-1] == 1.0
+    finally:
+        env.close()
+
+
+def test_entry_channel_summary_applies_preregistered_retry_rule() -> None:
+    records = [
+        {
+            "illegal_entry_crossing_count": 1,
+            "illegal_exit_count": 1,
+            "retry_crossing_count": 1,
+            "entry_crossings": [
+                {
+                    "legal": False,
+                    "retry_after_illegal": False,
+                    "remaining_time_s": 220.0,
+                    "violation_excess": {
+                        "radial_distance_m": 1.0,
+                        "target_frame_speed_m_s": -0.1,
+                        "closing_speed_m_s": -0.05,
+                    },
+                },
+                {
+                    "legal": True,
+                    "retry_after_illegal": True,
+                    "remaining_time_s": 80.0,
+                    "violation_excess": {
+                        "radial_distance_m": -0.2,
+                        "target_frame_speed_m_s": -0.1,
+                        "closing_speed_m_s": -0.05,
+                    },
+                },
+            ],
+        }
+    ]
+    summary = summarize_entry_channel(
+        records,
+        {
+            "radial_distance_m": 3.151,
+            "target_frame_speed_m_s": 0.35,
+            "closing_speed_m_s": 0.20,
+        },
+    )
+    assert summary["primary_illegal_cause_by_preregistered_60pct_rule"] == (
+        "radial_distance"
+    )
+    assert summary["episodes_with_exit_and_retry"] == 1
+    assert summary["legal_retry_crossings"] == 1
 
 
 def test_waypoint_is_absolute_and_radially_clipped() -> None:

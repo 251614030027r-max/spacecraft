@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,6 +21,7 @@ from stable_baselines3.common.monitor import Monitor
 
 from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv, hybrid_mpc_config
 from env.phase2_env import precapture_planning_environment_config
+from env.se3_rendezvous_env import SE3RendezvousConfig
 from train.hybrid_configs import (
     SAC_MPC_HYBRID,
     hybrid_model_kwargs,
@@ -51,6 +52,24 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def accelerated_training_configs(
+    *, horizon_steps: int, waypoint_parametrization: str
+) -> tuple[SE3RendezvousConfig, PrecaptureHybridConfig]:
+    """Return engineering-equivalent configs used only by hybrid training."""
+
+    environment_config = replace(
+        precapture_planning_environment_config(), cache_target_trajectory=False
+    )
+    hybrid_config = PrecaptureHybridConfig(
+        horizon_steps=horizon_steps,
+        waypoint_parametrization=waypoint_parametrization,
+        decision_discount_factor=SAC_MPC_HYBRID.gamma,
+        runtime_diagnostics=False,
+        include_target_phase_and_time_observation=True,
+    )
+    return environment_config, hybrid_config
+
+
 def main() -> None:
     args = parse_args()
     log_dir = args.log_root / args.run_name
@@ -59,11 +78,9 @@ def main() -> None:
     checkpoint_dir = log_dir / "checkpoints"
     checkpoint_dir.mkdir(parents=True)
 
-    environment_config = precapture_planning_environment_config()
-    hybrid_config = PrecaptureHybridConfig(
+    environment_config, hybrid_config = accelerated_training_configs(
         horizon_steps=args.horizon,
         waypoint_parametrization=args.parametrization,
-        decision_discount_factor=SAC_MPC_HYBRID.gamma,
     )
     mpc_config = hybrid_mpc_config(hybrid_config, environment_config)
 
@@ -85,6 +102,11 @@ def main() -> None:
             f"{hybrid_config.maximum_waypoint_radius_m}] m. The interface to "
             "the MPC is the unchanged 3D waypoint either way."
         ),
+        "observation_space": (
+            "canonical 24D full-state core plus a 6D continuous absolute-target-"
+            "attitude representation and normalized remaining episode time; "
+            "this is the sole V4 research factor"
+        ),
         "decision_period_s": hybrid_config.decision_period_steps
         * environment_config.dt_s,
         "reward": "time, force, torque, safety, and event terms are summed "
@@ -103,6 +125,24 @@ def main() -> None:
             "input_weight": mpc_config.input_weight,
             "linearization_source": mpc_config.linearization_source,
             "solver": mpc_config.solver,
+            "runtime_diagnostics": mpc_config.runtime_diagnostics,
+        },
+        "performance_semantics": {
+            "target_trajectory_mode": "on_demand_rk45",
+            "target_trajectory_equivalence": (
+                "same propagate_rk45 call, parameters, gravity, RK45Settings, "
+                "dt_s and time stamps as eager cache construction"
+            ),
+            "target_nfev_semantics": (
+                "real per-step RK45 function-evaluation count; eager-cache runs "
+                "reported zero via synthetic cached IntegrationDiagnostics, so "
+                "target_nfev is not directly comparable across the switch"
+            ),
+            "target_cache_benefit_note": (
+                "avoids unused propagation and the phase-keyed LRU only for "
+                "episodes shorter than the 300 s limit; speed benefit shrinks "
+                "toward zero as episode length approaches 150 decisions"
+            ),
         },
         "hyperparameters": serializable_hybrid_hyperparameters(),
         "command": [sys.executable, "-B", "-m", "train.train_hybrid", *sys.argv[1:]],
