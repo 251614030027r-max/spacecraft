@@ -4,28 +4,30 @@
 
 ## 当前状态
 
-共同基准为 `single_phase`：10–14 m 起始，五类约束从第一步起全程生效，一条控制律完成整段任务。Pure SAC 是已刻画的弱基线，Pure MPC 是实时性与安全性较强的经典基线。值耦合、目标相位、目标参数失配和目标状态观测误差四个探针经错误修正后均未在该温室版任务中找到可信的 SAC–MPC 独占缺口，因此混合控制训练仍暂停。上层最新转向要求保留 SAC–MPC 论文目标，不再推进无耦合路线 B；下一步先由用户在真实离散推力器与未建模目标动力学两个 MPC-hard 难点之间决策，再做无训练的最小缺口验证。
+当前执行的是 `radial_local`、h20、2 s 高层决策、宏观势函数 shaping 的三种子 v3 训练，训练基线提交为 `1655b0b`。D0 已证明 QP 不可行和零 wrench 级联是真实失败通道，但不能解释全部失败；求解器回退与 slack-limit 两条补救均已由上层测为负结果，不再调整。当前仍是 `precapture_planning_full_state_v1_24d`、`perception=null`，只能形成 full-state 调度机制证据，不能写成局部视觉/EKF 结果。
 
 ## 阅读顺序
 
-1. `CLAUDE.md`：唯一权威，包含研究主线、正式结果、纪律和陷阱。
-2. `HANDOFF_upper_v2_pivot.md`：最新上层战略转向、A/B 候选和先决策后验证闸门。
-3. `HANDOFF.md`：当前工程状态、停止闸门和执行入口。
-4. `docs/PROBE_RESULTS.md`：四个负结果及证据边界。
-5. `docs/EVIDENCE_INDEX.md`：日志、模型和论文证据索引。
-6. `docs/HISTORY.md`：已被后续结果取代的历史演进摘要。
+1. `CLAUDE.md`：研究主线、正式结果、纪律和陷阱。
+2. `HANDOFF_UPPER_RULING_20260908.md`：当前上层裁决与禁止事项。
+3. `docs/D0_HYBRID_INFEASIBILITY_DIAGNOSIS_20260909.md`：80 局无训练失败归因。
+4. `docs/SAC_MPC_COUPLING_DESIGN.md`：耦合设计、动作空间与 D1 宏观势函数。
+5. `docs/PRECAPTURE_ENTRY_WINDOW_GAP.md`：入口窗口与参考选择缺口。
+6. `docs/EVIDENCE_INDEX.md`：日志、模型和论文证据索引。
+7. `docs/HISTORY.md`：已被后续结果取代的演进摘要。
+8. `docs/handoffs/README.md`：历史 handoff 归档说明。
 
 旧的多份交接、探针操作说明和逐轮阶段报告已整合进上述文件；原文仍可从 Git 历史恢复，不再作为当前入口。
 
 ## 只读验证
 
-仓库虚拟环境启动器绑定的 Python 3.12.6 已不存在。当前可用的只读验证方式见 `docs/REPRODUCIBILITY.md`。最近一次完整回归为：
+仓库虚拟环境当前可用。最近一次完整回归为：
 
 ```text
-146 passed
+199 passed in 103.05s
 ```
 
-训练当前处于停止状态。恢复训练前必须先由用户与上层重新确认研究问题和实验因子。
+当前活动训练目录为 `logs/hybrid/sac_mpc_hybrid_v3_macro_262100`、`262101`、`262102`，整理或清理时不得触碰。
 
 ## 目录
 
@@ -34,6 +36,6 @@
 - `train/`、`eval/`、`experiments/`：训练、统一评价和诊断工具；
 - `tests/`：回归测试；
 - `logs/`：主要审计证据，失败实验也保留；
-- `models/`：本机未跟踪模型，仅作历史复核，不代表合格策略；
+- `models/`：本机未跟踪的历史最终模型；中间 checkpoint 已清理；
 - `References/`：对标论文；
-- `docs/`：当前状态、证据索引、复现方法和压缩历史。
+- `docs/`：当前状态、证据索引、复现方法、清理记录和历史 handoff 归档。

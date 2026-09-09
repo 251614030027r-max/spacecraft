@@ -19,7 +19,7 @@
 
 ## 1. 认可本轮停止
 
-判据是 `HANDOFF_ACTION_SPACE_FIX_20260908.md` 里预先登记的那条：8k 步时看
+判据是 `docs/handoffs/archive_202609/HANDOFF_ACTION_SPACE_FIX_20260908.md` 里预先登记的那条：8k 步时看
 `ep_len` 是否从 ~50 抬起、`completed` 是否非零，平的就停。
 
 实测：`ep_len` 后 100 episode 为 55.71 / 46.44 / 52.46（前 100 为 48.26 / 47.47 /

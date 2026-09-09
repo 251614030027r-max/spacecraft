@@ -1,6 +1,6 @@
 # 历史演进摘要
 
-本文件压缩原 `docs/history/` 的逐轮阶段报告。它用于解释工程为什么演进到当前状态，不是当前结论来源；现行结论只认根 `CLAUDE.md`、`HANDOFF.md` 和 `docs/PROBE_RESULTS.md`。原始阶段报告可从整理前提交 `0665a81` 的 Git 历史恢复。
+本文件压缩原 `docs/history/` 的逐轮阶段报告。它用于解释工程为什么演进到当前状态，不是当前结论来源；现行结论只认根 `CLAUDE.md`、`HANDOFF_UPPER_RULING_20260908.md`、`docs/D0_HYBRID_INFEASIBILITY_DIAGNOSIS_20260909.md` 和 `docs/SAC_MPC_COUPLING_DESIGN.md`。原始阶段报告可从整理前提交 `0665a81` 的 Git 历史恢复。
 
 ## 2026-08-12：初始受约束 Phase-2
 
