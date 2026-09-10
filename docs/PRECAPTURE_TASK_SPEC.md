@@ -103,7 +103,7 @@ default weighting (`0.01 / 100`) fails for a reason that is not structural: it p
 0.264 m short of a 0.25 m tolerance even when given 400 s, which is a steady-state offset
 of a quadratic-cost regulator. One weight change removes it. On seed 262000 the fair row
 completes in 113.1 s with equivalent delta-v 2.426 m/s, worst normalised margin +0.145
-and 81.5 ms per step (0.82x of the control period). The old comparison against the
+and 81.5 ms per step (0.82x of the control period). **2026-09-10 clarification: this is historical V0.2 / h20 / fixed-setpoint / seed 262000 tuning evidence; it has no relation to an h35 real-time multiplier and must not be cited as one.** The old comparison against the
 open-loop feasibility plan's 228.5 s is withdrawn: its coast duration contains a
 manually chosen wait and is not a valid performance denominator.
 Do not use the default-weight rows as a baseline; they are sensitivity evidence.

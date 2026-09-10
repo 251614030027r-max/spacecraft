@@ -43,12 +43,16 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=262000)
     parser.add_argument("--steps", type=int, default=300)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--no-diagnostics", action="store_true")
+    parser.add_argument("--record-commands", action="store_true",
+                        help="Save selected wrenches for diagnostics equivalence validation")
     args = parser.parse_args()
 
     env_config = precapture_planning_environment_config()
     config = replace(
         precapture_mpc_config(),
         horizon_steps=args.horizon,
+        runtime_diagnostics=not args.no_diagnostics,
         outer_iterations=1,
         input_weight=0.01,
         terminal_weight=1000.0,
@@ -86,6 +90,7 @@ def main() -> None:
     controller_ms: list[float] = []
     environment_ms: list[float] = []
     statuses: list[str] = []
+    commands: list[list[float]] = []
     terminated = truncated = False
     while not (terminated or truncated) and len(controller_ms) < args.steps:
         state = relative_to_vector(env.relative)
@@ -98,6 +103,8 @@ def main() -> None:
         )
         controller_ms.append(1000.0 * (perf_counter() - started))
         statuses.append(str(diagnostics.status))
+        if args.record_commands:
+            commands.append(np.asarray(wrench).tolist())
         action = wrench_to_normalized(
             GeneralizedForce.from_vector(wrench),
             max_torque_per_axis_nm=env_config.max_torque_per_axis_nm,
@@ -114,6 +121,7 @@ def main() -> None:
         "seed": args.seed,
         "steps": int(times.size),
         "serial_single_process": True,
+        "runtime_diagnostics": config.runtime_diagnostics,
         "control_period_ms": budget_ms,
         "controller_ms": {
             "mean": float(times.mean()),
@@ -132,9 +140,15 @@ def main() -> None:
             for i in np.argsort(times)[-5:][::-1]
         ],
         "steps_over_budget": int(np.count_nonzero(times > budget_ms)),
+        "fraction_over_budget": float(np.mean(times > budget_ms)),
         "status_counts": {s: statuses.count(s) for s in sorted(set(statuses))},
     }
-    args.output.write_text(json.dumps(summary, indent=1))
+    if args.record_commands:
+        summary["commands"] = commands
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    if args.output.exists():
+        raise FileExistsError(args.output)
+    args.output.write_text(json.dumps(summary, indent=1), encoding="utf-8")
     print(
         f"h{args.horizon} seed={args.seed} n={times.size} "
         f"mean={summary['controller_ms']['mean']:.1f}ms "

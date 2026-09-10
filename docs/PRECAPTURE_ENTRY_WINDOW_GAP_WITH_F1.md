@@ -1,3 +1,5 @@
+> **2026-09-10 compute clarification (T0 amendment):** The h20 p95 0.94x and h50 p95 2.22x below were measured with runtime diagnostics enabled. They will be superseded by T1 deployment-equivalent, diagnostics-disabled serial measurements. The previously circulated h50 1.18x correction and h35 0.82x claim have no reproducible artifacts at baseline `3e5694c` and must not be cited. Until T1 is complete there is no validated deployment-equivalent compute figure. Original historical text is retained below.
+
 # N-A: the 12-seed sweep re-run with F1, and what it does to the gap
 
 Measured 2026-09-08 in the upper-level sandbox on the merged tree
