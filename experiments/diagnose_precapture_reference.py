@@ -49,6 +49,7 @@ from env.phase2_env import precapture_planning_environment_config
 from env.scenarios import chaser_parameters, target_parameters
 from env.se3_rendezvous_env import SE3RendezvousEnv
 from experiments.evaluate_precapture_oracle import CoastThenMatchPlan
+from experiments.evaluate_mpc import _active_precapture_margins
 
 
 def _angle_between(first: np.ndarray, second: np.ndarray) -> float:
@@ -172,6 +173,9 @@ def main() -> None:
     port = task.port_position
     boresight_body = task.camera_boresight
     trace: list[dict[str, object]] = []
+    minimum_truth_margin = _active_precapture_margins(info, env_config)[1]
+    force_impulse = 0.0
+    fallback_steps = 0
     terminated = truncated = False
     while not (terminated or truncated):
         state = relative_to_vector(env.relative)
@@ -245,6 +249,9 @@ def main() -> None:
                 "force_norm_n": float(np.linalg.norm(wrench[3:])),
                 "maximum_slack": float(diagnostics.maximum_slack),
                 "status": str(diagnostics.status),
+                "used_fallback": bool(diagnostics.used_zero_fallback),
+                "force_axis_utilization": float(np.max(np.abs(wrench[3:])) / env_config.max_force_per_axis_n),
+                "torque_axis_utilization": float(np.max(np.abs(wrench[:3])) / env_config.max_torque_per_axis_nm),
             }
         )
         action = wrench_to_normalized(
@@ -253,6 +260,13 @@ def main() -> None:
             max_force_per_axis_n=env_config.max_force_per_axis_n,
         )
         _, _, terminated, truncated, info = env.step(action)
+        truth_margin = _active_precapture_margins(info, env_config)[1]
+        minimum_truth_margin = min(minimum_truth_margin, truth_margin)
+        force_impulse += float(np.linalg.norm(wrench[3:])) * env_config.dt_s
+        fallback_steps += int(diagnostics.used_zero_fallback)
+        trace[-1]["post_time_s"] = float(env.time_seconds)
+        trace[-1]["post_truth_minimum_normalized_margin"] = truth_margin
+        trace[-1]["post_fov_angle_deg"] = float(np.rad2deg(info["fov_angle_rad"]))
 
     def column(name: str) -> list[float]:
         return [float(sample[name]) for sample in trace]
@@ -267,6 +281,23 @@ def main() -> None:
         "infeasible_fallback": args.infeasible_fallback,
         "constraint_slack_limit": float(config.constraint_slack_limit),
         "steps": len(trace),
+        "task": "precapture_planning",
+        "perception": None,
+        "control_state_source": "truth",
+        "linearization_source": config.linearization_source,
+        "runtime_diagnostics": config.runtime_diagnostics,
+        "force_impulse_n_s": force_impulse,
+        "minimum_truth_normalized_margin": minimum_truth_margin,
+        "terminal_time_s": float(env.time_seconds),
+        "terminal_range_m": float(np.linalg.norm(env.relative.position)),
+        "post_fov_angle_max_deg": max(column("post_fov_angle_deg")),
+        "force_axis_utilization_peak": max(column("force_axis_utilization")),
+        "torque_axis_utilization_peak": max(column("torque_axis_utilization")),
+        "force_axis_utilization_mean": float(np.mean(column("force_axis_utilization"))),
+        "torque_axis_utilization_mean": float(np.mean(column("torque_axis_utilization"))),
+        "qp_fallback_fraction": fallback_steps / len(trace),
+        "qp_infeasible_fraction": sum(str(row["status"]).startswith("infeasible") for row in trace) / len(trace),
+        "termination_reason": "completed" if info["completed"] else ("time_limit" if truncated else ",".join(key for key, value in info.items() if key.endswith("violation_steps") and float(value) > 0.0) or "other_failure"),
         "final_time_s": trace[-1]["t"],
         "final_range_m": trace[-1]["range_m"],
         "reference_position_lag_median_m": median(column("reference_position_lag_m")),
@@ -287,7 +318,8 @@ def main() -> None:
         },
         "trace": trace,
     }
-    args.output.write_text(json.dumps(summary, indent=1))
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(summary, indent=1), encoding="utf-8")
     print(
         f"seed={args.seed} mode={args.attitude_reference} frame={args.waypoint_frame} "
         f"scale={args.position_scale} "
