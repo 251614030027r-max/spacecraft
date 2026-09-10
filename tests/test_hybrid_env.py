@@ -441,3 +441,121 @@ def test_hybrid_config_rejects_an_unknown_parametrisation() -> None:
     except ValueError:
         return
     raise AssertionError("expected ValueError")
+
+
+def _arrival_env(**changes: object) -> PrecaptureHybridEnv:
+    return PrecaptureHybridEnv(
+        hybrid_config=PrecaptureHybridConfig(
+            waypoint_parametrization="arrival_condition", **changes
+        )
+    )
+
+
+def test_arrival_condition_is_two_dimensional() -> None:
+    env = _arrival_env()
+    assert env.action_space.shape == (2,)
+    env.close()
+
+
+def test_arrival_condition_commit_end_names_the_desired_pose() -> None:
+    """The capability floor: the commit end is the fixed-setpoint controller.
+
+    Every radius setting has to give the same point, because the hold radius
+    is meaningless once the commit is complete. This is the property that
+    makes ``a = (+1, *)`` reproduce the Pure MPC row rather than approximate
+    it, and a wrench-level equivalence check rests on it.
+    """
+
+    env = _arrival_env()
+    env.reset(seed=262000)
+    desired = env.environment_config.precapture_task.desired_position
+    for radius_action in (-1.0, -0.3, 0.0, 0.5, 1.0):
+        waypoint = env.waypoint_from_action(np.array([1.0, radius_action]))
+        assert np.array_equal(waypoint, desired)
+    env.close()
+
+
+def test_arrival_condition_hold_end_is_inertially_frozen() -> None:
+    """Waiting has to be inertial, not target-frame.
+
+    The approach axis is body-fixed, so a chaser holding a fixed target-frame
+    point co-rotates with it and the entry geometry never changes -- there is
+    no window to wait for, only fuel to spend. So the hold command has to be a
+    *different* target-frame point on every decision, tracing one frozen
+    inertial direction.
+    """
+
+    env = _arrival_env()
+    env.reset(seed=262000)
+    hold = np.array([-1.0, 0.0])
+    directions_target = []
+    directions_inertial = []
+    for _ in range(3):
+        waypoint = env.waypoint_from_action(hold)
+        directions_target.append(waypoint / np.linalg.norm(waypoint))
+        rotation = env.env.target_state.rotation
+        directions_inertial.append(rotation @ directions_target[-1])
+        env.step(hold)
+    inertial = np.array(directions_inertial)
+    target_frame = np.array(directions_target)
+    # One frozen inertial direction ...
+    assert np.allclose(inertial, inertial[0], atol=1.0e-9)
+    # ... which is a moving point in the frame the channel speaks.
+    assert not np.allclose(target_frame[-1], target_frame[0], atol=1.0e-3)
+    env.close()
+
+
+def test_arrival_condition_radius_channel_is_monotone_and_bracketed() -> None:
+    env = _arrival_env()
+    env.reset(seed=262000)
+    radii = [
+        float(np.linalg.norm(env.waypoint_from_action(np.array([-1.0, value]))))
+        for value in (-1.0, -0.5, 0.0, 0.5, 1.0)
+    ]
+    assert all(a < b for a, b in zip(radii, radii[1:]))
+    assert radii[2] == max(
+        min(
+            float(np.linalg.norm(env._current_position())),
+            env.hybrid_config.maximum_waypoint_radius_m,
+        ),
+        env.hybrid_config.minimum_waypoint_radius_m,
+    )
+    env.close()
+
+
+def test_execution_feedback_is_appended_and_bounded() -> None:
+    env = _arrival_env(include_execution_feedback_observation=True)
+    base = PrecaptureHybridEnv(
+        hybrid_config=PrecaptureHybridConfig(
+            waypoint_parametrization="arrival_condition"
+        )
+    )
+    assert env.observation_space.shape[0] == base.observation_space.shape[0] + 3
+    observation, _ = env.reset(seed=262000)
+    assert np.array_equal(observation[-3:], np.zeros(3))
+    for _ in range(3):
+        observation, _, terminated, truncated, info = env.step(np.array([0.0, 0.0]))
+        feedback = observation[-3:]
+        assert np.all(feedback >= 0.0) and np.all(feedback <= 1.0)
+        assert info["hybrid_feedback_fallback_fraction"] == feedback[0]
+        assert info["hybrid_feedback_solved_peak_slack"] == feedback[1]
+        assert info["hybrid_feedback_mean_actuator_usage"] == feedback[2]
+        # The slack summary is only ever read from steps that actually solved;
+        # on a fallback step the solver variable can still hold the previous
+        # solve's numbers.
+        if info["hybrid_feedback_solved_steps"] == 0:
+            assert feedback[1] == 0.0
+        if terminated or truncated:
+            break
+    env.close()
+    base.close()
+
+
+def test_feedback_flag_off_leaves_the_observation_untouched() -> None:
+    without = _arrival_env()
+    with_feedback = _arrival_env(include_execution_feedback_observation=True)
+    plain, _ = without.reset(seed=262000)
+    augmented, _ = with_feedback.reset(seed=262000)
+    assert np.array_equal(augmented[: plain.size], plain)
+    without.close()
+    with_feedback.close()

@@ -39,21 +39,43 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument(
         "--parametrization",
-        choices=["absolute", "radial_local"],
-        default="radial_local",
+        choices=["absolute", "radial_local", "arrival_condition"],
+        default="arrival_condition",
         help=(
-            "How the action names the waypoint. 'absolute' is what the first "
+            "How the action names the reference. 'absolute' is what the first "
             "training attempt used and is measured to be unlearnable -- 70%% of "
             "that box commands a point further out than the chaser starts. "
-            "'radial_local' is the default now."
+            "'radial_local' names a point in coordinates built from the "
+            "chaser's own position. 'arrival_condition' is the default now: a "
+            "2D action naming how far the commit has gone and how far out the "
+            "inertially frozen hold sits, whose commit end reproduces the "
+            "fixed-setpoint Pure MPC controller wrench for wrench."
         ),
+    )
+    parser.add_argument(
+        "--execution-feedback",
+        dest="execution_feedback",
+        action="store_true",
+        default=True,
+        help="Feed the lower layer's execution summary back into the policy "
+        "observation (the default; this is the coupling's reverse channel).",
+    )
+    parser.add_argument(
+        "--no-execution-feedback",
+        dest="execution_feedback",
+        action="store_false",
+        help="Single-factor ablation: identical run with the reverse channel "
+        "removed and nothing else changed.",
     )
     parser.add_argument("--device", type=str, default="auto")
     return parser.parse_args()
 
 
 def accelerated_training_configs(
-    *, horizon_steps: int, waypoint_parametrization: str
+    *,
+    horizon_steps: int,
+    waypoint_parametrization: str,
+    execution_feedback: bool = True,
 ) -> tuple[SE3RendezvousConfig, PrecaptureHybridConfig]:
     """Return engineering-equivalent configs used only by hybrid training."""
 
@@ -66,6 +88,7 @@ def accelerated_training_configs(
         decision_discount_factor=SAC_MPC_HYBRID.gamma,
         runtime_diagnostics=False,
         include_target_phase_and_time_observation=True,
+        include_execution_feedback_observation=execution_feedback,
     )
     return environment_config, hybrid_config
 
@@ -81,6 +104,7 @@ def main() -> None:
     environment_config, hybrid_config = accelerated_training_configs(
         horizon_steps=args.horizon,
         waypoint_parametrization=args.parametrization,
+        execution_feedback=args.execution_feedback,
     )
     mpc_config = hybrid_mpc_config(hybrid_config, environment_config)
 
@@ -97,15 +121,33 @@ def main() -> None:
         "action_space": (
             f"{hybrid_config.action_dimension}D action, "
             f"parametrisation={hybrid_config.waypoint_parametrization}, "
-            "naming an absolute waypoint in the target body frame, radially "
-            f"clipped to [{hybrid_config.minimum_waypoint_radius_m}, "
+            "resolved to an absolute waypoint in the target body frame, "
+            f"radially clipped to [{hybrid_config.minimum_waypoint_radius_m}, "
             f"{hybrid_config.maximum_waypoint_radius_m}] m. The interface to "
-            "the MPC is the unchanged 3D waypoint either way."
+            "the MPC is the unchanged 3D waypoint in every parametrisation."
         ),
         "observation_space": (
-            "canonical 24D full-state core plus a 6D continuous absolute-target-"
-            "attitude representation and normalized remaining episode time; "
-            "this is the sole V4 research factor"
+            "canonical 24D full-state core"
+            + (
+                ", a 6D continuous absolute-target-attitude representation and "
+                "normalized remaining episode time"
+                if hybrid_config.include_target_phase_and_time_observation
+                else ""
+            )
+            + (
+                ", and a 3D execution-feedback summary of the previous "
+                "decision (fallback fraction, peak solved-step slack, mean "
+                "actuator usage)"
+                if hybrid_config.include_execution_feedback_observation
+                else ""
+            )
+        ),
+        "coupling_direction": (
+            "bidirectional: the policy proposes an arrival condition and the "
+            "constrained MPC returns how hard that proposal was to execute"
+            if hybrid_config.include_execution_feedback_observation
+            else "one-way: the policy proposes and the MPC executes, with no "
+            "return path"
         ),
         "decision_period_s": hybrid_config.decision_period_steps
         * environment_config.dt_s,

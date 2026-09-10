@@ -100,6 +100,22 @@ class PrecaptureHybridConfig:
     #: **This biases exploration toward holding.** That is stated rather than
     #: hidden: the alternative bias, which the absolute box has, is 70% toward
     #: flying out, and it was measured to be fatal.
+    #: ``"arrival_condition"`` is the T6 interface. The action is 2D and names
+    #: an *arrival condition* rather than a free point: how far along the
+    #: commit is (a blend between an inertially frozen hold and the desired
+    #: pose) and at what radius the hold sits. Both channels are the two
+    #: variables T2 actually measured -- commit timing was the only variable
+    #: that rescued a persistently failing seed, and the hold radius was the
+    #: only one that moved fuel (-20.6% on a matched cell). Lateral adjustment
+    #: rescued nothing in T4 and is therefore not given a channel.
+    #:
+    #: ``a = (+1, *)`` commands the desired pose on every decision, which the
+    #: external channel carries as a constant broadcast -- the fixed-setpoint
+    #: Pure MPC row, reproduced bitwise. ``a = (-1, r)`` holds the inertially
+    #: frozen point, which is what "wait for the target to turn" has to mean
+    #: (a fixed *target-frame* point co-rotates and no window ever opens).
+    #: ``a = 0`` is the midpoint: a staging point at intermediate radius, a
+    #: sane exploratory default rather than a degenerate one.
     waypoint_parametrization: str = "absolute"
     #: ``a = +-1`` scales the commanded radius by ``exp(+-0.7)``, about
     #: double or half per decision. Reaching 3 m from a 17 m start therefore
@@ -108,6 +124,10 @@ class PrecaptureHybridConfig:
     radial_action_gain: float = 0.7
     #: A full-scale lateral nudge tilts the commanded direction by about 41 deg.
     lateral_action_gain: float = 0.5
+    #: ``arrival_condition`` only. ``a[1] = +-1`` scales the hold radius by
+    #: ``exp(+-0.35)`` about the radius the hold point was frozen at, so the
+    #: channel spans roughly the 12-18 m band T2 scanned from a 15-20 m start.
+    hold_radius_action_gain: float = 0.35
     #: The action is ``a * waypoint_scale_m`` in the target body frame, so the
     #: box reaches past the 17-20 m start without reaching the 30 m distance
     #: failure. It is an absolute point, not a displacement.
@@ -146,14 +166,44 @@ class PrecaptureHybridConfig:
             raise ValueError("waypoint radius bounds must be ordered and positive")
         if self.horizon_steps < 1:
             raise ValueError("horizon must be at least one step")
-        if self.waypoint_parametrization not in {"absolute", "radial_local"}:
+        if self.waypoint_parametrization not in {
+            "absolute",
+            "radial_local",
+            "arrival_condition",
+        }:
             raise ValueError("unknown waypoint parametrisation")
         if min(self.radial_action_gain, self.lateral_action_gain) <= 0.0:
             raise ValueError("action gains must be positive")
 
+    #: The T6 reverse channel: three bounded summaries of how the lower layer
+    #: coped with the previous decision -- fallback fraction, peak solved-step
+    #: slack and peak actuator usage. All three are free: the first two fall
+    #: out of the QP solve itself and the third is the commanded wrench. The
+    #: predicted-margin diagnostic is deliberately *not* here; it needs a full
+    #: horizon rollout that the deployment path does not pay for.
+    include_execution_feedback_observation: bool = False
+
     @property
     def action_dimension(self) -> int:
-        return 3 if self.waypoint_parametrization == "absolute" else 4
+        if self.waypoint_parametrization == "absolute":
+            return 3
+        if self.waypoint_parametrization == "arrival_condition":
+            return 2
+        return 4
+
+
+def _slerp(start: FloatArray, goal: FloatArray, weight: float) -> FloatArray:
+    """Constant-rate interpolation between two unit directions."""
+
+    cosine = float(np.clip(start @ goal, -1.0, 1.0))
+    angle = float(np.arccos(cosine))
+    if angle < 1.0e-8:
+        return goal if weight >= 1.0 else start
+    sine = float(np.sin(angle))
+    return (
+        float(np.sin((1.0 - weight) * angle)) * start
+        + float(np.sin(weight * angle)) * goal
+    ) / sine
 
 
 def hybrid_mpc_config(
@@ -239,38 +289,64 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             shape=(self.hybrid_config.action_dimension,),
             dtype=np.float32,
         )
+        base = self.env.observation_space
+        assert isinstance(base, spaces.Box)
+        low, high = base.low, base.high
         if self.hybrid_config.include_target_phase_and_time_observation:
-            base = self.env.observation_space
-            assert isinstance(base, spaces.Box)
+            low = np.concatenate((low, -np.ones(6), np.zeros(1)))
+            high = np.concatenate((high, np.ones(7)))
+        if self.hybrid_config.include_execution_feedback_observation:
+            low = np.concatenate((low, np.zeros(3)))
+            high = np.concatenate((high, np.ones(3)))
+        if (
+            self.hybrid_config.include_target_phase_and_time_observation
+            or self.hybrid_config.include_execution_feedback_observation
+        ):
             self.observation_space = spaces.Box(
-                low=np.concatenate((base.low, -np.ones(6), np.zeros(1))).astype(
-                    np.float32
-                ),
-                high=np.concatenate((base.high, np.ones(7))).astype(np.float32),
+                low=low.astype(np.float32),
+                high=high.astype(np.float32),
                 dtype=np.float32,
             )
         else:
             self.observation_space = self.env.observation_space
         self._last_info: dict[str, Any] = {}
+        self._hold_inertial: FloatArray | None = None
+        self._hold_radius_m = 0.0
+        self._feedback = np.zeros(3, dtype=np.float64)
 
     def _policy_observation(self, observation: np.ndarray) -> np.ndarray:
-        """Add only the V4 scheduling state; preserve the canonical 24D core."""
+        """Append the scheduling state and the lower layer's execution feedback.
 
-        if not self.hybrid_config.include_target_phase_and_time_observation:
+        The canonical 24D core is preserved untouched in every configuration,
+        so a run with both flags off is bitwise the pre-T6 observation.
+        """
+
+        parts = [np.asarray(observation, dtype=np.float64)]
+        if self.hybrid_config.include_target_phase_and_time_observation:
+            assert self.env.target_state is not None
+            parts.append(self.env.target_state.rotation[:, :2].reshape(-1))
+            parts.append(
+                np.array(
+                    [
+                        np.clip(
+                            (
+                                self.environment_config.max_time_s
+                                - self.env.time_seconds
+                            )
+                            / self.environment_config.max_time_s,
+                            0.0,
+                            1.0,
+                        )
+                    ]
+                )
+            )
+        if self.hybrid_config.include_execution_feedback_observation:
+            parts.append(self._feedback)
+        if len(parts) == 1:
             return observation
-        assert self.env.target_state is not None
-        target_phase_6d = self.env.target_state.rotation[:, :2].reshape(-1)
-        remaining_fraction = np.clip(
-            (self.environment_config.max_time_s - self.env.time_seconds)
-            / self.environment_config.max_time_s,
-            0.0,
-            1.0,
-        )
-        augmented = np.concatenate(
-            (observation, target_phase_6d, np.array([remaining_fraction]))
-        ).astype(np.float32)
+        augmented = np.concatenate(parts).astype(np.float32)
         if not self.observation_space.contains(augmented):
-            raise RuntimeError("invalid V4 target-phase/time observation")
+            raise RuntimeError("invalid augmented policy observation")
         return augmented
 
     def _current_reward_potential(self) -> float:
@@ -313,6 +389,8 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         if not np.all(np.isfinite(raw)):
             raise ValueError("action must be finite")
         raw = np.clip(raw, -1.0, 1.0)
+        if self.hybrid_config.waypoint_parametrization == "arrival_condition":
+            return self._arrival_condition_waypoint(raw)
         if self.hybrid_config.waypoint_parametrization == "radial_local":
             return self._radial_local_waypoint(raw)
         return self._clip_radius(raw * self.hybrid_config.waypoint_scale_m)
@@ -323,6 +401,14 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         target = np.asarray(waypoint, dtype=np.float64).reshape(3)
         if not np.all(np.isfinite(target)):
             raise ValueError("waypoint must be finite")
+        if self.hybrid_config.waypoint_parametrization == "arrival_condition":
+            desired = np.asarray(
+                self.environment_config.precapture_task.desired_position,
+                dtype=np.float64,
+            )
+            if bool(np.allclose(target, desired)):
+                return np.array([1.0, 0.0])
+            return np.array([-1.0, 0.0])
         if self.hybrid_config.waypoint_parametrization == "absolute":
             return np.clip(
                 target / self.hybrid_config.waypoint_scale_m, -1.0, 1.0
@@ -352,6 +438,74 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             norm = float(np.linalg.norm(perpendicular))
             nudge = perpendicular / norm if norm > 1.0e-9 else np.zeros(3)
         return np.clip(np.concatenate(([radial], nudge)), -1.0, 1.0)
+
+    def _arrival_condition_waypoint(self, action: FloatArray) -> FloatArray:
+        """Map ``(a_commit, a_radius)`` onto a target-frame arrival condition.
+
+        ``a_commit`` blends between two references that are geometrically
+        different objects, not two ends of one continuum:
+
+        * the **inertially frozen hold**, re-expressed in the target frame on
+          every decision. The approach axis is body-fixed, so a chaser holding
+          a fixed *target-frame* point co-rotates with it and the entry
+          geometry never changes -- there is no window to wait for, only fuel
+          to spend. Waiting has to be inertial, and a scripted policy that got
+          this wrong is on the record.
+        * the **desired pose**, a constant in the target frame. Commanded on
+          every decision it reaches the optimiser as a constant broadcast,
+          which is the fixed-setpoint Pure MPC row.
+
+        ``a_radius`` sets how far out the hold sits, about the radius the hold
+        direction was frozen at. It has no effect once the commit is complete,
+        which is the honest statement of what T2 measured: the radius bought
+        fuel on cells that already completed, not new rescues.
+        """
+
+        assert self.env.target_state is not None
+        position = self._current_position()
+        rotation = self.env.target_state.rotation
+        if self._hold_inertial is None:
+            inertial = rotation @ position
+            norm = float(np.linalg.norm(inertial))
+            if norm < 1.0e-9:
+                inertial, norm = np.array([1.0, 0.0, 0.0]), 1.0
+            self._hold_inertial = inertial / norm
+            self._hold_radius_m = float(np.linalg.norm(position))
+        blend = 0.5 * (float(action[0]) + 1.0)
+        hold_radius = float(
+            np.clip(
+                self._hold_radius_m
+                * float(
+                    np.exp(
+                        self.hybrid_config.hold_radius_action_gain * float(action[1])
+                    )
+                ),
+                self.hybrid_config.minimum_waypoint_radius_m,
+                self.hybrid_config.maximum_waypoint_radius_m,
+            )
+        )
+        commit_point = np.asarray(
+            self.environment_config.precapture_task.desired_position,
+            dtype=np.float64,
+        )
+        if blend >= 1.0:
+            # Exactly the desired pose, so the channel carries a constant and
+            # the reference is the fixed-setpoint broadcast bitwise.
+            return commit_point
+        # Interpolate direction and radius separately rather than the two
+        # points. A straight chord between a 17 m off-axis hold and the 3 m
+        # on-axis pose is dominated by the hold end: at the blend that gives a
+        # 7.5 m radius the direction is still mostly the hold direction. The
+        # offline feasibility plan that solves the hardest seed stages *on the
+        # approach axis* at 7.5 m, so the intermediate references have to swing
+        # towards the axis as they close, which is what a direction slerp does
+        # and a chord does not.
+        commit_radius = float(np.linalg.norm(commit_point))
+        hold_direction = rotation.T @ self._hold_inertial
+        commit_direction = commit_point / commit_radius
+        direction = _slerp(hold_direction, commit_direction, blend)
+        radius = (1.0 - blend) * hold_radius + blend * commit_radius
+        return self._clip_radius(radius * direction)
 
     def _radial_local_waypoint(self, action: FloatArray) -> FloatArray:
         position = self._current_position()
@@ -409,6 +563,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         observation, info = self.env.reset(seed=seed, options=options)
         self.controller.reset()
         self._last_info = dict(info)
+        self._hold_inertial = None
+        self._hold_radius_m = 0.0
+        self._feedback = np.zeros(3, dtype=np.float64)
         return self._policy_observation(observation), info
 
     def step(
@@ -426,6 +583,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         valid_slacks: list[float] = []
         force_usage: list[float] = []
         torque_usage: list[float] = []
+        solved_steps = 0
+        solved_peak_slack = 0.0
+        actuator_usage_sum = 0.0
         for _ in range(self.hybrid_config.decision_period_steps):
             assert self.env.relative is not None and self.env.target_state is not None
             state = relative_to_vector(self.env.relative)
@@ -443,6 +603,33 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 valid_slacks.append(float(diagnostics.maximum_slack))
             force_usage.append(float(np.max(np.abs(wrench[3:])) / self.environment_config.max_force_per_axis_n))
             torque_usage.append(float(np.max(np.abs(wrench[:3])) / self.environment_config.max_torque_per_axis_nm))
+            # Read the slack only on steps that actually solved. On a fallback
+            # step ``self._slack.value`` can still hold the previous solve's
+            # numbers, so an unguarded read reports a stale margin as if it
+            # described this step.
+            if not diagnostics.used_zero_fallback:
+                solved_steps += 1
+                solved_peak_slack = max(
+                    solved_peak_slack, float(diagnostics.maximum_slack)
+                )
+            # Mean, not peak. Peak saturates on essentially every decision --
+            # sustained co-rotation already needs the full three-axis
+            # authority at range -- so a peak channel would be a constant and
+            # carry nothing the upper layer could act on.
+            actuator_usage_sum += max(
+                float(
+                    np.max(
+                        np.abs(wrench[:3])
+                        / self.environment_config.max_torque_per_axis_nm
+                    )
+                ),
+                float(
+                    np.max(
+                        np.abs(wrench[3:])
+                        / self.environment_config.max_force_per_axis_n
+                    )
+                ),
+            )
             observation, step_reward, terminated, truncated, info = self.env.step(
                 wrench_to_normalized(
                     GeneralizedForce.from_vector(wrench),
@@ -479,6 +666,30 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         info["hybrid_feedback_force_peak"] = max(force_usage)
         info["hybrid_feedback_torque_mean"] = float(np.mean(torque_usage))
         info["hybrid_feedback_torque_peak"] = max(torque_usage)
+        fallback_fraction = (
+            zero_fallbacks / control_steps if control_steps else 0.0
+        )
+        normalised_slack = (
+            solved_peak_slack / self.mpc_config.constraint_slack_limit
+            if solved_steps
+            else 0.0
+        )
+        self._feedback = np.clip(
+            np.array(
+                [
+                    fallback_fraction,
+                    normalised_slack,
+                    actuator_usage_sum / control_steps if control_steps else 0.0,
+                ],
+                dtype=np.float64,
+            ),
+            0.0,
+            1.0,
+        )
+        info["hybrid_feedback_fallback_fraction"] = float(self._feedback[0])
+        info["hybrid_feedback_solved_peak_slack"] = float(self._feedback[1])
+        info["hybrid_feedback_mean_actuator_usage"] = float(self._feedback[2])
+        info["hybrid_feedback_solved_steps"] = solved_steps
         info["hybrid_reward_shaping"] = macro_shaping
         info["hybrid_removed_micro_shaping"] = removed_micro_shaping
         info["hybrid_integrated_reward_without_shaping"] = (
