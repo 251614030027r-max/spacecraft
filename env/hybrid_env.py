@@ -423,6 +423,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         info: dict[str, Any] = self._last_info
         control_steps = 0
         zero_fallbacks = 0
+        valid_slacks: list[float] = []
+        force_usage: list[float] = []
+        torque_usage: list[float] = []
         for _ in range(self.hybrid_config.decision_period_steps):
             assert self.env.relative is not None and self.env.target_state is not None
             state = relative_to_vector(self.env.relative)
@@ -434,6 +437,12 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 external_reference=waypoint,
             )
             zero_fallbacks += int(diagnostics.used_zero_fallback)
+            # Solver failures can leave a prior slack value behind. Never
+            # interpret it as a current solution, including a fallback zero.
+            if not diagnostics.used_zero_fallback:
+                valid_slacks.append(float(diagnostics.maximum_slack))
+            force_usage.append(float(np.max(np.abs(wrench[3:])) / self.environment_config.max_force_per_axis_n))
+            torque_usage.append(float(np.max(np.abs(wrench[:3])) / self.environment_config.max_torque_per_axis_nm))
             observation, step_reward, terminated, truncated, info = self.env.step(
                 wrench_to_normalized(
                     GeneralizedForce.from_vector(wrench),
@@ -463,6 +472,13 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         info["hybrid_waypoint_radius_m"] = float(np.linalg.norm(waypoint))
         info["hybrid_control_steps"] = control_steps
         info["hybrid_qp_zero_fallbacks"] = zero_fallbacks
+        info["hybrid_feedback_fallback_fraction"] = zero_fallbacks / control_steps
+        info["hybrid_feedback_valid_solve_steps"] = len(valid_slacks)
+        info["hybrid_feedback_slack_max"] = max(valid_slacks) if valid_slacks else None
+        info["hybrid_feedback_force_mean"] = float(np.mean(force_usage))
+        info["hybrid_feedback_force_peak"] = max(force_usage)
+        info["hybrid_feedback_torque_mean"] = float(np.mean(torque_usage))
+        info["hybrid_feedback_torque_peak"] = max(torque_usage)
         info["hybrid_reward_shaping"] = macro_shaping
         info["hybrid_removed_micro_shaping"] = removed_micro_shaping
         info["hybrid_integrated_reward_without_shaping"] = (

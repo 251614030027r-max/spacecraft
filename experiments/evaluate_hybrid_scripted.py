@@ -180,6 +180,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--parametrization", choices=["absolute", "radial_local"], default="absolute"
     )
+    parser.add_argument("--record-feedback", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 
@@ -223,6 +224,7 @@ def main() -> None:
             return result
 
         env.env.step = recorded_step
+        feedback_trace = []
         total_fallbacks = 0
         total_reward = 0.0
         decisions = 0
@@ -233,12 +235,19 @@ def main() -> None:
             if committed and commit_time_s is None:
                 commit_time_s = float(env.env.time_seconds)
             _, reward, terminated, truncated, info = env.step(action)
+            if args.record_feedback:
+                feedback_trace.append({
+                    "time_s": float(env.env.time_seconds),
+                    "control_steps": int(info["hybrid_control_steps"]),
+                    **{k.removeprefix("hybrid_feedback_"):v for k,v in info.items() if k.startswith("hybrid_feedback_")},
+                })
             total_fallbacks += int(info["hybrid_qp_zero_fallbacks"])
             total_reward += reward
             decisions += 1
         records.append(
             {
                 **recorder,
+                **({"feedback_trace": feedback_trace} if args.record_feedback else {}),
                 "seed": seed,
                 "hold_radius_m": args.hold_radius_m,
                 "radius_step_m": args.radius_step_m,
