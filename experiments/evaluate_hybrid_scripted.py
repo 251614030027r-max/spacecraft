@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -40,6 +41,7 @@ import numpy as np
 from dynamics.lie import se3_exp
 from controllers.mpc.prediction import relative_to_vector
 from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
+from env.phase2_env import precapture_planning_environment_config
 from experiments.evaluate_mpc import _active_precapture_margins
 
 
@@ -56,7 +58,10 @@ class ScriptedWaypointPolicy:
         alignment_deg: float,
         commit_time_s: float = 0.0,
         hold_radius_m: float | None = None,
+        radius_step_m: float = 0.4,
     ):
+        self.radius_step_m = radius_step_m
+        self.ramp_radius = None
         self.hold_radius_m = hold_radius_m
         self.commit_time_s = float(commit_time_s)
         self.env = env
@@ -93,6 +98,14 @@ class ScriptedWaypointPolicy:
             self.held_inertial = rotation @ position
             if self.kind == "hold_radius" and self.hold_radius_m is not None:
                 self.held_inertial = self.hold_radius_m * _unit(self.held_inertial)
+        if self.kind == "ramp_in":
+            if float(self.env.env.time_seconds) < self.commit_time_s:
+                return self._action_for(rotation.T @ self.held_inertial), False
+            if self.ramp_radius is None:
+                self.ramp_radius = float(np.linalg.norm(position))
+            goal_radius = float(np.linalg.norm(desired))
+            self.ramp_radius = max(goal_radius, self.ramp_radius - self.radius_step_m)
+            return self._action_for(_unit(desired) * self.ramp_radius), True
         # The window is an inertial-frame alignment: the approach axis is
         # body-fixed and sweeps a cone as the target turns, and it opens when
         # that axis swings towards where the chaser is holding.
@@ -119,7 +132,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument(
         "--policy",
-        choices=["desired_pose", "hold_then_enter", "commit_at", "hold_radius"],
+        choices=["desired_pose", "hold_then_enter", "commit_at", "hold_radius", "ramp_in"],
         required=True,
     )
     parser.add_argument("--entry-alignment-deg", type=float, default=40.0)
@@ -136,6 +149,9 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--hold-radius-m", type=float, default=None)
+    parser.add_argument("--radius-step-m", type=float, default=0.4)
+    parser.add_argument("--no-diagnostics", action="store_true")
+    parser.add_argument("--no-target-cache", action="store_true")
     parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument(
         "--parametrization", choices=["absolute", "radial_local"], default="absolute"
@@ -152,14 +168,16 @@ def main() -> None:
     for episode in range(args.episodes):
         seed = args.seed + episode
         env = PrecaptureHybridEnv(
+            environment_config=replace(precapture_planning_environment_config(), cache_target_trajectory=not args.no_target_cache),
             hybrid_config=PrecaptureHybridConfig(
                 horizon_steps=args.horizon,
+                runtime_diagnostics=not args.no_diagnostics,
                 waypoint_parametrization=args.parametrization,
             )
         )
         _, info = env.reset(seed=seed)
         policy = ScriptedWaypointPolicy(
-            env, args.policy, args.entry_alignment_deg, args.commit_time_s, args.hold_radius_m
+            env, args.policy, args.entry_alignment_deg, args.commit_time_s, args.hold_radius_m, args.radius_step_m
         )
         recorder = {"force_impulse_n_s": 0.0,
                     "minimum_truth_normalized_margin": _active_precapture_margins(info, env.environment_config)[1],
@@ -199,6 +217,9 @@ def main() -> None:
                 **recorder,
                 "seed": seed,
                 "hold_radius_m": args.hold_radius_m,
+                "radius_step_m": args.radius_step_m,
+                "runtime_diagnostics": not args.no_diagnostics,
+                "cache_target_trajectory": not args.no_target_cache,
                 "waypoint_parametrization": args.parametrization,
                 "qp_fallbacks_total": total_fallbacks,
                 "termination_reason": "completed" if info["completed"] else ",".join(k for k,v in info.items() if k.endswith("_failure") and bool(v)),
