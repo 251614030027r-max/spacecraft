@@ -40,6 +40,7 @@ import numpy as np
 from dynamics.lie import se3_exp
 from controllers.mpc.prediction import relative_to_vector
 from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
+from experiments.evaluate_mpc import _active_precapture_margins
 
 
 def _unit(vector: np.ndarray) -> np.ndarray:
@@ -54,7 +55,9 @@ class ScriptedWaypointPolicy:
         kind: str,
         alignment_deg: float,
         commit_time_s: float = 0.0,
+        hold_radius_m: float | None = None,
     ):
+        self.hold_radius_m = hold_radius_m
         self.commit_time_s = float(commit_time_s)
         self.env = env
         self.kind = kind
@@ -88,10 +91,12 @@ class ScriptedWaypointPolicy:
         position = se3_exp(state[:6])[:3, 3]
         if self.held_inertial is None:
             self.held_inertial = rotation @ position
+            if self.kind == "hold_radius" and self.hold_radius_m is not None:
+                self.held_inertial = self.hold_radius_m * _unit(self.held_inertial)
         # The window is an inertial-frame alignment: the approach axis is
         # body-fixed and sweeps a cone as the target turns, and it opens when
         # that axis swings towards where the chaser is holding.
-        if self.kind == "commit_at":
+        if self.kind in {"commit_at", "hold_radius"}:
             ready = float(self.env.env.time_seconds) >= self.commit_time_s
         else:
             axis_inertial = _unit(rotation @ self.task.approach_axis)
@@ -114,7 +119,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument(
         "--policy",
-        choices=["desired_pose", "hold_then_enter", "commit_at"],
+        choices=["desired_pose", "hold_then_enter", "commit_at", "hold_radius"],
         required=True,
     )
     parser.add_argument("--entry-alignment-deg", type=float, default=40.0)
@@ -130,6 +135,7 @@ def parse_args() -> argparse.Namespace:
             "choosing it."
         ),
     )
+    parser.add_argument("--hold-radius-m", type=float, default=None)
     parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument(
         "--parametrization", choices=["absolute", "radial_local"], default="absolute"
@@ -153,8 +159,29 @@ def main() -> None:
         )
         _, info = env.reset(seed=seed)
         policy = ScriptedWaypointPolicy(
-            env, args.policy, args.entry_alignment_deg, args.commit_time_s
+            env, args.policy, args.entry_alignment_deg, args.commit_time_s, args.hold_radius_m
         )
+        recorder = {"force_impulse_n_s": 0.0,
+                    "minimum_truth_normalized_margin": _active_precapture_margins(info, env.environment_config)[1],
+                    "fov_peak_deg": float(np.rad2deg(info["fov_angle_rad"])),
+                    "control_steps": 0}
+        original_step = env.env.step
+
+        def recorded_step(action):
+            result = original_step(action)
+            micro_info = result[-1]
+            cfg = env.environment_config
+            force = np.clip(np.asarray(action)[3:], -1.0, 1.0) * cfg.max_force_per_axis_n
+            recorder["force_impulse_n_s"] += float(np.linalg.norm(force)) * cfg.dt_s
+            recorder["minimum_truth_normalized_margin"] = min(
+                recorder["minimum_truth_normalized_margin"],
+                _active_precapture_margins(micro_info, cfg)[1])
+            recorder["fov_peak_deg"] = max(recorder["fov_peak_deg"], float(np.rad2deg(micro_info["fov_angle_rad"])))
+            recorder["control_steps"] += 1
+            return result
+
+        env.env.step = recorded_step
+        total_fallbacks = 0
         total_reward = 0.0
         decisions = 0
         commit_time_s = None
@@ -164,11 +191,17 @@ def main() -> None:
             if committed and commit_time_s is None:
                 commit_time_s = float(env.env.time_seconds)
             _, reward, terminated, truncated, info = env.step(action)
+            total_fallbacks += int(info["hybrid_qp_zero_fallbacks"])
             total_reward += reward
             decisions += 1
         records.append(
             {
+                **recorder,
                 "seed": seed,
+                "hold_radius_m": args.hold_radius_m,
+                "waypoint_parametrization": args.parametrization,
+                "qp_fallbacks_total": total_fallbacks,
+                "termination_reason": "completed" if info["completed"] else ",".join(k for k,v in info.items() if k.endswith("_failure") and bool(v)),
                 "policy": args.policy,
                 "entry_alignment_deg": args.entry_alignment_deg,
                 "commit_time_s_setting": args.commit_time_s,
@@ -198,7 +231,8 @@ def main() -> None:
             f"latch={last['terminal_region_active']:.0f} "
             f"illegal={last['illegal_terminal_entry_count']:.0f}"
         )
-    args.output.write_text(json.dumps({"records": records}, indent=1))
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps({"records": records}, indent=1), encoding="utf-8")
 
 
 if __name__ == "__main__":
