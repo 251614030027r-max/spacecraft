@@ -59,7 +59,11 @@ class ScriptedWaypointPolicy:
         commit_time_s: float = 0.0,
         hold_radius_m: float | None = None,
         radius_step_m: float = 0.4,
+        lateral_angle_deg: float = 0.0,
+        lateral_axis: int = 0,
     ):
+        self.lateral_angle_deg = lateral_angle_deg
+        self.lateral_axis = lateral_axis
         self.radius_step_m = radius_step_m
         self.ramp_radius = None
         self.hold_radius_m = hold_radius_m
@@ -98,6 +102,24 @@ class ScriptedWaypointPolicy:
             self.held_inertial = rotation @ position
             if self.kind == "hold_radius" and self.hold_radius_m is not None:
                 self.held_inertial = self.hold_radius_m * _unit(self.held_inertial)
+        if self.kind == "lateral_adjust":
+            if self.env.hybrid_config.waypoint_parametrization != "radial_local":
+                raise ValueError("lateral_adjust requires radial_local")
+            baseline = self._action_for(desired)
+            if self.lateral_angle_deg == 0.0:
+                return baseline, True
+            point = self.env.waypoint_from_action(baseline)
+            direction = _unit(point)
+            coordinate = np.eye(3)[int(np.argmin(np.abs(direction)))]
+            first = _unit(coordinate - float(coordinate @ direction) * direction)
+            second = np.cross(direction, first)
+            tangent = first if self.lateral_axis == 0 else second
+            # Fade only the added lateral adjustment as the original goal is
+            # reached; the final goal and the baseline radial command stay fixed.
+            taper = min(1.0, float(np.linalg.norm(position - desired) / np.linalg.norm(desired)))
+            angle = np.deg2rad(self.lateral_angle_deg) * taper
+            adjusted = np.linalg.norm(point) * (np.cos(angle)*direction + np.sin(angle)*tangent)
+            return self._action_for(adjusted), True
         if self.kind == "ramp_in":
             if float(self.env.env.time_seconds) < self.commit_time_s:
                 return self._action_for(rotation.T @ self.held_inertial), False
@@ -132,7 +154,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument(
         "--policy",
-        choices=["desired_pose", "hold_then_enter", "commit_at", "hold_radius", "ramp_in"],
+        choices=["desired_pose", "hold_then_enter", "commit_at", "hold_radius", "ramp_in", "lateral_adjust"],
         required=True,
     )
     parser.add_argument("--entry-alignment-deg", type=float, default=40.0)
@@ -150,6 +172,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--hold-radius-m", type=float, default=None)
     parser.add_argument("--radius-step-m", type=float, default=0.4)
+    parser.add_argument("--lateral-angle-deg", type=float, default=0.0)
+    parser.add_argument("--lateral-axis", type=int, choices=[0,1], default=0)
     parser.add_argument("--no-diagnostics", action="store_true")
     parser.add_argument("--no-target-cache", action="store_true")
     parser.add_argument("--horizon", type=int, default=20)
@@ -177,7 +201,7 @@ def main() -> None:
         )
         _, info = env.reset(seed=seed)
         policy = ScriptedWaypointPolicy(
-            env, args.policy, args.entry_alignment_deg, args.commit_time_s, args.hold_radius_m, args.radius_step_m
+            env, args.policy, args.entry_alignment_deg, args.commit_time_s, args.hold_radius_m, args.radius_step_m, args.lateral_angle_deg, args.lateral_axis
         )
         recorder = {"force_impulse_n_s": 0.0,
                     "minimum_truth_normalized_margin": _active_precapture_margins(info, env.environment_config)[1],
@@ -218,6 +242,8 @@ def main() -> None:
                 "seed": seed,
                 "hold_radius_m": args.hold_radius_m,
                 "radius_step_m": args.radius_step_m,
+                "lateral_angle_deg": args.lateral_angle_deg,
+                "lateral_axis": args.lateral_axis,
                 "runtime_diagnostics": not args.no_diagnostics,
                 "cache_target_trajectory": not args.no_target_cache,
                 "waypoint_parametrization": args.parametrization,
