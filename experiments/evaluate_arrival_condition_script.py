@@ -83,6 +83,8 @@ def run_episode(
     _, info = env.reset(seed=seed)
     infeasible_steps = 0
     first_infeasible_time_s: float | None = None
+    consecutive_zero = 0
+    max_consecutive_zero = 0
     force_impulse = 0.0
     torque_impulse = 0.0
     steps = 0
@@ -111,6 +113,11 @@ def run_episode(
                 infeasible_steps += 1
                 if first_infeasible_time_s is None:
                     first_infeasible_time_s = round(float(env.env.time_seconds), 1)
+            if np.count_nonzero(wrench) == 0:
+                consecutive_zero += 1
+                max_consecutive_zero = max(max_consecutive_zero, consecutive_zero)
+            else:
+                consecutive_zero = 0
             force_impulse += (
                 float(np.linalg.norm(wrench[3:])) * env.environment_config.dt_s
             )
@@ -140,6 +147,7 @@ def run_episode(
         "steps": steps,
         "qp_infeasible_steps": infeasible_steps,
         "first_infeasible_time_s": first_infeasible_time_s,
+        "max_consecutive_zero_wrench_steps": max_consecutive_zero,
         "force_impulse_n_s": round(force_impulse, 3),
         "torque_impulse_nm_s": round(torque_impulse, 4),
         "illegal_terminal_entry_count": int(info["illegal_terminal_entry_count"]),
