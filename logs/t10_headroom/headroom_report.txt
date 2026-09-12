@@ -1,0 +1,33 @@
+commit grid: [20.0, 50.0, 80.0, 95.0, 110.0, 125.0, 140.0]
+baseline (commit_now): 8/12 completed; 4 failed, 4 of those swept
+
+RESCUE -- seeds the fixed setpoint fails
+   seed works at                     shape           best T     t_s     fuel illegal
+ 262001 [95.0]                       single              95   178.7    670.5       1
+ 262005 [95.0, 110.0, 125.0, 140.0]  contiguous          95   195.5    406.4       1
+ 262006 -- none --                                 
+ 262011 [95.0, 110.0]                contiguous          95   189.8    764.7       1
+
+rescue rate: 3/4 = 75.0%
+cheapest commit time per rescued seed: {262001: 95.0, 262005: 95.0, 262011: 95.0}
+distinct best commit times: [95.0]
+
+CONSTANT vs PER-STATE -- net completion
+ commit T  completed  coverage
+0 (fixed)          8        12
+       20          0         4   partial -- not comparable
+       50          0         4   partial -- not comparable
+       80          0         4   partial -- not comparable
+       95          7        12
+      110          6        12
+      125          1         4   partial -- not comparable
+      140          1         4   partial -- not comparable
+per-state         11        12
+
+no constant commit time measured on every seed matches the fixed setpoint; only a per-state choice exceeds it -- the decision depends on the state
+
+REVERSE COST -- seeds the fixed setpoint completes
+  262000: broken at [95.0, 110.0]
+  262002: broken at [95.0, 110.0]
+  262004: broken at [95.0, 110.0]
+  262010: broken at [95.0, 110.0]

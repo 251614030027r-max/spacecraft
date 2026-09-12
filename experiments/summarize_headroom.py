@@ -13,15 +13,18 @@ Takes the ``commit_now`` baseline and the ``commit_at`` runs produced by
 4. the reverse cost -- seeds the fixed setpoint completes that a non-zero
    commit time breaks.
 
-Gate B in the execution order turns on the first and third of those: no
-rescues, or every seed rescued by the *same* commit time, both mean no learned
-layer is needed. A constant is not a policy.
+Gate B turns on the net of all four. No rescues means no headroom. Rescues
+that a *constant* commit time captures without net loss also mean no learned
+layer is needed -- so the constant question is answered against the baseline's
+completion count, not on the rescue side alone: a commit time that rescues
+every rescuable seed still loses if it breaks seeds the fixed setpoint
+completes.
 
 Usage::
 
     python -B -m experiments.summarize_headroom \\
-        --baseline logs/t10/pure_mpc_h35_48.json \\
-        --sweep logs/t10/commit_at_*.json
+        --baseline logs/t10_headroom/baseline_commit_now_h35.json \\
+        --sweep logs/t10_headroom/commit_at_T*.json
 """
 
 from __future__ import annotations
@@ -121,16 +124,44 @@ def main() -> None:
             )
             for seed in rescued
         }
-        distinct = sorted(set(best_times.values()))
-        shared = [
-            t for t in grid
-            if all(by_seed[s].get(t, {}).get("completed") for s in rescued)
-        ]
         lines.append(f"cheapest commit time per rescued seed: {best_times}")
-        lines.append(f"distinct best commit times: {distinct}")
+        lines.append(f"distinct best commit times: {sorted(set(best_times.values()))}")
+
+    # Whether a constant would do is a NET question, not a rescue-side one: a
+    # commit time that rescues every rescuable seed still loses if it breaks
+    # seeds the fixed setpoint completes. Only grid points measured on every
+    # seed can be compared against the baseline at all.
+    lines.append("")
+    lines.append("CONSTANT vs PER-STATE -- net completion")
+    lines.append(f"{'commit T':>9s} {'completed':>10s} {'coverage':>9s}")
+    lines.append(f"{'0 (fixed)':>9s} {len(completed):>10d} {len(baseline):>9d}")
+    beats_baseline = []
+    for t in grid:
+        covered = [s for s in baseline if t in by_seed.get(s, {})]
+        if len(covered) < len(baseline):
+            lines.append(
+                f"{t:>9.0f} {sum(by_seed[s][t]['completed'] for s in covered):>10d} "
+                f"{len(covered):>9d}   partial -- not comparable"
+            )
+            continue
+        net = sum(by_seed[s][t]["completed"] for s in covered)
+        lines.append(f"{t:>9.0f} {net:>10d} {len(covered):>9d}")
+        if net >= len(completed):
+            beats_baseline.append(t)
+    per_state = len(completed) + len(rescued)
+    lines.append(f"{'per-state':>9s} {per_state:>10d} {len(baseline):>9d}")
+    lines.append("")
+    if beats_baseline:
         lines.append(
-            f"commit times that rescue EVERY rescued seed: {shared}"
-            + ("  <-- a constant would do; that is not a policy" if shared else "")
+            f"a CONSTANT commit time matches or beats the fixed setpoint at "
+            f"T={beats_baseline} -- a constant may be enough here, which is gate B "
+            f"saying stop rather than train"
+        )
+    else:
+        lines.append(
+            "no constant commit time measured on every seed matches the fixed "
+            "setpoint; only a per-state choice exceeds it -- the decision depends "
+            "on the state"
         )
 
     reverse = []
