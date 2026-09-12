@@ -22,7 +22,8 @@ corridor violation only once ``_terminal_region_entered`` has latched on a legal
 entry-disc crossing.  So the optimiser is refusing to solve because of a region
 the task never judges.
 
-``--terminal-gate proximity`` adds the missing bound and changes nothing else::
+The repository now ships that bound; ``--terminal-gate half_space`` restores
+the pre-fix predicate so the comparison stays runnable. The bound is::
 
     ... and ||p|| <= port_radius + entry_port_axial_distance_m   (= 6.0 m)
 
@@ -39,7 +40,7 @@ Reproduce::
     python -B -m experiments.diagnose_terminal_gate --horizon 20 \\
         --seeds 262000 262001 262002 262003 262004 262005 \\
                 262006 262007 262008 262009 262010 262011 \\
-        --terminal-gate proximity --output logs/terminal_gate/gate_h20.json
+        --output logs/terminal_gate/gate_h20.json
 """
 
 from __future__ import annotations
@@ -59,33 +60,31 @@ from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
 from env.phase2_env import precapture_planning_environment_config
 from env.task import PrecaptureTaskConfig
 
-_HALF_SPACE_GATE = constraints._predicted_terminal_active
+_REPOSITORY_GATE = constraints._predicted_terminal_active
+entry_plane_radius_m = constraints.entry_plane_radius_m
 
 
-def entry_plane_radius_m(task: PrecaptureTaskConfig) -> float:
-    """Distance from the target centre to the entry plane, from frozen terms."""
+def install_half_space_gate() -> None:
+    """Restore the pre-fix gate: the axial half-space with no bound on range.
 
-    return float(
-        np.linalg.norm(task.port_position) + task.entry_port_axial_distance_m
-    )
-
-
-def install_proximity_gate(radius_m: float) -> None:
-    """Bound the half-space gate by range. Nothing else about it changes."""
+    The repository now ships the range-bounded gate, so this is what the
+    ``half_space`` arm measures -- the historical behaviour, kept runnable so
+    the comparison in ``docs/TERMINAL_GATE_DEFECT.md`` stays reproducible.
+    """
 
     def gated(position: Any, task: PrecaptureTaskConfig, *, terminal_latched: bool) -> bool:
-        if not _HALF_SPACE_GATE(position, task, terminal_latched=terminal_latched):
-            return False
-        if terminal_latched:
-            return True
-        point = np.asarray(position, dtype=np.float64)
-        return bool(float(np.linalg.norm(point)) <= radius_m)
+        port_displacement = np.asarray(position, dtype=np.float64) - task.port_position
+        port_axial_distance = float(task.approach_axis @ port_displacement)
+        return bool(
+            terminal_latched
+            or port_axial_distance < task.entry_port_axial_distance_m
+        )
 
     constraints._predicted_terminal_active = gated
 
 
 def restore_gate() -> None:
-    constraints._predicted_terminal_active = _HALF_SPACE_GATE
+    constraints._predicted_terminal_active = _REPOSITORY_GATE
 
 
 def run_episode(seed: int, horizon: int) -> dict[str, Any]:
@@ -174,8 +173,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--terminal-gate",
         choices=["half_space", "proximity"],
-        default="half_space",
-        help="half_space is the repository default; proximity adds the range bound",
+        default="proximity",
+        help="proximity is the repository behaviour; half_space restores the "
+        "pre-fix gate for comparison",
     )
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
@@ -187,8 +187,8 @@ def main() -> None:
         raise FileExistsError(args.output)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     radius_m = entry_plane_radius_m(PrecaptureTaskConfig())
-    if args.terminal_gate == "proximity":
-        install_proximity_gate(radius_m)
+    if args.terminal_gate == "half_space":
+        install_half_space_gate()
     try:
         records = []
         for seed in args.seeds:

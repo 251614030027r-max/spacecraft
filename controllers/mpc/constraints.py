@@ -212,20 +212,54 @@ def normalized_constraint_margins(
 _INACTIVE_MARGIN = 1.0e3
 
 
+def entry_plane_radius_m(task: PrecaptureTaskConfig) -> float:
+    """Distance from the target centre to the entry plane.
+
+    ``||port_position|| + entry_port_axial_distance_m``. Both are frozen task
+    parameters, so this introduces no tunable constant.
+    """
+
+    return float(
+        np.linalg.norm(task.port_position) + task.entry_port_axial_distance_m
+    )
+
+
 def _predicted_terminal_active(
     position: FloatArray,
     task: PrecaptureTaskConfig,
     *,
     terminal_latched: bool,
 ) -> bool:
-    """Activate MPC terminal rows at predicted entry, without changing truth latch."""
+    """Activate MPC terminal rows at predicted entry, without changing truth latch.
 
+    The axial test alone is a **half-space** -- with the task's own numbers it
+    is ``p_x > -6`` -- and it carries no bound on range, so it imposed the
+    approach corridor on a chaser 16 m from the target and 15 m off the
+    approach axis. The linearised corridor facet there wants about 4.0
+    normalised units of slack against a ``constraint_slack_limit`` of 2.0, so
+    the QP reported ``infeasible`` and the zero-wrench fallback handed the
+    chaser to ``omega * r``. That cost 1594 control steps at h20 and 2161 at
+    h35 over twelve seeds.
+
+    The truth side never agreed with it: ``normalized_precapture_truth_margins``
+    gates the same rows on ``terminal_latched`` alone, and the environment
+    scores a corridor violation only once the latch has armed on a legal
+    entry-disc crossing. The optimiser was refusing to solve because of a
+    region the task does not judge.
+
+    Bounding the half-space by the entry-plane radius takes that to zero on all
+    24 episodes measured and leaves the force impulse on the commonly completed
+    ones identical to 0.1 N s. See ``docs/TERMINAL_GATE_DEFECT.md``.
+    """
+
+    if terminal_latched:
+        return True
     port_displacement = position - task.port_position
     port_axial_distance = float(task.approach_axis @ port_displacement)
-    return bool(
-        terminal_latched
-        or port_axial_distance < task.entry_port_axial_distance_m
-    )
+    if port_axial_distance >= task.entry_port_axial_distance_m:
+        return False
+    point = np.asarray(position, dtype=np.float64)
+    return bool(float(np.linalg.norm(point)) <= entry_plane_radius_m(task))
 
 
 def normalized_precapture_truth_margins(
