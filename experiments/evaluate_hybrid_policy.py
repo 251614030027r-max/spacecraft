@@ -118,7 +118,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument(
         "--parametrization",
-        choices=["absolute", "radial_local"],
+        choices=["absolute", "radial_local", "arrival_condition"],
         default="radial_local",
         help="Action parametrisation used by the trained policy or control.",
     )
@@ -131,6 +131,16 @@ def parse_args() -> argparse.Namespace:
         "--phase-time-observation",
         action="store_true",
         help="Use the V4 31D observation expected by phase/time-trained policies.",
+    )
+    parser.add_argument(
+        "--execution-feedback",
+        action="store_true",
+        help=(
+            "Append the lower layer's 3D execution summary, as the coupled "
+            "policies trained with the reverse channel expect. A policy is "
+            "loaded against the observation it was trained on, so this has to "
+            "match the run's manifest rather than be guessed."
+        ),
     )
     parser.add_argument(
         "--control",
@@ -190,8 +200,27 @@ def main() -> None:
                 include_target_phase_and_time_observation=(
                     args.phase_time_observation
                 ),
+                include_execution_feedback_observation=args.execution_feedback,
             )
         )
+        if policy is not None and episode == 0:
+            expected = int(np.prod(policy.observation_space.shape))
+            actual = int(np.prod(env.observation_space.shape))
+            if expected != actual:
+                raise ValueError(
+                    f"the checkpoint expects a {expected}D observation and this "
+                    f"configuration builds a {actual}D one. Set "
+                    "--phase-time-observation / --execution-feedback to match "
+                    "the run's manifest instead of loading a policy against an "
+                    "observation it never saw."
+                )
+            expected_action = int(np.prod(policy.action_space.shape))
+            actual_action = int(np.prod(env.action_space.shape))
+            if expected_action != actual_action:
+                raise ValueError(
+                    f"the checkpoint expects a {expected_action}D action and "
+                    f"this parametrisation gives {actual_action}D"
+                )
         observation, info = env.reset(seed=seed)
         desired = env.environment_config.precapture_task.desired_position
         minimum_margins = {
@@ -429,6 +458,7 @@ def main() -> None:
         "horizon": args.horizon,
         "waypoint_parametrization": args.parametrization,
         "phase_time_observation": args.phase_time_observation,
+        "execution_feedback": args.execution_feedback,
         "hyperparameters": {"gamma": SAC_MPC_HYBRID.gamma},
         "compute_note": (
             "valid only if this ran serially in a single process; the MPC is "
