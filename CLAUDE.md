@@ -73,9 +73,16 @@ Training four runs from zero, 60,000 decisions each:
 | V2 / 262201 | **0** | -- | 31% -> **69%** |
 | V3 / 262301 | **0** | -- | 39% -> **67%** |
 
-1. **The interface is what made the coupling learnable.** The previous 4D
-   `radial_local` parametrisation completed **0 of 1308** episodes over three
-   seeds at 25k decisions. The 2D one reaches 17.8% inside its first 10k.
+1. **The interface is what made the coupling learnable, as a single factor.**
+   The manifests differ in the parametrisation and nothing else -- same 31D
+   observation, horizon, decision period, discount, learning rate, batch size,
+   entropy coefficient, tau, learning-starts and network. At the common budget
+   of 25,697 decisions the 4D `radial_local` batch completed **0 of 1308**
+   episodes over three seeds; the 2D one reached **55 of 285** on its best
+   seed. The earlier observation factor (target phase + remaining time)
+   changed nothing on the old parametrisation, so information was not the
+   binding constraint and expression was.
+   See `docs/INTERFACE_SINGLE_FACTOR.md`.
 2. **Two seeds learned to run the clock out instead of finishing.** Their
    return improves monotonically while their timeout fraction climbs, their
    illegal-entry rate matches the learning seeds, and their reference radius
@@ -89,15 +96,31 @@ Training four runs from zero, 60,000 decisions each:
 
 See `docs/T7_RESULTS_AND_VERDICT.md`. Next round is `docs/T8_EXECUTION_ORDER.md`.
 
-### 262006: solvable, but not by any position decision
+### 262006: solvable offline, and closed as a case-level limitation
 
 The offline feasibility certificate completes it in 217.5 s with **zero truth
 violations** and 0.693 rad of field-of-view margin, so it is not at a
 reachability boundary. But four families of upper-level position decision
 (commit time, hold radius, approach rate, lateral offset) fail across ~90
-scanned cells, all dying on field of view. **Its failure is a pointing
-failure**, and a position-only upper channel cannot address it. A candidate
-separate single factor (attitude reference); not folded into anything yet.
+scanned cells, all dying on field of view.
+
+That suggested a pointing failure a position channel could not address, and
+**the probe falsified it**: all three attitude reference modes fail, and
+`aimed` fails *sooner* (34.9 -> 10.7 s at h20, 29.7 -> 8.5 s at h35). So the
+attitude reference is **struck from the candidate factor queue**, and 262006 is
+written as a case-level limitation with no proposed fix: *under the four
+families of position decision and the three attitude modes tested it was not
+rescued, while a zero-violation admissible path exists.*
+
+Two things that probe did establish. On 262005 `aimed` does remove field of
+view as the failure mode (96.0 s to the 299.9 s cap at h20), but trades it for
+a timeout and for being pushed out to 29.96 m against the 30 m limit --
+pointing authority is borrowed from translation, which is expensive where
+co-rotation already needs the full three-axis authority. And `frozen` and
+`swept` are numerically identical under a fixed setpoint in all four matched
+pairs, because that reference sightline does not sweep; the repository's "best
+of three" reads as best of two distinct behaviours.
+See `docs/ATTITUDE_REFERENCE_PROBE.md`.
 
 ---
 
@@ -191,6 +214,8 @@ separate single factor (attitude reference); not folded into anything yet.
 | `docs/T8_EXECUTION_ORDER.md` | the round in flight |
 | `docs/P0_HORIZON_PERSISTENT_FAILURES.md` | the horizon sweep |
 | `docs/D0_HYBRID_INFEASIBILITY_DIAGNOSIS_20260909.md` | lower-layer infeasibility |
+| `docs/INTERFACE_SINGLE_FACTOR.md` | the headline claim verified as a single factor |
+| `docs/ATTITUDE_REFERENCE_PROBE.md` | the pointing hypothesis, falsified |
 
 **Void, do not cite**: the return audit (+14.11 / -24.0) and the action-space
 audit (a0 = -0.76 to -0.81). Their scripts have never existed in this
