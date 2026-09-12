@@ -128,6 +128,30 @@ class PrecaptureHybridConfig:
     #: ``exp(+-0.35)`` about the radius the hold point was frozen at, so the
     #: channel spans roughly the 12-18 m band T2 scanned from a 15-20 m start.
     hold_radius_action_gain: float = 0.35
+    #: ``arrival_condition`` only. The commit blend may only advance:
+    #: ``b_k = max(b_{k-1}, b_k_commanded)``.
+    #:
+    #: The blend spans a fixed 13 m of commanded radius -- the hold freezes at
+    #: 12-19 m and the desired pose sits at 3 m -- so ``d r_ref / d a_commit``
+    #: is about -6.5 m per unit of action wherever the policy sits. A chaser
+    #: can move about 0.094 m in one 2 s decision from rest, so ordinary
+    #: policy variation of 0.09 re-aims the setpoint six times further than it
+    #: can be followed. Measured: every episode that completed held the
+    #: waypoint to a median 0.000-0.015 m per decision at 0.20-0.28 actuator
+    #: usage, and every episode that timed out moved it 0.27-0.62 m at
+    #: 0.84-0.95, closing at a third of the rate. Warping the blend cannot fix
+    #: that -- the 13 m of travel is fixed, warping only moves where the gain
+    #: sits -- and a rate limit sized to the authority would need 138
+    #: decisions to reach the commit, which is 276 s of a 300 s episode.
+    #:
+    #: What the traces show is oscillation, not travel: the dead seeds walk
+    #: ``a_commit`` up and down and spend the authority reversing. The ratchet
+    #: removes exactly that, with no tunable constant, while leaving a commit
+    #: reachable in a single decision. ``a = (+1, *)`` still commands the
+    #: desired pose on every decision, so the bitwise Pure MPC floor is
+    #: unaffected, and holding stays available for as long as the policy keeps
+    #: ``a_commit`` low.
+    monotone_commit: bool = True
     #: The action is ``a * waypoint_scale_m`` in the target body frame, so the
     #: box reaches past the 17-20 m start without reaching the 30 m distance
     #: failure. It is an absolute point, not a displacement.
@@ -295,11 +319,15 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         if self.hybrid_config.include_target_phase_and_time_observation:
             low = np.concatenate((low, -np.ones(6), np.zeros(1)))
             high = np.concatenate((high, np.ones(7)))
+        if self._ratchet_observation_active():
+            low = np.concatenate((low, np.zeros(1)))
+            high = np.concatenate((high, np.ones(1)))
         if self.hybrid_config.include_execution_feedback_observation:
             low = np.concatenate((low, np.zeros(3)))
             high = np.concatenate((high, np.ones(3)))
         if (
             self.hybrid_config.include_target_phase_and_time_observation
+            or self._ratchet_observation_active()
             or self.hybrid_config.include_execution_feedback_observation
         ):
             self.observation_space = spaces.Box(
@@ -312,7 +340,14 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._last_info: dict[str, Any] = {}
         self._hold_inertial: FloatArray | None = None
         self._hold_radius_m = 0.0
+        self._commit_blend = 0.0
         self._feedback = np.zeros(3, dtype=np.float64)
+
+    def _ratchet_observation_active(self) -> bool:
+        return (
+            self.hybrid_config.waypoint_parametrization == "arrival_condition"
+            and self.hybrid_config.monotone_commit
+        )
 
     def _policy_observation(self, observation: np.ndarray) -> np.ndarray:
         """Append the scheduling state and the lower layer's execution feedback.
@@ -340,6 +375,13 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                     ]
                 )
             )
+        if self._ratchet_observation_active():
+            # The ratchet carries state between decisions: the same action
+            # commands a different waypoint depending on how far the commit has
+            # already advanced. Without it in the observation the decision
+            # problem is no longer Markov, and the policy would be guessing at
+            # its own past. It is a scalar in [0, 1], not a tuning knob.
+            parts.append(np.array([self._commit_blend], dtype=np.float64))
         if self.hybrid_config.include_execution_feedback_observation:
             parts.append(self._feedback)
         if len(parts) == 1:
@@ -472,6 +514,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             self._hold_inertial = inertial / norm
             self._hold_radius_m = float(np.linalg.norm(position))
         blend = 0.5 * (float(action[0]) + 1.0)
+        if self.hybrid_config.monotone_commit:
+            blend = max(self._commit_blend, blend)
+            self._commit_blend = blend
         hold_radius = float(
             np.clip(
                 self._hold_radius_m
@@ -565,6 +610,7 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._last_info = dict(info)
         self._hold_inertial = None
         self._hold_radius_m = 0.0
+        self._commit_blend = 0.0
         self._feedback = np.zeros(3, dtype=np.float64)
         return self._policy_observation(observation), info
 

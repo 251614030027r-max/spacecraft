@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import numpy as np
+import pytest
 
 from controllers.mpc.prediction import relative_to_vector
 from env.hybrid_env import (
@@ -559,3 +560,64 @@ def test_feedback_flag_off_leaves_the_observation_untouched() -> None:
     assert np.array_equal(augmented[: plain.size], plain)
     without.close()
     with_feedback.close()
+
+
+def _ratchet_env(monotone: bool = True) -> PrecaptureHybridEnv:
+    return PrecaptureHybridEnv(
+        environment_config=precapture_planning_environment_config(),
+        hybrid_config=PrecaptureHybridConfig(
+            horizon_steps=20,
+            waypoint_parametrization="arrival_condition",
+            monotone_commit=monotone,
+            runtime_diagnostics=False,
+        ),
+    )
+
+
+def test_commit_blend_only_advances() -> None:
+    """The ratchet is the whole of S8: a commanded retreat is a hold."""
+
+    env = _ratchet_env()
+    env.reset(seed=262000)
+    seen = []
+    for action in (-0.5, 0.2, -0.9, 0.7, -1.0):
+        observation, _, _, _, _ = env.step(
+            np.array([action, 0.0], dtype=np.float32)
+        )
+        seen.append(float(observation[-1]))
+    assert seen == sorted(seen)
+    assert seen == pytest.approx([0.25, 0.6, 0.6, 0.85, 0.85], abs=1e-6)
+
+
+def test_ratchet_level_is_in_the_observation_and_resets() -> None:
+    """Without it the same action means different things and the MDP is broken."""
+
+    env = _ratchet_env()
+    observation, _ = env.reset(seed=262000)
+    assert env.observation_space.shape == (observation.shape[0],)
+    assert float(observation[-1]) == 0.0
+    env.step(np.array([0.5, 0.0], dtype=np.float32))
+    observation, _ = env.reset(seed=262001)
+    assert float(observation[-1]) == 0.0
+
+
+def test_disabling_the_ratchet_restores_the_old_observation_width() -> None:
+    with_ratchet, _ = _ratchet_env(True).reset(seed=262000)
+    without, _ = _ratchet_env(False).reset(seed=262000)
+    assert with_ratchet.shape[0] == without.shape[0] + 1
+    assert np.allclose(with_ratchet[:-1], without)
+
+
+def test_the_ratchet_does_not_move_the_commit_corner() -> None:
+    """``a = (+1, *)`` must still name the desired pose on every decision."""
+
+    task = precapture_planning_environment_config().precapture_task
+    for radius_action in (-1.0, 0.0, 1.0):
+        env = _ratchet_env()
+        env.reset(seed=262004)
+        for _ in range(5):
+            waypoint = env.waypoint_from_action(
+                np.array([1.0, radius_action], dtype=np.float64)
+            )
+            assert np.allclose(waypoint, task.desired_position)
+            env.step(np.array([1.0, radius_action], dtype=np.float32))

@@ -67,6 +67,16 @@ def parse_args() -> argparse.Namespace:
         help="Single-factor ablation: identical run with the reverse channel "
         "removed and nothing else changed.",
     )
+    parser.add_argument(
+        "--no-monotone-commit",
+        dest="monotone_commit",
+        action="store_false",
+        help="Single-factor ablation: disable the commit ratchet, so the blend "
+        "may fall as well as rise. That is the pre-calibration interface, in "
+        "which scripted action noise of 0.09 about an interior mean turned 8 of "
+        "8 completing seeds into 0 of 8.",
+    )
+    parser.set_defaults(monotone_commit=True)
     parser.add_argument("--device", type=str, default="auto")
     return parser.parse_args()
 
@@ -76,6 +86,7 @@ def accelerated_training_configs(
     horizon_steps: int,
     waypoint_parametrization: str,
     execution_feedback: bool = True,
+    monotone_commit: bool = True,
 ) -> tuple[SE3RendezvousConfig, PrecaptureHybridConfig]:
     """Return engineering-equivalent configs used only by hybrid training."""
 
@@ -89,6 +100,7 @@ def accelerated_training_configs(
         runtime_diagnostics=False,
         include_target_phase_and_time_observation=True,
         include_execution_feedback_observation=execution_feedback,
+        monotone_commit=monotone_commit,
     )
     return environment_config, hybrid_config
 
@@ -105,6 +117,7 @@ def main() -> None:
         horizon_steps=args.horizon,
         waypoint_parametrization=args.parametrization,
         execution_feedback=args.execution_feedback,
+        monotone_commit=args.monotone_commit,
     )
     mpc_config = hybrid_mpc_config(hybrid_config, environment_config)
 
@@ -125,7 +138,16 @@ def main() -> None:
             f"radially clipped to [{hybrid_config.minimum_waypoint_radius_m}, "
             f"{hybrid_config.maximum_waypoint_radius_m}] m. The interface to "
             "the MPC is the unchanged 3D waypoint in every parametrisation."
+            + (
+                " The commit blend is ratcheted -- it may only advance -- and "
+                "its level is appended to the observation so the decision stays "
+                "Markov."
+                if hybrid_config.monotone_commit
+                and hybrid_config.waypoint_parametrization == "arrival_condition"
+                else ""
+            )
         ),
+        "monotone_commit": hybrid_config.monotone_commit,
         "observation_space": (
             "canonical 24D full-state core"
             + (

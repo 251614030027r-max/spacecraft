@@ -55,6 +55,9 @@ def scripted_action(
     time_seconds: float,
     commit_time_s: float,
     hold_radius_action: float,
+    action_mean: float = 0.0,
+    action_noise_std: float = 0.0,
+    generator: np.random.Generator | None = None,
 ) -> np.ndarray:
     if policy == "commit_now":
         return np.array([1.0, 0.0], dtype=np.float64)
@@ -62,6 +65,17 @@ def scripted_action(
         if time_seconds < commit_time_s:
             return np.array([-1.0, hold_radius_action], dtype=np.float64)
         return np.array([1.0, 0.0], dtype=np.float64)
+    if policy == "noisy_commit":
+        # The dead-seed signature, reproduced without training: a_commit sits at
+        # an interior mean with the variation a deterministic policy actually
+        # showed (mean 0.78-0.86, std 0.09). Under the raw blend that walks the
+        # setpoint 0.6 m per decision against 0.094 m of authority.
+        assert generator is not None
+        noise = float(generator.normal(0.0, action_noise_std)) if action_noise_std else 0.0
+        return np.array(
+            [float(np.clip(action_mean + noise, -1.0, 1.0)), hold_radius_action],
+            dtype=np.float64,
+        )
     raise ValueError(f"unknown policy {policy!r}")
 
 
@@ -71,6 +85,9 @@ def run_episode(
     policy: str,
     commit_time_s: float,
     hold_radius_action: float,
+    action_mean: float = 0.0,
+    action_noise_std: float = 0.0,
+    monotone_commit: bool = True,
 ) -> dict[str, Any]:
     env = PrecaptureHybridEnv(
         environment_config=precapture_planning_environment_config(),
@@ -78,8 +95,10 @@ def run_episode(
             horizon_steps=horizon,
             waypoint_parametrization="arrival_condition",
             runtime_diagnostics=False,
+            monotone_commit=monotone_commit,
         ),
     )
+    generator = np.random.default_rng(seed)
     _, info = env.reset(seed=seed)
     infeasible_steps = 0
     first_infeasible_time_s: float | None = None
@@ -89,6 +108,7 @@ def run_episode(
     torque_impulse = 0.0
     steps = 0
     waypoint_radii: list[float] = []
+    waypoint_steps: list[float] = []
     terminated = truncated = False
     while not (terminated or truncated):
         action = scripted_action(
@@ -96,9 +116,15 @@ def run_episode(
             float(env.env.time_seconds),
             commit_time_s,
             hold_radius_action,
+            action_mean,
+            action_noise_std,
+            generator,
         )
         waypoint = env.waypoint_from_action(action)
-        waypoint_radii.append(round(float(np.linalg.norm(waypoint)), 4))
+        radius = float(np.linalg.norm(waypoint))
+        if waypoint_radii:
+            waypoint_steps.append(abs(radius - waypoint_radii[-1]))
+        waypoint_radii.append(round(radius, 4))
         for _ in range(env.hybrid_config.decision_period_steps):
             assert env.env.relative is not None
             assert env.env.target_state is not None
@@ -140,6 +166,9 @@ def run_episode(
         "seed": seed,
         "horizon": horizon,
         "policy": policy,
+        "monotone_commit": monotone_commit,
+        "action_mean": action_mean,
+        "action_noise_std": action_noise_std,
         "commit_time_s": commit_time_s,
         "hold_radius_action": hold_radius_action,
         "completed": bool(info["completed"]),
@@ -156,6 +185,12 @@ def run_episode(
         "final_fov_margin_rad": round(float(info["fov_margin_rad"]), 4),
         "time_failure": bool(info["time_failure"]),
         "distance_failure": bool(info["distance_failure"]),
+        "median_waypoint_step_m": (
+            round(float(np.median(waypoint_steps)), 4) if waypoint_steps else None
+        ),
+        "max_waypoint_step_m": (
+            round(float(np.max(waypoint_steps)), 4) if waypoint_steps else None
+        ),
         "first_waypoint_radius_m": waypoint_radii[0] if waypoint_radii else None,
         "last_waypoint_radius_m": waypoint_radii[-1] if waypoint_radii else None,
     }
@@ -166,8 +201,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seeds", type=int, nargs="+", required=True)
     parser.add_argument("--horizon", type=int, default=35)
     parser.add_argument(
-        "--policy", choices=["commit_now", "commit_at"], required=True
+        "--policy",
+        choices=["commit_now", "commit_at", "noisy_commit"],
+        required=True,
     )
+    parser.add_argument("--action-mean", type=float, default=0.0)
+    parser.add_argument("--action-noise-std", type=float, default=0.0)
+    parser.add_argument(
+        "--no-monotone-commit",
+        dest="monotone_commit",
+        action="store_false",
+        help="disable the commit ratchet, reproducing the pre-calibration interface",
+    )
+    parser.set_defaults(monotone_commit=True)
     parser.add_argument(
         "--commit-time-s",
         type=float,
@@ -199,6 +245,9 @@ def main() -> None:
             args.policy,
             args.commit_time_s,
             args.hold_radius_action,
+            args.action_mean,
+            args.action_noise_std,
+            args.monotone_commit,
         )
         records.append(record)
         print(json.dumps(record), flush=True)
