@@ -96,25 +96,67 @@ inside the 2 s horizon. That is why infeasibility begins at 0.8 s and not at 0.
 not station keeping, and the chaser drifts to a 49.96 deg FOV violation at
 38.7 s having never had a controller.
 
-### 3c. Closed loop, three seeds so far
+### 3c. Closed loop, 12 seeds, two horizons
 
-Fixed setpoint, h20, `--terminal-gate proximity` (§4) against the repository
-default. The two seeds that already worked reproduce, which is the self-check
-that the factor touched nothing else:
+Fixed setpoint, seeds 262000-262011, `--terminal-gate proximity` (§4) against
+the repository default. The h35 default column reproduces
+`docs/PURE_MPC_ROW_VERIFIED.md` exactly -- 9/12, 88.5 s, 167.2 N s, failing
+`{262005, 262006, 262011}` -- which is the independent check that this harness
+is the same measurement.
 
-| seed | default gate | proximity gate |
-|---|---|---|
-| 262000 | completes 113.6 s, 202.0 N s, 0 infeasible | completes **113.6 s, 202.0 N s**, 0 infeasible |
-| 262002 | completes 115.8 s, 132.2 N s, 0 infeasible | completes **115.9 s, 132.2 N s**, 0 infeasible |
-| 262001 | **fails 38.7 s**, 379/387 infeasible from 0.8 s | **completes 121.9 s**, 298.8 N s, **0/1219 infeasible** |
+| | completed | mean t | mean force impulse | **QP infeasible steps** | illegal entries | failing seeds |
+|---|---:|---:|---:|---:|---:|---|
+| h20 default | 8/12 | 128.5 s | 208.2 N s | **1 594** | 9 | 262001, 262005, 262006, 262011 |
+| h20 proximity | 8/12 | 124.4 s | 205.7 N s | **0** | 5 | 262003, 262005, 262006, 262011 |
+| h35 default | 9/12 | 88.5 s | 167.2 N s | **2 161** | 4 | 262005, 262006, 262011 |
+| h35 proximity | 8/12 | 78.6 s | 173.3 N s | **0** | 5 | 262001, 262005, 262006, 262011 |
 
-`docs/PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §1 records 262001 completing in
-**121.8 s** on the pre-F1 tree. The proximity gate returns that completion while
-keeping F1's corridor preview inside the entry sphere.
+**Paired on the episodes both arms complete, the force impulse is identical**
+-- 192.4 N s against 192.4 N s at h20 (7 seeds), 173.3 against 173.3 at h35
+(8 seeds). The factor changed nothing where the QP was already solving, which
+is the self-check that it touched only what it was meant to.
 
-**The full 12-seed sweeps (h20 proximity, h35 default, h35 proximity) are in
-flight and are not reported here.** Until they land nothing in §5 is settled,
-and no main-table row may be restated.
+Two readings, and the second matters more than the first.
+
+**The defect is removed.** Not one of the 24 proximity-gated episodes ever
+loses the controller: 1 594 and 2 161 infeasible steps become 0 and 0. On
+262001 at h20 that converts a 38.7 s drift into a 121.9 s completion, and
+`PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §1 records the pre-F1 tree completing
+that same seed in 121.8 s.
+
+**And it does not move the completion count**: 8/12 either way at h20, and
+9/12 to 8/12 at h35. `{262005, 262006, 262011}` fail under all four
+configurations. **So infeasibility was never what was costing the
+completions.** The hard seeds are hard with a controller that never gives up.
+
+## 3d. What the failures actually are, once the controller stops giving up
+
+Every timeout under the corrected gate ends in the same state:
+
+| | end t | force impulse | **final range** | FOV margin | illegal entries | **latched** |
+|---|---:|---:|---:|---:|---:|---|
+| h20 prox 262003 | 300.0 s | 287.3 N s | **3.00 m** | 0.872 rad | 1 | **no** |
+| h20 prox 262005 | 300.0 s | 930.6 N s | **3.00 m** | 0.854 rad | 1 | **no** |
+| h20 prox 262011 | 300.0 s | 501.1 N s | **3.00 m** | 0.871 rad | 1 | **no** |
+| h35 prox 262001 | 300.0 s | 351.1 N s | **3.00 m** | 0.873 rad | 2 | **no** |
+| h35 prox 262005 | 300.0 s | 636.9 N s | **3.00 m** | 0.872 rad | 1 | **no** |
+| h35 prox 262006 | 300.0 s | 584.5 N s | **3.00 m** | 0.873 rad | 1 | **no** |
+| h35 prox 262011 | 300.0 s | 378.1 N s | **3.00 m** | 0.873 rad | 1 | **no** |
+
+3.00 m is `||desired_position||`. **The chaser flies to the goal, crosses the
+entry plane illegally on the way, and then sits on the goal with healthy
+pointing until the clock runs out**, because the latch only arms on an
+outside-to-inside crossing (`SE3RendezvousEnv`, `evaluate_terminal_entry_crossing`,
+guarded by `not self._terminal_region_entered`). Once inside, re-arming
+requires flying back out past the entry plane and coming in again, and a fixed
+setpoint at the desired pose has no reason to ever do that.
+
+This is verbatim the pre-F1 failure mechanism that
+`PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §1 recorded and that F1 was
+introduced to remove: *"illegal entry-plane crossing, never re-latched; chaser
+then parks on the desired pose to the 300 s cap."* F1 removed it by imposing
+the corridor early enough to shape the approach -- and paid for that with a
+hard infeasibility at 16 m. Both halves of that trade are now measured.
 
 ## 4. Single factor: bound the gate by range
 
@@ -130,36 +172,58 @@ centre. Both terms are frozen task parameters, so the treatment adds **no
 tunable constant**. Reference, horizon, solver, slack cap and fallback are
 untouched.
 
-## 5. What is at stake, and what is not yet established
+**It is a correct diagnosis and it is not proposed as the final gate.** It
+removes the defect cleanly, but it gives the optimiser no corridor preview
+outside 6 m, so the illegal crossings F1 was suppressing come back (h35
+illegal entries 4 -> 5, and 262001 at h35 flips from a 167.5 s completion to a
+300 s park). Choosing the region the corridor should be enforced over -- and
+whether entry legality belongs as a region constraint at all rather than as a
+constraint on the crossing -- is a lower-layer design decision that is now
+well posed and is not settled here.
 
-The defect in §2 and §3a is established: it is a static property of the
-constraint assembly, it needs no trajectory, and it is independent of any
-sweep outcome. The optimiser imposes the approach corridor on states the task
-does not judge, and the resulting linearised violation is about twice the
-slack cap, so the QP reports `infeasible` rather than paying a penalty.
+## 5. What this does to the standing claims
 
-What is **not** yet established is how much of the project's standing evidence
-that accounts for. The claims that would have to be re-derived if the sweeps
-confirm §3c are, in order of how much rests on them:
+**Retracted.**
 
 1. `PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §3g -- *"the fixed setpoint is a
    reference for which the constrained problem has no satisfying trajectory
-   [...] the only remaining thing that can change is the reference itself"*.
-   This is the motivation the coupling line is built on.
-2. The horizon-invariant failure set `{262005, 262006}` and the four-seed h20
-   failure set `{262001, 262005, 262006, 262011}`.
-3. `T6_COUPLING_INTERFACE.md`'s disconnected feasible set, which was scanned on
-   those seeds.
-4. The T8 reading that a learned upper layer *preserves lower-layer
-   feasibility* -- its strongest single piece of evidence is 262005, which the
-   fixed setpoint loses to 172 infeasible steps from t = 31.1 s and the learned
-   V2/262200 completes with 0.
-5. The h20/h50 compute trade, *"the horizon that wins every quality column is
-   the horizon that cannot be run at the control period"*. If the gate is what
-   was costing h20 its completions, that gap narrows.
+   inside the linearised horizon"* -- is **false as stated**. With the gate
+   bounded by range the QP solves on every one of 24 episodes' steps and the
+   same seeds still fail. The infeasibility was the gate, not the reference.
+   §3e and §3f closed the two escape routes they tested; the constraint set
+   itself was never audited, and §4 of that document had listed exactly that
+   audit as still open.
+2. Any sentence explaining a failure *by* infeasibility -- including the T8
+   reading that the learned upper layer's contribution is that it **preserves
+   lower-layer feasibility**. Its headline evidence was 262005: the fixed
+   setpoint takes 172 infeasible steps from t = 31.1 s, V2/262200 takes 0.
+   Under the corrected gate the fixed setpoint takes **0** infeasible steps on
+   262005 and still fails.
 
-None of those is retracted here. They are listed so that the sweep is read as
-the test of them that it is.
+**Survives, and is stronger for being restated.**
+
+262005 under the corrected h20 gate: the fixed setpoint runs the full 300 s,
+spends 930.6 N s, parks at 3.00 m and never latches, with **1 illegal
+crossing**. V2/262200 completes it at 282.8 s with **0 illegal crossings**.
+The learned layer's advantage is real and it is not about feasibility -- it is
+that it **timed its entry so the one crossing was legal**. The fixed setpoint
+structurally cannot do that: aimed at the desired pose it flies in when the
+geometry says go, and once inside it cannot re-arm the latch without backing
+out, which `PRECAPTURE_ENTRY_WINDOW_GAP.md` §3 already observed the lower
+layer has no representation of.
+
+That is what `a_commit` parametrises in the T6 interface -- hold outside,
+commit when the crossing will be legal -- so the interface was built for the
+right decision variable even while the motivating diagnosis was wrong.
+
+**Unresolved, and expensive.**
+
+Every training run in T7 and T8 was made against the defective lower layer.
+Those runs stay valid measurements of *that* system; they are not measurements
+of the intended one, and the policies were free to shape themselves around a
+controller that abandons the chaser on a geometric technicality. Nothing from
+them can be reported as a coupled row until the gate is settled and the runs
+are redone from zero.
 
 ## 6. Reproduce
 
