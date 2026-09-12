@@ -26,6 +26,7 @@ from typing import Any
 
 import numpy as np
 
+from controllers.mpc.constraints import normalized_precapture_truth_margins
 from controllers.mpc.prediction import relative_to_vector
 from dynamics.types import GeneralizedForce
 from env.action import wrench_to_normalized
@@ -227,6 +228,7 @@ def main() -> None:
             key: float(info[key]) for key in PRECAPTURE_MARGIN_KEYS if key in info
         }
         force_impulse = torque_impulse = 0.0
+        minimum_truth_normalized_margin = float("inf")
         waypoints: list[list[float]] = []
         qp_infeasible_steps_total = 0
         first_infeasible_time_s: float | None = None
@@ -363,6 +365,30 @@ def main() -> None:
                             minimum_margins.get(key, float(info[key])),
                             float(info[key]),
                         )
+                # The per-key minima above are the raw task fields, and every
+                # one of them exists at every step whether or not its
+                # constraint is live. A chaser 17 m out and off the approach
+                # axis has a corridor margin of -19 m, which is not a
+                # violation -- the corridor is not a constraint out there --
+                # yet a table built from those minima reports a completing,
+                # zero-violation episode as a massive violator, and mixes
+                # metres, radians and m/s into one column besides. The truth
+                # margin is the gated, normalised quantity: inactive rows are
+                # large positive and every active row is divided by its own
+                # limit, so one number is comparable across rows and against
+                # the Pure MPC row, which already reports it.
+                assert env.env.relative is not None
+                assert env.env.target_state is not None
+                truth_margins = normalized_precapture_truth_margins(
+                    relative_to_vector(env.env.relative),
+                    task,
+                    target_angular_velocity_rad_s=env.env.target_state.omega,
+                    terminal_latched=bool(info["terminal_region_active"]),
+                )
+                minimum_truth_normalized_margin = min(
+                    minimum_truth_normalized_margin,
+                    float(np.min(truth_margins)),
+                )
                 if terminated or truncated:
                     break
 
@@ -387,6 +413,11 @@ def main() -> None:
                     force_impulse / env.env.chaser_parameters.mass
                 ),
                 "minimum_margins": minimum_margins,
+                "minimum_truth_normalized_margin": (
+                    minimum_truth_normalized_margin
+                    if np.isfinite(minimum_truth_normalized_margin)
+                    else None
+                ),
                 "illegal_terminal_entry_count": int(
                     info.get("illegal_terminal_entry_count", 0)
                 ),
@@ -467,12 +498,25 @@ def main() -> None:
         ),
         "records": records,
         "entry_channel": summarize_entry_channel(records, entry_limits),
-        "main_table": main_table_metrics(
-            records,
-            controller_times_s=controller_times_s,
-            environment_step_times_s=environment_times_s,
-            control_period_s=0.1,
-        ),
+        "main_table": {
+            **main_table_metrics(
+                records,
+                controller_times_s=controller_times_s,
+                environment_step_times_s=environment_times_s,
+                control_period_s=0.1,
+            ),
+            # The comparable safety column. It spans every episode, not only
+            # the completed ones -- grazing a boundary on an episode a method
+            # loses does not earn it a clean margin.
+            "worst_truth_normalized_margin": min(
+                (
+                    record["minimum_truth_normalized_margin"]
+                    for record in records
+                    if record.get("minimum_truth_normalized_margin") is not None
+                ),
+                default=None,
+            ),
+        },
     }
     args.output.write_text(json.dumps(payload, indent=1))
     partial_output.unlink(missing_ok=True)
