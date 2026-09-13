@@ -84,36 +84,70 @@ done
 - `--horizon 35` **必须写**(见 §2)。
 - 棘轮默认开启,`monotone_commit` 会写进 manifest。**不要**加 `--no-monotone-commit`——
   那是日后的消融臂,不是主行。
-- `arrival_condition` 观测是 **25 维**(24 + 棘轮),`radial_local` 是 24 维。
-  两臂动作维数 2 和 4。这是预期的,不是错配。
+- 观测维数(冒烟实测,不是推算):`arrival_condition` **32 维**
+  = 24 基础 + 6 目标姿态 + 1 剩余时间 + 1 棘轮;`radial_local` **31 维**(无棘轮那一维)。
+  动作维数 2 和 4。这是预期的,不是错配;评估时照 §4 的开关加载。
+  (`train_hybrid` 无条件开启 phase/time 观测,所以不是裸 24/25 维。)
 - **训练可以并行**;评估的并行授权见 T11 §1(结果型可并行,耗时必须串行单进程)。
 - 任一种子全程零成功**照报**,不改参数、不加第四轮、不换种子。
 
 ---
 
-## 4. S10:评估与主表
+## 4. ⚠ S10:评估的三个开关,一个都不能用默认值
 
-六个 `final_model` 各在 **48 个种子(262000–262047)、h35** 上评估,
-`deterministic=True`。评估可并行。
+`evaluate_hybrid_policy.py` 有三个默认值和本轮训练**不一致**:
+
+| 开关 | 脚本默认 | 本轮训练实际 | 用默认的后果 |
+|---|---|---|---|
+| `--horizon` | 20 | **35** | 时域错配,和主表基线不可比 |
+| `--parametrization` | `radial_local` | **`arrival_condition`** | 动作维数错 |
+| `--phase-time-observation` | 关 | **开** | 观测 31 对 32 维,**直接拒绝加载** |
+
+**不用猜。** 每个运行的 `manifest.json` 里现在直接写着一行可复制的
+**`evaluation_flags`**,照抄即可。本轮两条臂分别是:
+
+```
+# arrival_condition（32D 观测 / 2D 动作）
+--horizon 35 --parametrization arrival_condition --phase-time-observation
+
+# radial_local（31D 观测 / 4D 动作）
+--horizon 35 --parametrization radial_local --phase-time-observation
+```
+
+`--execution-feedback` **不要加**(本轮训练没开,脚本默认也是关,一致)。
+
+完整命令(48 个种子,`deterministic=True`,可并行):
+
+```
+python -B -m experiments.evaluate_hybrid_policy \
+  --model logs/t12_train/sac_mpc_arrival_262400/final_model.zip \
+  --episodes 48 --seed 262000 \
+  --horizon 35 --parametrization arrival_condition --phase-time-observation \
+  --output logs/t12_eval/arrival_262400.json
+```
+
+已在上层沙箱实跑验证:训练 → `final_model.zip` → 上面这组开关加载成功、
+通过维数检查、正常跑回合。
 
 每一行必须带:完成数、成功平均时间、**成功平均力冲量**、真值违约率、
 非法穿越总数、`qp_infeasible_steps`、`max_consecutive_zero_wrench_steps`。
 最后两列是闸门 A 那条残留的可见性要求,**永远不要删**。
 
-主表:
+## 5. 主表(本轮三行)
 
 | 行 | 状态 |
 |---|---|
 | **Pure MPC(＝`commit_now`)** | **已有:32/48、78.825 s、187.721 N·s、非法穿越 18、不可行 0** |
 | 普通航点 SAC-MPC(`radial_local`) | 本轮训练,三种子,报分布 |
 | **本文 `arrival_condition`** | 本轮训练,三种子,报分布 |
-| Pure SAC | 训练入口不存在,见 §6 |
+
+**Pure SAC 本轮不做**,等耦合线干净了再单独补,所以是三行表。
 
 **compute 那一列单独串行单进程跑**,不跟并行批混。
 
 ---
 
-## 5. 必须一起带走的三条
+## 6. 必须一起带走的三条
 
 1. **逐状态 40/48 是 oracle,不是控制器。** T 是知道结果后按种子挑的,它是状态相关规则的
    **性能上界**,**永远不能作为主表的一行**。训练出来的策略能逼近多少,正是本轮要测的。
@@ -127,22 +161,24 @@ done
 
 ---
 
-## 6. 两件待上层拍板的(都不挡训练)
+## 7. 一件事务性说明
 
-1. **Pure SAC 行**:`train/train.py` 只接 `phase2_environment_config`,跑不了
-   `precapture_planning`。保留这一行就由上层补入口(约半天),不占下层机时。
-2. **原始日志推送被自动审批拒绝**:不要为它停推进。大体积 stdout/stderr 不必入 Git,
-   汇总 JSON 和报告进去就够。
+**原始日志推送被自动审批拒绝**:不要为它停推进。大体积 stdout/stderr 不必入 Git,
+汇总 JSON 和报告进去就够。
+
+(Pure SAC 行已由上层决定**本轮不做**,等耦合线干净后再单独补,不占本轮机时。)
 
 ---
 
-## 7. 不要做的事
+## 8. 不要做的事
 
 - 不要改 MPC(冻结)、不要加球面预览、不要动松弛上限或回退。
 - 不要动任何冻结任务参数(几何、约束、时限、奖励、`omega_T`)。
 - 不要复用 T7/T8 的 checkpoint(旧下层上训的,作废)。
 - 不要用 `--horizon` 的默认值。
-- 不要漏 `--no-execution-feedback`。
+- 不要漏 `--no-execution-feedback`(训练侧)。
+- 评估侧不要用 `--horizon` / `--parametrization` / `--phase-time-observation` 的默认值,
+  照 manifest 的 `evaluation_flags` 抄。
 - 不要在耗时测量里并行。
 - 不要为了让 Hybrid 好看去削弱 Pure MPC。
 - 中途不报常规进度;只在**任一种子出现 NaN、无故退出、或六个运行全部结束**时报。
