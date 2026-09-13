@@ -133,35 +133,75 @@ def main() -> None:
     # seed can be compared against the baseline at all.
     lines.append("")
     lines.append("CONSTANT vs PER-STATE -- net completion")
-    lines.append(f"{'commit T':>9s} {'completed':>10s} {'coverage':>9s}")
-    lines.append(f"{'0 (fixed)':>9s} {len(completed):>10d} {len(baseline):>9d}")
-    beats_baseline = []
+
+    def _aggregate(records: list[dict[str, Any]]) -> tuple[float, float]:
+        done = [r for r in records if r["completed"]]
+        if not done:
+            return float("nan"), float("nan")
+        return (
+            sum(r["end_time_s"] for r in done) / len(done),
+            sum(r["force_impulse_n_s"] for r in done) / len(done),
+        )
+
+    lines.append(
+        f"{'commit T':>9s} {'completed':>10s} {'coverage':>9s} "
+        f"{'mean t_s':>9s} {'mean fuel':>10s}"
+    )
+    seconds, fuel = _aggregate(list(baseline.values()))
+    lines.append(
+        f"{'0 (fixed)':>9s} {len(completed):>10d} {len(baseline):>9d} "
+        f"{seconds:>9.1f} {fuel:>10.1f}"
+    )
+    # T = 0 is itself a constant, so "some constant matches the baseline" is a
+    # tautology and says nothing. The question gate B actually asks is whether
+    # a constant reaches what choosing per state reaches.
+    best_constant_t: float = 0.0
+    best_constant = len(completed)
     for t in grid:
         covered = [s for s in baseline if t in by_seed.get(s, {})]
+        net = sum(by_seed[s][t]["completed"] for s in covered)
         if len(covered) < len(baseline):
             lines.append(
-                f"{t:>9.0f} {sum(by_seed[s][t]['completed'] for s in covered):>10d} "
-                f"{len(covered):>9d}   partial -- not comparable"
+                f"{t:>9.0f} {net:>10d} {len(covered):>9d}"
+                f"{'':>9s} {'':>10s}   partial -- not comparable"
             )
             continue
-        net = sum(by_seed[s][t]["completed"] for s in covered)
-        lines.append(f"{t:>9.0f} {net:>10d} {len(covered):>9d}")
-        if net >= len(completed):
-            beats_baseline.append(t)
-    per_state = len(completed) + len(rescued)
-    lines.append(f"{'per-state':>9s} {per_state:>10d} {len(baseline):>9d}")
-    lines.append("")
-    if beats_baseline:
+        seconds, fuel = _aggregate([by_seed[s][t] for s in covered])
         lines.append(
-            f"a CONSTANT commit time matches or beats the fixed setpoint at "
-            f"T={beats_baseline} -- a constant may be enough here, which is gate B "
-            f"saying stop rather than train"
+            f"{t:>9.0f} {net:>10d} {len(covered):>9d} {seconds:>9.1f} {fuel:>10.1f}"
+        )
+        if net > best_constant:
+            best_constant, best_constant_t = net, t
+    per_state_records = []
+    for seed, record in baseline.items():
+        options = [record] if record["completed"] else []
+        options += [r for r in by_seed.get(seed, {}).values() if r["completed"]]
+        if options:
+            per_state_records.append(
+                min(options, key=lambda r: r["force_impulse_n_s"])
+            )
+    per_state = len(per_state_records)
+    seconds, fuel = _aggregate(per_state_records)
+    lines.append(
+        f"{'per-state':>9s} {per_state:>10d} {len(baseline):>9d} "
+        f"{seconds:>9.1f} {fuel:>10.1f}"
+    )
+    lines.append("")
+    gap = per_state - best_constant
+    lines.append(
+        f"best constant: T={best_constant_t:.0f} at {best_constant}/{len(baseline)}; "
+        f"per-state {per_state}/{len(baseline)}; gap {gap}"
+    )
+    if gap <= 0:
+        lines.append(
+            "a CONSTANT commit time reaches everything the per-state choice does "
+            "-- gate B says stop rather than train"
         )
     else:
         lines.append(
-            "no constant commit time measured on every seed matches the fixed "
-            "setpoint; only a per-state choice exceeds it -- the decision depends "
-            "on the state"
+            f"no constant reaches the per-state result; choosing per state is "
+            f"worth {gap} more seeds than the best constant -- the decision "
+            f"depends on the state, and gate B passes"
         )
 
     reverse = []
