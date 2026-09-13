@@ -157,6 +157,14 @@ def main() -> None:
                 else ""
             )
             + (
+                ", and the commit ratchet's level in [0, 1], which the policy "
+                "needs because the same action commands a different waypoint "
+                "depending on how far the commit has already advanced"
+                if hybrid_config.monotone_commit
+                and hybrid_config.waypoint_parametrization == "arrival_condition"
+                else ""
+            )
+            + (
                 ", and a 3D execution-feedback summary of the previous "
                 "decision (fallback fraction, peak solved-step slack, mean "
                 "actuator usage)"
@@ -164,6 +172,7 @@ def main() -> None:
                 else ""
             )
         ),
+
         "coupling_direction": (
             "bidirectional: the policy proposes an arrival condition and the "
             "constrained MPC returns how hard that proposal was to execute"
@@ -217,6 +226,22 @@ def main() -> None:
 
     raw_env = PrecaptureHybridEnv(environment_config, hybrid_config)
     raw_env.reset(seed=args.seed)
+    # The evaluation path loads a checkpoint against the observation it was
+    # trained on and refuses a mismatch, so the width belongs in the
+    # reproduction record rather than being re-derived from flag names.
+    manifest["observation_dimension"] = int(
+        raw_env.observation_space.shape[0]
+    )
+    manifest["action_dimension"] = int(raw_env.action_space.shape[0])
+    manifest["evaluation_flags"] = " ".join(
+        [
+            f"--horizon {args.horizon}",
+            f"--parametrization {args.parametrization}",
+        ]
+        + (["--phase-time-observation"] if hybrid_config.include_target_phase_and_time_observation else [])
+        + (["--execution-feedback"] if hybrid_config.include_execution_feedback_observation else [])
+    )
+    manifest_path.write_text(json.dumps(manifest, indent=1, default=str))
     env = Monitor(
         raw_env,
         filename=str(log_dir / "train"),
