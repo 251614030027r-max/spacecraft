@@ -4,16 +4,16 @@
 
 ## 当前状态
 
-截至 2026-09-15，T12 六个 SAC-MPC 模型已完成训练和固定 48 种子正式评估。预登记判据落入分叉 2：`arrival_condition` 相对 `radial_local` 显著改善可学性，但未稳定超过 Pure MPC，且成功时间和燃料更高；当前不支持“学习控制优于固定设定点”。训练与评估均使用完整真值状态 `perception=None`，不能写成局部视觉/EKF 结果。正式结论与审查边界见 `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`，精简机器证据见 `eval/results/t12_s10_20260915/`。
+截至 2026-09-16，T12 正式评估仍不支持“学习控制优于固定设定点”。转向后的非合作探针 2 也命中预签的“基本持平”停止分支：同一感知环境和 48 种子下，EKF 估计控制 Pure MPC 为 31/48，真值控制为 32/48（`ΔC=1`），不足以支撑探针 3 或训练。当前等待上层重新定义真正需要长期决策的观测/相位耦合问题，不得通过加噪声、缩视场或改任务人为制造 gap。正式结果见 `docs/PROBE2_NONCOOP_RESULT_20260916.md`；T12 结论见 `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`。
 
 ## 阅读顺序
 
 1. `CLAUDE.md`：研究纪律、系统边界和长期主线。
-2. `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`：T12/S10 正式结果、证据边界与上层待裁决项。
-3. `docs/T12_S10_EVAL_EXECUTION_ORDER.md`：本轮正式评估的预登记执行单与三分叉判据。
-4. `docs/PERCEPTION_PRECAPTURE_INTEGRATION.md`：未来感知接入提案，尚未执行。
-5. `docs/T12_LOCAL_RUNNING_HANDOFF_20260913.md`、`docs/T12_EXECUTION_ORDER.md`：训练期事实与历史执行单。
-6. `docs/T11_GATE_B_RULING.md`、`docs/T11_INTERFACE_CALIBRATION.md`：闸门 B 裁决与接口校准。
+2. `docs/PROBE2_NONCOOP_RESULT_20260916.md`：非合作估计控制与真值控制的正式配对结果及停止裁决。
+3. `docs/PRECAPTURE_NONCOOP_S1_AND_PROBES.md`：非合作 S1 接口、观测窗口与探针顺序。
+4. `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`：T12/S10 正式结果与证据边界。
+5. `docs/T12_S10_EVAL_EXECUTION_ORDER.md`：T12 正式评估的预登记执行单与三分叉判据。
+6. `docs/PERCEPTION_PRECAPTURE_INTEGRATION.md`：感知接入的阶段设计提案。
 7. `docs/EVIDENCE_INDEX.md`、`docs/REPRODUCIBILITY.md`：证据和复现索引。
 8. `docs/HISTORY.md`、`docs/handoffs/README.md`：被后续结果取代的演进与历史交接。
 

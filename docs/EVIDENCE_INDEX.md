@@ -6,6 +6,10 @@
 
 ## 当前正式基线证据
 
+### 非合作探针 2（2026-09-16）
+
+正式配对结果见 `docs/PROBE2_NONCOOP_RESULT_20260916.md`：同一感知环境、同一 48 种子下，EKF 估计控制 Pure MPC 为 31/48，真值控制为 32/48，`ΔC=1`，命中预签的“基本持平”停止分支。原始 A/B JSON 仅保留于本机 `logs/precap_noncoop/`，不推入公开仓库。
+
 ### T12 / S10（2026-09-15）
 
 正式结论见 `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`，预登记规则见 `docs/T12_S10_EVAL_EXECUTION_ORDER.md`。可随 Git 审查的精简机器证据位于 `eval/results/t12_s10_20260915/`，包括六组逐局 JSON、训练 manifest、最终汇总和审计主表；本机完整训练、首轮评估与补字段复评仍分别保留于 `logs/t12_train/`、`logs/t12_eval/` 和 `logs/t12_eval_v2/`。该结果属于 full-state `perception=None`，并行运行产生的 compute 数字不构成实时性证据。
