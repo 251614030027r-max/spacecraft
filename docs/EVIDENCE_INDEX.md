@@ -6,6 +6,14 @@
 
 ## 当前正式基线证据
 
+### T12 / S10（2026-09-15）
+
+正式结论见 `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`，预登记规则见 `docs/T12_S10_EVAL_EXECUTION_ORDER.md`。可随 Git 审查的精简机器证据位于 `eval/results/t12_s10_20260915/`，包括六组逐局 JSON、训练 manifest、最终汇总和审计主表；本机完整训练、首轮评估与补字段复评仍分别保留于 `logs/t12_train/`、`logs/t12_eval/` 和 `logs/t12_eval_v2/`。该结果属于 full-state `perception=None`，并行运行产生的 compute 数字不构成实时性证据。
+
+预登记结论为分叉 2：`arrival_condition` 三训练种子完成 16/48、34/48、28/48，Pure MPC 为 32/48，`radial_local` 三种子均为 0/48；不得以单个最好种子或事后 oracle 替代三种子分布。
+
+### 较早基线
+
 | 主张 | 日志/模型 |
 |---|---|
 | Pure SAC `single_phase` 完成 3/1/0、无违约 20/10/0 | `logs/sac_seed260860.json` 至 `sac_seed260862.json`；`models/gatefree_sac_400k_fix_seed26086*/checkpoints/sac_400000_steps.zip` |

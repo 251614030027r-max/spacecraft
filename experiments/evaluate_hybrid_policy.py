@@ -46,6 +46,15 @@ VIOLATION_STEP_KEYS = (
 )
 
 
+def truth_violation_step_counts(info: dict[str, Any]) -> dict[str, int | None]:
+    """Preserve cumulative truth-geometry counters without inventing missing data."""
+
+    return {
+        key: int(info[key]) if key in info else None
+        for key in VIOLATION_STEP_KEYS
+    }
+
+
 def summarize_entry_channel(
     records: list[dict[str, Any]], entry_limits: dict[str, float]
 ) -> dict[str, Any]:
@@ -404,6 +413,7 @@ def main() -> None:
                     info["completed"] and zero_violation
                 ),
                 "constraint_violated": not zero_violation,
+                **truth_violation_step_counts(info),
                 "survival_s": float(env.env.time_seconds),
                 "steps": int(env.env.step_count),
                 "decisions": len(waypoints),

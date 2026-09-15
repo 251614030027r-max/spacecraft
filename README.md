@@ -4,30 +4,30 @@
 
 ## 当前状态
 
-当前执行的是 `radial_local`、h20、2 s 高层决策、宏观势函数 shaping 的三种子 v3 训练，训练基线提交为 `1655b0b`。D0 已证明 QP 不可行和零 wrench 级联是真实失败通道，但不能解释全部失败；求解器回退与 slack-limit 两条补救均已由上层测为负结果，不再调整。当前仍是 `precapture_planning_full_state_v1_24d`、`perception=null`，只能形成 full-state 调度机制证据，不能写成局部视觉/EKF 结果。
+截至 2026-09-15，T12 六个 SAC-MPC 模型已完成训练和固定 48 种子正式评估。预登记判据落入分叉 2：`arrival_condition` 相对 `radial_local` 显著改善可学性，但未稳定超过 Pure MPC，且成功时间和燃料更高；当前不支持“学习控制优于固定设定点”。训练与评估均使用完整真值状态 `perception=None`，不能写成局部视觉/EKF 结果。正式结论与审查边界见 `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`，精简机器证据见 `eval/results/t12_s10_20260915/`。
 
 ## 阅读顺序
 
-1. `CLAUDE.md`：研究主线、正式结果、纪律和陷阱。
-2. `HANDOFF_UPPER_RULING_20260908.md`：当前上层裁决与禁止事项。
-3. `docs/D0_HYBRID_INFEASIBILITY_DIAGNOSIS_20260909.md`：80 局无训练失败归因。
-4. `docs/SAC_MPC_COUPLING_DESIGN.md`：耦合设计、动作空间与 D1 宏观势函数。
-5. `docs/PRECAPTURE_ENTRY_WINDOW_GAP.md`：入口窗口与参考选择缺口。
-6. `docs/EVIDENCE_INDEX.md`：日志、模型和论文证据索引。
-7. `docs/HISTORY.md`：已被后续结果取代的演进摘要。
-8. `docs/handoffs/README.md`：历史 handoff 归档说明。
+1. `CLAUDE.md`：研究纪律、系统边界和长期主线。
+2. `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`：T12/S10 正式结果、证据边界与上层待裁决项。
+3. `docs/T12_S10_EVAL_EXECUTION_ORDER.md`：本轮正式评估的预登记执行单与三分叉判据。
+4. `docs/PERCEPTION_PRECAPTURE_INTEGRATION.md`：未来感知接入提案，尚未执行。
+5. `docs/T12_LOCAL_RUNNING_HANDOFF_20260913.md`、`docs/T12_EXECUTION_ORDER.md`：训练期事实与历史执行单。
+6. `docs/T11_GATE_B_RULING.md`、`docs/T11_INTERFACE_CALIBRATION.md`：闸门 B 裁决与接口校准。
+7. `docs/EVIDENCE_INDEX.md`、`docs/REPRODUCIBILITY.md`：证据和复现索引。
+8. `docs/HISTORY.md`、`docs/handoffs/README.md`：被后续结果取代的演进与历史交接。
 
 旧的多份交接、探针操作说明和逐轮阶段报告已整合进上述文件；原文仍可从 Git 历史恢复，不再作为当前入口。
 
 ## 只读验证
 
-仓库虚拟环境当前可用。最近一次完整回归为：
+T12 启动前完整回归为：
 
 ```text
-199 passed in 103.05s
+228 passed in 182.13s
 ```
 
-当前活动训练目录为 `logs/hybrid/sac_mpc_hybrid_v3_macro_262100`、`262101`、`262102`，整理或清理时不得触碰。
+T12 训练与两轮评估原始产物分别保留在本机 `logs/t12_train/`、`logs/t12_eval/` 和 `logs/t12_eval_v2/`；不得因本次精简入库而删除或覆盖。
 
 ## 目录
 
@@ -38,4 +38,5 @@
 - `logs/`：主要审计证据，失败实验也保留；
 - `models/`：本机未跟踪的历史最终模型；中间 checkpoint 已清理；
 - `References/`：对标论文；
-- `docs/`：当前状态、证据索引、复现方法、清理记录和历史 handoff 归档。
+- `docs/`：当前状态、证据索引、复现方法、清理记录和历史 handoff 归档；
+- `local_artifacts/patches/`：本机未跟踪的旧阶段补丁归档，不是当前执行入口。

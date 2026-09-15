@@ -21,7 +21,10 @@ from env.hybrid_env import (
 )
 from env.phase2_env import precapture_planning_environment_config
 from env.se3_rendezvous_env import SE3RendezvousEnv
-from experiments.evaluate_hybrid_policy import summarize_entry_channel
+from experiments.evaluate_hybrid_policy import (
+    summarize_entry_channel,
+    truth_violation_step_counts,
+)
 from train.train_hybrid import accelerated_training_configs
 
 
@@ -34,6 +37,15 @@ def test_hybrid_action_is_three_dimensional_and_observation_is_unchanged() -> No
     observation, _ = env.reset(seed=262000)
     assert env.observation_space.contains(observation.astype(np.float32))
     env.close()
+
+
+def test_truth_violation_step_counts_preserve_missing_fields() -> None:
+    counts = truth_violation_step_counts(
+        {"keepout_violation_steps": 3, "fov_violation_steps": 0}
+    )
+    assert counts["keepout_violation_steps"] == 3
+    assert counts["fov_violation_steps"] == 0
+    assert counts["corridor_violation_steps"] is None
 
 
 def test_hybrid_pins_the_channel_the_diagnosis_measured_as_lossless() -> None:
