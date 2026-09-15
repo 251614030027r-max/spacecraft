@@ -1,0 +1,86 @@
+{
+ "processes": 1,
+ "decisions_per_process": 20,
+ "total_decisions": 20,
+ "eager_target_cache": false,
+ "runtime_diagnostics": false,
+ "horizon_steps": 20,
+ "decision_period_steps": 20,
+ "sac_timing_override": "learning_starts=0 only to measure steady-state update cost; all other SAC hyperparameters match SAC_MPC_HYBRID",
+ "aggregate_wall_time_s": 23.530321000002004,
+ "aggregate_decisions_per_s": 0.8499671551441349,
+ "reporting_scope": "serial_single_process_module_latency",
+ "seconds_per_decision": 1.0671898149999834,
+ "module_timings": {
+  "constraint_linearization": {
+   "count": 400,
+   "mean_s": 0.01101476699932391,
+   "p50_s": 0.010796199998367229,
+   "p95_s": 0.012092639995353234,
+   "max_s": 0.0172035000177857
+  },
+  "decision": {
+   "count": 20,
+   "mean_s": 0.9956526349998966,
+   "p50_s": 0.9816471500016632,
+   "p95_s": 1.0418753200003268,
+   "max_s": 1.2971502000000328
+  },
+  "model_linearization": {
+   "count": 400,
+   "mean_s": 0.001201482499955091,
+   "p50_s": 0.0011656000006041722,
+   "p95_s": 0.001460025002415932,
+   "max_s": 0.0018002000033447985
+  },
+  "mpc_command": {
+   "count": 400,
+   "mean_s": 0.04163013375002265,
+   "p50_s": 0.039708750000500004,
+   "p95_s": 0.0482327649997387,
+   "max_s": 0.36832719999802066
+  },
+  "qp_solve": {
+   "count": 400,
+   "mean_s": 0.015036898749922329,
+   "p50_s": 0.014097650000621798,
+   "p95_s": 0.01611134999729984,
+   "max_s": 0.3161814000013692
+  },
+  "reported_rollout": {
+   "count": 400,
+   "mean_s": 0.004715294249926956,
+   "p50_s": 0.004630100000213133,
+   "p95_s": 0.005098359999828971,
+   "max_s": 0.007566100000985898
+  },
+  "reset": {
+   "count": 1,
+   "mean_s": 0.0027287000011710916,
+   "p50_s": 0.0027287000011710916,
+   "p95_s": 0.0027287000011710916,
+   "max_s": 0.0027287000011710916
+  },
+  "sac_action_sampling": {
+   "count": 20,
+   "mean_s": 0.0007006300000284682,
+   "p50_s": 0.0006214499990164768,
+   "p95_s": 0.0009555700009514119,
+   "max_s": 0.0019525000025168993
+  },
+  "sac_gradient_update": {
+   "count": 20,
+   "mean_s": 0.07026645500045561,
+   "p50_s": 0.018559850001111045,
+   "p95_s": 0.07335206000025282,
+   "max_s": 1.0547982000025513
+  },
+  "truth_step": {
+   "count": 400,
+   "mean_s": 0.007972445750101542,
+   "p50_s": 0.007832650000636932,
+   "p95_s": 0.008670445001916958,
+   "max_s": 0.014188900000590365
+  }
+ }
+}

@@ -1,0 +1,397 @@
+{
+  "gate": "S4_STOP",
+  "S5": "not_started",
+  "S3": "not_started",
+  "evaluations": {
+    "eval_control_desired_pose": {
+      "completed": 8,
+      "episodes": 12,
+      "time_s": 128.475,
+      "force_n_s": 208.1814699673214,
+      "all_force_n_s": 183.7150648878085,
+      "violation_rate": 0.25,
+      "p95_ms": 52.44360001233872,
+      "p95_over_budget": 0.5244360001233872,
+      "worst_truth_normalized_margin": null
+    },
+    "eval_v2_262200": {
+      "completed": 7,
+      "episodes": 12,
+      "time_s": 149.52857142857144,
+      "force_n_s": 429.38871153955887,
+      "all_force_n_s": 317.45942380993864,
+      "violation_rate": 0.3333333333333333,
+      "p95_ms": 43.87059999862686,
+      "p95_over_budget": 0.4387059999862686,
+      "worst_truth_normalized_margin": null
+    },
+    "eval_v2_262201": {
+      "completed": 0,
+      "episodes": 12,
+      "time_s": null,
+      "force_n_s": null,
+      "all_force_n_s": 1472.5929024325908,
+      "violation_rate": 0.25,
+      "p95_ms": 47.64949998934753,
+      "p95_over_budget": 0.4764949998934753,
+      "worst_truth_normalized_margin": null
+    },
+    "eval_v3_262300": {
+      "completed": 7,
+      "episodes": 12,
+      "time_s": 153.84285714285716,
+      "force_n_s": 523.3591886515609,
+      "all_force_n_s": 485.44661646641725,
+      "violation_rate": 0.25,
+      "p95_ms": 48.118700011400506,
+      "p95_over_budget": 0.48118700011400506,
+      "worst_truth_normalized_margin": null
+    },
+    "eval_v3_262301": {
+      "completed": 0,
+      "episodes": 12,
+      "time_s": null,
+      "force_n_s": null,
+      "all_force_n_s": 1250.7894220619235,
+      "violation_rate": 0.4166666666666667,
+      "p95_ms": 43.92470000311732,
+      "p95_over_budget": 0.43924700003117323,
+      "worst_truth_normalized_margin": null
+    }
+  },
+  "replays": {
+    "replay_v2_262200_live": {
+      "decisions": 183,
+      "negative": 20,
+      "fraction_negative": 0.1092896174863388,
+      "scene_mean_fraction": 0.130225,
+      "action_mean": 0.740066612021858,
+      "action_min": -0.97253,
+      "action_max": 0.99989,
+      "true_range_min": 3.2164,
+      "true_range_max": 18.709,
+      "feedback": {
+        "hybrid_feedback_fallback_fraction": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "hybrid_feedback_solved_peak_slack": {
+          "min": 0.0,
+          "max": 0.00011
+        },
+        "hybrid_feedback_mean_actuator_usage": {
+          "min": 0.0,
+          "max": 1.0
+        }
+      },
+      "ended_by": {
+        "none_flagged": 2,
+        "fov_failure": 2
+      },
+      "scenes": [
+        {
+          "seed": 262000,
+          "completed": true,
+          "ended_by": [
+            "none_flagged"
+          ],
+          "fraction_commit_negative": 0.0,
+          "action_mean": 0.99905,
+          "action_min": 0.99101,
+          "action_max": 0.99989,
+          "range_min": 3.2279,
+          "range_max": 16.2921
+        },
+        {
+          "seed": 262001,
+          "completed": false,
+          "ended_by": [
+            "fov_failure"
+          ],
+          "fraction_commit_negative": 0.1667,
+          "action_mean": 0.39241,
+          "action_min": -0.29524,
+          "action_max": 0.90972,
+          "range_min": 16.0775,
+          "range_max": 16.7337
+        },
+        {
+          "seed": 262002,
+          "completed": true,
+          "ended_by": [
+            "none_flagged"
+          ],
+          "fraction_commit_negative": 0.0,
+          "action_mean": 0.982,
+          "action_min": 0.18765,
+          "action_max": 0.99947,
+          "range_min": 3.2164,
+          "range_max": 15.2764
+        },
+        {
+          "seed": 262003,
+          "completed": false,
+          "ended_by": [
+            "fov_failure"
+          ],
+          "fraction_commit_negative": 0.3542,
+          "action_mean": 0.26012,
+          "action_min": -0.97253,
+          "action_max": 0.99614,
+          "range_min": 14.9368,
+          "range_max": 18.709
+        }
+      ]
+    },
+    "replay_v2_262201_dead": {
+      "decisions": 470,
+      "negative": 14,
+      "fraction_negative": 0.029787234042553193,
+      "scene_mean_fraction": 0.066675,
+      "action_mean": 0.6992367872340426,
+      "action_min": -0.74736,
+      "action_max": 0.95766,
+      "true_range_min": 5.8978,
+      "true_range_max": 18.9042,
+      "feedback": {
+        "hybrid_feedback_fallback_fraction": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "hybrid_feedback_solved_peak_slack": {
+          "min": 0.0,
+          "max": 0.37544
+        },
+        "hybrid_feedback_mean_actuator_usage": {
+          "min": 0.0,
+          "max": 1.0
+        }
+      },
+      "ended_by": {
+        "time_failure": 3,
+        "fov_failure": 1
+      },
+      "scenes": [
+        {
+          "seed": 262000,
+          "completed": false,
+          "ended_by": [
+            "time_failure"
+          ],
+          "fraction_commit_negative": 0.0,
+          "action_mean": 0.78098,
+          "action_min": 0.47619,
+          "action_max": 0.95671,
+          "range_min": 8.4837,
+          "range_max": 16.2921
+        },
+        {
+          "seed": 262001,
+          "completed": false,
+          "ended_by": [
+            "fov_failure"
+          ],
+          "fraction_commit_negative": 0.2,
+          "action_mean": 0.40336,
+          "action_min": -0.74736,
+          "action_max": 0.839,
+          "range_min": 14.6798,
+          "range_max": 16.6788
+        },
+        {
+          "seed": 262002,
+          "completed": false,
+          "ended_by": [
+            "time_failure"
+          ],
+          "fraction_commit_negative": 0.0,
+          "action_mean": 0.77918,
+          "action_min": 0.09442,
+          "action_max": 0.95766,
+          "range_min": 5.8978,
+          "range_max": 15.2766
+        },
+        {
+          "seed": 262003,
+          "completed": false,
+          "ended_by": [
+            "time_failure"
+          ],
+          "fraction_commit_negative": 0.0667,
+          "action_mean": 0.577,
+          "action_min": -0.29361,
+          "action_max": 0.95202,
+          "range_min": 7.8335,
+          "range_max": 18.9042
+        }
+      ]
+    },
+    "replay_v3_262300_live": {
+      "decisions": 212,
+      "negative": 16,
+      "fraction_negative": 0.07547169811320754,
+      "scene_mean_fraction": 0.09947500000000001,
+      "action_mean": 0.7789309433962264,
+      "action_min": -0.37554,
+      "action_max": 0.99998,
+      "true_range_min": 3.2142,
+      "true_range_max": 30.0057,
+      "feedback": {
+        "hybrid_feedback_fallback_fraction": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "hybrid_feedback_solved_peak_slack": {
+          "min": 0.0,
+          "max": 6e-05
+        },
+        "hybrid_feedback_mean_actuator_usage": {
+          "min": 0.0,
+          "max": 1.0
+        }
+      },
+      "ended_by": {
+        "none_flagged": 2,
+        "fov_failure": 1,
+        "distance_failure": 1
+      },
+      "scenes": [
+        {
+          "seed": 262000,
+          "completed": true,
+          "ended_by": [
+            "none_flagged"
+          ],
+          "fraction_commit_negative": 0.0,
+          "action_mean": 0.92959,
+          "action_min": 0.5383,
+          "action_max": 0.99998,
+          "range_min": 3.2294,
+          "range_max": 17.0234
+        },
+        {
+          "seed": 262001,
+          "completed": false,
+          "ended_by": [
+            "fov_failure"
+          ],
+          "fraction_commit_negative": 0.1,
+          "action_mean": 0.40384,
+          "action_min": -0.07851,
+          "action_max": 0.87793,
+          "range_min": 14.6798,
+          "range_max": 16.6788
+        },
+        {
+          "seed": 262002,
+          "completed": true,
+          "ended_by": [
+            "none_flagged"
+          ],
+          "fraction_commit_negative": 0.0,
+          "action_mean": 0.99642,
+          "action_min": 0.97272,
+          "action_max": 0.9999,
+          "range_min": 3.2142,
+          "range_max": 15.2766
+        },
+        {
+          "seed": 262003,
+          "completed": false,
+          "ended_by": [
+            "distance_failure"
+          ],
+          "fraction_commit_negative": 0.2979,
+          "action_mean": 0.39126,
+          "action_min": -0.37554,
+          "action_max": 0.97859,
+          "range_min": 17.6625,
+          "range_max": 30.0057
+        }
+      ]
+    },
+    "replay_v3_262301_dead": {
+      "decisions": 470,
+      "negative": 20,
+      "fraction_negative": 0.0425531914893617,
+      "scene_mean_fraction": 0.228325,
+      "action_mean": 0.7480731276595745,
+      "action_min": -0.94937,
+      "action_max": 0.98041,
+      "true_range_min": 6.9987,
+      "true_range_max": 23.8381,
+      "feedback": {
+        "hybrid_feedback_fallback_fraction": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "hybrid_feedback_solved_peak_slack": {
+          "min": 0.0,
+          "max": 0.00012
+        },
+        "hybrid_feedback_mean_actuator_usage": {
+          "min": 0.0,
+          "max": 1.0
+        }
+      },
+      "ended_by": {
+        "time_failure": 3,
+        "fov_failure": 1
+      },
+      "scenes": [
+        {
+          "seed": 262000,
+          "completed": false,
+          "ended_by": [
+            "time_failure"
+          ],
+          "fraction_commit_negative": 0.0,
+          "action_mean": 0.8102,
+          "action_min": 0.53262,
+          "action_max": 0.97543,
+          "range_min": 9.1247,
+          "range_max": 16.2926
+        },
+        {
+          "seed": 262001,
+          "completed": false,
+          "ended_by": [
+            "fov_failure"
+          ],
+          "fraction_commit_negative": 0.9,
+          "action_mean": -0.6408,
+          "action_min": -0.94937,
+          "action_max": 0.71791,
+          "range_min": 14.6799,
+          "range_max": 16.6788
+        },
+        {
+          "seed": 262002,
+          "completed": false,
+          "ended_by": [
+            "time_failure"
+          ],
+          "fraction_commit_negative": 0.0,
+          "action_mean": 0.85565,
+          "action_min": 0.61591,
+          "action_max": 0.98041,
+          "range_min": 6.9987,
+          "range_max": 15.2766
+        },
+        {
+          "seed": 262003,
+          "completed": false,
+          "ended_by": [
+            "time_failure"
+          ],
+          "fraction_commit_negative": 0.0133,
+          "action_mean": 0.76355,
+          "action_min": -0.42602,
+          "action_max": 0.95928,
+          "range_min": 10.0841,
+          "range_max": 23.8381
+        }
+      ]
+    }
+  }
+}

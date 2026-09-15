@@ -1,0 +1,461 @@
+{
+  "stage": "T1",
+  "status": "completed",
+  "baseline": "3e5694c",
+  "code_parent": "ca42c3aa62ca01f8266bc8a8cc0128d47747acc0",
+  "task": "precapture_planning",
+  "reference": "fixed",
+  "perception": null,
+  "state_source": "truth",
+  "linearization": "analytic_local",
+  "seeds": [
+    262000,
+    262001,
+    262002,
+    262003,
+    262004,
+    262005,
+    262006,
+    262007,
+    262008,
+    262009,
+    262010,
+    262011
+  ],
+  "new_horizons": [
+    30,
+    35
+  ],
+  "reused_horizons": [
+    20,
+    50
+  ],
+  "reused_directory": "logs/upper_na_f1",
+  "timing": {
+    "serial_single_process": true,
+    "seed": 262000,
+    "steps": 300,
+    "horizons": [
+      20,
+      30,
+      35,
+      50
+    ],
+    "runtime_diagnostics": false,
+    "includes_cold_first_solve": true
+  },
+  "reachability_workers": 3,
+  "reachability_timing_not_reportable": true,
+  "additional_replays": "h20/h50 seeds 262005/262006: fill missing truth and actuator metrics; preserve originals",
+  "gate": "continue_T2",
+  "commands": [
+    [
+      "experiments.profile_precapture_mpc",
+      "--horizon",
+      "20",
+      "--seed",
+      "262000",
+      "--steps",
+      "300",
+      "--no-diagnostics",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\compute_h20.json"
+    ],
+    [
+      "experiments.profile_precapture_mpc",
+      "--horizon",
+      "30",
+      "--seed",
+      "262000",
+      "--steps",
+      "300",
+      "--no-diagnostics",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\compute_h30.json"
+    ],
+    [
+      "experiments.profile_precapture_mpc",
+      "--horizon",
+      "35",
+      "--seed",
+      "262000",
+      "--steps",
+      "300",
+      "--no-diagnostics",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\compute_h35.json"
+    ],
+    [
+      "experiments.profile_precapture_mpc",
+      "--horizon",
+      "50",
+      "--seed",
+      "262000",
+      "--steps",
+      "300",
+      "--no-diagnostics",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\compute_h50.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262000",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262000.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262001",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262001.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262002",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262002.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262003",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262003.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262004",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262004.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262005",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262005.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262006",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262006.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262007",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262007.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262008",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262008.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262009",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262009.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262010",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262010.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "30",
+      "--seed",
+      "262011",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h30_262011.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262000",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262000.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262001",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262001.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262002",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262002.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262003",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262003.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262004",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262004.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262005",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262005.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262006",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262006.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262007",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262007.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262008",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262008.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262009",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262009.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262010",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262010.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "35",
+      "--seed",
+      "262011",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h35_262011.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "20",
+      "--seed",
+      "262005",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h20_262005.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "20",
+      "--seed",
+      "262006",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h20_262006.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "50",
+      "--seed",
+      "262005",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h50_262005.json"
+    ],
+    [
+      "experiments.diagnose_precapture_reference",
+      "--horizon",
+      "50",
+      "--seed",
+      "262006",
+      "--guidance",
+      "fixed",
+      "--output",
+      "D:\\py\\DRL2\\logs\\p0_horizons_20260910\\fixed_h50_262006.json"
+    ]
+  ],
+  "failure_sets": {
+    "20": [
+      262001,
+      262005,
+      262006,
+      262011
+    ],
+    "30": [
+      262005,
+      262006,
+      262011
+    ],
+    "35": [
+      262005,
+      262006,
+      262011
+    ],
+    "50": [
+      262005,
+      262006
+    ]
+  },
+  "persistent_failure_seeds": [
+    262005,
+    262006
+  ],
+  "historical_replay_validation": [
+    {
+      "horizon": 20,
+      "seed": 262005,
+      "same_outcome_and_steps": true,
+      "wrench_norm_sequences_exact_equal": false
+    },
+    {
+      "horizon": 20,
+      "seed": 262006,
+      "same_outcome_and_steps": true,
+      "wrench_norm_sequences_exact_equal": false
+    },
+    {
+      "horizon": 50,
+      "seed": 262005,
+      "same_outcome_and_steps": true,
+      "wrench_norm_sequences_exact_equal": false
+    },
+    {
+      "horizon": 50,
+      "seed": 262006,
+      "same_outcome_and_steps": true,
+      "wrench_norm_sequences_exact_equal": false
+    }
+  ]
+}

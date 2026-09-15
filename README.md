@@ -4,28 +4,30 @@
 
 ## 当前状态
 
-共同基准为 `single_phase`：10–14 m 起始，五类约束从第一步起全程生效，一条控制律完成整段任务。Pure SAC 是已刻画的弱基线，Pure MPC 是实时性与安全性较强的经典基线。值耦合、目标相位、目标参数失配和目标状态观测误差四个探针经错误修正后均未在该温室版任务中找到可信的 SAC–MPC 独占缺口，因此混合控制训练仍暂停。上层最新转向要求保留 SAC–MPC 论文目标，不再推进无耦合路线 B；下一步先由用户在真实离散推力器与未建模目标动力学两个 MPC-hard 难点之间决策，再做无训练的最小缺口验证。
+截至 2026-09-15，T12 六个 SAC-MPC 模型已完成训练和固定 48 种子正式评估。预登记判据落入分叉 2：`arrival_condition` 相对 `radial_local` 显著改善可学性，但未稳定超过 Pure MPC，且成功时间和燃料更高；当前不支持“学习控制优于固定设定点”。训练与评估均使用完整真值状态 `perception=None`，不能写成局部视觉/EKF 结果。正式结论与审查边界见 `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`，精简机器证据见 `eval/results/t12_s10_20260915/`。
 
 ## 阅读顺序
 
-1. `CLAUDE.md`：唯一权威，包含研究主线、正式结果、纪律和陷阱。
-2. `HANDOFF_upper_v2_pivot.md`：最新上层战略转向、A/B 候选和先决策后验证闸门。
-3. `HANDOFF.md`：当前工程状态、停止闸门和执行入口。
-4. `docs/PROBE_RESULTS.md`：四个负结果及证据边界。
-5. `docs/EVIDENCE_INDEX.md`：日志、模型和论文证据索引。
-6. `docs/HISTORY.md`：已被后续结果取代的历史演进摘要。
+1. `CLAUDE.md`：研究纪律、系统边界和长期主线。
+2. `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`：T12/S10 正式结果、证据边界与上层待裁决项。
+3. `docs/T12_S10_EVAL_EXECUTION_ORDER.md`：本轮正式评估的预登记执行单与三分叉判据。
+4. `docs/PERCEPTION_PRECAPTURE_INTEGRATION.md`：未来感知接入提案，尚未执行。
+5. `docs/T12_LOCAL_RUNNING_HANDOFF_20260913.md`、`docs/T12_EXECUTION_ORDER.md`：训练期事实与历史执行单。
+6. `docs/T11_GATE_B_RULING.md`、`docs/T11_INTERFACE_CALIBRATION.md`：闸门 B 裁决与接口校准。
+7. `docs/EVIDENCE_INDEX.md`、`docs/REPRODUCIBILITY.md`：证据和复现索引。
+8. `docs/HISTORY.md`、`docs/handoffs/README.md`：被后续结果取代的演进与历史交接。
 
 旧的多份交接、探针操作说明和逐轮阶段报告已整合进上述文件；原文仍可从 Git 历史恢复，不再作为当前入口。
 
 ## 只读验证
 
-仓库虚拟环境启动器绑定的 Python 3.12.6 已不存在。当前可用的只读验证方式见 `docs/REPRODUCIBILITY.md`。最近一次完整回归为：
+T12 启动前完整回归为：
 
 ```text
-146 passed
+228 passed in 182.13s
 ```
 
-训练当前处于停止状态。恢复训练前必须先由用户与上层重新确认研究问题和实验因子。
+T12 训练与两轮评估原始产物分别保留在本机 `logs/t12_train/`、`logs/t12_eval/` 和 `logs/t12_eval_v2/`；不得因本次精简入库而删除或覆盖。
 
 ## 目录
 
@@ -34,6 +36,7 @@
 - `train/`、`eval/`、`experiments/`：训练、统一评价和诊断工具；
 - `tests/`：回归测试；
 - `logs/`：主要审计证据，失败实验也保留；
-- `models/`：本机未跟踪模型，仅作历史复核，不代表合格策略；
+- `models/`：本机未跟踪的历史最终模型；中间 checkpoint 已清理；
 - `References/`：对标论文；
-- `docs/`：当前状态、证据索引、复现方法和压缩历史。
+- `docs/`：当前状态、证据索引、复现方法、清理记录和历史 handoff 归档；
+- `local_artifacts/patches/`：本机未跟踪的旧阶段补丁归档，不是当前执行入口。
