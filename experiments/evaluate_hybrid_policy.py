@@ -28,10 +28,14 @@ import numpy as np
 
 from controllers.mpc.constraints import normalized_precapture_truth_margins
 from controllers.mpc.prediction import relative_to_vector
+from dynamics.relative import reconstruct_target_state
 from dynamics.types import GeneralizedForce
 from env.action import wrench_to_normalized
 from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
-from env.phase2_env import precapture_planning_environment_config
+from env.phase2_env import (
+    precapture_perception_environment_config,
+    precapture_planning_environment_config,
+)
 from eval.metrics import PRECAPTURE_MARGIN_KEYS, main_table_metrics
 from train.hybrid_configs import SAC_MPC_HYBRID
 
@@ -161,6 +165,27 @@ def parse_args() -> argparse.Namespace:
             "has to beat. 'random' is the floor."
         ),
     )
+    parser.add_argument(
+        "--perception",
+        action="store_true",
+        help=(
+            "Build the non-cooperative environment (A1 camera + relative EKF): "
+            "the 29D estimated observation and a live EKF estimate. Required for "
+            "--control-source estimated."
+        ),
+    )
+    parser.add_argument(
+        "--control-source",
+        choices=["truth", "estimated"],
+        default="truth",
+        help=(
+            "State the MPC flies on. 'truth' is the full-information controller; "
+            "'estimated' feeds the EKF estimate (and the target pose reconstructed "
+            "from the known chaser), so the controller coasts on a stale estimate "
+            "while the target is out of view -- the non-cooperative operational "
+            "baseline. Requires --perception."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -171,6 +196,9 @@ def main() -> None:
     partial_output = args.output.with_suffix(args.output.suffix + ".partial")
     if (args.model is None) == (args.control is None):
         raise ValueError("give exactly one of --model or --control")
+    control_source_estimated = args.control_source == "estimated"
+    if control_source_estimated and not args.perception:
+        raise ValueError("--control-source estimated requires --perception")
 
     policy = None
     if args.model is not None:
@@ -182,8 +210,13 @@ def main() -> None:
     controller_times_s: list[float] = []
     environment_times_s: list[float] = []
     generator = np.random.default_rng(args.seed)
+    base_environment_config = (
+        precapture_perception_environment_config()
+        if args.perception
+        else precapture_planning_environment_config()
+    )
     environment_config = replace(
-        precapture_planning_environment_config(), cache_target_trajectory=False
+        base_environment_config, cache_target_trajectory=False
     )
     task = environment_config.precapture_task
     entry_position = (
@@ -265,10 +298,19 @@ def main() -> None:
             for index in range(env.hybrid_config.decision_period_steps):
                 assert env.env.relative is not None
                 assert env.env.target_state is not None
+                if control_source_estimated:
+                    assert env.env.chaser_state is not None
+                    control_relative = env.env.observed_relative
+                    control_target = reconstruct_target_state(
+                        env.env.chaser_state, control_relative
+                    )
+                else:
+                    control_relative = env.env.relative
+                    control_target = env.env.target_state
                 started = perf_counter()
                 wrench, diagnostics = env.controller.command(
-                    relative_to_vector(env.env.relative),
-                    target_state=env.env.target_state,
+                    relative_to_vector(control_relative),
+                    target_state=control_target,
                     time_seconds=env.env.time_seconds,
                     terminal_latched=bool(info["terminal_region_active"]),
                     external_reference=waypoint,
