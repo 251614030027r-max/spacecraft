@@ -20,7 +20,7 @@ from dynamics.disturbance import zero_disturbance
 from dynamics.gravity import GravityOptions
 from dynamics.integrator import IntegrationDiagnostics, RK45Settings, propagate_rk45
 from dynamics.lie import adjoint, so3_log
-from dynamics.relative import RelativeState, relative_state
+from dynamics.relative import RelativeState, reconstruct_target_state, relative_state
 from env.observation_error import TargetStateEstimator
 from dynamics.types import GeneralizedForce, SpacecraftParameters, SpacecraftState
 from estimation import RelativeStateEKF
@@ -31,11 +31,13 @@ from env.observation import (
     PHASE2_MISSION_TARGET_TRANSLATION_OBSERVATION_SCHEMA,
     PHASE2_OBSERVATION_SCHEMA,
     PHASE2_PERCEPTION_OBSERVATION_SCHEMA,
+    PRECAPTURE_PLANNING_ESTIMATED_SCHEMA,
     PRECAPTURE_PLANNING_FULL_STATE_SCHEMA,
     build_observation,
     build_phase2_mission_observation,
     build_phase2_observation,
     build_phase2_perception_observation,
+    build_precapture_estimated_observation,
     build_precapture_full_state_observation,
 )
 from env.perception import (
@@ -512,7 +514,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         ):
             raise ValueError("Phase-2 axial sampling bounds are invalid")
         supported_schemas = (
-            {PRECAPTURE_PLANNING_FULL_STATE_SCHEMA}
+            {
+                PRECAPTURE_PLANNING_FULL_STATE_SCHEMA,
+                PRECAPTURE_PLANNING_ESTIMATED_SCHEMA,
+            }
             if c.precapture_planning_enabled
             else
             {
@@ -528,8 +533,14 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
             raise ValueError("unsupported Phase-2 observation schema")
         if c.perception is not None:
             if c.precapture_planning_enabled:
-                raise ValueError("precapture full-state P1 does not enable perception")
-            if (
+                if (
+                    c.phase2_observation_schema
+                    != PRECAPTURE_PLANNING_ESTIMATED_SCHEMA
+                ):
+                    raise ValueError(
+                        "precapture perception requires the 29D estimated schema"
+                    )
+            elif (
                 not c.phase2_mission_enabled
                 or c.phase2_observation_schema
                 != PHASE2_PERCEPTION_OBSERVATION_SCHEMA
@@ -541,7 +552,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 or c.phase2_observation_update_every > 1
             ):
                 raise ValueError("perception cannot reuse observation-error probes")
-        elif c.phase2_observation_schema == PHASE2_PERCEPTION_OBSERVATION_SCHEMA:
+        elif c.phase2_observation_schema in (
+            PHASE2_PERCEPTION_OBSERVATION_SCHEMA,
+            PRECAPTURE_PLANNING_ESTIMATED_SCHEMA,
+        ):
             raise ValueError("the perception schema requires a perception config")
         if c.phase2_distance_failure_penalty > 0.0:
             raise ValueError("Phase-2 distance-failure penalty must be non-positive")
@@ -753,6 +767,43 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         if self.config.precapture_planning_enabled:
             assert self.target_state is not None
             assert self.chaser_state is not None
+            if self._relative_ekf is not None:
+                # Non-cooperative path: the policy observes the EKF estimate and
+                # its uncertainty, not the truth. Reward, termination and geometry
+                # keep using self.relative (truth) elsewhere.
+                assert self._perception_measurement is not None
+                estimated_relative = self.observed_relative
+                estimated_target = reconstruct_target_state(
+                    self.chaser_state, estimated_relative
+                )
+                estimated_metrics = compute_precapture_metrics(
+                    estimated_target,
+                    self.chaser_state,
+                    estimated_relative,
+                    self.config.precapture_task,
+                    terminal_region_active=self._terminal_region_entered,
+                )
+                return build_precapture_estimated_observation(
+                    estimated_relative,
+                    metrics=estimated_metrics,
+                    task=self.config.precapture_task,
+                    target_angular_velocity_rad_s=estimated_target.omega,
+                    covariance=self._relative_ekf.covariance,
+                    initial_block_stds=self._relative_ekf.config.initial_block_stds,
+                    visible_feature_fraction=(
+                        self._perception_measurement.visible_count / 5.0
+                    ),
+                    attitude_scale_rad=self.config.observation_attitude_scale_rad,
+                    distance_scale_m=self.config.observation_distance_scale_m,
+                    angular_velocity_scale_rad_s=(
+                        self.config.observation_angular_velocity_scale_rad_s
+                    ),
+                    velocity_scale_m_s=self.config.observation_velocity_scale_m_s,
+                    target_angular_velocity_scale_rad_s=(
+                        self.config.phase2_observation_target_angular_velocity_scale_rad_s
+                    ),
+                    softsign_limit=self.config.observation_softsign_limit,
+                )
             precapture_metrics = compute_precapture_metrics(
                 self.target_state,
                 self.chaser_state,

@@ -17,6 +17,7 @@ from env.se3_rendezvous_env import SE3RendezvousConfig, SE3RendezvousEnv
 from env.observation import (
     PHASE2_MISSION_OBSERVATION_SCHEMA,
     PHASE2_PERCEPTION_OBSERVATION_SCHEMA,
+    PRECAPTURE_PLANNING_ESTIMATED_SCHEMA,
     PRECAPTURE_PLANNING_FULL_STATE_SCHEMA,
 )
 from env.perception import PerceptionConfig
@@ -150,6 +151,24 @@ def precapture_planning_environment_config() -> SE3RendezvousConfig:
     )
 
 
+def precapture_perception_environment_config() -> SE3RendezvousConfig:
+    """Non-cooperative precapture: A1 camera + relative EKF as the sole change.
+
+    Derived from ``precapture_planning_environment_config`` with perception
+    enabled, so the upper policy observes the EKF-estimated relative state and
+    its uncertainty (29D ``precapture_planning_estimated_v1_29d``) instead of the
+    truth full-state 24D. Truth still drives dynamics, reward, termination,
+    geometry and evaluation; ``perception=None`` reproduces the full-state task
+    bitwise.
+    """
+
+    return replace(
+        precapture_planning_environment_config(),
+        perception=PerceptionConfig(),
+        phase2_observation_schema=PRECAPTURE_PLANNING_ESTIMATED_SCHEMA,
+    )
+
+
 def terminal_phase_environment_config() -> SE3RendezvousConfig:
     """Terminal-only config retained for P0 MPC validation and later P3 reuse."""
 
@@ -177,6 +196,7 @@ __all__ = [
     "phase2_perception_environment_config",
     "perception_guidance_free_environment_config",
     "precapture_planning_environment_config",
+    "precapture_perception_environment_config",
     "phase2_s1v2_mission_config",
     "terminal_phase_environment_config",
 ]

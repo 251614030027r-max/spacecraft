@@ -26,6 +26,7 @@ PHASE2_MISSION_OBSERVATION_SCHEMA = (
 )
 PHASE2_PERCEPTION_OBSERVATION_SCHEMA = "phase2_perception_v1_29d"
 PRECAPTURE_PLANNING_FULL_STATE_SCHEMA = "precapture_planning_full_state_v1_24d"
+PRECAPTURE_PLANNING_ESTIMATED_SCHEMA = "precapture_planning_estimated_v1_29d"
 
 
 def _softsign(raw: np.ndarray, limit: float) -> np.ndarray:
@@ -398,4 +399,72 @@ def build_precapture_full_state_observation(
     )
     if observation.shape != (24,) or not np.all(np.isfinite(observation)):
         raise RuntimeError("invalid precapture full-state observation")
+    return observation.astype(np.float32)
+
+
+def build_precapture_estimated_observation(
+    relative: RelativeState,
+    *,
+    metrics: PrecaptureMetrics,
+    task: PrecaptureTaskConfig,
+    target_angular_velocity_rad_s: np.ndarray,
+    covariance: np.ndarray,
+    initial_block_stds: np.ndarray,
+    visible_feature_fraction: float,
+    attitude_scale_rad: float,
+    distance_scale_m: float,
+    angular_velocity_scale_rad_s: float,
+    velocity_scale_m_s: float,
+    target_angular_velocity_scale_rad_s: float = 0.05,
+    softsign_limit: float = 10.0,
+) -> np.ndarray:
+    """Non-cooperative precapture observation.
+
+    The 24D full-state core is built from the EKF-estimated relative state (and
+    the target pose reconstructed from the known chaser), then extended with the
+    four A1 covariance summaries and the visible-feature fraction, giving 29D.
+    Only the observation source changes: truth still drives dynamics, reward,
+    termination, geometry and evaluation. ``perception=None`` reproduces the 24D
+    full-state path bitwise.
+    """
+
+    covariance_value = np.asarray(covariance, dtype=np.float64)
+    block_initial = np.asarray(initial_block_stds, dtype=np.float64)
+    if (
+        covariance_value.shape != (12, 12)
+        or not np.all(np.isfinite(covariance_value))
+        or block_initial.shape != (4,)
+        or np.min(block_initial) <= 0.0
+        or not 0.0 <= visible_feature_fraction <= 1.0
+    ):
+        raise ValueError("perception covariance, scales, or visibility are invalid")
+    core = build_precapture_full_state_observation(
+        relative,
+        metrics=metrics,
+        task=task,
+        target_angular_velocity_rad_s=target_angular_velocity_rad_s,
+        attitude_scale_rad=attitude_scale_rad,
+        distance_scale_m=distance_scale_m,
+        angular_velocity_scale_rad_s=angular_velocity_scale_rad_s,
+        velocity_scale_m_s=velocity_scale_m_s,
+        target_angular_velocity_scale_rad_s=target_angular_velocity_scale_rad_s,
+        softsign_limit=softsign_limit,
+    )
+    diagonal = np.maximum(np.diag(covariance_value), 0.0)
+    block_rms = np.array(
+        [
+            np.sqrt(np.mean(diagonal[0:3])),
+            np.sqrt(np.mean(diagonal[3:6])),
+            np.sqrt(np.mean(diagonal[6:9])),
+            np.sqrt(np.mean(diagonal[9:12])),
+        ],
+        dtype=np.float64,
+    )
+    log_ratio = np.log(np.maximum(block_rms, 1.0e-12) / block_initial)
+    uncertainty = log_ratio / (1.0 + np.abs(log_ratio))
+    observation = np.concatenate(
+        (core.astype(np.float64), uncertainty, np.array([visible_feature_fraction]))
+    )
+    if observation.shape != (29,) or not np.all(np.isfinite(observation)):
+        raise RuntimeError("invalid precapture estimated observation")
     return observation.astype(np.float32)
