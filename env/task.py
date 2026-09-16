@@ -127,6 +127,15 @@ class PrecaptureTaskConfig:
     entry_disc_radius_m: float = float(4.5 * np.tan(np.deg2rad(35.0)))
     outer_inertial_speed_limit_m_s: float = 2.00
     outer_radial_brake_accel_m_s2: float = 0.020
+    #: Physically-honest entry-phase gate (Path 2). A legal entry/capture
+    #: requires the tumbling port's outward normal to point within
+    #: ``arccos(entry_phase_gate_cos)`` of the fixed inertial staging direction
+    #: -- the fixture must face the approach for the end effector to seat.
+    #: ``-1.0`` disables the gate (any phase admissible) and reproduces the
+    #: frozen precapture task bitwise; a value in (-1, 1) opens a favourable
+    #: window once per tumble, making "when to enter" a real long-horizon
+    #: decision. The staging direction is set per episode by the environment.
+    entry_phase_gate_cos: float = -1.0
     corridor_half_angle_rad: float = float(np.deg2rad(35.0))
     fov_half_angle_rad: float = float(np.deg2rad(50.0))
     terminal_total_speed_limit_m_s: float = 0.35
