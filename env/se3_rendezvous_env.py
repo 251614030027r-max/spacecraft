@@ -79,6 +79,7 @@ from env.task import (
     compute_task_metrics,
     compute_precapture_metrics,
     evaluate_terminal_entry_crossing,
+    precapture_entry_phase_favourability,
 )
 from env.termination import ErrorMetrics, SuccessThresholds, compute_error_metrics
 
@@ -372,6 +373,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._mission_phase = 0
         self._terminal_region_entered = False
         self._illegal_terminal_entry_count = 0
+        self._staging_direction_inertial: np.ndarray | None = None
         self._terminal_entry_evaluation: TerminalEntryEvaluation | None = None
         self._waypoint_reached = False
         self._constraint_success = True
@@ -761,6 +763,34 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         )
         return target_twist[:3]
 
+    @property
+    def entry_phase_favourability(self) -> float:
+        """Alignment of the sweeping capture corridor with the fixed inertial
+        staging direction, in [-1, 1] (precapture only). +1 = fixture faces the
+        approach (favourable window), -1 = faces away."""
+
+        assert self.target_state is not None
+        assert self._staging_direction_inertial is not None
+        return precapture_entry_phase_favourability(
+            self.target_state,
+            self._staging_direction_inertial,
+            self.config.precapture_task,
+        )
+
+    def _entry_phase_gate_ok(self) -> bool:
+        """Path 2 gate: a legal entry also needs a favourable phase, i.e. the
+        tumbling port normal within ``arccos(gate_cos)`` of the staging
+        direction. Disabled (always True) when ``entry_phase_gate_cos <= -1``,
+        which is the frozen task."""
+
+        task = self.config.precapture_task
+        if task.entry_phase_gate_cos <= -1.0:
+            return True
+        return (
+            self.entry_phase_favourability
+            >= task.entry_phase_gate_cos - task.constraint_tolerance
+        )
+
     def _observation(self) -> np.ndarray:
         self._require_state()
         assert self.relative is not None
@@ -1149,6 +1179,20 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         )
         self.chaser_parameters = options.get("chaser_parameters") or chaser_parameters()
         self.relative = relative_state(self.target_state, self.chaser_state)
+        # Fix the outer staging direction for the episode: the inertial line from
+        # the target centre to the chaser at reset. It does NOT co-rotate, so the
+        # tumbling port normal sweeps past it once per period -- the favourable
+        # entry window. Frozen here; read by the phase gate and the observation.
+        if self.config.precapture_planning_enabled:
+            staging = self.target_state.rotation @ self.relative.position
+            staging_norm = float(np.linalg.norm(staging))
+            self._staging_direction_inertial = (
+                staging / staging_norm
+                if staging_norm > np.finfo(np.float64).eps
+                else np.array([1.0, 0.0, 0.0])
+            )
+        else:
+            self._staging_direction_inertial = None
         self.time_seconds = 0.0
         self.step_count = 0
         # Per-episode observation estimator (partial observability). The estimate
@@ -1710,7 +1754,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                     self.config.precapture_task,
                 )
                 if self._terminal_entry_evaluation.crossed:
-                    if self._terminal_entry_evaluation.legal:
+                    if (
+                        self._terminal_entry_evaluation.legal
+                        and self._entry_phase_gate_ok()
+                    ):
                         self._terminal_region_entered = True
                         precapture = compute_precapture_metrics(
                             self.target_state,

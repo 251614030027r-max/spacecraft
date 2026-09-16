@@ -169,6 +169,28 @@ def precapture_perception_environment_config() -> SE3RendezvousConfig:
     )
 
 
+def precapture_staging_environment_config(
+    entry_phase_gate_deg: float = 60.0,
+) -> SE3RendezvousConfig:
+    """Non-corotating staging + phase-gated capture (Path 2).
+
+    Derived from ``precapture_planning_environment_config`` with the entry-phase
+    gate enabled: a legal capture requires the tumbling port's outward normal to
+    point within ``entry_phase_gate_deg`` of the fixed inertial staging direction
+    (the reset-time approach line, held in inertial). The favourable window opens
+    once per tumble, so "when to enter" becomes a real long-horizon decision.
+    All other geometry, constraints, reward and the strong MPC are unchanged;
+    ``entry_phase_gate_deg >= 180`` reproduces the frozen task.
+    """
+
+    base = precapture_planning_environment_config()
+    gate_cos = float(np.cos(np.deg2rad(entry_phase_gate_deg)))
+    return replace(
+        base,
+        precapture_task=replace(base.precapture_task, entry_phase_gate_cos=gate_cos),
+    )
+
+
 def terminal_phase_environment_config() -> SE3RendezvousConfig:
     """Terminal-only config retained for P0 MPC validation and later P3 reuse."""
 
@@ -197,6 +219,7 @@ __all__ = [
     "perception_guidance_free_environment_config",
     "precapture_planning_environment_config",
     "precapture_perception_environment_config",
+    "precapture_staging_environment_config",
     "phase2_s1v2_mission_config",
     "terminal_phase_environment_config",
 ]
