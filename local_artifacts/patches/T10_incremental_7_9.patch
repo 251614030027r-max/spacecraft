@@ -1,0 +1,2149 @@
+From c58819e94cecb6f716b67db7985bae5e6b5e0e39 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 10:59:10 +0000
+Subject: [PATCH 7/9] tool: aggregate the commit-time sweep into the headroom
+ answer
+
+Turns the commit_now baseline plus the commit_at runs into the four things
+T10 section 5 asks for: the rescue rate over the seeds the fixed setpoint
+fails, the working commit times and cheapest one per rescued seed, the shape
+of the feasible commit set, and the reverse cost on seeds the baseline already
+completes.
+
+The shape matters as much as the rate. If one commit time rescues every seed
+the report says so explicitly -- a constant is not a policy, and that is gate B
+telling the round to stop rather than train.
+
+Written against the schema evaluate_arrival_condition_script already emits, so
+the analysis costs no round of its own once the data lands.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ experiments/summarize_headroom.py | 160 ++++++++++++++++++++++++++++++
+ 1 file changed, 160 insertions(+)
+ create mode 100644 experiments/summarize_headroom.py
+
+diff --git a/experiments/summarize_headroom.py b/experiments/summarize_headroom.py
+new file mode 100644
+index 0000000..9262938
+--- /dev/null
++++ b/experiments/summarize_headroom.py
+@@ -0,0 +1,160 @@
++"""Aggregate the commit-time sweep into the headroom answer.
++
++Takes the ``commit_now`` baseline and the ``commit_at`` runs produced by
++``experiments.evaluate_arrival_condition_script`` and reports the four things
++``docs/T10_EXECUTION_ORDER.md`` section 5 asks for:
++
++1. the rescue rate -- of the seeds the fixed setpoint fails, how many complete
++   under *some* commit time;
++2. per rescued seed, the commit times that work, the cheapest one, and what it
++   costs in time, fuel and illegal crossings;
++3. the shape of the feasible commit set -- one interval or several, which is
++   what says whether the decision is a smooth function of the state;
++4. the reverse cost -- seeds the fixed setpoint completes that a non-zero
++   commit time breaks.
++
++Gate B in the execution order turns on the first and third of those: no
++rescues, or every seed rescued by the *same* commit time, both mean no learned
++layer is needed. A constant is not a policy.
++
++Usage::
++
++    python -B -m experiments.summarize_headroom \\
++        --baseline logs/t10/pure_mpc_h35_48.json \\
++        --sweep logs/t10/commit_at_*.json
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from collections import defaultdict
++from pathlib import Path
++from typing import Any
++
++
++def load(paths: list[Path]) -> list[dict[str, Any]]:
++    records: list[dict[str, Any]] = []
++    for path in paths:
++        payload = json.loads(path.read_text())
++        records.extend(payload if isinstance(payload, list) else [payload])
++    return records
++
++
++def contiguity(times: list[float], grid: list[float]) -> str:
++    """Is the successful set one run of the sampled grid, or several?"""
++
++    if not times:
++        return "empty"
++    index = sorted(grid.index(t) for t in times)
++    runs = 1
++    for previous, current in zip(index, index[1:]):
++        if current != previous + 1:
++            runs += 1
++    if runs == 1:
++        return "contiguous" if len(index) > 1 else "single"
++    return f"{runs} fragments"
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--baseline", type=Path, required=True)
++    parser.add_argument("--sweep", type=Path, nargs="+", required=True)
++    parser.add_argument("--output", type=Path)
++    args = parser.parse_args()
++
++    baseline = {r["seed"]: r for r in load([args.baseline])}
++    sweep = load(list(args.sweep))
++    by_seed: dict[int, dict[float, dict[str, Any]]] = defaultdict(dict)
++    for record in sweep:
++        by_seed[record["seed"]][float(record["commit_time_s"])] = record
++    grid = sorted({float(r["commit_time_s"]) for r in sweep})
++
++    for record in sweep:
++        if record["policy"] != "commit_at":
++            raise ValueError("sweep files must all be commit_at runs")
++    for record in baseline.values():
++        if record["policy"] != "commit_now":
++            raise ValueError("the baseline must be a commit_now run")
++
++    failed = sorted(s for s, r in baseline.items() if not r["completed"])
++    completed = sorted(s for s, r in baseline.items() if r["completed"])
++    swept_failed = [s for s in failed if s in by_seed]
++    rescued: list[int] = []
++    lines: list[str] = []
++
++    lines.append(f"commit grid: {grid}")
++    lines.append(
++        f"baseline (commit_now): {len(completed)}/{len(baseline)} completed; "
++        f"{len(failed)} failed, {len(swept_failed)} of those swept"
++    )
++    lines.append("")
++    lines.append("RESCUE -- seeds the fixed setpoint fails")
++    lines.append(
++        f"{'seed':>7s} {'works at':<28s} {'shape':<14s} "
++        f"{'best T':>7s} {'t_s':>7s} {'fuel':>8s} {'illegal':>7s}"
++    )
++    for seed in swept_failed:
++        runs = by_seed[seed]
++        good = sorted(t for t, r in runs.items() if r["completed"])
++        if not good:
++            lines.append(f"{seed:>7d} {'-- none --':<28s} {'':<14s}")
++            continue
++        rescued.append(seed)
++        best = min(good, key=lambda t: runs[t]["force_impulse_n_s"])
++        record = runs[best]
++        lines.append(
++            f"{seed:>7d} {str(good):<28s} {contiguity(good, grid):<14s} "
++            f"{best:>7.0f} {record['end_time_s']:>7.1f} "
++            f"{record['force_impulse_n_s']:>8.1f} "
++            f"{record['illegal_terminal_entry_count']:>7d}"
++        )
++    rate = len(rescued) / len(swept_failed) if swept_failed else 0.0
++    lines.append("")
++    lines.append(f"rescue rate: {len(rescued)}/{len(swept_failed)} = {rate:.1%}")
++
++    if rescued:
++        best_times = {
++            seed: min(
++                (t for t, r in by_seed[seed].items() if r["completed"]),
++                key=lambda t: by_seed[seed][t]["force_impulse_n_s"],
++            )
++            for seed in rescued
++        }
++        distinct = sorted(set(best_times.values()))
++        shared = [
++            t for t in grid
++            if all(by_seed[s].get(t, {}).get("completed") for s in rescued)
++        ]
++        lines.append(f"cheapest commit time per rescued seed: {best_times}")
++        lines.append(f"distinct best commit times: {distinct}")
++        lines.append(
++            f"commit times that rescue EVERY rescued seed: {shared}"
++            + ("  <-- a constant would do; that is not a policy" if shared else "")
++        )
++
++    reverse = []
++    for seed in completed:
++        runs = by_seed.get(seed, {})
++        broken = sorted(t for t, r in runs.items() if not r["completed"])
++        if broken:
++            reverse.append((seed, broken))
++    lines.append("")
++    lines.append("REVERSE COST -- seeds the fixed setpoint completes")
++    if not by_seed.keys() & set(completed):
++        lines.append("  (no completing seed was swept)")
++    elif not reverse:
++        lines.append("  none broken by any swept commit time")
++    else:
++        for seed, broken in reverse:
++            lines.append(f"  {seed}: broken at {broken}")
++
++    report = "\n".join(lines)
++    print(report)
++    if args.output:
++        args.output.parent.mkdir(parents=True, exist_ok=True)
++        args.output.write_text(report + "\n")
++
++
++if __name__ == "__main__":
++    main()
+-- 
+2.43.0
+
+
+From c35834a29fe3a86b542297ee34273b2d49182b60 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 12:12:16 +0000
+Subject: [PATCH 8/9] measure: commit timing is state-dependent, and no
+ constant beats the fixed setpoint
+
+Headroom measurement asked by T10 section 5, on the corrected lower layer, h35,
+twelve seeds, scripted 2D action, no training and no checkpoints. All 44
+episodes solve the QP on every step, so these are task-level outcomes rather
+than solver artifacts.
+
+The fixed setpoint completes 8/12. Choosing the commit time per seed reaches
+11/12. Every constant commit time measured over all twelve is worse than the
+fixed setpoint: T=95 gives 7/12, T=110 gives 6/12, and both break four of the
+eight the fixed setpoint completes.
+
+The twelve seeds split into two groups whose feasible commit sets are disjoint:
+four complete only at T=0, three only at T>=95, four at both, one at neither.
+262001's feasible set is a single grid point wide, which the first 30 s grid
+missed entirely.
+
+The extra completions are not taken out of the existing ones. On all eight
+baseline-completing seeds the per-state choice picks T=0, so it is the fixed
+setpoint there bitwise; mean fuel rises from 173.3 to 293.4 N s purely because
+three episodes that finished nowhere now finish, at 406 to 765 N s each.
+
+Stated as an oracle, not a controller: the commit time was chosen per seed
+knowing the outcome, so this is an upper bound on what a state-dependent rule
+could reach and must never appear as a main-table row. It establishes that the
+rule depends on the state; it does not establish that the rule must be learned,
+which is the next comparison rather than a step to skip. n=12 on a seven-point
+grid; the 48-seed version still belongs to the lower window.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ docs/T10_HEADROOM_RESULT.md                   | 134 ++++++++++
+ .../t10_headroom/baseline_commit_now_h35.json | 242 ++++++++++++++++++
+ .../commit_at_T110_completing.json            | 178 +++++++++++++
+ logs/t10_headroom/commit_at_T110_failing.json |  90 +++++++
+ logs/t10_headroom/commit_at_T125_failing.json |  90 +++++++
+ logs/t10_headroom/commit_at_T140_failing.json |  90 +++++++
+ logs/t10_headroom/commit_at_T20_failing.json  |  90 +++++++
+ logs/t10_headroom/commit_at_T50_failing.json  |  90 +++++++
+ logs/t10_headroom/commit_at_T80_failing.json  |  90 +++++++
+ .../commit_at_T95_completing.json             | 178 +++++++++++++
+ logs/t10_headroom/commit_at_T95_failing.json  |  90 +++++++
+ 11 files changed, 1362 insertions(+)
+ create mode 100644 docs/T10_HEADROOM_RESULT.md
+ create mode 100644 logs/t10_headroom/baseline_commit_now_h35.json
+ create mode 100644 logs/t10_headroom/commit_at_T110_completing.json
+ create mode 100644 logs/t10_headroom/commit_at_T110_failing.json
+ create mode 100644 logs/t10_headroom/commit_at_T125_failing.json
+ create mode 100644 logs/t10_headroom/commit_at_T140_failing.json
+ create mode 100644 logs/t10_headroom/commit_at_T20_failing.json
+ create mode 100644 logs/t10_headroom/commit_at_T50_failing.json
+ create mode 100644 logs/t10_headroom/commit_at_T80_failing.json
+ create mode 100644 logs/t10_headroom/commit_at_T95_completing.json
+ create mode 100644 logs/t10_headroom/commit_at_T95_failing.json
+
+diff --git a/docs/T10_HEADROOM_RESULT.md b/docs/T10_HEADROOM_RESULT.md
+new file mode 100644
+index 0000000..8e23818
+--- /dev/null
++++ b/docs/T10_HEADROOM_RESULT.md
+@@ -0,0 +1,134 @@
++# 提交时机是状态相关的:没有常数能拿到固定设定点拿不到的东西
++
++测于 2026-09-12,上层沙箱,h35,冻结的下层(门控已修正),**无训练、无 checkpoint**。
++复算见第 5 节。这是 `docs/T10_EXECUTION_ORDER.md` §5/§6 要的 headroom 测量,
++在 12 个历史种子上先做了一遍;48 种子的全量版本仍由下层执行。
++
++---
++
++## 1. 一句话
++
++**固定设定点完成 8/12;按状态选择提交时机能到 11/12;而测过的每一个常数提交时机
++都不如固定设定点。** 12 个种子分成两组,可行提交集**不相交**。
++
++---
++
++## 2. 怎么测的
++
++上层动作是冻结的 2D `arrival_condition`,脚本驱动,不涉及任何策略:
++
++- `commit_now` ＝ `a = (+1, ·)`,**逐位等于固定设定点 Pure MPC**(已在 262005/h35
++  上逐项核对过与 `logs/terminal_gate/gate_h35.json` 相同);
++- `commit_at T` ＝ t < T 发 `a = (-1, 0)`(保持**惯性冻结点**),t ≥ T 发 `a = (+1, 0)`。
++
++栅格 T ∈ {20, 50, 80, 95, 110, 125, 140} s,目标自旋周期是 152.4 s,回合上限 300 s。
++失败种子跑全部 7 个 T;完成种子跑 T = 95 和 110(反向代价)。
++**全部 44 个回合 `qp_infeasible_steps` 均为 0** —— 下层清洗是干净的,这些都是任务级
++结果,不是求解器产物。
++
++---
++
++## 3. 结果
++
++### 3.1 每个种子的可行提交集
++
++| 种子 | T=0(固定设定点) | 可行 T | 最省 T | 该 T 下 |
++|---|---|---|---:|---|
++| 262000 | 完成 69.0 s | **{0}** | 0 | 69.0 s / 172.5 N·s |
++| 262001 | 失败 | **{95}** | 95 | 178.7 s / 670.5 N·s |
++| 262002 | 完成 72.2 s | **{0}** | 0 | 72.2 s / 147.3 N·s |
++| 262003 | 完成 95.4 s | {0, 95, 110} | 0 | 95.4 s / 191.0 N·s |
++| 262004 | 完成 77.0 s | **{0}** | 0 | 77.0 s / 259.8 N·s |
++| 262005 | 失败 | **{95, 110, 125, 140}** | 95 | 195.5 s / 406.4 N·s |
++| 262006 | 失败 | **空** | — | — |
++| 262007 | 完成 83.0 s | {0, 95, 110} | 0 | 83.0 s / 160.3 N·s |
++| 262008 | 完成 75.0 s | {0, 95, 110} | 0 | 75.0 s / 180.9 N·s |
++| 262009 | 完成 85.3 s | {0, 95, 110} | 0 | 85.3 s / 130.2 N·s |
++| 262010 | 完成 71.8 s | **{0}** | 0 | 71.8 s / 144.2 N·s |
++| 262011 | 失败 | **{95, 110}** | 95 | 189.8 s / 764.7 N·s |
++
++分组:
++
++- **只有 T=0 可行**:262000, 262002, 262004, 262010（4 个）
++- **只有 T≥95 可行**:262001, 262005, 262011（3 个）
++- 两边都可行:262003, 262007, 262008, 262009（4 个）
++- 都不可行:262006（1 个）
++
++**前两组的可行集不相交。** 这是"决策必须依赖状态"的直接形式。
++
++### 3.2 常数 vs 逐状态
++
++只比较在**全部 12 个种子**上都测过的提交时机:
++
++| | 完成 | 成功平均时间 | 成功平均力冲量 |
++|---|---:|---:|---:|
++| 常数 T=0（固定设定点） | **8/12** | 78.6 s | **173.3 N·s** |
++| 常数 T=95 | 7/12 | 184.4 s | 525.6 N·s |
++| 常数 T=110 | 6/12 | 198.2 s | 538.1 N·s |
++| **逐状态 oracle** | **11/12** | 108.4 s | 293.4 N·s |
++
++T=20/50/80/125/140 只在失败种子上测过,它们分别救回 0、0、0、1、1 个,所以**上界**
++就是 8/12、8/12、8/12、9/12、9/12,而且都还没减去反向代价。
++
++### 3.3 反向代价是真实的
++
++常数 T=110 把固定设定点本来完成的 8 个种子弄坏 4 个(262000、262002 超时;
++262004、262010 破限);常数 T=95 同样弄坏 4 个。等待不是免费的:被强行等待的种子
++力冲量从 130–260 N·s 涨到 414–641 N·s。
++
++### 3.4 headroom 在已完成的种子上是免费的
++
++oracle 在 8 个基线完成的种子上**一律选 T=0**,所以在那 8 个上它**就是**固定设定点,
++逐位相同,配对燃料不变。平均燃料从 173.3 涨到 293.4 N·s 完全来自新增的 3 个完成
++(406.4 / 670.5 / 764.7 N·s)。
++
++**换句话说:多出来的 3 个完成是在原本颗粒无收的地方买到的,不是从已有的成绩上扣的。**
++
++---
++
++## 4. 这支持什么、不支持什么
++
++**支持(闸门 B 通过):**
++
++1. 任务级决策余量存在,而且不小 —— 8/12 → 11/12。
++2. 它**不能**用一个常数拿到。测过的常数没有一个达到 8/12,更不用说超过。
++3. 可行集随状态变化,且两组互不相交;262001 的窗口只有一个栅格点宽。
++   这正是"需要一个状态相关的规则"的形式,也正是 `a_commit` 参数化的那个量。
++
++**不支持 / 必须一起讲清楚:**
++
++1. **这是 oracle,不是控制器。** T 是知道结果之后按种子挑的,它是**状态相关规则的
++   性能上界**,不是可达结果。**它永远不能作为主表的一行。** 一个学习或手写的规则
++   能逼近多少,是后面要测的,不是这里证明的。
++2. **n=12,栅格 7 个点。** 262001 的可行集只有一个点宽,说明栅格太粗;更细的栅格
++   可能救回 262006,也可能改变别的种子的集合。48 种子的全量版本仍然必须做。
++3. **这不证明"必须学习"。** 它证明规则依赖状态。一个手写的状态相关规则也可能拿到
++   同样的东西 —— 那正是接下来该比的对象,而不是可以跳过的一步。
++4. **262006 在 7 个提交时机下全败**,与它此前"四族位置决策 + 三种姿态模式都救不回"
++   的记录一致。仍按个案限制处理,不提出修复。
++5. 燃料是最终判据。多出的 3 个完成每个花 406–765 N·s,是顺利完成种子的 2.4–5.9 倍。
++   任何主张都必须把这条代价写在旁边。
++
++---
++
++## 5. 复算
++
++```
++# 基线（＝固定设定点）
++python -B -m experiments.evaluate_arrival_condition_script --horizon 35 \
++  --policy commit_now --seeds 262000 ... 262011 \
++  --output logs/t10_headroom/baseline_commit_now_h35.json
++
++# 某个提交时机
++python -B -m experiments.evaluate_arrival_condition_script --horizon 35 \
++  --policy commit_at --commit-time-s 95 --seeds ... \
++  --output logs/t10_headroom/commit_at_T95_failing.json
++
++# 汇总
++python -B -m experiments.summarize_headroom \
++  --baseline logs/t10_headroom/baseline_commit_now_h35.json \
++  --sweep logs/t10_headroom/commit_at_T*.json
++```
++
++产物在 `logs/t10_headroom/`。基线那一份由 `experiments.diagnose_terminal_gate`
++在同一份代码上产出,已在 262005 上逐项核对与 `commit_now` 相同。
+diff --git a/logs/t10_headroom/baseline_commit_now_h35.json b/logs/t10_headroom/baseline_commit_now_h35.json
+new file mode 100644
+index 0000000..0676e43
+--- /dev/null
++++ b/logs/t10_headroom/baseline_commit_now_h35.json
+@@ -0,0 +1,242 @@
++[
++  {
++    "seed": 262000,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 69.0,
++    "steps": 690,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 172.479,
++    "torque_impulse_nm_s": 6.4606,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.205,
++    "final_fov_margin_rad": 0.8658,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262001,
++    "horizon": 35,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 351.142,
++    "torque_impulse_nm_s": 3.9343,
++    "illegal_terminal_entry_count": 2,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8727,
++    "time_failure": true,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262002,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 72.2,
++    "steps": 722,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 147.325,
++    "torque_impulse_nm_s": 7.2794,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.197,
++    "final_fov_margin_rad": 0.8566,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262003,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 95.4,
++    "steps": 954,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 190.982,
++    "torque_impulse_nm_s": 9.2043,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.159,
++    "final_fov_margin_rad": 0.8284,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262004,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 77.0,
++    "steps": 770,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 259.835,
++    "torque_impulse_nm_s": 4.7124,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.197,
++    "final_fov_margin_rad": 0.8578,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262005,
++    "horizon": 35,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 636.936,
++    "torque_impulse_nm_s": 34.6262,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8724,
++    "time_failure": true,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262006,
++    "horizon": 35,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 584.482,
++    "torque_impulse_nm_s": 23.5563,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8726,
++    "time_failure": true,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262007,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 83.0,
++    "steps": 830,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 160.303,
++    "torque_impulse_nm_s": 6.7997,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.196,
++    "final_fov_margin_rad": 0.857,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262008,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 75.0,
++    "steps": 750,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 180.913,
++    "torque_impulse_nm_s": 3.1638,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.207,
++    "final_fov_margin_rad": 0.8647,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262009,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 85.3,
++    "steps": 853,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 130.239,
++    "torque_impulse_nm_s": 3.1423,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.211,
++    "final_fov_margin_rad": 0.8689,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262010,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 71.8,
++    "steps": 718,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 144.217,
++    "torque_impulse_nm_s": 6.548,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.194,
++    "final_fov_margin_rad": 0.8566,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262011,
++    "horizon": 35,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 378.065,
++    "torque_impulse_nm_s": 13.7966,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8726,
++    "time_failure": true,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  }
++]
+\ No newline at end of file
+diff --git a/logs/t10_headroom/commit_at_T110_completing.json b/logs/t10_headroom/commit_at_T110_completing.json
+new file mode 100644
+index 0000000..a2caa8e
+--- /dev/null
++++ b/logs/t10_headroom/commit_at_T110_completing.json
+@@ -0,0 +1,178 @@
++[
++  {
++    "seed": 262000,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 612.742,
++    "torque_impulse_nm_s": 8.835,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8712,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.3766,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262002,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 619.397,
++    "torque_impulse_nm_s": 12.263,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8715,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 15.3114,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262003,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 186.5,
++    "steps": 1865,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 485.037,
++    "torque_impulse_nm_s": 5.5755,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.211,
++    "final_fov_margin_rad": 0.8717,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.6684,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262004,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 90.6,
++    "steps": 906,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 313.299,
++    "torque_impulse_nm_s": 9.9661,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 21.062,
++    "final_fov_margin_rad": -0.002,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.8116,
++    "last_waypoint_radius_m": 18.8116
++  },
++  {
++    "seed": 262007,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 208.1,
++    "steps": 2081,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 484.681,
++    "torque_impulse_nm_s": 7.2584,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.198,
++    "final_fov_margin_rad": 0.8565,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.7623,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262008,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 186.8,
++    "steps": 1868,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 641.209,
++    "torque_impulse_nm_s": 10.4278,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.122,
++    "final_fov_margin_rad": 0.8232,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 17.3529,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262009,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 194.8,
++    "steps": 1948,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 414.268,
++    "torque_impulse_nm_s": 5.2271,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.21,
++    "final_fov_margin_rad": 0.8648,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 19.6335,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262010,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 101.1,
++    "steps": 1011,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 321.893,
++    "torque_impulse_nm_s": 9.6512,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 17.518,
++    "final_fov_margin_rad": -0.002,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 15.6488,
++    "last_waypoint_radius_m": 15.6488
++  }
++]
+\ No newline at end of file
+diff --git a/logs/t10_headroom/commit_at_T110_failing.json b/logs/t10_headroom/commit_at_T110_failing.json
+new file mode 100644
+index 0000000..bbeb36d
+--- /dev/null
++++ b/logs/t10_headroom/commit_at_T110_failing.json
+@@ -0,0 +1,90 @@
++[
++  {
++    "seed": 262001,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 1021.694,
++    "torque_impulse_nm_s": 44.4693,
++    "illegal_terminal_entry_count": 2,
++    "terminal_region_active": false,
++    "final_range_m": 3.001,
++    "final_fov_margin_rad": 0.853,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.787,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262005,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 207.1,
++    "steps": 2071,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 410.881,
++    "torque_impulse_nm_s": 7.5583,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.189,
++    "final_fov_margin_rad": 0.853,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.6962,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262006,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 57.0,
++    "steps": 570,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 284.381,
++    "torque_impulse_nm_s": 9.8017,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 19.05,
++    "final_fov_margin_rad": -0.0051,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 17.8419,
++    "last_waypoint_radius_m": 17.8419
++  },
++  {
++    "seed": 262011,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 110.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 205.9,
++    "steps": 2059,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 792.446,
++    "torque_impulse_nm_s": 12.392,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.024,
++    "final_fov_margin_rad": 0.86,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.6582,
++    "last_waypoint_radius_m": 3.0
++  }
++]
+\ No newline at end of file
+diff --git a/logs/t10_headroom/commit_at_T125_failing.json b/logs/t10_headroom/commit_at_T125_failing.json
+new file mode 100644
+index 0000000..0cf2aa1
+--- /dev/null
++++ b/logs/t10_headroom/commit_at_T125_failing.json
+@@ -0,0 +1,90 @@
++[
++  {
++    "seed": 262001,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 125.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 1058.088,
++    "torque_impulse_nm_s": 44.758,
++    "illegal_terminal_entry_count": 2,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8572,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.787,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262005,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 125.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 217.6,
++    "steps": 2176,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 417.901,
++    "torque_impulse_nm_s": 7.9298,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.195,
++    "final_fov_margin_rad": 0.8581,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.6962,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262006,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 125.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 57.0,
++    "steps": 570,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 284.381,
++    "torque_impulse_nm_s": 9.8017,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 19.05,
++    "final_fov_margin_rad": -0.0051,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 17.8419,
++    "last_waypoint_radius_m": 17.8419
++  },
++  {
++    "seed": 262011,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 125.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 1149.695,
++    "torque_impulse_nm_s": 33.2783,
++    "illegal_terminal_entry_count": 2,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8536,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.6582,
++    "last_waypoint_radius_m": 3.0
++  }
++]
+\ No newline at end of file
+diff --git a/logs/t10_headroom/commit_at_T140_failing.json b/logs/t10_headroom/commit_at_T140_failing.json
+new file mode 100644
+index 0000000..94bae29
+--- /dev/null
++++ b/logs/t10_headroom/commit_at_T140_failing.json
+@@ -0,0 +1,90 @@
++[
++  {
++    "seed": 262001,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 140.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 189.2,
++    "steps": 1892,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 891.304,
++    "torque_impulse_nm_s": 23.5992,
++    "illegal_terminal_entry_count": 2,
++    "terminal_region_active": false,
++    "final_range_m": 6.129,
++    "final_fov_margin_rad": -0.0097,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.787,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262005,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 140.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 225.3,
++    "steps": 2253,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 438.747,
++    "torque_impulse_nm_s": 7.9477,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.201,
++    "final_fov_margin_rad": 0.8613,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.6962,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262006,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 140.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 57.0,
++    "steps": 570,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 284.381,
++    "torque_impulse_nm_s": 9.8017,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 19.05,
++    "final_fov_margin_rad": -0.0051,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 17.8419,
++    "last_waypoint_radius_m": 17.8419
++  },
++  {
++    "seed": 262011,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 140.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 1207.132,
++    "torque_impulse_nm_s": 34.1275,
++    "illegal_terminal_entry_count": 2,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8399,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.6582,
++    "last_waypoint_radius_m": 3.0
++  }
++]
+\ No newline at end of file
+diff --git a/logs/t10_headroom/commit_at_T20_failing.json b/logs/t10_headroom/commit_at_T20_failing.json
+new file mode 100644
+index 0000000..a45f6fc
+--- /dev/null
++++ b/logs/t10_headroom/commit_at_T20_failing.json
+@@ -0,0 +1,90 @@
++[
++  {
++    "seed": 262001,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 20.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 491.138,
++    "torque_impulse_nm_s": 7.4537,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8727,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.787,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262005,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 20.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 634.361,
++    "torque_impulse_nm_s": 32.1784,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8711,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.6962,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262006,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 20.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 727.643,
++    "torque_impulse_nm_s": 29.5318,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8726,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 17.8419,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262011,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 20.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 458.513,
++    "torque_impulse_nm_s": 5.6792,
++    "illegal_terminal_entry_count": 2,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8726,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.6582,
++    "last_waypoint_radius_m": 3.0
++  }
++]
+\ No newline at end of file
+diff --git a/logs/t10_headroom/commit_at_T50_failing.json b/logs/t10_headroom/commit_at_T50_failing.json
+new file mode 100644
+index 0000000..6c2cda5
+--- /dev/null
++++ b/logs/t10_headroom/commit_at_T50_failing.json
+@@ -0,0 +1,90 @@
++[
++  {
++    "seed": 262001,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 50.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 723.12,
++    "torque_impulse_nm_s": 17.2207,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8725,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.787,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262005,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 50.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 519.123,
++    "torque_impulse_nm_s": 12.5922,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8725,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.6962,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262006,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 50.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 56.5,
++    "steps": 565,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 280.124,
++    "torque_impulse_nm_s": 9.3747,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 17.963,
++    "final_fov_margin_rad": -0.0008,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 17.8419,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262011,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 50.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 625.924,
++    "torque_impulse_nm_s": 7.0079,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8726,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.6582,
++    "last_waypoint_radius_m": 3.0
++  }
++]
+\ No newline at end of file
+diff --git a/logs/t10_headroom/commit_at_T80_failing.json b/logs/t10_headroom/commit_at_T80_failing.json
+new file mode 100644
+index 0000000..6e6faac
+--- /dev/null
++++ b/logs/t10_headroom/commit_at_T80_failing.json
+@@ -0,0 +1,90 @@
++[
++  {
++    "seed": 262001,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 80.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 1016.748,
++    "torque_impulse_nm_s": 47.1335,
++    "illegal_terminal_entry_count": 2,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.865,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.787,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262005,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 80.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 455.387,
++    "torque_impulse_nm_s": 5.9909,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8724,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.6962,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262006,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 80.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 57.0,
++    "steps": 570,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 284.381,
++    "torque_impulse_nm_s": 9.8017,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 19.05,
++    "final_fov_margin_rad": -0.0051,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 17.8419,
++    "last_waypoint_radius_m": 17.8419
++  },
++  {
++    "seed": 262011,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 80.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 784.712,
++    "torque_impulse_nm_s": 9.2455,
++    "illegal_terminal_entry_count": 2,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8715,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.6582,
++    "last_waypoint_radius_m": 3.0
++  }
++]
+\ No newline at end of file
+diff --git a/logs/t10_headroom/commit_at_T95_completing.json b/logs/t10_headroom/commit_at_T95_completing.json
+new file mode 100644
+index 0000000..c9f07aa
+--- /dev/null
++++ b/logs/t10_headroom/commit_at_T95_completing.json
+@@ -0,0 +1,178 @@
++[
++  {
++    "seed": 262000,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 564.85,
++    "torque_impulse_nm_s": 5.7103,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8721,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.3766,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262002,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 634.987,
++    "torque_impulse_nm_s": 13.7348,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8722,
++    "time_failure": true,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 15.3114,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262003,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 176.8,
++    "steps": 1768,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 395.195,
++    "torque_impulse_nm_s": 5.1628,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.211,
++    "final_fov_margin_rad": 0.8711,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.6684,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262004,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 90.6,
++    "steps": 906,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 313.299,
++    "torque_impulse_nm_s": 9.9661,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 21.062,
++    "final_fov_margin_rad": -0.002,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.8116,
++    "last_waypoint_radius_m": 18.8116
++  },
++  {
++    "seed": 262007,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 194.0,
++    "steps": 1940,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 467.006,
++    "torque_impulse_nm_s": 6.1065,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.187,
++    "final_fov_margin_rad": 0.8511,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.7623,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262008,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 176.1,
++    "steps": 1761,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 588.863,
++    "torque_impulse_nm_s": 9.8416,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.143,
++    "final_fov_margin_rad": 0.8321,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 17.3529,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262009,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 179.7,
++    "steps": 1797,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 386.89,
++    "torque_impulse_nm_s": 4.8053,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.21,
++    "final_fov_margin_rad": 0.8651,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 19.6335,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262010,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 100.9,
++    "steps": 1009,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 320.117,
++    "torque_impulse_nm_s": 9.5115,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 16.843,
++    "final_fov_margin_rad": -0.0033,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 15.6488,
++    "last_waypoint_radius_m": 3.0
++  }
++]
+\ No newline at end of file
+diff --git a/logs/t10_headroom/commit_at_T95_failing.json b/logs/t10_headroom/commit_at_T95_failing.json
+new file mode 100644
+index 0000000..d8f044e
+--- /dev/null
++++ b/logs/t10_headroom/commit_at_T95_failing.json
+@@ -0,0 +1,90 @@
++[
++  {
++    "seed": 262001,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 178.7,
++    "steps": 1787,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 670.533,
++    "torque_impulse_nm_s": 20.8507,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.025,
++    "final_fov_margin_rad": 0.8451,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.787,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262005,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 195.5,
++    "steps": 1955,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 406.378,
++    "torque_impulse_nm_s": 7.338,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.174,
++    "final_fov_margin_rad": 0.8438,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 16.6962,
++    "last_waypoint_radius_m": 3.0
++  },
++  {
++    "seed": 262006,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": false,
++    "end_time_s": 57.0,
++    "steps": 570,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 284.381,
++    "torque_impulse_nm_s": 9.8017,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 19.05,
++    "final_fov_margin_rad": -0.0051,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 17.8419,
++    "last_waypoint_radius_m": 17.8419
++  },
++  {
++    "seed": 262011,
++    "horizon": 35,
++    "policy": "commit_at",
++    "commit_time_s": 95.0,
++    "hold_radius_action": 0.0,
++    "completed": true,
++    "end_time_s": 189.8,
++    "steps": 1898,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "force_impulse_n_s": 764.658,
++    "torque_impulse_nm_s": 12.9811,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.062,
++    "final_fov_margin_rad": 0.8132,
++    "time_failure": false,
++    "distance_failure": false,
++    "first_waypoint_radius_m": 18.6582,
++    "last_waypoint_radius_m": 3.0
++  }
++]
+\ No newline at end of file
+-- 
+2.43.0
+
+
+From a5ce53b681ec340e65ce3062e4be2f0e4fc5bb73 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 12:22:55 +0000
+Subject: [PATCH 9/9] fix: judge the constant-commit question on the net, not
+ on the rescue side
+
+The first version flagged "a constant would do" whenever one commit time
+rescued every rescuable seed. On this data that fires for T=95 -- and it is
+wrong: T=95 also breaks four of the eight seeds the fixed setpoint completes,
+so its net is 7/12 against the baseline's 8/12. A constant that rescues
+everything and loses more elsewhere is not enough, and gate B would have been
+read backwards.
+
+The report now tabulates net completion per commit time against the baseline,
+marks grid points that were not run on every seed as not comparable rather than
+counting them, and only says a constant may suffice when some fully covered
+commit time matches or beats the baseline. On the twelve-seed block it says the
+opposite: no constant matches 8/12, and only the per-state choice reaches 11/12.
+
+Also backfills the baseline as a real commit_now run over all twelve seeds, so
+every artifact in logs/t10_headroom comes from one script. It reproduces
+diagnose_terminal_gate on all eleven compared fields with no fuel difference
+above 0.01 N s.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ experiments/summarize_headroom.py             | 57 ++++++++---
+ .../t10_headroom/baseline_commit_now_h35.json | 96 ++++++++++++-------
+ logs/t10_headroom/headroom_report.txt         | 33 +++++++
+ 3 files changed, 137 insertions(+), 49 deletions(-)
+ create mode 100644 logs/t10_headroom/headroom_report.txt
+
+diff --git a/experiments/summarize_headroom.py b/experiments/summarize_headroom.py
+index 9262938..07b682b 100644
+--- a/experiments/summarize_headroom.py
++++ b/experiments/summarize_headroom.py
+@@ -13,15 +13,18 @@ Takes the ``commit_now`` baseline and the ``commit_at`` runs produced by
+ 4. the reverse cost -- seeds the fixed setpoint completes that a non-zero
+    commit time breaks.
+ 
+-Gate B in the execution order turns on the first and third of those: no
+-rescues, or every seed rescued by the *same* commit time, both mean no learned
+-layer is needed. A constant is not a policy.
++Gate B turns on the net of all four. No rescues means no headroom. Rescues
++that a *constant* commit time captures without net loss also mean no learned
++layer is needed -- so the constant question is answered against the baseline's
++completion count, not on the rescue side alone: a commit time that rescues
++every rescuable seed still loses if it breaks seeds the fixed setpoint
++completes.
+ 
+ Usage::
+ 
+     python -B -m experiments.summarize_headroom \\
+-        --baseline logs/t10/pure_mpc_h35_48.json \\
+-        --sweep logs/t10/commit_at_*.json
++        --baseline logs/t10_headroom/baseline_commit_now_h35.json \\
++        --sweep logs/t10_headroom/commit_at_T*.json
+ """
+ 
+ from __future__ import annotations
+@@ -121,16 +124,44 @@ def main() -> None:
+             )
+             for seed in rescued
+         }
+-        distinct = sorted(set(best_times.values()))
+-        shared = [
+-            t for t in grid
+-            if all(by_seed[s].get(t, {}).get("completed") for s in rescued)
+-        ]
+         lines.append(f"cheapest commit time per rescued seed: {best_times}")
+-        lines.append(f"distinct best commit times: {distinct}")
++        lines.append(f"distinct best commit times: {sorted(set(best_times.values()))}")
++
++    # Whether a constant would do is a NET question, not a rescue-side one: a
++    # commit time that rescues every rescuable seed still loses if it breaks
++    # seeds the fixed setpoint completes. Only grid points measured on every
++    # seed can be compared against the baseline at all.
++    lines.append("")
++    lines.append("CONSTANT vs PER-STATE -- net completion")
++    lines.append(f"{'commit T':>9s} {'completed':>10s} {'coverage':>9s}")
++    lines.append(f"{'0 (fixed)':>9s} {len(completed):>10d} {len(baseline):>9d}")
++    beats_baseline = []
++    for t in grid:
++        covered = [s for s in baseline if t in by_seed.get(s, {})]
++        if len(covered) < len(baseline):
++            lines.append(
++                f"{t:>9.0f} {sum(by_seed[s][t]['completed'] for s in covered):>10d} "
++                f"{len(covered):>9d}   partial -- not comparable"
++            )
++            continue
++        net = sum(by_seed[s][t]["completed"] for s in covered)
++        lines.append(f"{t:>9.0f} {net:>10d} {len(covered):>9d}")
++        if net >= len(completed):
++            beats_baseline.append(t)
++    per_state = len(completed) + len(rescued)
++    lines.append(f"{'per-state':>9s} {per_state:>10d} {len(baseline):>9d}")
++    lines.append("")
++    if beats_baseline:
++        lines.append(
++            f"a CONSTANT commit time matches or beats the fixed setpoint at "
++            f"T={beats_baseline} -- a constant may be enough here, which is gate B "
++            f"saying stop rather than train"
++        )
++    else:
+         lines.append(
+-            f"commit times that rescue EVERY rescued seed: {shared}"
+-            + ("  <-- a constant would do; that is not a policy" if shared else "")
++            "no constant commit time measured on every seed matches the fixed "
++            "setpoint; only a per-state choice exceeds it -- the decision depends "
++            "on the state"
+         )
+ 
+     reverse = []
+diff --git a/logs/t10_headroom/baseline_commit_now_h35.json b/logs/t10_headroom/baseline_commit_now_h35.json
+index 0676e43..1b9aaf6 100644
+--- a/logs/t10_headroom/baseline_commit_now_h35.json
++++ b/logs/t10_headroom/baseline_commit_now_h35.json
+@@ -2,12 +2,14 @@
+   {
+     "seed": 262000,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": true,
+     "end_time_s": 69.0,
+     "steps": 690,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 172.479,
+     "torque_impulse_nm_s": 6.4606,
+     "illegal_terminal_entry_count": 0,
+@@ -16,18 +18,20 @@
+     "final_fov_margin_rad": 0.8658,
+     "time_failure": false,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   },
+   {
+     "seed": 262001,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": false,
+     "end_time_s": 300.0,
+     "steps": 3000,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 351.142,
+     "torque_impulse_nm_s": 3.9343,
+     "illegal_terminal_entry_count": 2,
+@@ -36,18 +40,20 @@
+     "final_fov_margin_rad": 0.8727,
+     "time_failure": true,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   },
+   {
+     "seed": 262002,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": true,
+     "end_time_s": 72.2,
+     "steps": 722,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 147.325,
+     "torque_impulse_nm_s": 7.2794,
+     "illegal_terminal_entry_count": 0,
+@@ -56,18 +62,20 @@
+     "final_fov_margin_rad": 0.8566,
+     "time_failure": false,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   },
+   {
+     "seed": 262003,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": true,
+     "end_time_s": 95.4,
+     "steps": 954,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 190.982,
+     "torque_impulse_nm_s": 9.2043,
+     "illegal_terminal_entry_count": 0,
+@@ -76,18 +84,20 @@
+     "final_fov_margin_rad": 0.8284,
+     "time_failure": false,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   },
+   {
+     "seed": 262004,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": true,
+     "end_time_s": 77.0,
+     "steps": 770,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 259.835,
+     "torque_impulse_nm_s": 4.7124,
+     "illegal_terminal_entry_count": 0,
+@@ -96,18 +106,20 @@
+     "final_fov_margin_rad": 0.8578,
+     "time_failure": false,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   },
+   {
+     "seed": 262005,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": false,
+     "end_time_s": 300.0,
+     "steps": 3000,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 636.936,
+     "torque_impulse_nm_s": 34.6262,
+     "illegal_terminal_entry_count": 1,
+@@ -116,18 +128,20 @@
+     "final_fov_margin_rad": 0.8724,
+     "time_failure": true,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   },
+   {
+     "seed": 262006,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": false,
+     "end_time_s": 300.0,
+     "steps": 3000,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 584.482,
+     "torque_impulse_nm_s": 23.5563,
+     "illegal_terminal_entry_count": 1,
+@@ -136,18 +150,20 @@
+     "final_fov_margin_rad": 0.8726,
+     "time_failure": true,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   },
+   {
+     "seed": 262007,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": true,
+     "end_time_s": 83.0,
+     "steps": 830,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 160.303,
+     "torque_impulse_nm_s": 6.7997,
+     "illegal_terminal_entry_count": 0,
+@@ -156,18 +172,20 @@
+     "final_fov_margin_rad": 0.857,
+     "time_failure": false,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   },
+   {
+     "seed": 262008,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": true,
+     "end_time_s": 75.0,
+     "steps": 750,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 180.913,
+     "torque_impulse_nm_s": 3.1638,
+     "illegal_terminal_entry_count": 0,
+@@ -176,18 +194,20 @@
+     "final_fov_margin_rad": 0.8647,
+     "time_failure": false,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   },
+   {
+     "seed": 262009,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": true,
+     "end_time_s": 85.3,
+     "steps": 853,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 130.239,
+     "torque_impulse_nm_s": 3.1423,
+     "illegal_terminal_entry_count": 0,
+@@ -196,18 +216,20 @@
+     "final_fov_margin_rad": 0.8689,
+     "time_failure": false,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   },
+   {
+     "seed": 262010,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": true,
+     "end_time_s": 71.8,
+     "steps": 718,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 144.217,
+     "torque_impulse_nm_s": 6.548,
+     "illegal_terminal_entry_count": 0,
+@@ -216,18 +238,20 @@
+     "final_fov_margin_rad": 0.8566,
+     "time_failure": false,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   },
+   {
+     "seed": 262011,
+     "horizon": 35,
++    "policy": "commit_now",
++    "commit_time_s": 0.0,
++    "hold_radius_action": 0.0,
+     "completed": false,
+     "end_time_s": 300.0,
+     "steps": 3000,
+     "qp_infeasible_steps": 0,
+     "first_infeasible_time_s": null,
+-    "max_consecutive_zero_wrench_steps": 0,
+     "force_impulse_n_s": 378.065,
+     "torque_impulse_nm_s": 13.7966,
+     "illegal_terminal_entry_count": 1,
+@@ -236,7 +260,7 @@
+     "final_fov_margin_rad": 0.8726,
+     "time_failure": true,
+     "distance_failure": false,
+-    "terminal_gate": "proximity",
+-    "proximity_radius_m": 6.0
++    "first_waypoint_radius_m": 3.0,
++    "last_waypoint_radius_m": 3.0
+   }
+ ]
+\ No newline at end of file
+diff --git a/logs/t10_headroom/headroom_report.txt b/logs/t10_headroom/headroom_report.txt
+new file mode 100644
+index 0000000..14df26a
+--- /dev/null
++++ b/logs/t10_headroom/headroom_report.txt
+@@ -0,0 +1,33 @@
++commit grid: [20.0, 50.0, 80.0, 95.0, 110.0, 125.0, 140.0]
++baseline (commit_now): 8/12 completed; 4 failed, 4 of those swept
++
++RESCUE -- seeds the fixed setpoint fails
++   seed works at                     shape           best T     t_s     fuel illegal
++ 262001 [95.0]                       single              95   178.7    670.5       1
++ 262005 [95.0, 110.0, 125.0, 140.0]  contiguous          95   195.5    406.4       1
++ 262006 -- none --                                 
++ 262011 [95.0, 110.0]                contiguous          95   189.8    764.7       1
++
++rescue rate: 3/4 = 75.0%
++cheapest commit time per rescued seed: {262001: 95.0, 262005: 95.0, 262011: 95.0}
++distinct best commit times: [95.0]
++
++CONSTANT vs PER-STATE -- net completion
++ commit T  completed  coverage
++0 (fixed)          8        12
++       20          0         4   partial -- not comparable
++       50          0         4   partial -- not comparable
++       80          0         4   partial -- not comparable
++       95          7        12
++      110          6        12
++      125          1         4   partial -- not comparable
++      140          1         4   partial -- not comparable
++per-state         11        12
++
++no constant commit time measured on every seed matches the fixed setpoint; only a per-state choice exceeds it -- the decision depends on the state
++
++REVERSE COST -- seeds the fixed setpoint completes
++  262000: broken at [95.0, 110.0]
++  262002: broken at [95.0, 110.0]
++  262004: broken at [95.0, 110.0]
++  262010: broken at [95.0, 110.0]
+-- 
+2.43.0
+
