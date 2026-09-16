@@ -12,7 +12,99 @@ perception line and the 24D mission schemas is history; it is kept under
 
 ---
 
-## Current state -- 2026-09-12
+## Current state -- 2026-09-16
+
+Two load-bearing assumptions have now been **measured false**, and the research
+question has moved accordingly. This is the live direction; the 2026-09-12 block
+below is prior context.
+
+- **T12 (learned scheduling vs fixed MPC, full truth).** `arrival_condition` is
+  learnable (`radial_local` is not: 0/48 x3), but three arrival seeds average
+  **26/48** against Pure MPC's **32/48**, slower and more fuel. Pre-registered
+  branch 2: the interface makes coupling learnable, but a learned layer that
+  unconditionally rewrites the reference does not beat the fixed setpoint. See
+  `docs/T12_S10_*`.
+- **Non-cooperative probe 2 (Pure MPC on EKF estimate vs truth, same 48 seeds).**
+  **31/48 vs 32/48** (delta 1 -> pre-registered "basically level, stop"). The
+  chaser goes blind ~40-60% of the tumble period (observability windows are real,
+  measured over a full rotation), but the EKF coasts through them well enough
+  that estimation does **not** degrade the fixed MPC. Non-cooperative observation
+  is a real operational condition, not a source of a completion gap. See
+  `docs/PROBE2_NONCOOP_RESULT_20260916.md`.
+
+The direction is no longer "find a factor that makes MPC fail" or "prove RL
+beats MPC". It is the **coupling mechanism itself**, motivated by the one positive
+T12 finding: the learned policy *rescues* states Pure MPC fails (262401: +6) but
+*destroys* states it succeeds (-4). The question is whether a **Bidirectional
+Baseline-Anchored Task-Level SAC-MPC** turns that measured complementarity into a
+stable net gain without breaking the strong baseline:
+
+- **Baseline-anchored task residual.** SAC outputs a low-dim residual on the
+  nominal arrival action (fixed setpoint); **residual 0 recovers Pure MPC
+  bitwise**. It learns *whether/how much to deviate*, not the whole task.
+- **Critic-advantage deployment gate.** The SAC critic (trained on full-episode
+  return, so it carries the long horizon the short MPC cannot) judges whether
+  deviating is worth it: `A_task = Q(s,a_cand) - Q(s,a_nom)`. This resolves the
+  circularity of asking a short-horizon MPC to arbitrate long-horizon value.
+  Caveat to watch: `Q(s,a_nom)` is off the policy's own action distribution, so
+  the advantage can be noisy (this repo's critic-calibration history); the
+  residual anchor + MPC feasibility gate keep it safe when the advantage is wrong.
+- **MPC proposal certificate (bottom-up).** For the proposed task intent the MPC
+  returns a compact (2-4 dim) predicted feasibility/safety certificate, fed into
+  the next decision's observation -- a two-way negotiation, not raw telemetry
+  (T7 showed telemetry-in-observation does not help).
+- **Fallback.** Deviate only when the critic advantage clears a margin AND the
+  MPC certificate says locally feasible; else nominal.
+
+**Honest ceiling:** the per-episode baseline-preserving upper bound from T12 is
+~**38/48 (+6)**. This is a mechanism paper with a modest, real gain, not a
+blowout; the arbitration pattern itself is known (南航/AC4MPC) -- concede it,
+claim the combination + task-level opportunity + `Lambda>1` non-cooperative
+regime. Gate: does the full method, 3 seeds, beat Pure MPC on completion while
+retaining most of its successes at acceptable fuel? See
+`docs/BIDIRECTIONAL_SACMPC_EXECUTION.md`.
+
+## Research execution discipline (adopted 2026-09-16)
+
+The bottleneck was never rigor; it was **dev-phase over-gating**. Separate three
+things and only the first two apply now:
+
+> development validation  !=  paper formal validation  !=  flight certification
+
+- **No probe proliferation.** Once a method version's design logic holds, run
+  `implement -> smoke -> formal train (>=3 seeds) -> formal evaluate`, not
+  `probe -> probe -> oracle -> grid -> seed archaeology -> maybe implement`.
+  Performance questions are answered in formal training/eval, not in a stack of
+  pre-training probes.
+- **Smoke is a correctness check, not a direction gate.** Smoke verifies: runs,
+  shapes/interfaces, no NaN, solver sane, fallback fires, residual 0 recovers
+  nominal. Its success *rate* or a few-seed score never decides the direction.
+- **Training noise is expected.** One seed failing does not kill a method; one
+  seed passing does not prove it. Conclusions need >=3 training seeds judged as a
+  distribution.
+- **Do not switch the research question on a single probe/seed/metric.** After a
+  version fails, first check implementation, convergence, and whether the
+  coupling did what it should -- only consistent multi-seed formal negatives
+  reopen the direction.
+- **Method-first, then luxury.** Before a positive main result, do not sink time
+  into large real-time profiling, hardware, perception stress grids, many
+  ablations, or robustness sweeps.
+- **Every new module must name its main claim** ("delete it -- does the paper
+  still stand?"). If not, it is not added.
+
+**Unchanged non-negotiables (scientific integrity, never relaxed):** truth
+RK45 geometry is the only arbiter of safety/violation (never observation or QP
+"solved"); Pure MPC stays frozen (no Q/R, horizon, corridor, terminal, or
+tolerance edits except a named code bug or a genuine input-semantics change) and
+is re-run once clean at the end for the final number; **no manufactured gap** (no
+artificial obstacles, unmotivated noise, shortened horizon, throttled thrust,
+deliberately wrong model, or rule change that only hurts nominal); reward never
+encodes the answer (wait/enter timing, per-seed success times); no cherry-picking
+seeds or checkpoints; comparisons use a pre-fixed evaluation seed block and the
+final model; **any number entering a decision or the paper must point at an
+artifact** (JSON/CSV/manifest/commit/script) or be marked exploratory.
+
+## Prior state -- 2026-09-12
 
 ### The task
 
