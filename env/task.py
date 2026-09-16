@@ -777,3 +777,34 @@ def compute_precapture_metrics(
         active_constraints_satisfied=active_constraints_satisfied,
         all_truth_safety_satisfied=active_constraints_satisfied,
     )
+
+
+def precapture_entry_phase_favourability(
+    target: SpacecraftState,
+    staging_direction_inertial: ArrayLike,
+    config: PrecaptureTaskConfig = PrecaptureTaskConfig(),
+) -> float:
+    """Alignment in [-1, 1] of the sweeping capture corridor with a fixed
+    inertial staging direction.
+
+    The capture corridor extends along ``approach_axis`` in the target *body*
+    frame, so the port's outward normal ``R_target @ approach_axis`` sweeps
+    through inertial space as the target tumbles. Projecting the chaser's
+    offset into inertial would be rotation-invariant (it collapses to the
+    target-frame alignment -- the pinned "no window to wait for" case), so the
+    phase window only exists against a direction that does **not** co-rotate:
+    the outer staging direction, held fixed in inertial/LVLH for the episode.
+
+    +1 means the port normal currently points along the staging direction -- a
+    cheap, legal entry is available; -1 means the port faces away. This is the
+    phase the staging policy times its entry to, and it coincides with the
+    camera's view of the target's feature face. It is a diagnostic/decision
+    quantity; truth safety is still judged by ``compute_precapture_metrics``.
+    """
+
+    normal_inertial = np.asarray(target.rotation, dtype=np.float64) @ config.approach_axis
+    staging = np.asarray(staging_direction_inertial, dtype=np.float64).reshape(3)
+    staging_norm = float(np.linalg.norm(staging))
+    if staging_norm <= np.finfo(np.float64).eps:
+        raise ValueError("staging direction must be non-zero")
+    return float(np.clip(normal_inertial @ (staging / staging_norm), -1.0, 1.0))
