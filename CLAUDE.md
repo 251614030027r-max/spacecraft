@@ -5,6 +5,8 @@ non-cooperative target. Chaser 106 kg, target 225 kg, 500 km / 45 deg circular
 orbit, RK45 truth with central gravity, second moments, gravity gradient and
 J2, 0.1 s control period, +-5 N / +-0.6 N*m per axis.
 
+**2026-09-16 当前执行闸门：**上层最新的 `下层执行_择时价值确认实验_20260916.md` 将任务改为先以零 SAC 训练的 A/B 对照验证“择时是否值钱”。本仓库现有六提交只构成 foundation；放开的 staging 初始分布和 B 臂 hold→commit harness 尚未交付，不能启动对照或沿本文件较早的双向残差训练路线开训。当前状态与缺口见 `docs/TIMING_VALUE_FOUNDATION_HANDOFF_20260916.md`。本段只说明优先级，不是新实验授权。
+
 **The active task is `precapture_planning`, and the active work is the
 SAC-MPC coupling.** Everything about `single_phase`, the Waypoint, the A1/A2/A3
 perception line and the 24D mission schemas is history; it is kept under
