@@ -35,6 +35,7 @@ from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
 from env.phase2_env import (
     precapture_perception_environment_config,
     precapture_planning_environment_config,
+    precapture_timing_probe_environment_config,
 )
 from eval.metrics import PRECAPTURE_MARGIN_KEYS, main_table_metrics
 from train.hybrid_configs import SAC_MPC_HYBRID
@@ -50,6 +51,94 @@ VIOLATION_STEP_KEYS = (
 )
 
 
+#: Arrival-condition actions for the scripted timing arm. ``a=(+1,0)`` is full
+#: commit to the desired pose -- the fixed-setpoint Pure MPC command, bitwise --
+#: and ``a=(-1,0)`` holds the inertially frozen staging point (a cheap,
+#: non-corotating wait). ``monotone_commit`` ratchets commit, so the arm is a
+#: clean bang-bang: hold until the phase is right, then commit and stay.
+_TIMED_COMMIT_ACTION = np.array([1.0, 0.0], dtype=np.float64)
+_TIMED_HOLD_ACTION = np.array([-1.0, 0.0], dtype=np.float64)
+
+
+class ScriptedEntryTiming:
+    """B arm: a truth-future-phase-assisted timing probe.
+
+    It waits at the inertial staging point until the tumbling capture port is
+    predicted to face the staging direction at the moment the chaser would
+    arrive, then commits the fixed-setpoint MPC. The prediction leads by the
+    transit time ``range / lead_speed`` and reads the target's **actual future
+    attitude** from the episode's cached truth target trajectory
+    (``cache_target_trajectory``), which propagates the real 6-DoF free
+    rigid-body tumble (non-spherical inertia, gravity gradient, J2). This is a
+    non-deployable diagnostic of whether favourable-phase timing helps, not a
+    strict optimal upper bound: its hold policy, lead time and threshold are
+    fixed heuristics. It never weakens the MPC: the executed command once
+    committed is exactly the immediate arm's.
+
+    The A arm is ``--control desired_pose`` (commit on the first decision); the
+    only difference between the arms is *when* commit happens.
+    """
+
+    def __init__(
+        self,
+        env: PrecaptureHybridEnv,
+        *,
+        commit_favourability_cos: float,
+        lead_speed_m_s: float,
+        commit_deadline_margin_s: float = 20.0,
+    ) -> None:
+        self._env = env
+        self._commit_cos = float(commit_favourability_cos)
+        self._lead_speed_m_s = float(lead_speed_m_s)
+        self._commit_deadline_margin_s = float(commit_deadline_margin_s)
+        self._task = env.environment_config.precapture_task
+        self._max_time_s = float(env.environment_config.max_time_s)
+        self.committed = False
+        self.commit_time_s: float | None = None
+        self.favourability_at_commit: float | None = None
+        self.predicted_favourability_at_commit: float | None = None
+
+    def _future_target_rotation(self, lead_s: float) -> np.ndarray:
+        """Target attitude ``lead_s`` ahead from this episode's truth cache."""
+
+        target = self._env.env.target_state
+        assert target is not None
+        trajectory = self._env.env._target_trajectory
+        if trajectory is None:
+            raise RuntimeError("timed_entry requires the truth target trajectory cache")
+        dt_s = self._env.environment_config.dt_s
+        future_step = self._env.env.step_count + int(round(lead_s / dt_s))
+        future_step = min(max(future_step, 0), len(trajectory) - 1)
+        return np.asarray(trajectory[future_step].rotation, dtype=np.float64)
+
+    def _predicted_favourability(self, lead_s: float) -> float:
+        staging = self._env.env._staging_direction_inertial
+        assert staging is not None
+        normal = self._future_target_rotation(lead_s) @ self._task.approach_axis
+        return float(np.clip(normal @ np.asarray(staging, dtype=np.float64), -1.0, 1.0))
+
+    def action(self, info: dict[str, Any]) -> np.ndarray:
+        if self.committed:
+            return _TIMED_COMMIT_ACTION
+        time_now = float(self._env.env.time_seconds)
+        remaining_s = self._max_time_s - time_now
+        range_m = float(info["target_center_distance_m"])
+        lead_s = min(max(range_m / self._lead_speed_m_s, 0.0), max(remaining_s, 0.0))
+        predicted = self._predicted_favourability(lead_s)
+        # Wait only while there is still room to transit after waiting; otherwise
+        # commit now so the arm never times out having never committed.
+        must_commit = remaining_s <= lead_s + self._commit_deadline_margin_s
+        if predicted >= self._commit_cos or must_commit:
+            self.committed = True
+            self.commit_time_s = time_now
+            self.favourability_at_commit = float(
+                self._env.env.entry_phase_favourability
+            )
+            self.predicted_favourability_at_commit = predicted
+            return _TIMED_COMMIT_ACTION
+        return _TIMED_HOLD_ACTION
+
+
 def truth_violation_step_counts(info: dict[str, Any]) -> dict[str, int | None]:
     """Preserve cumulative truth-geometry counters without inventing missing data."""
 
@@ -57,6 +146,27 @@ def truth_violation_step_counts(info: dict[str, Any]) -> dict[str, int | None]:
         key: int(info[key]) if key in info else None
         for key in VIOLATION_STEP_KEYS
     }
+
+
+def evaluation_environment_config(args: argparse.Namespace):
+    """Build one dynamics configuration for both arms of a timing probe."""
+
+    if args.timing_probe:
+        if args.perception:
+            raise ValueError("--timing-probe and --perception are exclusive")
+        base = precapture_timing_probe_environment_config(
+            entry_phase_gate_deg=args.entry_phase_gate_deg
+        )
+    elif args.perception:
+        base = precapture_perception_environment_config()
+    else:
+        base = precapture_planning_environment_config()
+    # A and B must use identical target integration, not merely nominally
+    # identical dynamics with one arm cached and the other propagated live.
+    return replace(
+        base,
+        cache_target_trajectory=(args.timing_probe or args.control == "timed_entry"),
+    )
 
 
 def summarize_entry_channel(
@@ -158,11 +268,53 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--control",
-        choices=["desired_pose", "random"],
+        choices=["desired_pose", "random", "timed_entry"],
         help=(
             "Run without a model. 'desired_pose' is the fixed-setpoint lower "
-            "layer delivered through the wrapper -- the row the coupled policy "
-            "has to beat. 'random' is the floor."
+            "layer delivered through the wrapper (the immediate-entry A arm and "
+            "the row the coupled policy has to beat). 'timed_entry' is the "
+            "truth-future-phase-assisted timing probe B arm (hold at the inertial staging point, "
+            "commit when the entry phase is favourable). 'random' is the floor."
+        ),
+    )
+    parser.add_argument(
+        "--timing-probe",
+        action="store_true",
+        help=(
+            "Use the opened-distribution timing-value config "
+            "(precapture_timing_probe_environment_config): wider initial range "
+            "and pointing, same frozen constraints/authority/tumble. The A/B "
+            "timing comparison runs on this config."
+        ),
+    )
+    parser.add_argument(
+        "--entry-phase-gate-deg",
+        type=float,
+        default=180.0,
+        help=(
+            "Entry-phase gate half-angle for the timing-probe config. Default "
+            "180 (gate OFF) -- the primary A/B measures timing value from "
+            "physics alone. A finite value (e.g. 90) is a diagnostic guardrail "
+            "only, never the paper mechanism; a gate-manufactured A/B difference "
+            "is not admissible evidence."
+        ),
+    )
+    parser.add_argument(
+        "--commit-favourability-cos",
+        type=float,
+        default=float(np.cos(np.deg2rad(45.0))),
+        help=(
+            "timed_entry only: commit once the predicted arrival favourability "
+            "(cosine) clears this threshold. Default cos(45 deg) ~ 0.707."
+        ),
+    )
+    parser.add_argument(
+        "--commit-lead-speed-m-s",
+        type=float,
+        default=0.20,
+        help=(
+            "timed_entry only: nominal closing speed used to estimate the "
+            "transit lead (range / speed) the phase prediction leads by."
         ),
     )
     parser.add_argument(
@@ -199,6 +351,11 @@ def main() -> None:
     control_source_estimated = args.control_source == "estimated"
     if control_source_estimated and not args.perception:
         raise ValueError("--control-source estimated requires --perception")
+    if args.control == "timed_entry" and args.parametrization != "arrival_condition":
+        raise ValueError(
+            "--control timed_entry requires --parametrization arrival_condition "
+            "(the hold/commit actions live on that interface)"
+        )
 
     policy = None
     if args.model is not None:
@@ -210,14 +367,7 @@ def main() -> None:
     controller_times_s: list[float] = []
     environment_times_s: list[float] = []
     generator = np.random.default_rng(args.seed)
-    base_environment_config = (
-        precapture_perception_environment_config()
-        if args.perception
-        else precapture_planning_environment_config()
-    )
-    environment_config = replace(
-        base_environment_config, cache_target_trajectory=False
-    )
+    environment_config = evaluation_environment_config(args)
     task = environment_config.precapture_task
     entry_position = (
         task.port_position
@@ -266,10 +416,20 @@ def main() -> None:
                 )
         observation, info = env.reset(seed=seed)
         desired = env.environment_config.precapture_task.desired_position
+        timing = (
+            ScriptedEntryTiming(
+                env,
+                commit_favourability_cos=args.commit_favourability_cos,
+                lead_speed_m_s=args.commit_lead_speed_m_s,
+            )
+            if args.control == "timed_entry"
+            else None
+        )
         minimum_margins = {
             key: float(info[key]) for key in PRECAPTURE_MARGIN_KEYS if key in info
         }
         force_impulse = torque_impulse = 0.0
+        peak_force_n = peak_torque_nm = 0.0
         minimum_truth_normalized_margin = float("inf")
         waypoints: list[list[float]] = []
         qp_infeasible_steps_total = 0
@@ -286,6 +446,11 @@ def main() -> None:
             elif args.control == "desired_pose":
                 started = perf_counter()
                 action = env.action_for_waypoint(desired)
+                inference_s = perf_counter() - started
+            elif args.control == "timed_entry":
+                assert timing is not None
+                started = perf_counter()
+                action = timing.action(info)
                 inference_s = perf_counter() - started
             else:
                 started = perf_counter()
@@ -333,12 +498,12 @@ def main() -> None:
                 controller_times_s.append(
                     controller_s + (inference_s if index == 0 else 0.0)
                 )
-                force_impulse += (
-                    float(np.linalg.norm(wrench[3:])) * env.environment_config.dt_s
-                )
-                torque_impulse += (
-                    float(np.linalg.norm(wrench[:3])) * env.environment_config.dt_s
-                )
+                force_norm = float(np.linalg.norm(wrench[3:]))
+                torque_norm = float(np.linalg.norm(wrench[:3]))
+                force_impulse += force_norm * env.environment_config.dt_s
+                torque_impulse += torque_norm * env.environment_config.dt_s
+                peak_force_n = max(peak_force_n, force_norm)
+                peak_torque_nm = max(peak_torque_nm, torque_norm)
                 started = perf_counter()
                 observation, _, terminated, truncated, info = env.env.step(
                     wrench_to_normalized(
@@ -387,6 +552,10 @@ def main() -> None:
                             environment_config.max_time_s - env.env.time_seconds
                         ),
                         "legal": bool(info["terminal_entry_legal"]),
+                        # Entry-phase favourability at the crossing: the physical
+                        # quantity the timing arm targets, recorded for both arms
+                        # so the A/B can compare where each one actually enters.
+                        "favourability": float(env.env.entry_phase_favourability),
                         "radial_distance_m": radial,
                         "target_frame_speed_m_s": target_speed,
                         "closing_speed_m_s": closing_speed,
@@ -461,6 +630,8 @@ def main() -> None:
                 "decisions": len(waypoints),
                 "force_impulse_n_s": force_impulse,
                 "torque_impulse_nm_s": torque_impulse,
+                "peak_force_n": peak_force_n,
+                "peak_torque_nm": peak_torque_nm,
                 "equivalent_delta_v_m_s": (
                     force_impulse / env.env.chaser_parameters.mass
                 ),
@@ -507,6 +678,15 @@ def main() -> None:
                     info["target_center_distance_m"]
                 ),
                 "final_position_error_m": float(info["position_error_m"]),
+                "commit_time_s": (timing.commit_time_s if timing is not None else None),
+                "favourability_at_commit": (
+                    timing.favourability_at_commit if timing is not None else None
+                ),
+                "predicted_favourability_at_commit": (
+                    timing.predicted_favourability_at_commit
+                    if timing is not None
+                    else None
+                ),
                 "waypoints_target_frame": waypoints,
             }
         )
@@ -542,6 +722,16 @@ def main() -> None:
         "waypoint_parametrization": args.parametrization,
         "phase_time_observation": args.phase_time_observation,
         "execution_feedback": args.execution_feedback,
+        "timing_probe": args.timing_probe,
+        "entry_phase_gate_deg": args.entry_phase_gate_deg if args.timing_probe else None,
+        "timed_entry_settings": (
+            {
+                "commit_favourability_cos": args.commit_favourability_cos,
+                "commit_lead_speed_m_s": args.commit_lead_speed_m_s,
+            }
+            if args.control == "timed_entry"
+            else None
+        ),
         "hyperparameters": {"gamma": SAC_MPC_HYBRID.gamma},
         "compute_note": (
             "valid only if this ran serially in a single process; the MPC is "

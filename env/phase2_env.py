@@ -191,6 +191,58 @@ def precapture_staging_environment_config(
     )
 
 
+def precapture_timing_probe_environment_config(
+    entry_phase_gate_deg: float = 180.0,
+    initial_range_max_m: float = 28.0,
+    initial_pointing_error_max_deg: float = 25.0,
+) -> SE3RendezvousConfig:
+    """Opened-distribution config for the zero-training timing-value A/B probe.
+
+    Derived from ``precapture_planning_environment_config`` by enlarging only the
+    *task-selection* space -- the spread of initial conditions the chaser has to
+    pick an entry moment from -- while every knob that sets *control difficulty*
+    stays frozen (the +-5 N / +-0.6 N*m authority, the 0.1 s update rate, the MPC
+    model, the corridor/FOV/speed/terminal constraints, and the 0.041 rad/s
+    tumble rate). This is the boundary the direction rides on: widening what has
+    to be decided is legitimate, weakening what has to be executed would be a
+    manufactured gap.
+
+    What opens:
+
+    * **Initial range** 15 -> ``initial_range_max_m`` m. Capped strictly below the
+      30 m distance-failure boundary (default 28 m keeps a 2 m drift margin), so a
+      literal "15-30 m" is intentionally not used -- starting on the failure
+      boundary would fail on the first outward drift.
+    * **Initial pointing error** 5 -> ``initial_pointing_error_max_deg`` deg,
+      still inside the 50 deg FOV half-angle (the sampler rejects otherwise).
+    * The **approach azimuth** is already fully open in
+      ``sample_precapture_planning_chaser_state`` (uniform on [-pi, pi] with a
+      polar cone from ~40 deg off-axis outward), and the **initial target phase**
+      is already sampled per episode by ``phase2_target_phase_sampling`` -- that
+      per-episode phase is what disperses the entry moment, so no change is
+      needed there.
+
+    The **entry-phase gate is OFF by default** (``entry_phase_gate_deg >= 180`` ->
+    ``gate_cos <= -1``): the primary A/B must measure whether timing helps through
+    physics alone (a fixture facing the approach makes the terminal geometry and
+    the camera view easier), never because a hard gate rejected the immediate
+    arm's crossings -- a gate-manufactured difference is not admissible evidence
+    that timing is valuable. A gated variant (e.g. 90 deg) is one argument away
+    and is a *diagnostic* guardrail only, not the paper mechanism.
+    """
+
+    base = precapture_planning_environment_config()
+    gate_cos = float(np.cos(np.deg2rad(entry_phase_gate_deg)))
+    pointing_error_max_rad = float(np.deg2rad(initial_pointing_error_max_deg))
+    return replace(
+        base,
+        precapture_initial_range_min_m=15.0,
+        precapture_initial_range_max_m=float(initial_range_max_m),
+        precapture_initial_pointing_error_max_rad=pointing_error_max_rad,
+        precapture_task=replace(base.precapture_task, entry_phase_gate_cos=gate_cos),
+    )
+
+
 def terminal_phase_environment_config() -> SE3RendezvousConfig:
     """Terminal-only config retained for P0 MPC validation and later P3 reuse."""
 
@@ -220,6 +272,7 @@ __all__ = [
     "precapture_planning_environment_config",
     "precapture_perception_environment_config",
     "precapture_staging_environment_config",
+    "precapture_timing_probe_environment_config",
     "phase2_s1v2_mission_config",
     "terminal_phase_environment_config",
 ]
