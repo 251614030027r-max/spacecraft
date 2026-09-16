@@ -152,6 +152,16 @@ class PrecaptureHybridConfig:
     #: unaffected, and holding stays available for as long as the policy keeps
     #: ``a_commit`` low.
     monotone_commit: bool = True
+    #: ``arrival_condition`` only. Interpret the policy action as a *residual*
+    #: on the nominal arrival action rather than an absolute arrival condition.
+    #: The nominal is ``(a_commit, a_radius) = (+1, 0)`` -- the fixed-setpoint
+    #: Pure MPC command -- and the executed candidate is
+    #: ``clip(nominal + residual)``. A zero residual therefore recovers the
+    #: nominal desired-pose command bitwise; the policy only ever learns *how
+    #: far to pull back from full commit*, which is the direct answer to T12's
+    #: negative transfer (a learned layer that rewrote the whole reference
+    #: destroyed states the nominal already solved).
+    baseline_anchored_residual: bool = False
     #: The action is ``a * waypoint_scale_m`` in the target body frame, so the
     #: box reaches past the 17-20 m start without reaching the 30 m distance
     #: failure. It is an absolute point, not a displacement.
@@ -198,6 +208,14 @@ class PrecaptureHybridConfig:
             raise ValueError("unknown waypoint parametrisation")
         if min(self.radial_action_gain, self.lateral_action_gain) <= 0.0:
             raise ValueError("action gains must be positive")
+        if (
+            self.baseline_anchored_residual
+            and self.waypoint_parametrization != "arrival_condition"
+        ):
+            raise ValueError(
+                "baseline_anchored_residual requires the arrival_condition "
+                "parametrisation"
+            )
 
     #: The T6 reverse channel: three bounded summaries of how the lower layer
     #: coped with the previous decision -- fallback fraction, peak solved-step
@@ -214,6 +232,12 @@ class PrecaptureHybridConfig:
         if self.waypoint_parametrization == "arrival_condition":
             return 2
         return 4
+
+
+#: The nominal ``arrival_condition`` action: full commit to the desired pose,
+#: which reaches the optimiser as the constant broadcast that is the
+#: fixed-setpoint Pure MPC row. Residual anchoring is defined relative to it.
+_NOMINAL_ARRIVAL_ACTION = np.array([1.0, 0.0], dtype=np.float64)
 
 
 def _slerp(start: FloatArray, goal: FloatArray, weight: float) -> FloatArray:
@@ -432,6 +456,10 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             raise ValueError("action must be finite")
         raw = np.clip(raw, -1.0, 1.0)
         if self.hybrid_config.waypoint_parametrization == "arrival_condition":
+            if self.hybrid_config.baseline_anchored_residual:
+                # ``raw`` is the residual on the nominal arrival action; a zero
+                # residual recovers the nominal desired-pose command bitwise.
+                raw = np.clip(_NOMINAL_ARRIVAL_ACTION + raw, -1.0, 1.0)
             return self._arrival_condition_waypoint(raw)
         if self.hybrid_config.waypoint_parametrization == "radial_local":
             return self._radial_local_waypoint(raw)
@@ -448,9 +476,18 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 self.environment_config.precapture_task.desired_position,
                 dtype=np.float64,
             )
-            if bool(np.allclose(target, desired)):
-                return np.array([1.0, 0.0])
-            return np.array([-1.0, 0.0])
+            base = (
+                np.array([1.0, 0.0])
+                if bool(np.allclose(target, desired))
+                else np.array([-1.0, 0.0])
+            )
+            if self.hybrid_config.baseline_anchored_residual:
+                # Residual that reproduces ``base``: exact for the nominal
+                # desired-pose command (-> zero residual), best-effort clip for
+                # the hold. The desired-pose control only ever asks for the
+                # former, so its fixed-setpoint floor stays bitwise.
+                return np.clip(base - _NOMINAL_ARRIVAL_ACTION, -1.0, 1.0)
+            return base
         if self.hybrid_config.waypoint_parametrization == "absolute":
             return np.clip(
                 target / self.hybrid_config.waypoint_scale_m, -1.0, 1.0

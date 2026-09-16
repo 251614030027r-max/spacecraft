@@ -77,6 +77,15 @@ def parse_args() -> argparse.Namespace:
         "8 completing seeds into 0 of 8.",
     )
     parser.set_defaults(monotone_commit=True)
+    parser.add_argument(
+        "--baseline-anchored-residual",
+        dest="baseline_anchored_residual",
+        action="store_true",
+        help="arrival_condition only: interpret the action as a residual on the "
+        "nominal (fixed-setpoint) arrival action, so a zero residual recovers "
+        "Pure MPC bitwise and the policy learns only how far to deviate.",
+    )
+    parser.set_defaults(baseline_anchored_residual=False)
     parser.add_argument("--device", type=str, default="auto")
     return parser.parse_args()
 
@@ -87,6 +96,7 @@ def accelerated_training_configs(
     waypoint_parametrization: str,
     execution_feedback: bool = True,
     monotone_commit: bool = True,
+    baseline_anchored_residual: bool = False,
 ) -> tuple[SE3RendezvousConfig, PrecaptureHybridConfig]:
     """Return engineering-equivalent configs used only by hybrid training."""
 
@@ -101,6 +111,7 @@ def accelerated_training_configs(
         include_target_phase_and_time_observation=True,
         include_execution_feedback_observation=execution_feedback,
         monotone_commit=monotone_commit,
+        baseline_anchored_residual=baseline_anchored_residual,
     )
     return environment_config, hybrid_config
 
@@ -118,6 +129,7 @@ def main() -> None:
         waypoint_parametrization=args.parametrization,
         execution_feedback=args.execution_feedback,
         monotone_commit=args.monotone_commit,
+        baseline_anchored_residual=args.baseline_anchored_residual,
     )
     mpc_config = hybrid_mpc_config(hybrid_config, environment_config)
 
@@ -148,6 +160,7 @@ def main() -> None:
             )
         ),
         "monotone_commit": hybrid_config.monotone_commit,
+        "baseline_anchored_residual": hybrid_config.baseline_anchored_residual,
         "observation_space": (
             "canonical 24D full-state core"
             + (
