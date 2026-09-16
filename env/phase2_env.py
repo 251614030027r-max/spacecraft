@@ -170,7 +170,7 @@ def precapture_perception_environment_config() -> SE3RendezvousConfig:
 
 
 def precapture_staging_environment_config(
-    entry_phase_gate_deg: float = 60.0,
+    entry_phase_gate_deg: float = 90.0,
 ) -> SE3RendezvousConfig:
     """Non-corotating staging + phase-gated capture (Path 2).
 
