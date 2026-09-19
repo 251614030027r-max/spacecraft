@@ -71,8 +71,13 @@ python -B -m train.train_hybrid \
 done
 ```
 - 仍是 3 个独立进程/终端并行(每终端一个 seed)最快;瓶颈是 MPC 求解,别上 GPU。
-- 健康检查(~30k 时):合法完成的回报应**明显 > hover**(完成 ~+17、干净完成 +26 vs hover +4-6);
-  若完成回报仍 ≤ hover,停下告诉我,不要继续喂坏 critic。
+- **健康检查有两个节点,用途不同,别混**(2026-09-19 用户裁定,替代此前 handoff/runsheet
+  的 10k-vs-30k 不一致):
+  - **10k = 灾难检查,纠错性质,不是方向门。**只问一件事:合法完成的回报是否已经爬到 hover 之上?
+    若仍是"完成 ≤ hover",奖励信号还有问题 → **立刻停、别烧到 60k**。10k 的低分**不得**当作
+    "方向失败"来否决主线 —— 早期/smoke 不是方向门,这是纪律明令禁止的。
+  - **30k = 健康/趋势确认**(完成 ~+17、干净完成 +26 vs hover +4-6);**60k = 正式完成**。
+  - 两处都看:读 `train.monitor.csv` 不花钱。
 
 - `--adaptive-task` 自动:新任务 + staging 观测(38D)。残差 0 = 固定设定点 Pure MPC 逐位。
 - **加速(重要):3 个种子并行跑**(规则允许训练并行)→ 墙钟 ~1/3;瓶颈是 MPC 求解,**别上 GPU**。
@@ -93,8 +98,8 @@ python -B -m experiments.evaluate_hybrid_policy --episodes 48 --seed 262000 --ho
   --parametrization arrival_condition --adaptive-task \
   --phase-time-observation --execution-feedback --baseline-anchored-residual \
   --deployment-gate --gate-advantage-margin 0.0 \
-  --model logs/adp_262410/final_model.zip \
-  --output eval/adp/proposed_nominal_262410.json
+  --model logs/adp_rf_262410/final_model.zip \
+  --output eval/adp/proposed_nominal_adp_rf_262410.json
 ```
 判据:提案**保住** Pure MPC 的 completion 和安全(不破坏基线),而不是要求 nominal 上省油。
 
@@ -108,8 +113,8 @@ for R in 0.10 0.20 0.30; do
   python -B -m experiments.evaluate_hybrid_policy --episodes 48 --seed 262000 --horizon 35 \
     --parametrization arrival_condition --adaptive-task --tumble-scale $R \
     --phase-time-observation --execution-feedback --baseline-anchored-residual \
-    --deployment-gate --model logs/adp_262410/final_model.zip \
-    --output eval/adp/proposed_r${R}_262410.json
+    --deployment-gate --model logs/adp_rf_262410/final_model.zip \
+    --output eval/adp/proposed_r${R}_adp_rf_262410.json
   python -B -m experiments.evaluate_hybrid_policy --episodes 48 --seed 262000 --horizon 35 \
     --parametrization arrival_condition --adaptive-task --tumble-scale $R \
     --control desired_pose --output eval/adp/mpc_r${R}.json
