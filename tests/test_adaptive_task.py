@@ -74,7 +74,10 @@ def test_adaptive_env_carries_staging_observation_and_no_corridor_keys() -> None
     # Staging direction adds exactly 3 dims over the same non-staging config.
     assert env.observation_space.shape[0] == plain.observation_space.shape[0] + 3
     _, info = env.reset(seed=262000)
+    assert env.observation_space.shape == (38,)
+    assert env.action_space.shape == (2,)
     assert env.env._staging_direction_inertial is not None
+    assert env.environment_config.precapture_task.entry_phase_gate_cos <= -1.0
     # No far-range corridor was added, so no outer-approach violation counter.
     assert "outer_approach_violation_steps" not in info
     env.close()

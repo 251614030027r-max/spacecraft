@@ -1,7 +1,7 @@
 # D0: hybrid MPC infeasibility diagnosis
 
 This is the no-training gate requested in
-`HANDOFF_UPPER_RULING_20260908.md` sections 6, 7, and 11.  All evaluations
+`docs/handoffs/archive_202609/HANDOFF_UPPER_RULING_20260908.md` sections 6, 7, and 11.  All evaluations
 used the same seeds 262000--262019, horizon 20, the `radial_local` action
 parametrisation, the historical zero-wrench infeasibility fallback, and the
 default constraint slack limit.  They ran serially in one process.  The three

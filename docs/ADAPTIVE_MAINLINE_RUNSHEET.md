@@ -55,7 +55,7 @@ for SEED in 262410 262411 262412; do
 python -B -m train.train_hybrid \
   --steps 60000 --seed $SEED --run-name adp_${SEED} \
   --horizon 35 --parametrization arrival_condition \
-  --baseline-anchored-residual --adaptive-task --device auto
+  --baseline-anchored-residual --adaptive-task --device cpu
 done
 ```
 ### 2b. 重训(奖励单位修正后,2026-09-19)
@@ -69,7 +69,7 @@ for SEED in 262410 262411 262412; do
 python -B -m train.train_hybrid \
   --steps 60000 --seed $SEED --run-name adp_rf_${SEED} \
   --horizon 35 --parametrization arrival_condition \
-  --baseline-anchored-residual --adaptive-task --device auto
+  --baseline-anchored-residual --adaptive-task --device cpu
 done
 ```
 - 仍是 3 个独立进程/终端并行(每终端一个 seed)最快;瓶颈是 MPC 求解,别上 GPU。

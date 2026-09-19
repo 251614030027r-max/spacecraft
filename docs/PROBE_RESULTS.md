@@ -50,4 +50,4 @@
 
 ## 统一结论
 
-四个探针没有在温室版 `single_phase` 中找到“学习层不可替代、经典 MPC 又无法解决”的缺口。这一历史结论不变，但它已被后续 precapture-planning 主线取代；当时的转向原文归档在 `docs/handoffs/archive_202609/HANDOFF_upper_v2_pivot.md`，不得作为当前执行授权。当前裁决见根 `HANDOFF_UPPER_RULING_20260908.md`。
+四个探针没有在温室版 `single_phase` 中找到“学习层不可替代、经典 MPC 又无法解决”的缺口。这一历史结论不变，但它已被后续 precapture-planning 主线取代；当时的转向原文归档在 `docs/handoffs/archive_202609/HANDOFF_upper_v2_pivot.md`，不得作为当前执行授权。旧裁决归档在 `docs/handoffs/archive_202609/HANDOFF_UPPER_RULING_20260908.md`。

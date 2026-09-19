@@ -1,7 +1,7 @@
 # Opening prompt for the next window
 
 Paste this as your first message to the next window, together with the repo
-(git) and `docs/WINDOW_HANDOFF_20260919.md`.
+(git) and `docs/handoffs/archive_202609/WINDOW_HANDOFF_20260919.md`.
 
 ---
 
@@ -14,7 +14,7 @@ you hand me copy-paste terminal commands and a zip, I run them and send back
 logs / `train.monitor.csv` / eval JSON for you to diagnose.
 
 Before doing anything, read, in this order:
-1. `docs/WINDOW_HANDOFF_20260919.md` -- the full current state, the frozen
+1. `docs/handoffs/archive_202609/WINDOW_HANDOFF_20260919.md` -- the full state at handoff, the frozen
    mainline, every locked call, the reward fix, and the open risks.
 2. `CLAUDE.md` -- the top live-status banner and the two `Direction discipline
    (2026-09-18 / 2026-09-17)` blocks (the 2026-09-16 and -09-12 blocks are prior

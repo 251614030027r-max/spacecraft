@@ -1,42 +1,38 @@
-# DRL2：六自由度翻滚非合作目标预捕获控制
+# DRL2：六自由度快速翻滚非合作目标预捕获
 
 本仓库实现高保真 SE(3) 六自由度预捕获控制：目标自由翻滚，真值传播包含中心引力、J2、引力梯度、二阶矩与刚体耦合，采用 RK45 积分，控制周期 0.1 s。
 
-## 当前状态
+## 当前主线（2026-09-19）
 
-截至 2026-09-16，T12 正式评估仍不支持“学习控制优于固定设定点”。转向后的非合作探针 2 也命中预签的“基本持平”停止分支：同一感知环境和 48 种子下，EKF 估计控制 Pure MPC 为 31/48，真值控制为 32/48（`ΔC=1`），不足以支撑探针 3 或训练。当前等待上层重新定义真正需要长期决策的观测/相位耦合问题，不得通过加噪声、缩视场或改任务人为制造 gap。正式结果见 `docs/PROBE2_NONCOOP_RESULT_20260916.md`；T12 结论见 `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`。
+当前唯一主线是 **adaptive sync-entry task + 强约束 MPC + baseline-anchored SAC-MPC**。RL 每 2 s 输出有界的捕获进度/参考残差，MPC 每 0.1 s 安全执行；残差零逐位恢复固定设定点 Pure MPC。机会来自同步/共旋与暂存后进入之间的连续资源代价，不使用相位硬门，也不人为削弱 Pure MPC。
 
-## 阅读顺序
+第一轮 `adp_262410/411/412` 因奖励量纲错误在约 31k 步停止：安全接近惩罚漏乘 `dt`，造成合法完成回报低于悬停。该错误已经修复并加入防回归测试；旧 critic 和 checkpoint 禁止续训。下一步只允许从零运行 `adp_rf_262410/411/412`，在 10k 做奖励灾难检查、30k 看趋势、60k 完成正式训练。
 
-1. `CLAUDE.md`：研究纪律、系统边界和长期主线。
-2. `docs/PROBE2_NONCOOP_RESULT_20260916.md`：非合作估计控制与真值控制的正式配对结果及停止裁决。
-3. `docs/PRECAPTURE_NONCOOP_S1_AND_PROBES.md`：非合作 S1 接口、观测窗口与探针顺序。
-4. `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`：T12/S10 正式结果与证据边界。
-5. `docs/T12_S10_EVAL_EXECUTION_ORDER.md`：T12 正式评估的预登记执行单与三分叉判据。
-6. `docs/PERCEPTION_PRECAPTURE_INTEGRATION.md`：感知接入的阶段设计提案。
-7. `docs/EVIDENCE_INDEX.md`、`docs/REPRODUCIBILITY.md`：证据和复现索引。
-8. `docs/HISTORY.md`、`docs/handoffs/README.md`：被后续结果取代的演进与历史交接。
+## 当前入口
 
-旧的多份交接、探针操作说明和逐轮阶段报告已整合进上述文件；原文仍可从 Git 历史恢复，不再作为当前入口。
+1. `CLAUDE.md`：冻结的研究问题、边界和执行纪律；
+2. `docs/ADAPTIVE_MAINLINE_RUNSHEET.md`：当前训练与正式评估命令；
+3. `docs/REWARD_UNITS_FIX_20260919.md`：奖励错误、修复和证据；
+4. `docs/TRAINING_PREFLIGHT_AUDIT_20260919.md`：本机训练前代码审计；
+5. `docs/FAST_TUMBLING_CAPTURE_MOTIVATION.md`：物理动机与论文口径；
+6. `docs/EVIDENCE_INDEX.md`、`docs/REPRODUCIBILITY.md`：证据与复现索引；
+7. `docs/HISTORY.md`、`docs/handoffs/`：历史材料，不是当前执行授权。
 
-## 只读验证
-
-T12 启动前完整回归为：
-
-```text
-228 passed in 182.13s
-```
-
-T12 训练与两轮评估原始产物分别保留在本机 `logs/t12_train/`、`logs/t12_eval/` 和 `logs/t12_eval_v2/`；不得因本次精简入库而删除或覆盖。
+其他 T6–T12、感知、机会硬走廊和 timing probe 文档均为演进记录；不得覆盖以上入口或重新开启已否决机制。
 
 ## 目录
 
-- `dynamics/`、`env/`：SE(3) 动力学、任务和环境；
-- `controllers/`：MPC 与终端值实验实现；
-- `train/`、`eval/`、`experiments/`：训练、统一评价和诊断工具；
-- `tests/`：回归测试；
-- `logs/`：主要审计证据，失败实验也保留；
-- `models/`：本机未跟踪的历史最终模型；中间 checkpoint 已清理；
-- `References/`：对标论文；
-- `docs/`：当前状态、证据索引、复现方法、清理记录和历史 handoff 归档；
-- `local_artifacts/patches/`：本机未跟踪的旧阶段补丁归档，不是当前执行入口。
+- `dynamics/`、`env/`：SE(3) 动力学、任务、奖励和环境；
+- `controllers/`：约束 MPC；
+- `train/`、`eval/`、`experiments/`：训练、正式评价和诊断；
+- `tests/`：回归与训练前契约测试；
+- `docs/`：当前入口及历史证据；
+- `logs/`、`eval/cal2/`、`local_artifacts/`：本机运行产物，默认不入 Git。
+
+训练前运行：
+
+```text
+python -B -m pytest -q
+```
+
+当前经审计基线为 `263 passed`（加入 5 个奖励单位防回归测试后）；正式启动命令以 `docs/ADAPTIVE_MAINLINE_RUNSHEET.md` 第 2b 节为准。

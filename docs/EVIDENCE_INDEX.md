@@ -4,6 +4,16 @@
 
 日志是正式审计证据；模型只是可复核策略快照。失败日志保留并不等于失败结论仍然有效，必须结合生成它的代码版本和 `CLAUDE.md` 判断。`models/` 被 `.gitignore` 排除，不能依靠 Git 恢复，因此本次整理不删除任何模型。
 
+## 当前 adaptive sync-entry 主线（2026-09-19）
+
+- 执行单：`docs/ADAPTIVE_MAINLINE_RUNSHEET.md`；
+- 奖励修复：`docs/REWARD_UNITS_FIX_20260919.md`；
+- 训练前审计：`docs/TRAINING_PREFLIGHT_AUDIT_20260919.md`；
+- 第一轮错误奖励运行的最小原始证据：`local_artifacts/reward_units_bug_20260919/`（三份 manifest + 三份 Monitor CSV）；
+- 有效重训产物将写入本机 `logs/adp_rf_262410/411/412/`，未完成前不得形成论文结论。
+
+旧 `adp_262410/411/412` 的 checkpoint、模型和 TensorBoard 已删除：其 critic 学到“悬停优于合法完成”的反向目标，不能用于恢复训练或部署门。旧校准重复目录 `eval/cal/` 已删除；当前小样本校准保留于本机 `eval/cal2/`。
+
 ## 当前正式基线证据
 
 ### 非合作探针 2（2026-09-16）

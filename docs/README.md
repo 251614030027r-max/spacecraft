@@ -1,14 +1,17 @@
 # 文档入口
 
-当前文档入口如下，历史文件不得冒充现行状态：
+## 当前必须阅读
 
-1. 仓库根 `CLAUDE.md`：研究纪律、系统边界与总览；
-2. `PROBE2_NONCOOP_RESULT_20260916.md`：当前非合作探针 2 正式结果与停止裁决；
-3. `PRECAPTURE_NONCOOP_S1_AND_PROBES.md`：非合作 S1 接口、观测窗口和探针顺序；
-4. `T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`：T12/S10 正式结果与证据边界；
-5. `T12_S10_EVAL_EXECUTION_ORDER.md`：T12 正式评估的预登记执行单与三分叉判据；
-6. `PERCEPTION_PRECAPTURE_INTEGRATION.md`：感知接入的阶段设计提案；
-7. `EVIDENCE_INDEX.md`、`REPRODUCIBILITY.md`：日志、模型、论文与复现索引；
-8. `HISTORY.md`、`handoffs/README.md`：被后续结果取代的演进与历史交接。
+1. `../CLAUDE.md`：冻结的 adaptive sync-entry 主线和科学边界；
+2. `ADAPTIVE_MAINLINE_RUNSHEET.md`：三种子从零重训、10k/30k/60k 检查和正式评估；
+3. `REWARD_UNITS_FIX_20260919.md`：首轮训练无效的原因与量纲修复；
+4. `TRAINING_PREFLIGHT_AUDIT_20260919.md`：训练前静态、测试和真实闭环审计；
+5. `FAST_TUMBLING_CAPTURE_MOTIVATION.md`：物理需求、翻滚率与论文表述；
+6. `BIDIRECTIONAL_SACMPC_EXECUTION.md`：基线锚定与双向耦合设计背景；
+7. `EVIDENCE_INDEX.md`、`REPRODUCIBILITY.md`：证据和复现索引。
 
-旧 handoff 已移入 `handoffs/archive_202609/`；根目录 `HANDOFF_UPPER_RULING_20260908.md` 因仍被历史文档引用而保留，但已不再是当前入口。原 `docs/history/` 的逐轮报告仍可从 Git 历史恢复。这些历史材料不得单独支持当前主张。
+## 历史材料
+
+`T*`、`A1/A2/A3/G0`、非合作探针、timing probe、旧 `MAINLINE/OPPORTUNITY` runsheet 和 9 月 16 日以前的阶段报告只记录研究演进。它们可以解释为什么当前设计如此选择，但不是现行执行单，也不得用于恢复相位硬门、外层硬走廊或旧训练配置。
+
+交接文件统一放在 `handoffs/`；根目录不再放新增 handoff。当前事实发生变化时，优先更新上述七个入口，而不是继续新增并列说明文件。

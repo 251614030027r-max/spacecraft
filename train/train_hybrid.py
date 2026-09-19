@@ -108,7 +108,16 @@ def parse_args() -> argparse.Namespace:
         "cost structure, not a gate). Adds the staging-direction observation.",
     )
     parser.set_defaults(adaptive_task=False)
-    parser.add_argument("--device", type=str, default="auto")
+    parser.add_argument(
+        "--device",
+        choices=("cpu", "cuda", "auto"),
+        default="cpu",
+        help=(
+            "SAC inference/training device. CPU is the audited default: the "
+            "MPC solve is the bottleneck and three parallel runs must not "
+            "silently contend for one CUDA device."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -217,6 +226,12 @@ def main() -> None:
                 if hybrid_config.include_execution_feedback_observation
                 else ""
             )
+            + (
+                ", and the 3D episode-frozen inertial staging direction "
+                "expressed in the current target frame"
+                if hybrid_config.include_staging_direction_observation
+                else ""
+            )
         ),
 
         "coupling_direction": (
@@ -228,8 +243,10 @@ def main() -> None:
         ),
         "decision_period_s": hybrid_config.decision_period_steps
         * environment_config.dt_s,
-        "reward": "time, force, torque, safety, and event terms are summed "
-        "over the decision period; potential shaping is evaluated once at "
+        "reward": "time, force, torque, and safety are rates integrated with "
+        "the 0.1 s control time step; success/failure events are one-shot and "
+        "unscaled by dt; these terms are summed over the decision period; "
+        "potential shaping is evaluated once at "
         "the decision boundary as weight * (gamma_SAC * Phi(s_next) - "
         "Phi(s)); nothing rewards entering legally or waiting",
         "training_environment": asdict(environment_config),
