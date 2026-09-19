@@ -24,13 +24,15 @@ MPC 决定"怎样把当前意图安全飞出来"。** 机会是连续代价结�
 
 3 个翻滚率 × 两种极端策略(同一 MPC),小样本:
 ```
+mkdir -p eval/cal2
 for R in 0.10 0.20 0.30; do          # 1.18 / 2.36 / 3.54 deg/s
   for ARM in desired_pose timed_entry; do   # 早共旋 / 暂存后进入
     python -B -m experiments.evaluate_hybrid_policy --episodes 8 --seed 262000 \
       --horizon 35 --parametrization arrival_condition --tumble-scale $R \
-      --control $ARM --output cal/${ARM}_r${R}.json
+      --control $ARM --output eval/cal2/${ARM}_r${R}.json
   done
 done
+python read_cal.py            # 汇总表;默认读 eval/cal2/,也可传目录
 ```
 只看 completion / equivalent-Δv / time / worst margin。判据放宽:**不要求漂亮交叉、不要求等待策略赢、
 不要求某速率后突然模式切换**;只要"两种策略资源代价不同、且差异随翻滚率有变化",就足以说明任务有长期
