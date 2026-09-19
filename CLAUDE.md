@@ -5,12 +5,22 @@ non-cooperative target. Chaser 106 kg, target 225 kg, 500 km / 45 deg circular
 orbit, RK45 truth with central gravity, second moments, gravity gradient and
 J2, 0.1 s control period, +-5 N / +-0.6 N*m per axis.
 
-**2026-09-16 当前执行闸门：**上层最新的 `下层执行_择时价值确认实验_20260916.md` 将任务改为先以零 SAC 训练的 A/B 对照验证“择时是否值钱”。本仓库现有六提交只构成 foundation；放开的 staging 初始分布和 B 臂 hold→commit harness 尚未交付，不能启动对照或沿本文件较早的双向残差训练路线开训。当前状态与缺口见 `docs/TIMING_VALUE_FOUNDATION_HANDOFF_20260916.md`。本段只说明优先级，不是新实验授权。
-
 **The active task is `precapture_planning`, and the active work is the
 SAC-MPC coupling.** Everything about `single_phase`, the Waypoint, the A1/A2/A3
 perception line and the 24D mission schemas is history; it is kept under
 *Historical research line* because the lessons transfer, not because it is live.
+
+> **Live status -- 2026-09-19.** Direction is settled: the **adaptive sync-entry
+> mainline** (`Direction discipline (2026-09-18, current)` below). The three
+> adaptive-task seeds (262410/411/412) were **stopped and are being retrained
+> from zero** after a measured **reward units bug**: the safety proximity
+> warning was not time-integrated, so a legal capture scored ~-75 while a hover
+> scored ~+4 (the objective was inverted and the critic the deployment gate
+> reads was being poisoned). Fixed in `env/reward.py`; a clean MPC completion is
+> unchanged at +26, so Pure MPC stays a fair baseline. See
+> `docs/REWARD_UNITS_FIX_20260919.md`. Retrain command: runsheet 2b. The
+> `Current state -- 2026-09-16` and `-- 2026-09-12` blocks below are prior
+> context, superseded by the 2026-09-18 discipline block.
 
 ---
 
@@ -65,6 +75,105 @@ claim the combination + task-level opportunity + `Lambda>1` non-cooperative
 regime. Gate: does the full method, 3 seeds, beat Pure MPC on completion while
 retaining most of its successes at acceptable fuel? See
 `docs/BIDIRECTIONAL_SACMPC_EXECUTION.md`.
+
+## Direction discipline (2026-09-18, current)
+
+**Mainline (frozen): the adaptive sync-entry decision task + ordinary strong MPC +
+baseline-anchored SAC-MPC coupling.** `precapture_adaptive_capture_environment_config()`.
+The paper problem: during pre-capture of a fast-tumbling non-cooperative target,
+how the chaser autonomously trades off *continuous synchronisation / co-rotation*
+against *staging then opportunistic entry*, while a strong constrained MPC does
+the short-horizon 6-DoF tracking, constraint satisfaction and execution. **RL
+decides how to do the task; MPC decides how to fly the current intent safely.**
+That long-horizon, state-dependent resource decision is the principled reason RL
+belongs here -- hand rules are brittle, the short-horizon MPC cannot see the
+trade-off -- and the generalisation it buys is RL's real advantage.
+
+Locked calls (2026-09-18):
+- **Opportunity is a continuous cost structure, not a legality gate.** No phase
+  gate, no favourability legality, no new hard far-range constraint. Co-rotating
+  while the port is misaligned costs more fuel/actuator/margin; that is all. **Pure
+  MPC always keeps a legal path (co-rotate the whole way and complete) and stays a
+  genuine strong baseline -- never shape the task so it must lose.** Far-range
+  "don't loop around from 20 m" is handled by sane initialisation + loose
+  reference shaping; real safety stays with keep-out / FOV / speed / terminal.
+- **Thesis framing.** Nominal regime: the coupling must **retain** Pure MPC's
+  completion and safety (baseline retention), not beat it on fuel. The learning
+  layer's value is shown across regimes: the **same** policy changes its
+  sync-vs-enter behaviour as tumble rate and initial phase/position vary, keeping
+  a better overall completion / fuel / time / margin trade-off. Do not claim "RL
+  wins, MPC loses".
+- **Decision-margin calibration = one restricted measurement, never again a
+  direction life/death gate.** 3 tumble rates (slow / 2.36 deg/s nominal / faster
+  but realistic ~3.5 deg/s), a small seed set, two extreme *reasonable* strategies
+  only (`--control desired_pose` = early co-rotate vs `--control timed_entry` =
+  stage-then-enter), identical MPC/constraints/execution, `--tumble-scale` set.
+  Read only completion / equivalent-dv / time / margin. It answers one question:
+  *does the task contain two strategies with genuinely different cost structures*
+  (ideally a crossover -- early sync cheaper when slow, delayed sync's fuel
+  advantage emerging as tumble speeds up, paid in time). A clear trade-off ->
+  stop and implement. A weak one -> **tune near-field distance / initial range /
+  realistic tumble range to build the physical decision space, then continue the
+  same mainline.** Never a window-angle sweep, a gate, ten commit-times, or a
+  direction change on an ugly result.
+- **Action space.** V1 reuses the 2D `arrival_condition`, named *capture progress
+  / reference blend* (it is the geometric interpolation from inertial hold to the
+  body-fixed terminal reference -- not literally "sync level"). An explicit
+  `sync_level` dynamic reference generator is a V2 *method* optimisation if
+  training shows staging and partial co-rotation are inseparable, not a task
+  failure.
+- **Keep the architecture analysable** for later recursive-feasibility / tracking-
+  stability work: RL is a bounded reference generator on a slow (2 s) decision
+  timescale, MPC is the fast tracking subsystem, the residual is bounded and a
+  baseline/fallback reference exists. Do not build a black box; do not front-load
+  the stability proofs or the final figure experiments -- get the base loop
+  running first, then research the coupling mechanism (MPC feasibility / slack /
+  value feedback into the high-level update) systematically.
+
+The 2026-09-17 opportunity-task block below (an outer hard approach corridor) is
+**superseded**: that corridor made Pure MPC violate a new hard constraint, which
+is the manufactured-gap story we are avoiding. Its code stays off by default.
+
+## Direction discipline (adopted 2026-09-17)
+
+**Mainline (frozen): the opportunity task + ordinary strong MPC + baseline-anchored
+SAC-MPC coupling.** The task is `precapture_opportunity_environment_config()`: an
+outer inertial approach corridor (fixed at reset, does not co-rotate) plus the
+inner rotating capture corridor, so the capture geometry sweeps in and out of the
+approach corridor -- a real "when to close" decision produced by geometry, not a
+phase threshold. A fixed-commit MPC cannot hold the corridor while chasing the
+rotating pose (2-episode smoke: 0/2 legal, hundreds-to-thousands of
+outer-approach violation steps, one timeout), so there is genuine headroom for a
+learned staging/timing layer to win on **legal (zero-violation) completion**.
+
+**Discipline shift (user call, 2026-09-17): the MPC is no longer required to be a
+maximally-strong frozen baseline.** An ordinary MPC lower layer is acceptable;
+the priority is that the coupling shows a clear advantage. The one honesty line
+that stays: the outer corridor and every task constraint apply to **both** arms
+(same ordinary MPC executor; the only difference is learned reference vs fixed
+reference), so the comparison isolates the value of learned scheduling and is not
+a blind-MPC manufactured gap. By construction the coupling can fall back to the
+MPC (residual 0 = MPC bitwise; critic-advantage gate only deviates when it helps),
+so "coupling worse than MPC" should not happen.
+
+**Build first, judge on the formal loop.** A small-scale probe result is no
+longer grounds to veto the direction. Do not keep overturning the plan; get the
+complete trainable/comparable/iterable loop running (3-seed train, aligned rows),
+then iterate the mechanism (reward, action scaling, gate) on formal results.
+
+**Superseded framing below.** The 2026-09-16 "Bidirectional Baseline-Anchored"
+block and the "Pure MPC frozen / no manufactured gap" non-negotiable are kept for
+history; the opportunity-task mainline and the MPC-relaxation above take
+precedence. A small-scale probe result is no longer grounds to veto the direction.
+The timing-value A/B is the case in point: its scripted hold->commit heuristic
+came back negative (B 17/35 vs A 26/35, and it did not even raise entry-phase
+favourability), but a fixed heuristic failing does not falsify the *learned*
+residual method, which is what the paper proposes. Probes inform; they do not
+close the direction. Priority order: **form a complete trainable, comparable,
+iterable method closed loop first** (train the residual policy from zero, run the
+aligned Pure MPC / direct-takeover / proposed rows on one seed block, iterate on
+the mechanism), and judge on that formal multi-seed loop -- not on a partial
+probe.
 
 ## Research execution discipline (adopted 2026-09-16)
 

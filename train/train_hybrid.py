@@ -20,7 +20,11 @@ from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
 from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv, hybrid_mpc_config
-from env.phase2_env import precapture_planning_environment_config
+from env.phase2_env import (
+    precapture_adaptive_capture_environment_config,
+    precapture_opportunity_environment_config,
+    precapture_planning_environment_config,
+)
 from env.se3_rendezvous_env import SE3RendezvousConfig
 from train.hybrid_configs import (
     SAC_MPC_HYBRID,
@@ -86,6 +90,24 @@ def parse_args() -> argparse.Namespace:
         "Pure MPC bitwise and the policy learns only how far to deviate.",
     )
     parser.set_defaults(baseline_anchored_residual=False)
+    parser.add_argument(
+        "--opportunity-task",
+        dest="opportunity_task",
+        action="store_true",
+        help="Train on the opportunity task (outer frozen approach corridor + "
+        "inner rotating capture). Adds the staging-direction observation the "
+        "policy needs to time the close. Off = the historical planning task.",
+    )
+    parser.set_defaults(opportunity_task=False)
+    parser.add_argument(
+        "--adaptive-task",
+        dest="adaptive_task",
+        action="store_true",
+        help="Train on the adaptive sync-entry mainline task (opened initial "
+        "distribution, no hard far-range corridor; the capture opportunity is a "
+        "cost structure, not a gate). Adds the staging-direction observation.",
+    )
+    parser.set_defaults(adaptive_task=False)
     parser.add_argument("--device", type=str, default="auto")
     return parser.parse_args()
 
@@ -97,12 +119,20 @@ def accelerated_training_configs(
     execution_feedback: bool = True,
     monotone_commit: bool = True,
     baseline_anchored_residual: bool = False,
+    opportunity_task: bool = False,
+    adaptive_task: bool = False,
 ) -> tuple[SE3RendezvousConfig, PrecaptureHybridConfig]:
     """Return engineering-equivalent configs used only by hybrid training."""
 
-    environment_config = replace(
-        precapture_planning_environment_config(), cache_target_trajectory=False
-    )
+    if opportunity_task and adaptive_task:
+        raise ValueError("choose at most one of opportunity_task / adaptive_task")
+    if adaptive_task:
+        base_config = precapture_adaptive_capture_environment_config()
+    elif opportunity_task:
+        base_config = precapture_opportunity_environment_config()
+    else:
+        base_config = precapture_planning_environment_config()
+    environment_config = replace(base_config, cache_target_trajectory=False)
     hybrid_config = PrecaptureHybridConfig(
         horizon_steps=horizon_steps,
         waypoint_parametrization=waypoint_parametrization,
@@ -112,6 +142,7 @@ def accelerated_training_configs(
         include_execution_feedback_observation=execution_feedback,
         monotone_commit=monotone_commit,
         baseline_anchored_residual=baseline_anchored_residual,
+        include_staging_direction_observation=opportunity_task or adaptive_task,
     )
     return environment_config, hybrid_config
 
@@ -130,6 +161,8 @@ def main() -> None:
         execution_feedback=args.execution_feedback,
         monotone_commit=args.monotone_commit,
         baseline_anchored_residual=args.baseline_anchored_residual,
+        opportunity_task=args.opportunity_task,
+        adaptive_task=args.adaptive_task,
     )
     mpc_config = hybrid_mpc_config(hybrid_config, environment_config)
 
@@ -253,6 +286,9 @@ def main() -> None:
         ]
         + (["--phase-time-observation"] if hybrid_config.include_target_phase_and_time_observation else [])
         + (["--execution-feedback"] if hybrid_config.include_execution_feedback_observation else [])
+        + (["--baseline-anchored-residual"] if hybrid_config.baseline_anchored_residual else [])
+        + (["--opportunity-task"] if args.opportunity_task else [])
+        + (["--adaptive-task"] if args.adaptive_task else [])
     )
     manifest_path.write_text(json.dumps(manifest, indent=1, default=str))
     env = Monitor(

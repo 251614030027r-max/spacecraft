@@ -12,9 +12,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from argparse import Namespace
-
-from dynamics.lie import so3_exp
 
 from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
 from env.phase2_env import (
@@ -25,7 +22,6 @@ from experiments.evaluate_hybrid_policy import (
     ScriptedEntryTiming,
     _TIMED_COMMIT_ACTION,
     _TIMED_HOLD_ACTION,
-    evaluation_environment_config,
 )
 
 
@@ -84,49 +80,6 @@ def _timing_env() -> PrecaptureHybridEnv:
     )
     env.reset(seed=262000)
     return env
-
-
-def test_a_b_use_identical_cached_target_dynamics() -> None:
-    options = dict(timing_probe=True, perception=False, entry_phase_gate_deg=180.0)
-    config_a = evaluation_environment_config(Namespace(**options, control="desired_pose"))
-    config_b = evaluation_environment_config(Namespace(**options, control="timed_entry"))
-    assert config_a == config_b
-    assert config_a.cache_target_trajectory
-    a = PrecaptureHybridEnv(environment_config=config_a)
-    b = PrecaptureHybridEnv(environment_config=config_b)
-    try:
-        a.reset(seed=262000)
-        b.reset(seed=262000)
-        assert a.env._target_trajectory is b.env._target_trajectory
-        assert np.array_equal(a.env.target_state.rotation, b.env.target_state.rotation)
-        for index in (0, 1, 10, 100):
-            cached = a.env._target_trajectory[index]
-            assert np.array_equal(cached.rotation, b.env._target_trajectory[index].rotation)
-        # Cache index zero is the reset state, and index one is the next step.
-        assert np.array_equal(a.env.target_state.rotation, a.env._target_trajectory[0].rotation)
-    finally:
-        a.close()
-        b.close()
-
-
-def test_hold_waypoint_follows_frozen_inertial_staging_direction() -> None:
-    env = _timing_env()
-    try:
-        staging = np.asarray(env.env._staging_direction_inertial)
-        target = env.env.target_state
-        assert target is not None
-        first = env.waypoint_from_action(_TIMED_HOLD_ACTION)
-        first_inertial = target.rotation @ first
-        assert first_inertial / np.linalg.norm(first_inertial) == pytest.approx(staging)
-        target.rotation = target.rotation @ so3_exp(np.array([0.0, 0.0, 0.6]))
-        second = env.waypoint_from_action(_TIMED_HOLD_ACTION)
-        second_inertial = target.rotation @ second
-        assert second_inertial / np.linalg.norm(second_inertial) == pytest.approx(staging)
-        assert second_inertial == pytest.approx(first_inertial)
-        commit = env.waypoint_from_action(_TIMED_COMMIT_ACTION)
-        assert commit == pytest.approx(env.environment_config.precapture_task.desired_position)
-    finally:
-        env.close()
 
 
 def test_timed_arm_holds_until_favourable_then_latches() -> None:

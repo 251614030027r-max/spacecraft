@@ -162,6 +162,14 @@ class PrecaptureHybridConfig:
     #: negative transfer (a learned layer that rewrote the whole reference
     #: destroyed states the nominal already solved).
     baseline_anchored_residual: bool = False
+    #: Opportunity task: append the episode-frozen inertial staging direction
+    #: ``s0`` expressed in the current target body frame (``R_target^T s0``, 3D
+    #: unit vector) to the observation. The policy needs it because the outer
+    #: approach corridor is fixed in inertial space while the capture geometry is
+    #: body-fixed, so "how far has the corridor rotated relative to the port"
+    #: -- the thing that decides when to close -- is only observable through it.
+    #: Off by default so every other configuration is bitwise unchanged.
+    include_staging_direction_observation: bool = False
     #: The action is ``a * waypoint_scale_m`` in the target body frame, so the
     #: box reaches past the 17-20 m start without reaching the 30 m distance
     #: failure. It is an absolute point, not a displacement.
@@ -349,10 +357,14 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         if self.hybrid_config.include_execution_feedback_observation:
             low = np.concatenate((low, np.zeros(3)))
             high = np.concatenate((high, np.ones(3)))
+        if self.hybrid_config.include_staging_direction_observation:
+            low = np.concatenate((low, -np.ones(3)))
+            high = np.concatenate((high, np.ones(3)))
         if (
             self.hybrid_config.include_target_phase_and_time_observation
             or self._ratchet_observation_active()
             or self.hybrid_config.include_execution_feedback_observation
+            or self.hybrid_config.include_staging_direction_observation
         ):
             self.observation_space = spaces.Box(
                 low=low.astype(np.float32),
@@ -408,6 +420,16 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             parts.append(np.array([self._commit_blend], dtype=np.float64))
         if self.hybrid_config.include_execution_feedback_observation:
             parts.append(self._feedback)
+        if self.hybrid_config.include_staging_direction_observation:
+            assert self.env.target_state is not None
+            staging = self.env._staging_direction_inertial
+            if staging is None:
+                parts.append(np.zeros(3, dtype=np.float64))
+            else:
+                parts.append(
+                    np.asarray(self.env.target_state.rotation, dtype=np.float64).T
+                    @ np.asarray(staging, dtype=np.float64)
+                )
         if len(parts) == 1:
             return observation
         augmented = np.concatenate(parts).astype(np.float32)
@@ -457,9 +479,22 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         raw = np.clip(raw, -1.0, 1.0)
         if self.hybrid_config.waypoint_parametrization == "arrival_condition":
             if self.hybrid_config.baseline_anchored_residual:
-                # ``raw`` is the residual on the nominal arrival action; a zero
-                # residual recovers the nominal desired-pose command bitwise.
-                raw = np.clip(_NOMINAL_ARRIVAL_ACTION + raw, -1.0, 1.0)
+                # ``raw`` is the residual on the nominal arrival action
+                # (a_commit = +1 full commit, a_radius = 0). A zero residual
+                # recovers the nominal desired-pose command bitwise. The commit
+                # channel's nominal sits at the +1 edge, so a plain offset could
+                # only pull back to the mid-blend; a gain of 2 lets the most
+                # negative residual reach the full inertial hold (a_commit = -1),
+                # so the policy can express the whole hold -> partial -> full
+                # commit range the sync-entry decision needs. The radius channel
+                # is centred at 0, so it keeps unit gain.
+                raw = np.array(
+                    [
+                        np.clip(1.0 + 2.0 * float(raw[0]), -1.0, 1.0),
+                        np.clip(float(raw[1]), -1.0, 1.0),
+                    ],
+                    dtype=np.float64,
+                )
             return self._arrival_condition_waypoint(raw)
         if self.hybrid_config.waypoint_parametrization == "radial_local":
             return self._radial_local_waypoint(raw)
@@ -482,11 +517,19 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 else np.array([-1.0, 0.0])
             )
             if self.hybrid_config.baseline_anchored_residual:
-                # Residual that reproduces ``base``: exact for the nominal
-                # desired-pose command (-> zero residual), best-effort clip for
-                # the hold. The desired-pose control only ever asks for the
-                # former, so its fixed-setpoint floor stays bitwise.
-                return np.clip(base - _NOMINAL_ARRIVAL_ACTION, -1.0, 1.0)
+                # Inverse of the gain-2 residual map above: commit residual is
+                # (base_commit - 1) / 2, radius residual is base_radius. The
+                # desired pose (base_commit = +1) -> zero residual (fixed-setpoint
+                # floor stays bitwise); the full inertial hold (base_commit = -1)
+                # -> commit residual -1.
+                return np.clip(
+                    np.array(
+                        [(float(base[0]) - 1.0) / 2.0, float(base[1])],
+                        dtype=np.float64,
+                    ),
+                    -1.0,
+                    1.0,
+                )
             return base
         if self.hybrid_config.waypoint_parametrization == "absolute":
             return np.clip(

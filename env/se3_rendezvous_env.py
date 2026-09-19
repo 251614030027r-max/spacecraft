@@ -377,8 +377,8 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         self._terminal_entry_evaluation: TerminalEntryEvaluation | None = None
         self._waypoint_reached = False
         self._constraint_success = True
-        constraint_names = (
-            (
+        if self.config.precapture_planning_enabled:
+            constraint_names = [
                 "keepout",
                 "fov",
                 "outer_speed",
@@ -386,10 +386,12 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 "corridor",
                 "total_speed",
                 "closing_speed",
-            )
-            if self.config.precapture_planning_enabled
-            else ("corridor", "fov", "total_speed", "closing_speed")
-        )
+            ]
+            if self.config.precapture_task.outer_approach_half_angle_rad is not None:
+                constraint_names.append("outer_approach")
+            constraint_names = tuple(constraint_names)
+        else:
+            constraint_names = ("corridor", "fov", "total_speed", "closing_speed")
         self._constraint_violation_steps = {name: 0 for name in constraint_names}
         self._constraint_max_violation = {
             name: 0.0 for name in self._constraint_violation_steps
@@ -812,6 +814,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                     estimated_relative,
                     self.config.precapture_task,
                     terminal_region_active=self._terminal_region_entered,
+                    staging_direction_inertial=self._staging_direction_inertial,
                 )
                 return build_precapture_estimated_observation(
                     estimated_relative,
@@ -840,6 +843,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 self.relative,
                 self.config.precapture_task,
                 terminal_region_active=self._terminal_region_entered,
+                staging_direction_inertial=self._staging_direction_inertial,
             )
             return build_precapture_full_state_observation(
                 self.relative,
@@ -1254,6 +1258,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 self.relative,
                 self.config.precapture_task,
                 terminal_region_active=False,
+                staging_direction_inertial=self._staging_direction_inertial,
             )
             if self.config.precapture_planning_enabled
             else None
@@ -1351,7 +1356,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
         return self._observation(), info
 
     def _precapture_info(self, metrics: PrecaptureMetrics) -> dict:
-        return {
+        info = {
             "target_center_distance_m": metrics.target_center_distance_m,
             "axial_remaining_m": metrics.axial_remaining_m,
             "port_axial_distance_m": metrics.port_axial_distance_m,
@@ -1439,6 +1444,10 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 for name, value in self._constraint_max_violation.items()
             },
         }
+        if self.config.precapture_task.outer_approach_half_angle_rad is not None:
+            info["outer_approach_angle_rad"] = metrics.outer_approach_angle_rad
+            info["outer_approach_margin_rad"] = metrics.outer_approach_margin_rad
+        return info
 
     def _info(
         self,
@@ -1673,6 +1682,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 self.relative,
                 self.config.precapture_task,
                 terminal_region_active=False,
+                staging_direction_inertial=self._staging_direction_inertial,
             )
             if self.config.precapture_planning_enabled
             and not self._terminal_region_entered
@@ -1746,6 +1756,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                 self.relative,
                 self.config.precapture_task,
                 terminal_region_active=self._terminal_region_entered,
+                staging_direction_inertial=self._staging_direction_inertial,
             )
             if not self._terminal_region_entered and precapture_previous is not None:
                 self._terminal_entry_evaluation = evaluate_terminal_entry_crossing(
@@ -1765,6 +1776,7 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                             self.relative,
                             self.config.precapture_task,
                             terminal_region_active=True,
+                            staging_direction_inertial=self._staging_direction_inertial,
                         )
                     else:
                         self._illegal_terminal_entry_count += 1
@@ -1786,6 +1798,13 @@ class SE3RendezvousEnv(gym.Env[np.ndarray, np.ndarray]):
                     precapture.outer_inertial_speed_margin_m_s
                 )
                 active_margins["outer_radial"] = precapture.outer_radial_margin_m_s
+                if (
+                    self.config.precapture_task.outer_approach_half_angle_rad
+                    is not None
+                ):
+                    active_margins["outer_approach"] = (
+                        precapture.outer_approach_margin_rad
+                    )
             for name, margin in active_margins.items():
                 violation = max(-margin, 0.0)
                 if violation > self.config.precapture_task.constraint_tolerance:

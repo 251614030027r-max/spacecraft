@@ -156,6 +156,17 @@ class PrecaptureReward:
                     self.task.outer_inertial_speed_limit_m_s,
                 )
             )
+            if self.task.outer_approach_half_angle_rad is not None:
+                # Opportunity task: leaving the fixed inertial approach corridor
+                # is a safety-margin cost, so closing while the capture geometry
+                # is misaligned is discouraged and staging-until-aligned is the
+                # profitable behaviour. Off (None) for the historical task.
+                warnings.append(
+                    self._warning(
+                        metrics.outer_approach_margin_rad,
+                        self.task.outer_approach_half_angle_rad,
+                    )
+                )
             if metrics.transition_speed_active:
                 warnings.append(
                     self._warning(
@@ -172,7 +183,19 @@ class PrecaptureReward:
             torque_penalty=-self.settings.torque_weight
             * self.time_step_s
             * float(np.mean(np.clip(action[:3], -1.0, 1.0) ** 2)),
-            safety_penalty=-self.settings.safety_weight * float(sum(warnings)),
+            # Dimensional consistency: like the time/force/torque terms above,
+            # the safety proximity warning is a *rate* integrated over the step,
+            # so it carries `time_step_s`. Without it the warning accrued as a
+            # raw per-step sum, i.e. 10x too heavy per second at dt=0.1 s, and a
+            # legal terminal approach that merely grazes the 10% buffer for the
+            # ~40 s it spends in the terminal region banked ~-100 -- swamping the
+            # +20 completion event, so a do-nothing hover (+4) out-scored a
+            # successful legal capture (-75). This is a units fix, not a weight
+            # tune: `safety_weight` is unchanged and a clean MPC completion,
+            # which never enters the buffer, still scores its full +26.
+            safety_penalty=-self.settings.safety_weight
+            * self.time_step_s
+            * float(sum(warnings)),
             event_reward=float(event_reward),
             potential=potential,
         )

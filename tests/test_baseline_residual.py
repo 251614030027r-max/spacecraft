@@ -68,6 +68,23 @@ def test_negative_commit_residual_pulls_back_from_full_commit():
     assert not np.allclose(held, desired)
 
 
+def test_most_negative_residual_recovers_full_inertial_hold():
+    # The commit channel uses gain 2 so the most negative residual reaches the
+    # full inertial hold -- the same waypoint the plain arrival_condition
+    # interface produces at a=(-1, 0). Without this the policy could not express
+    # complete staging, only the mid-blend.
+    plain = _env(residual=False)
+    plain.reset(seed=262000)
+    hold_wp = plain.waypoint_from_action(np.array([-1.0, 0.0]))
+
+    res = _env(residual=True)
+    res.reset(seed=262000)
+    residual_hold_wp = res.waypoint_from_action(np.array([-1.0, 0.0]))
+    assert np.array_equal(residual_hold_wp, hold_wp)
+    # and the action that names the full hold is the most-negative commit residual
+    assert np.allclose(res.action_for_waypoint(hold_wp), np.array([-1.0, 0.0]))
+
+
 def test_residual_requires_arrival_condition():
     with pytest.raises(ValueError):
         PrecaptureHybridConfig(

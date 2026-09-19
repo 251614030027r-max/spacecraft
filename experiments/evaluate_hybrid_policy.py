@@ -28,11 +28,14 @@ import numpy as np
 
 from controllers.mpc.constraints import normalized_precapture_truth_margins
 from controllers.mpc.prediction import relative_to_vector
+from dynamics.lie import so3_exp
 from dynamics.relative import reconstruct_target_state
 from dynamics.types import GeneralizedForce
 from env.action import wrench_to_normalized
 from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
 from env.phase2_env import (
+    precapture_adaptive_capture_environment_config,
+    precapture_opportunity_environment_config,
     precapture_perception_environment_config,
     precapture_planning_environment_config,
     precapture_timing_probe_environment_config,
@@ -45,6 +48,7 @@ VIOLATION_STEP_KEYS = (
     "fov_violation_steps",
     "outer_speed_violation_steps",
     "outer_radial_violation_steps",
+    "outer_approach_violation_steps",
     "corridor_violation_steps",
     "total_speed_violation_steps",
     "closing_speed_violation_steps",
@@ -61,7 +65,7 @@ _TIMED_HOLD_ACTION = np.array([-1.0, 0.0], dtype=np.float64)
 
 
 class ScriptedEntryTiming:
-    """B arm: a truth-future-phase-assisted timing probe.
+    """B arm: a scripted oracle that times the commit to the entry phase.
 
     It waits at the inertial staging point until the tumbling capture port is
     predicted to face the staging direction at the moment the chaser would
@@ -69,11 +73,14 @@ class ScriptedEntryTiming:
     transit time ``range / lead_speed`` and reads the target's **actual future
     attitude** from the episode's cached truth target trajectory
     (``cache_target_trajectory``), which propagates the real 6-DoF free
-    rigid-body tumble (non-spherical inertia, gravity gradient, J2). This is a
-    non-deployable diagnostic of whether favourable-phase timing helps, not a
-    strict optimal upper bound: its hold policy, lead time and threshold are
-    fixed heuristics. It never weakens the MPC: the executed command once
-    committed is exactly the immediate arm's.
+    rigid-body tumble (non-spherical inertia, gravity gradient, J2). It is a
+    **truth-future-assisted scripted timing comparator** -- a cheap approximate
+    stand-in for "stage then enter", not a learned policy, not a strict upper
+    bound or an optimal timing oracle. If it does well, staging has a potential
+    resource advantage; if it does not, that does not mean the learned layer has
+    no room. Constant-body-rate extrapolation is only a fallback if the cache is
+    off. It never weakens the MPC: the executed command once committed is exactly
+    the immediate arm's.
 
     The A arm is ``--control desired_pose`` (commit on the first decision); the
     only difference between the arms is *when* commit happens.
@@ -99,17 +106,21 @@ class ScriptedEntryTiming:
         self.predicted_favourability_at_commit: float | None = None
 
     def _future_target_rotation(self, lead_s: float) -> np.ndarray:
-        """Target attitude ``lead_s`` ahead from this episode's truth cache."""
+        """Target attitude ``lead_s`` ahead, from the cached truth trajectory if
+        available (the real 6-DoF tumble the episode actually follows), else a
+        constant-body-rate fallback."""
 
         target = self._env.env.target_state
         assert target is not None
         trajectory = self._env.env._target_trajectory
-        if trajectory is None:
-            raise RuntimeError("timed_entry requires the truth target trajectory cache")
-        dt_s = self._env.environment_config.dt_s
-        future_step = self._env.env.step_count + int(round(lead_s / dt_s))
-        future_step = min(max(future_step, 0), len(trajectory) - 1)
-        return np.asarray(trajectory[future_step].rotation, dtype=np.float64)
+        if trajectory is not None:
+            dt_s = self._env.environment_config.dt_s
+            future_step = self._env.env.step_count + int(round(lead_s / dt_s))
+            future_step = min(max(future_step, 0), len(trajectory) - 1)
+            return np.asarray(trajectory[future_step].rotation, dtype=np.float64)
+        rotation = np.asarray(target.rotation, dtype=np.float64)
+        omega = np.asarray(target.omega, dtype=np.float64)
+        return rotation @ so3_exp(omega * lead_s)
 
     def _predicted_favourability(self, lead_s: float) -> float:
         staging = self._env.env._staging_direction_inertial
@@ -139,6 +150,23 @@ class ScriptedEntryTiming:
         return _TIMED_HOLD_ACTION
 
 
+def critic_min_q(policy: Any, observation: np.ndarray, action: np.ndarray) -> float:
+    """Minimum over the SAC twin critics of Q(s, a) -- the value the deployment
+    gate arbitrates on. The critic was trained on actions in the [-1, 1] box, so
+    ``action`` is passed through unscaled (predict returns that box, and the zero
+    residual is the nominal)."""
+
+    import torch
+
+    obs_tensor, _ = policy.policy.obs_to_tensor(observation)
+    with torch.no_grad():
+        action_tensor = torch.as_tensor(
+            np.asarray(action, dtype=np.float32), device=obs_tensor.device
+        ).reshape(1, -1)
+        q_values = torch.cat(list(policy.critic(obs_tensor, action_tensor)), dim=1)
+        return float(q_values.min(dim=1).values.item())
+
+
 def truth_violation_step_counts(info: dict[str, Any]) -> dict[str, int | None]:
     """Preserve cumulative truth-geometry counters without inventing missing data."""
 
@@ -146,27 +174,6 @@ def truth_violation_step_counts(info: dict[str, Any]) -> dict[str, int | None]:
         key: int(info[key]) if key in info else None
         for key in VIOLATION_STEP_KEYS
     }
-
-
-def evaluation_environment_config(args: argparse.Namespace):
-    """Build one dynamics configuration for both arms of a timing probe."""
-
-    if args.timing_probe:
-        if args.perception:
-            raise ValueError("--timing-probe and --perception are exclusive")
-        base = precapture_timing_probe_environment_config(
-            entry_phase_gate_deg=args.entry_phase_gate_deg
-        )
-    elif args.perception:
-        base = precapture_perception_environment_config()
-    else:
-        base = precapture_planning_environment_config()
-    # A and B must use identical target integration, not merely nominally
-    # identical dynamics with one arm cached and the other propagated live.
-    return replace(
-        base,
-        cache_target_trajectory=(args.timing_probe or args.control == "timed_entry"),
-    )
 
 
 def summarize_entry_channel(
@@ -241,6 +248,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument(
+        "--tumble-scale",
+        type=float,
+        default=None,
+        help=(
+            "Override the target tumble scale (0.20 = 0.0412 rad/s nominal). Used "
+            "for the decision-margin calibration and cross-regime generalization; "
+            "the same reward/policy face a different tumble rate."
+        ),
+    )
+    parser.add_argument(
         "--parametrization",
         choices=["absolute", "radial_local", "arrival_condition"],
         default="radial_local",
@@ -273,8 +290,57 @@ def parse_args() -> argparse.Namespace:
             "Run without a model. 'desired_pose' is the fixed-setpoint lower "
             "layer delivered through the wrapper (the immediate-entry A arm and "
             "the row the coupled policy has to beat). 'timed_entry' is the "
-            "truth-future-phase-assisted timing probe B arm (hold at the inertial staging point, "
+            "scripted timing oracle B arm (hold at the inertial staging point, "
             "commit when the entry phase is favourable). 'random' is the floor."
+        ),
+    )
+    parser.add_argument(
+        "--baseline-anchored-residual",
+        action="store_true",
+        help=(
+            "Evaluate the policy in the baseline-anchored residual interface: "
+            "the action is a residual on the nominal (fixed-setpoint) arrival "
+            "action, so zero residual recovers Pure MPC bitwise. Required to "
+            "evaluate a model trained with --baseline-anchored-residual, and the "
+            "nominal that the deployment gate falls back to."
+        ),
+    )
+    parser.add_argument(
+        "--deployment-gate",
+        action="store_true",
+        help=(
+            "Critic-advantage deployment gate (proposed method). Deviate from "
+            "the nominal only when the SAC critic prefers the policy's residual "
+            "action over the zero residual by more than --gate-advantage-margin; "
+            "otherwise command the nominal. Requires --model and "
+            "--baseline-anchored-residual."
+        ),
+    )
+    parser.add_argument(
+        "--gate-advantage-margin",
+        type=float,
+        default=0.0,
+        help=(
+            "deployment gate only: minimum critic advantage "
+            "Q(s,a_policy) - Q(s,a_nom) required to deviate from the nominal."
+        ),
+    )
+    parser.add_argument(
+        "--opportunity-task",
+        action="store_true",
+        help=(
+            "Evaluate on the opportunity task (outer frozen approach corridor + "
+            "inner rotating capture). Adds the staging-direction observation. "
+            "Must match how the model was trained."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-task",
+        action="store_true",
+        help=(
+            "Evaluate on the adaptive sync-entry mainline task (opened initial "
+            "distribution, no hard far-range corridor). Adds the staging-direction "
+            "observation. Must match how the model was trained."
         ),
     )
     parser.add_argument(
@@ -356,6 +422,16 @@ def main() -> None:
             "--control timed_entry requires --parametrization arrival_condition "
             "(the hold/commit actions live on that interface)"
         )
+    if args.deployment_gate and (
+        args.model is None or not args.baseline_anchored_residual
+    ):
+        raise ValueError(
+            "--deployment-gate requires --model and --baseline-anchored-residual"
+        )
+    if args.baseline_anchored_residual and args.parametrization != "arrival_condition":
+        raise ValueError(
+            "--baseline-anchored-residual requires --parametrization arrival_condition"
+        )
 
     policy = None
     if args.model is not None:
@@ -367,7 +443,41 @@ def main() -> None:
     controller_times_s: list[float] = []
     environment_times_s: list[float] = []
     generator = np.random.default_rng(args.seed)
-    environment_config = evaluation_environment_config(args)
+    if args.adaptive_task:
+        if args.perception or args.timing_probe or args.opportunity_task:
+            raise ValueError(
+                "--adaptive-task is exclusive with "
+                "--perception / --timing-probe / --opportunity-task"
+            )
+        base_environment_config = precapture_adaptive_capture_environment_config()
+    elif args.opportunity_task:
+        if args.perception or args.timing_probe:
+            raise ValueError(
+                "--opportunity-task is exclusive with --perception / --timing-probe"
+            )
+        base_environment_config = precapture_opportunity_environment_config()
+    elif args.timing_probe:
+        if args.perception:
+            raise ValueError("--timing-probe and --perception are exclusive")
+        base_environment_config = precapture_timing_probe_environment_config(
+            entry_phase_gate_deg=args.entry_phase_gate_deg
+        )
+    elif args.perception:
+        base_environment_config = precapture_perception_environment_config()
+    else:
+        base_environment_config = precapture_planning_environment_config()
+    # The timing oracle (B arm) reads the target's future attitude from the
+    # cached truth trajectory, so it needs the cache on. The cache is the same
+    # deterministic tumble the live step follows, so both arms see identical
+    # target dynamics either way -- only the lookahead differs.
+    if args.tumble_scale is not None:
+        base_environment_config = replace(
+            base_environment_config, phase2_target_tumble_scale=args.tumble_scale
+        )
+    environment_config = replace(
+        base_environment_config,
+        cache_target_trajectory=(args.control == "timed_entry"),
+    )
     task = environment_config.precapture_task
     entry_position = (
         task.port_position
@@ -394,6 +504,10 @@ def main() -> None:
                     args.phase_time_observation
                 ),
                 include_execution_feedback_observation=args.execution_feedback,
+                baseline_anchored_residual=args.baseline_anchored_residual,
+                include_staging_direction_observation=(
+                    args.opportunity_task or args.adaptive_task
+                ),
             )
         )
         if policy is not None and episode == 0:
@@ -437,11 +551,26 @@ def main() -> None:
         consecutive_zero_wrench_steps = 0
         max_consecutive_zero_wrench_steps = 0
         entry_crossings: list[dict[str, Any]] = []
+        gate_decisions = 0
+        gate_deviations = 0
+        gate_advantages: list[float] = []
         terminated = truncated = False
         while not (terminated or truncated):
             if policy is not None:
                 started = perf_counter()
                 action, _ = policy.predict(observation, deterministic=True)
+                if args.deployment_gate:
+                    nominal_action = np.zeros_like(action)
+                    advantage = critic_min_q(
+                        policy, observation, action
+                    ) - critic_min_q(policy, observation, nominal_action)
+                    gate_decisions += 1
+                    gate_advantages.append(advantage)
+                    if advantage > args.gate_advantage_margin:
+                        gate_deviations += 1
+                    else:
+                        # Fall back to the nominal (fixed-setpoint Pure MPC).
+                        action = nominal_action
                 inference_s = perf_counter() - started
             elif args.control == "desired_pose":
                 started = perf_counter()
@@ -687,6 +816,14 @@ def main() -> None:
                     if timing is not None
                     else None
                 ),
+                "gate_decisions": gate_decisions,
+                "gate_deviations": gate_deviations,
+                "gate_deviation_fraction": (
+                    gate_deviations / gate_decisions if gate_decisions else None
+                ),
+                "gate_mean_advantage": (
+                    float(np.mean(gate_advantages)) if gate_advantages else None
+                ),
                 "waypoints_target_frame": waypoints,
             }
         )
@@ -722,6 +859,14 @@ def main() -> None:
         "waypoint_parametrization": args.parametrization,
         "phase_time_observation": args.phase_time_observation,
         "execution_feedback": args.execution_feedback,
+        "tumble_scale": args.tumble_scale,
+        "adaptive_task": args.adaptive_task,
+        "opportunity_task": args.opportunity_task,
+        "baseline_anchored_residual": args.baseline_anchored_residual,
+        "deployment_gate": args.deployment_gate,
+        "gate_advantage_margin": (
+            args.gate_advantage_margin if args.deployment_gate else None
+        ),
         "timing_probe": args.timing_probe,
         "entry_phase_gate_deg": args.entry_phase_gate_deg if args.timing_probe else None,
         "timed_entry_settings": (

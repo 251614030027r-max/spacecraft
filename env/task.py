@@ -136,6 +136,17 @@ class PrecaptureTaskConfig:
     #: window once per tumble, making "when to enter" a real long-horizon
     #: decision. The staging direction is set per episode by the environment.
     entry_phase_gate_cos: float = -1.0
+    #: Outer approach corridor (opportunity task). Before a legal terminal latch
+    #: the chaser must stay within this half-angle of the episode-frozen inertial
+    #: staging direction ``s0`` (the approach direction it carried in at reset),
+    #: measured from the target centre. ``None`` disables it and reproduces the
+    #: frozen precapture task bitwise. It does not co-rotate, so the body-fixed
+    #: capture geometry sweeps in and out of it once per tumble -- a real
+    #: "when to close" decision produced by geometry, not by a phase threshold.
+    #: It is a safety-margin constraint (counted, non-terminating), active
+    #: pre-entry and inactive after the terminal region latches. ``s0`` is
+    #: episode state, supplied by the environment, never stored on this config.
+    outer_approach_half_angle_rad: float | None = None
     corridor_half_angle_rad: float = float(np.deg2rad(35.0))
     fov_half_angle_rad: float = float(np.deg2rad(50.0))
     terminal_total_speed_limit_m_s: float = 0.35
@@ -186,6 +197,10 @@ class PrecaptureTaskConfig:
             raise ValueError("corridor and FOV half angles must be below 90 degrees")
         if self.closing_speed_min_m_s > self.closing_speed_max_m_s:
             raise ValueError("closing speed minimum cannot exceed maximum")
+        if self.outer_approach_half_angle_rad is not None and not (
+            0.0 < self.outer_approach_half_angle_rad < np.pi
+        ):
+            raise ValueError("outer approach half angle must lie in (0, pi)")
 
     @property
     def port_position(self) -> FloatArray:
@@ -453,6 +468,8 @@ class PrecaptureMetrics:
     outer_radial_closing_speed_m_s: float
     outer_radial_closing_speed_limit_m_s: float
     outer_radial_margin_m_s: float
+    outer_approach_angle_rad: float
+    outer_approach_margin_rad: float
     target_frame_speed_m_s: float
     target_frame_speed_limit_m_s: float
     target_frame_speed_margin_m_s: float
@@ -648,6 +665,7 @@ def compute_precapture_metrics(
     config: PrecaptureTaskConfig = PrecaptureTaskConfig(),
     *,
     terminal_region_active: bool = False,
+    staging_direction_inertial: ArrayLike | None = None,
 ) -> PrecaptureMetrics:
     """Single truth source for the two-region precapture task.
 
@@ -710,6 +728,44 @@ def compute_precapture_metrics(
     outer_radial_margin = float(
         outer_radial_closing_speed_limit - outer_radial_closing_speed
     )
+    # Outer approach corridor: the chaser's inertial displacement direction must
+    # stay within ``outer_approach_half_angle_rad`` of the episode-frozen
+    # staging direction ``s0`` (inertial). ``s0`` does not co-rotate, so the
+    # body-fixed capture geometry sweeps in and out of it -- the opportunity.
+    # Inactive (angle 0, +inf margin) unless the corridor is configured, a
+    # staging direction is supplied, and the terminal region has not latched.
+    outer_approach_active = bool(
+        config.outer_approach_half_angle_rad is not None
+        and staging_direction_inertial is not None
+        and not terminal_region_active
+    )
+    if outer_approach_active:
+        displacement_inertial = target.rotation @ position
+        displacement_norm = float(np.linalg.norm(displacement_inertial))
+        staging = np.asarray(staging_direction_inertial, dtype=np.float64).reshape(3)
+        staging_norm = float(np.linalg.norm(staging))
+        if displacement_norm <= np.finfo(np.float64).eps or staging_norm <= np.finfo(
+            np.float64
+        ).eps:
+            outer_approach_angle = 0.0
+        else:
+            cosine = float(
+                np.clip(
+                    (displacement_inertial / displacement_norm)
+                    @ (staging / staging_norm),
+                    -1.0,
+                    1.0,
+                )
+            )
+            outer_approach_angle = float(np.arccos(cosine))
+        outer_approach_margin = float(
+            config.outer_approach_half_angle_rad - outer_approach_angle
+        )
+    else:
+        outer_approach_angle = 0.0
+        # Large finite "inactive" margin: gates positive without an inf that
+        # could break JSON serialisation or min/normalisation downstream.
+        outer_approach_margin = 1.0e3
     target_frame_speed = float(np.linalg.norm(position_rate))
     # Compatibility-only diagnostic fields: the withdrawn 14--8 m transition
     # is never active. The terminal row owns the 0.35 m/s limit after latch.
@@ -749,6 +805,7 @@ def compute_precapture_metrics(
         regional_safe = bool(
             outer_inertial_speed_margin >= -tolerance
             and outer_radial_margin >= -tolerance
+            and outer_approach_margin >= -tolerance
         )
     active_constraints_satisfied = bool(common_safe and regional_safe)
     return PrecaptureMetrics(
@@ -768,6 +825,8 @@ def compute_precapture_metrics(
         outer_radial_closing_speed_m_s=outer_radial_closing_speed,
         outer_radial_closing_speed_limit_m_s=outer_radial_closing_speed_limit,
         outer_radial_margin_m_s=outer_radial_margin,
+        outer_approach_angle_rad=outer_approach_angle,
+        outer_approach_margin_rad=outer_approach_margin,
         target_frame_speed_m_s=target_frame_speed,
         target_frame_speed_limit_m_s=target_frame_speed_limit,
         target_frame_speed_margin_m_s=target_frame_speed_margin,

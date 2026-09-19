@@ -243,6 +243,96 @@ def precapture_timing_probe_environment_config(
     )
 
 
+def precapture_opportunity_environment_config(
+    outer_approach_half_angle_deg: float = 40.0,
+) -> SE3RendezvousConfig:
+    """Opportunity task: outer frozen approach corridor + inner rotating capture.
+
+    Derived from ``precapture_planning_environment_config``. One geometric
+    addition -- an outer approach corridor around the episode-frozen inertial
+    staging direction ``s0`` (the reset-time approach line) -- turns the task
+    from "track the single rotating terminal point from the start" into "hold in
+    a fixed safe approach corridor and close when the body-fixed capture geometry
+    rotates into it". The corridor does not co-rotate, so the opportunity is
+    produced by geometry, not by a phase threshold.
+
+    What changes from the planning task:
+
+    * outer approach corridor active at ``outer_approach_half_angle_deg`` (a
+      counted, non-terminating safety-margin constraint, inactive after latch);
+    * initial range 15 -> 28 m and pointing error 5 -> 25 deg (wider task
+      selection space), with the distance-failure boundary opened to 35 m so 28 m
+      keeps a margin;
+    * everything that sets control difficulty stays frozen -- authority, 0.1 s
+      step, MPC model, tumble rate, keep-out, terminal geometry/corridor/FOV/
+      speed/closing/completion, and the truth RK45 adjudication.
+
+    The old ``precapture_planning_environment_config`` keeps its historical
+    semantics for reproduction.
+    """
+
+    base = precapture_planning_environment_config()
+    half_angle_rad = float(np.deg2rad(outer_approach_half_angle_deg))
+    return replace(
+        base,
+        max_distance_m=35.0,
+        precapture_initial_range_min_m=15.0,
+        precapture_initial_range_max_m=28.0,
+        precapture_initial_pointing_error_max_rad=float(np.deg2rad(25.0)),
+        precapture_task=replace(
+            base.precapture_task, outer_approach_half_angle_rad=half_angle_rad
+        ),
+    )
+
+
+def precapture_adaptive_capture_environment_config(
+    initial_range_max_m: float = 28.0,
+    initial_pointing_error_max_deg: float = 25.0,
+) -> SE3RendezvousConfig:
+    """Adaptive sync-entry mainline task (2026-09-18).
+
+    Derived from ``precapture_planning_environment_config`` by only *opening the
+    task-selection space* -- a wider, farther, more varied set of initial states
+    from which the chaser must first reach the near field, then decide how to
+    close on the rotating capture geometry. There is **no** extra hard far-range
+    constraint: the capture "opportunity" is a continuous, state-dependent
+    performance structure (co-rotating while the port is misaligned costs more
+    fuel/actuator/margin), never an open/closed legality gate. Pure MPC therefore
+    always keeps a legal path (co-rotate the whole way and complete); it just pays
+    more on some states. The learned layer's value is choosing, per state, how
+    much to synchronise now versus stage and close later -- a long-horizon
+    resource trade-off, and one that should adapt as the tumble rate changes.
+
+    What opens vs ``precapture_planning_environment_config``:
+
+    * initial range 15 -> ``initial_range_max_m`` m (default 28, strictly inside
+      the 35 m distance-failure boundary);
+    * initial pointing error 5 -> ``initial_pointing_error_max_deg`` deg (inside
+      the 50 deg FOV);
+    * distance failure opened to 35 m.
+
+    Frozen (control difficulty, not touched): +-5 N / +-0.6 N*m authority, 0.1 s
+    step, MPC model, nominal 0.041 rad/s tumble, keep-out, terminal
+    geometry/corridor/FOV/speed/closing/completion, truth RK45 adjudication.
+
+    The staging direction (the reset-time inertial approach line) is frozen by
+    the environment and surfaced to the policy through the hybrid
+    ``include_staging_direction_observation`` flag (train/eval ``--adaptive-task``).
+    No outer-approach corridor, no phase gate, no favourability reward.
+    """
+
+    base = precapture_planning_environment_config()
+    return replace(
+        base,
+        max_distance_m=35.0,
+        precapture_initial_range_min_m=15.0,
+        precapture_initial_range_max_m=float(initial_range_max_m),
+        precapture_initial_pointing_error_max_rad=float(
+            np.deg2rad(initial_pointing_error_max_deg)
+        ),
+    )
+
+
 def terminal_phase_environment_config() -> SE3RendezvousConfig:
     """Terminal-only config retained for P0 MPC validation and later P3 reuse."""
 
@@ -273,6 +363,8 @@ __all__ = [
     "precapture_perception_environment_config",
     "precapture_staging_environment_config",
     "precapture_timing_probe_environment_config",
+    "precapture_opportunity_environment_config",
+    "precapture_adaptive_capture_environment_config",
     "phase2_s1v2_mission_config",
     "terminal_phase_environment_config",
 ]
