@@ -1,0 +1,4287 @@
+{
+ "source": "desired_pose",
+ "episodes": 12,
+ "seed_block": 262000,
+ "horizon": 20,
+ "waypoint_parametrization": "arrival_condition",
+ "phase_time_observation": true,
+ "execution_feedback": false,
+ "hyperparameters": {
+  "gamma": 0.99
+ },
+ "compute_note": "valid only if this ran serially in a single process; the MPC is charged every control step and the policy once per decision; post-solve runtime diagnostics are disabled",
+ "records": [
+  {
+   "episode": 0,
+   "seed": 262000,
+   "completed": true,
+   "truth_geometry_zero_violation_completed": true,
+   "constraint_violated": false,
+   "survival_s": 113.60000000000001,
+   "steps": 1136,
+   "decisions": 57,
+   "force_impulse_n_s": 201.98923468804932,
+   "torque_impulse_nm_s": 5.344667379683656,
+   "equivalent_delta_v_m_s": 1.9055588178117862,
+   "minimum_margins": {
+    "keepout_margin_m": 1.2249557755164724,
+    "fov_margin_rad": 0.7668140416463042,
+    "outer_inertial_speed_margin_m_s": 1.4768131704163854,
+    "outer_radial_margin_m_s": 0.20045460052791572,
+    "corridor_axial_margin_m": 1.7245853384956717,
+    "corridor_lateral_margin_m": -3.39364668081274,
+    "terminal_total_speed_margin_m_s": -0.17936213795715783,
+    "closing_speed_margin_m_s": 0.04513495867027133
+   },
+   "illegal_terminal_entry_count": 0,
+   "terminal_region_active": 1.0,
+   "time_failure": false,
+   "distance_failure": false,
+   "qp_infeasible_steps_total": 0,
+   "first_infeasible_time_s": null,
+   "max_consecutive_zero_wrench_steps": 0,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 75.3,
+     "remaining_time_s": 224.7,
+     "legal": true,
+     "radial_distance_m": 0.7818942017740503,
+     "target_frame_speed_m_s": 0.11683997577911552,
+     "closing_speed_m_s": 0.10443058566137237,
+     "violation_excess": {
+      "radial_distance_m": -2.3690397201696434,
+      "target_frame_speed_m_s": -0.23316002422088444,
+      "closing_speed_m_s": -0.09556941433862765
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": null,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 1,
+   "legal_entry_crossing_count": 1,
+   "illegal_entry_crossing_count": 0,
+   "illegal_exit_count": 0,
+   "retry_crossing_count": 0,
+   "retry_legal_count": 0,
+   "final_remaining_time_s": 186.39999999999998,
+   "final_target_center_distance_m": 3.2249557755164724,
+   "final_position_error_m": 0.2298428225179597,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "episode": 1,
+   "seed": 262001,
+   "completed": false,
+   "truth_geometry_zero_violation_completed": false,
+   "constraint_violated": true,
+   "survival_s": 38.7,
+   "steps": 387,
+   "decisions": 20,
+   "force_impulse_n_s": 6.927960355047798,
+   "torque_impulse_nm_s": 0.7037568332427727,
+   "equivalent_delta_v_m_s": 0.0653581165570547,
+   "minimum_margins": {
+    "keepout_margin_m": 12.679742935599728,
+    "fov_margin_rad": -0.0006520822855996533,
+    "outer_inertial_speed_margin_m_s": 1.9053057065204257,
+    "outer_radial_margin_m_s": 0.665637845772589,
+    "corridor_axial_margin_m": -8.63208958785981,
+    "corridor_lateral_margin_m": -18.935770810141666,
+    "terminal_total_speed_margin_m_s": -0.31871161735664266,
+    "closing_speed_margin_m_s": -0.3732390837288201
+   },
+   "illegal_terminal_entry_count": 1,
+   "terminal_region_active": 0.0,
+   "time_failure": false,
+   "distance_failure": false,
+   "qp_infeasible_steps_total": 379,
+   "first_infeasible_time_s": 0.8,
+   "max_consecutive_zero_wrench_steps": 379,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 2.7,
+     "remaining_time_s": 297.3,
+     "legal": false,
+     "radial_distance_m": 15.519215227334914,
+     "target_frame_speed_m_s": 0.6160970699886614,
+     "closing_speed_m_s": 0.4536961891239474,
+     "violation_excess": {
+      "radial_distance_m": 12.368281305391221,
+      "target_frame_speed_m_s": 0.26609706998866145,
+      "closing_speed_m_s": 0.25369618912394737
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": null,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 1,
+   "legal_entry_crossing_count": 0,
+   "illegal_entry_crossing_count": 1,
+   "illegal_exit_count": 0,
+   "retry_crossing_count": 0,
+   "retry_legal_count": 0,
+   "final_remaining_time_s": 261.3,
+   "final_target_center_distance_m": 14.679742935599728,
+   "final_position_error_m": 16.34892627001691,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "episode": 2,
+   "seed": 262002,
+   "completed": true,
+   "truth_geometry_zero_violation_completed": true,
+   "constraint_violated": false,
+   "survival_s": 115.9,
+   "steps": 1159,
+   "decisions": 58,
+   "force_impulse_n_s": 132.17804131629478,
+   "torque_impulse_nm_s": 6.120372358333687,
+   "equivalent_delta_v_m_s": 1.2469626539273093,
+   "minimum_margins": {
+    "keepout_margin_m": 1.2136407548020505,
+    "fov_margin_rad": 0.7498944740055119,
+    "outer_inertial_speed_margin_m_s": 1.683502839148021,
+    "outer_radial_margin_m_s": 0.1998810029006748,
+    "corridor_axial_margin_m": 1.7124325865879655,
+    "corridor_lateral_margin_m": -5.8330583273508525,
+    "terminal_total_speed_margin_m_s": 0.030996648928642012,
+    "closing_speed_margin_m_s": 0.043481207671599534
+   },
+   "illegal_terminal_entry_count": 0,
+   "terminal_region_active": 1.0,
+   "time_failure": false,
+   "distance_failure": false,
+   "qp_infeasible_steps_total": 0,
+   "first_infeasible_time_s": null,
+   "max_consecutive_zero_wrench_steps": 0,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 77.0,
+     "remaining_time_s": 223.0,
+     "legal": true,
+     "radial_distance_m": 1.4296555440995173,
+     "target_frame_speed_m_s": 0.13127452248356114,
+     "closing_speed_m_s": 0.09014786269209595,
+     "violation_excess": {
+      "radial_distance_m": -1.7212783778441763,
+      "target_frame_speed_m_s": -0.21872547751643884,
+      "closing_speed_m_s": -0.10985213730790407
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": null,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 1,
+   "legal_entry_crossing_count": 1,
+   "illegal_entry_crossing_count": 0,
+   "illegal_exit_count": 0,
+   "retry_crossing_count": 0,
+   "retry_legal_count": 0,
+   "final_remaining_time_s": 184.1,
+   "final_target_center_distance_m": 3.2136407548020505,
+   "final_position_error_m": 0.22998126314310982,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "episode": 3,
+   "seed": 262003,
+   "completed": true,
+   "truth_geometry_zero_violation_completed": true,
+   "constraint_violated": false,
+   "survival_s": 154.60000000000002,
+   "steps": 1546,
+   "decisions": 78,
+   "force_impulse_n_s": 318.94598892810404,
+   "torque_impulse_nm_s": 22.607352395757715,
+   "equivalent_delta_v_m_s": 3.008924423850038,
+   "minimum_margins": {
+    "keepout_margin_m": 1.1666428978432761,
+    "fov_margin_rad": 0.5066522376957796,
+    "outer_inertial_speed_margin_m_s": 1.5768932060512983,
+    "outer_radial_margin_m_s": 0.19830931776981314,
+    "corridor_axial_margin_m": 1.6625061082886532,
+    "corridor_lateral_margin_m": -8.930215995622506,
+    "terminal_total_speed_margin_m_s": -0.33037498359973805,
+    "closing_speed_margin_m_s": -0.07773259403881566
+   },
+   "illegal_terminal_entry_count": 1,
+   "terminal_region_active": 1.0,
+   "time_failure": false,
+   "distance_failure": false,
+   "qp_infeasible_steps_total": 0,
+   "first_infeasible_time_s": null,
+   "max_consecutive_zero_wrench_steps": 0,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 93.10000000000001,
+     "remaining_time_s": 206.89999999999998,
+     "legal": false,
+     "radial_distance_m": 4.421880226596235,
+     "target_frame_speed_m_s": 0.1921612073592873,
+     "closing_speed_m_s": 0.0203025643393696,
+     "violation_excess": {
+      "radial_distance_m": 1.2709463046525413,
+      "target_frame_speed_m_s": -0.15783879264071268,
+      "closing_speed_m_s": -0.1796974356606304
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": 93.9,
+     "next_crossing_attempt": 2,
+     "next_crossing_legal": true
+    },
+    {
+     "attempt": 2,
+     "time_s": 108.5,
+     "remaining_time_s": 191.5,
+     "legal": true,
+     "radial_distance_m": 2.892057060500942,
+     "target_frame_speed_m_s": 0.15576685488248482,
+     "closing_speed_m_s": 0.01664568244154608,
+     "violation_excess": {
+      "radial_distance_m": -0.2588768614427517,
+      "target_frame_speed_m_s": -0.19423314511751516,
+      "closing_speed_m_s": -0.18335431755845394
+     },
+     "retry_after_illegal": true,
+     "retry_of_attempt": 1,
+     "exit_time_s": null,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 2,
+   "legal_entry_crossing_count": 1,
+   "illegal_entry_crossing_count": 1,
+   "illegal_exit_count": 1,
+   "retry_crossing_count": 1,
+   "retry_legal_count": 1,
+   "final_remaining_time_s": 145.39999999999998,
+   "final_target_center_distance_m": 3.166642897843276,
+   "final_position_error_m": 0.22932638908189729,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "episode": 4,
+   "seed": 262004,
+   "completed": true,
+   "truth_geometry_zero_violation_completed": true,
+   "constraint_violated": false,
+   "survival_s": 126.60000000000001,
+   "steps": 1266,
+   "decisions": 64,
+   "force_impulse_n_s": 299.303565362466,
+   "torque_impulse_nm_s": 5.022307279229988,
+   "equivalent_delta_v_m_s": 2.8236185411553394,
+   "minimum_margins": {
+    "keepout_margin_m": 1.2203928560239548,
+    "fov_margin_rad": 0.7333930418144531,
+    "outer_inertial_speed_margin_m_s": 1.3619589977362225,
+    "outer_radial_margin_m_s": 0.20027480554278215,
+    "corridor_axial_margin_m": 1.719756305217743,
+    "corridor_lateral_margin_m": -10.286310733961592,
+    "terminal_total_speed_margin_m_s": -0.30278492598622764,
+    "closing_speed_margin_m_s": 0.04458420959888071
+   },
+   "illegal_terminal_entry_count": 0,
+   "terminal_region_active": 1.0,
+   "time_failure": false,
+   "distance_failure": false,
+   "qp_infeasible_steps_total": 0,
+   "first_infeasible_time_s": null,
+   "max_consecutive_zero_wrench_steps": 0,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 88.10000000000001,
+     "remaining_time_s": 211.89999999999998,
+     "legal": true,
+     "radial_distance_m": 1.0901535084907656,
+     "target_frame_speed_m_s": 0.12562182832563792,
+     "closing_speed_m_s": 0.09939417763254153,
+     "violation_excess": {
+      "radial_distance_m": -2.060780413452928,
+      "target_frame_speed_m_s": -0.22437817167436205,
+      "closing_speed_m_s": -0.10060582236745848
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": null,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 1,
+   "legal_entry_crossing_count": 1,
+   "illegal_entry_crossing_count": 0,
+   "illegal_exit_count": 0,
+   "retry_crossing_count": 0,
+   "retry_legal_count": 0,
+   "final_remaining_time_s": 173.39999999999998,
+   "final_target_center_distance_m": 3.2203928560239548,
+   "final_position_error_m": 0.2288936779897321,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "episode": 5,
+   "seed": 262005,
+   "completed": false,
+   "truth_geometry_zero_violation_completed": false,
+   "constraint_violated": true,
+   "survival_s": 96.10000000000001,
+   "steps": 961,
+   "decisions": 49,
+   "force_impulse_n_s": 387.7583642357673,
+   "torque_impulse_nm_s": 22.954553019475608,
+   "equivalent_delta_v_m_s": 3.6580977758091255,
+   "minimum_margins": {
+    "keepout_margin_m": 7.22206917832616,
+    "fov_margin_rad": -0.002261090284825129,
+    "outer_inertial_speed_margin_m_s": 1.3919192522900894,
+    "outer_radial_margin_m_s": 0.4215033265916488,
+    "corridor_axial_margin_m": 3.9131535389460623,
+    "corridor_lateral_margin_m": -9.87371075137141,
+    "terminal_total_speed_margin_m_s": -0.054347041068456725,
+    "closing_speed_margin_m_s": 0.06853147112673125
+   },
+   "illegal_terminal_entry_count": 5,
+   "terminal_region_active": 0.0,
+   "time_failure": false,
+   "distance_failure": false,
+   "qp_infeasible_steps_total": 172,
+   "first_infeasible_time_s": 31.1,
+   "max_consecutive_zero_wrench_steps": 165,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 32.4,
+     "remaining_time_s": 267.6,
+     "legal": false,
+     "radial_distance_m": 10.148820785366354,
+     "target_frame_speed_m_s": 0.21379525084024198,
+     "closing_speed_m_s": 0.1275153316339967,
+     "violation_excess": {
+      "radial_distance_m": 6.997886863422661,
+      "target_frame_speed_m_s": -0.136204749159758,
+      "closing_speed_m_s": -0.07248466836600331
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": 47.7,
+     "next_crossing_attempt": 2,
+     "next_crossing_legal": false
+    },
+    {
+     "attempt": 2,
+     "time_s": 79.7,
+     "remaining_time_s": 220.3,
+     "legal": false,
+     "radial_distance_m": 7.132364938835579,
+     "target_frame_speed_m_s": 0.2367682143808881,
+     "closing_speed_m_s": 0.005743805656053969,
+     "violation_excess": {
+      "radial_distance_m": 3.9814310168918854,
+      "target_frame_speed_m_s": -0.11323178561911187,
+      "closing_speed_m_s": -0.19425619434394603
+     },
+     "retry_after_illegal": true,
+     "retry_of_attempt": 1,
+     "exit_time_s": 80.2,
+     "next_crossing_attempt": 3,
+     "next_crossing_legal": false
+    },
+    {
+     "attempt": 3,
+     "time_s": 84.80000000000001,
+     "remaining_time_s": 215.2,
+     "legal": false,
+     "radial_distance_m": 7.02961325006638,
+     "target_frame_speed_m_s": 0.27439552329528705,
+     "closing_speed_m_s": 0.005226335969494504,
+     "violation_excess": {
+      "radial_distance_m": 3.878679328122687,
+      "target_frame_speed_m_s": -0.07560447670471293,
+      "closing_speed_m_s": -0.1947736640305055
+     },
+     "retry_after_illegal": true,
+     "retry_of_attempt": 2,
+     "exit_time_s": 86.0,
+     "next_crossing_attempt": 4,
+     "next_crossing_legal": false
+    },
+    {
+     "attempt": 4,
+     "time_s": 86.60000000000001,
+     "remaining_time_s": 213.39999999999998,
+     "legal": false,
+     "radial_distance_m": 7.183209129243828,
+     "target_frame_speed_m_s": 0.34248832998799666,
+     "closing_speed_m_s": 0.0033862989344113676,
+     "violation_excess": {
+      "radial_distance_m": 4.032275207300135,
+      "target_frame_speed_m_s": -0.007511670012003313,
+      "closing_speed_m_s": -0.19661370106558865
+     },
+     "retry_after_illegal": true,
+     "retry_of_attempt": 3,
+     "exit_time_s": 87.2,
+     "next_crossing_attempt": 5,
+     "next_crossing_legal": false
+    },
+    {
+     "attempt": 5,
+     "time_s": 94.4,
+     "remaining_time_s": 205.6,
+     "legal": false,
+     "radial_distance_m": 8.457731895827992,
+     "target_frame_speed_m_s": 0.35898124867692727,
+     "closing_speed_m_s": 0.004445795794122497,
+     "violation_excess": {
+      "radial_distance_m": 5.306797973884299,
+      "target_frame_speed_m_s": 0.00898124867692729,
+      "closing_speed_m_s": -0.19555420420587752
+     },
+     "retry_after_illegal": true,
+     "retry_of_attempt": 4,
+     "exit_time_s": 94.80000000000001,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 5,
+   "legal_entry_crossing_count": 0,
+   "illegal_entry_crossing_count": 5,
+   "illegal_exit_count": 5,
+   "retry_crossing_count": 4,
+   "retry_legal_count": 0,
+   "final_remaining_time_s": 203.89999999999998,
+   "final_target_center_distance_m": 10.626400608542399,
+   "final_position_error_m": 9.26529241372008,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "episode": 6,
+   "seed": 262006,
+   "completed": false,
+   "truth_geometry_zero_violation_completed": false,
+   "constraint_violated": true,
+   "survival_s": 35.0,
+   "steps": 350,
+   "decisions": 18,
+   "force_impulse_n_s": 44.44875985006445,
+   "torque_impulse_nm_s": 1.5334191022602757,
+   "equivalent_delta_v_m_s": 0.41932792311381556,
+   "minimum_margins": {
+    "keepout_margin_m": 14.571260304922607,
+    "fov_margin_rad": -0.0013365815568091577,
+    "outer_inertial_speed_margin_m_s": 1.6481152840221376,
+    "outer_radial_margin_m_s": 0.6782542795897177,
+    "corridor_axial_margin_m": -8.011981183954049,
+    "corridor_lateral_margin_m": -21.5589500240593,
+    "terminal_total_speed_margin_m_s": -0.44922699369910757,
+    "closing_speed_margin_m_s": -0.4070619912032403
+   },
+   "illegal_terminal_entry_count": 1,
+   "terminal_region_active": 0.0,
+   "time_failure": false,
+   "distance_failure": false,
+   "qp_infeasible_steps_total": 283,
+   "first_infeasible_time_s": 6.7,
+   "max_consecutive_zero_wrench_steps": 283,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 8.4,
+     "remaining_time_s": 291.6,
+     "legal": false,
+     "radial_distance_m": 16.132742438398306,
+     "target_frame_speed_m_s": 0.5177190268467159,
+     "closing_speed_m_s": 0.5098792384221753,
+     "violation_excess": {
+      "radial_distance_m": 12.981808516454613,
+      "target_frame_speed_m_s": 0.1677190268467159,
+      "closing_speed_m_s": 0.3098792384221753
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": null,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 1,
+   "legal_entry_crossing_count": 0,
+   "illegal_entry_crossing_count": 1,
+   "illegal_exit_count": 0,
+   "retry_crossing_count": 0,
+   "retry_legal_count": 0,
+   "final_remaining_time_s": 265.0,
+   "final_target_center_distance_m": 17.22711011768687,
+   "final_position_error_m": 18.570008349772856,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "episode": 7,
+   "seed": 262007,
+   "completed": true,
+   "truth_geometry_zero_violation_completed": true,
+   "constraint_violated": false,
+   "survival_s": 134.1,
+   "steps": 1341,
+   "decisions": 68,
+   "force_impulse_n_s": 198.1154517838427,
+   "torque_impulse_nm_s": 5.516452564476093,
+   "equivalent_delta_v_m_s": 1.8690136960739878,
+   "minimum_margins": {
+    "keepout_margin_m": 1.2160940330392047,
+    "fov_margin_rad": 0.7330278643391189,
+    "outer_inertial_speed_margin_m_s": 1.4618065956897293,
+    "outer_radial_margin_m_s": 0.20024294800730294,
+    "corridor_axial_margin_m": 1.7150108618661761,
+    "corridor_lateral_margin_m": -11.730563729405851,
+    "terminal_total_speed_margin_m_s": -0.1951413992477724,
+    "closing_speed_margin_m_s": 0.04555307153551183
+   },
+   "illegal_terminal_entry_count": 0,
+   "terminal_region_active": 1.0,
+   "time_failure": false,
+   "distance_failure": false,
+   "qp_infeasible_steps_total": 0,
+   "first_infeasible_time_s": null,
+   "max_consecutive_zero_wrench_steps": 0,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 94.5,
+     "remaining_time_s": 205.5,
+     "legal": true,
+     "radial_distance_m": 1.287750280575088,
+     "target_frame_speed_m_s": 0.12273876279412706,
+     "closing_speed_m_s": 0.0901194651488977,
+     "violation_excess": {
+      "radial_distance_m": -1.8631836413686056,
+      "target_frame_speed_m_s": -0.22726123720587293,
+      "closing_speed_m_s": -0.10988053485110232
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": null,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 1,
+   "legal_entry_crossing_count": 1,
+   "illegal_entry_crossing_count": 0,
+   "illegal_exit_count": 0,
+   "retry_crossing_count": 0,
+   "retry_legal_count": 0,
+   "final_remaining_time_s": 165.9,
+   "final_target_center_distance_m": 3.2160940330392047,
+   "final_position_error_m": 0.2306418395550157,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "episode": 8,
+   "seed": 262008,
+   "completed": true,
+   "truth_geometry_zero_violation_completed": true,
+   "constraint_violated": false,
+   "survival_s": 125.60000000000001,
+   "steps": 1256,
+   "decisions": 63,
+   "force_impulse_n_s": 222.4467949322837,
+   "torque_impulse_nm_s": 3.326675983702165,
+   "equivalent_delta_v_m_s": 2.0985546691724877,
+   "minimum_margins": {
+    "keepout_margin_m": 1.2288809264298233,
+    "fov_margin_rad": 0.7212677385055539,
+    "outer_inertial_speed_margin_m_s": 1.406389512249982,
+    "outer_radial_margin_m_s": 0.2007946667492161,
+    "corridor_axial_margin_m": 1.7288084914907813,
+    "corridor_lateral_margin_m": -5.668665123689755,
+    "terminal_total_speed_margin_m_s": -0.3406180266235087,
+    "closing_speed_margin_m_s": 0.04789117963123242
+   },
+   "illegal_terminal_entry_count": 0,
+   "terminal_region_active": 1.0,
+   "time_failure": false,
+   "distance_failure": false,
+   "qp_infeasible_steps_total": 0,
+   "first_infeasible_time_s": null,
+   "max_consecutive_zero_wrench_steps": 0,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 86.10000000000001,
+     "remaining_time_s": 213.89999999999998,
+     "legal": true,
+     "radial_distance_m": 0.3839488993272729,
+     "target_frame_speed_m_s": 0.10450667893434826,
+     "closing_speed_m_s": 0.10135430051982468,
+     "violation_excess": {
+      "radial_distance_m": -2.7669850226164208,
+      "target_frame_speed_m_s": -0.24549332106565172,
+      "closing_speed_m_s": -0.09864569948017533
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": null,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 1,
+   "legal_entry_crossing_count": 1,
+   "illegal_entry_crossing_count": 0,
+   "illegal_exit_count": 0,
+   "retry_crossing_count": 0,
+   "retry_legal_count": 0,
+   "final_remaining_time_s": 174.39999999999998,
+   "final_target_center_distance_m": 3.2288809264298233,
+   "final_position_error_m": 0.22982838840670838,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "episode": 9,
+   "seed": 262009,
+   "completed": true,
+   "truth_geometry_zero_violation_completed": true,
+   "constraint_violated": false,
+   "survival_s": 142.20000000000002,
+   "steps": 1422,
+   "decisions": 72,
+   "force_impulse_n_s": 110.19280111385892,
+   "torque_impulse_nm_s": 3.312848014471058,
+   "equivalent_delta_v_m_s": 1.0395547274892352,
+   "minimum_margins": {
+    "keepout_margin_m": 1.2286022648169803,
+    "fov_margin_rad": 0.7940546526031829,
+    "outer_inertial_speed_margin_m_s": 1.6764616208318546,
+    "outer_radial_margin_m_s": 0.2008080413554292,
+    "corridor_axial_margin_m": 1.7285828331077937,
+    "corridor_lateral_margin_m": -3.8223853986605594,
+    "terminal_total_speed_margin_m_s": 0.040990118454389435,
+    "closing_speed_margin_m_s": 0.04789072986071874
+   },
+   "illegal_terminal_entry_count": 0,
+   "terminal_region_active": 1.0,
+   "time_failure": false,
+   "distance_failure": false,
+   "qp_infeasible_steps_total": 0,
+   "first_infeasible_time_s": null,
+   "max_consecutive_zero_wrench_steps": 0,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 102.7,
+     "remaining_time_s": 197.3,
+     "legal": true,
+     "radial_distance_m": 0.20899141335081184,
+     "target_frame_speed_m_s": 0.10267600215343493,
+     "closing_speed_m_s": 0.10174154370628996,
+     "violation_excess": {
+      "radial_distance_m": -2.9419425085928816,
+      "target_frame_speed_m_s": -0.24732399784656506,
+      "closing_speed_m_s": -0.09825845629371005
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": null,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 1,
+   "legal_entry_crossing_count": 1,
+   "illegal_entry_crossing_count": 0,
+   "illegal_exit_count": 0,
+   "retry_crossing_count": 0,
+   "retry_legal_count": 0,
+   "final_remaining_time_s": 157.79999999999998,
+   "final_target_center_distance_m": 3.2286022648169803,
+   "final_position_error_m": 0.22885712952533083,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "episode": 10,
+   "seed": 262010,
+   "completed": true,
+   "truth_geometry_zero_violation_completed": true,
+   "constraint_violated": false,
+   "survival_s": 115.2,
+   "steps": 1152,
+   "decisions": 58,
+   "force_impulse_n_s": 182.27988161367176,
+   "torque_impulse_nm_s": 5.446039412978878,
+   "equivalent_delta_v_m_s": 1.7196215246572808,
+   "minimum_margins": {
+    "keepout_margin_m": 1.2178878627354282,
+    "fov_margin_rad": 0.7342332760081779,
+    "outer_inertial_speed_margin_m_s": 1.5932268519434918,
+    "outer_radial_margin_m_s": 0.20005386584837356,
+    "corridor_axial_margin_m": 1.7169473548419774,
+    "corridor_lateral_margin_m": -10.07117348374063,
+    "terminal_total_speed_margin_m_s": -0.2059590372188863,
+    "closing_speed_margin_m_s": 0.04384142695980513
+   },
+   "illegal_terminal_entry_count": 0,
+   "terminal_region_active": 1.0,
+   "time_failure": false,
+   "distance_failure": false,
+   "qp_infeasible_steps_total": 0,
+   "first_infeasible_time_s": null,
+   "max_consecutive_zero_wrench_steps": 0,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 76.60000000000001,
+     "remaining_time_s": 223.39999999999998,
+     "legal": true,
+     "radial_distance_m": 1.2952273964727152,
+     "target_frame_speed_m_s": 0.1287518080111951,
+     "closing_speed_m_s": 0.09385899155101231,
+     "violation_excess": {
+      "radial_distance_m": -1.8557065254709784,
+      "target_frame_speed_m_s": -0.22124819198880488,
+      "closing_speed_m_s": -0.1061410084489877
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": null,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 1,
+   "legal_entry_crossing_count": 1,
+   "illegal_entry_crossing_count": 0,
+   "illegal_exit_count": 0,
+   "retry_crossing_count": 0,
+   "retry_legal_count": 0,
+   "final_remaining_time_s": 184.8,
+   "final_target_center_distance_m": 3.217887862735428,
+   "final_position_error_m": 0.23047379045808367,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "episode": 11,
+   "seed": 262011,
+   "completed": false,
+   "truth_geometry_zero_violation_completed": false,
+   "constraint_violated": false,
+   "survival_s": 103.30000000000001,
+   "steps": 1033,
+   "decisions": 52,
+   "force_impulse_n_s": 99.99393447425125,
+   "torque_impulse_nm_s": 2.5472985902609477,
+   "equivalent_delta_v_m_s": 0.9433390044740684,
+   "minimum_margins": {
+    "keepout_margin_m": 11.266323805346104,
+    "fov_margin_rad": 0.05020066608192386,
+    "outer_inertial_speed_margin_m_s": 1.4709646039390825,
+    "outer_radial_margin_m_s": 0.539338810463404,
+    "corridor_axial_margin_m": -17.1323984824121,
+    "corridor_lateral_margin_m": -37.64557925906173,
+    "terminal_total_speed_margin_m_s": -0.7241806144721569,
+    "closing_speed_margin_m_s": -0.4946312052765373
+   },
+   "illegal_terminal_entry_count": 1,
+   "terminal_region_active": 0.0,
+   "time_failure": false,
+   "distance_failure": true,
+   "qp_infeasible_steps_total": 760,
+   "first_infeasible_time_s": 27.3,
+   "max_consecutive_zero_wrench_steps": 760,
+   "entry_crossings": [
+    {
+     "attempt": 1,
+     "time_s": 28.5,
+     "remaining_time_s": 271.5,
+     "legal": false,
+     "radial_distance_m": 12.852984583509388,
+     "target_frame_speed_m_s": 0.24761749200740682,
+     "closing_speed_m_s": 0.13739707021608685,
+     "violation_excess": {
+      "radial_distance_m": 9.702050661565695,
+      "target_frame_speed_m_s": -0.10238250799259316,
+      "closing_speed_m_s": -0.06260292978391316
+     },
+     "retry_after_illegal": false,
+     "retry_of_attempt": null,
+     "exit_time_s": null,
+     "next_crossing_attempt": null,
+     "next_crossing_legal": null
+    }
+   ],
+   "entry_crossing_count": 1,
+   "legal_entry_crossing_count": 0,
+   "illegal_entry_crossing_count": 1,
+   "illegal_exit_count": 0,
+   "retry_crossing_count": 0,
+   "retry_legal_count": 0,
+   "final_remaining_time_s": 196.7,
+   "final_target_center_distance_m": 30.037655793151348,
+   "final_position_error_m": 31.702604884178072,
+   "waypoints_target_frame": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ],
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ]
+  }
+ ],
+ "entry_channel": {
+  "entry_limits": {
+   "radial_distance_m": 3.1509339219436936,
+   "target_frame_speed_m_s": 0.35,
+   "closing_speed_m_s": 0.2
+  },
+  "crossings_total": 17,
+  "legal_crossings": 8,
+  "illegal_crossings": 9,
+  "illegal_violation_fractions": {
+   "radial_distance": 1.0,
+   "target_frame_speed": 0.3333333333333333,
+   "closing_speed": 0.2222222222222222
+  },
+  "primary_illegal_cause_by_preregistered_60pct_rule": "radial_distance",
+  "episodes_with_illegal_crossing": 5,
+  "episodes_with_exit_after_illegal": 2,
+  "episodes_with_exit_and_retry": 2,
+  "exit_and_retry_fraction_all_episodes": 0.16666666666666666,
+  "exit_and_retry_fraction_illegal_episodes": 0.4,
+  "retry_crossings": 5,
+  "legal_retry_crossings": 1,
+  "legal_retry_fraction": 0.2,
+  "retry_remaining_time_s": [
+   191.5,
+   220.3,
+   215.2,
+   213.39999999999998,
+   205.6
+  ]
+ },
+ "main_table": {
+  "episodes": 12,
+  "completed_episodes": 8,
+  "completion_rate": 0.6666666666666666,
+  "completion_time_s": {
+   "count": 8,
+   "mean": 128.475,
+   "median": 126.10000000000001,
+   "std": 13.555142013273048,
+   "p95": 154.60000000000002,
+   "min": 113.60000000000001,
+   "max": 154.60000000000002
+  },
+  "survival_s": {
+   "count": 12,
+   "mean": 108.40833333333335,
+   "median": 115.55000000000001,
+   "std": 35.4928738935328,
+   "p95": 154.60000000000002,
+   "min": 35.0,
+   "max": 154.60000000000002
+  },
+  "force_impulse_n_s": {
+   "completed_only": {
+    "count": 8,
+    "mean": 208.1814699673214,
+    "median": 200.052343235946,
+    "std": 67.97460518055853,
+    "p95": 318.94598892810404,
+    "min": 110.19280111385892,
+    "max": 318.94598892810404
+   },
+   "all_episodes": {
+    "count": 12,
+    "mean": 183.7150648878085,
+    "median": 190.19766669875725,
+    "std": 108.41467272706866,
+    "p95": 387.7583642357673,
+    "min": 6.927960355047798,
+    "max": 387.7583642357673
+   }
+  },
+  "torque_impulse_nm_s": {
+   "completed_only": {
+    "count": 8,
+    "mean": 7.087089423579155,
+    "median": 5.3953533963312665,
+    "std": 5.944093888327176,
+    "p95": 22.607352395757715,
+    "min": 3.312848014471058,
+    "max": 22.607352395757715
+   },
+   "all_episodes": {
+    "count": 12,
+    "mean": 7.03631191115607,
+    "median": 5.183487329456822,
+    "std": 7.226129483403161,
+    "p95": 22.954553019475608,
+    "min": 0.7037568332427727,
+    "max": 22.954553019475608
+   }
+  },
+  "worst_constraint_margin": {
+   "corridor_axial_margin_m": -17.1323984824121,
+   "corridor_lateral_margin_m": -37.64557925906173,
+   "fov_margin_rad": -0.002261090284825129,
+   "closing_speed_margin_m_s": -0.4946312052765373,
+   "keepout_margin_m": 1.1666428978432761,
+   "outer_inertial_speed_margin_m_s": 1.3619589977362225,
+   "outer_radial_margin_m_s": 0.19830931776981314,
+   "terminal_total_speed_margin_m_s": -0.7241806144721569
+  },
+  "per_step_compute_s": {
+   "control_period_s": 0.1,
+   "controller": {
+    "count": 13009,
+    "mean": 0.04306205312473692,
+    "median": 0.04158879999886267,
+    "std": 0.008332625733928813,
+    "p95": 0.05244360001233872,
+    "min": 0.03232079998997506,
+    "max": 0.31224980000115465
+   },
+   "environment_step": {
+    "count": 13009,
+    "mean": 0.00830342038593644,
+    "median": 0.007980599999427795,
+    "std": 0.0012852479737824481,
+    "p95": 0.010434299998451024,
+    "min": 0.006632000004174188,
+    "max": 0.030152599996654317
+   },
+   "controller_mean_over_budget": 0.43062053124736915,
+   "controller_p95_over_budget": 0.5244360001233872
+  },
+  "equivalent_delta_v_m_s": {
+   "completed_only": {
+    "count": 8,
+    "mean": 1.963976131767183,
+    "median": 1.887286256942887,
+    "std": 0.6412698601939483,
+    "p95": 3.008924423850038,
+    "min": 1.0395547274892352,
+    "max": 3.008924423850038
+   },
+   "all_episodes": {
+    "count": 12,
+    "mean": 1.7331609895076274,
+    "median": 1.7943176103656344,
+    "std": 1.0227799313874402,
+    "p95": 3.6580977758091255,
+    "min": 0.0653581165570547,
+    "max": 3.6580977758091255
+   }
+  },
+  "constraint_violation_rate": 0.25
+ }
+}

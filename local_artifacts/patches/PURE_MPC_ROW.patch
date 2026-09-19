@@ -1,0 +1,132 @@
+From 233c7974830b409c69b2f96dc01098f541faa879 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 03:51:17 +0000
+Subject: [PATCH] docs: recompute the Pure MPC row from the artifacts and lift
+ the void mark
+
+Now that the lower window's T0-T5 artifacts are on the branch, the four
+horizon rows were recomputed here from the per-episode JSON rather than
+quoted. The h35 figures the earlier handoff asserted without artifacts
+reproduce: 9/12, 88.5 s and 167.2 N s against the 9/12, 88.4 s and 167.2 N s
+it claimed, so the unreproduced mark on that row is lifted. The two audit
+figure sets remain void; their scripts are still absent.
+
+Two things the recomputation adds that the summaries did not. The worst
+per-step cost at every horizon is step zero, with the runner-up between 69
+and 129 ms, so the max column describes a cold start a flight system pays
+once rather than a recurring tail. And what actually separates h35 from h50
+is not the p95 (0.77x against 1.14x, which reads as a near miss) but the
+number of steps over the control period: 2 of 300 against 269 of 300.
+
+h20 and h50 carry no fuel figure because their completed episodes come from
+the earlier batch, whose records have no force-impulse field. Recorded as
+missing rather than filled from a different horizon.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ docs/PURE_MPC_ROW_VERIFIED.md | 92 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 92 insertions(+)
+ create mode 100644 docs/PURE_MPC_ROW_VERIFIED.md
+
+diff --git a/docs/PURE_MPC_ROW_VERIFIED.md b/docs/PURE_MPC_ROW_VERIFIED.md
+new file mode 100644
+index 0000000..a9e73b5
+--- /dev/null
++++ b/docs/PURE_MPC_ROW_VERIFIED.md
+@@ -0,0 +1,92 @@
++# Pure MPC 行：从原始产物复算（2026-09-12）
++
++上层在本机对 `logs/p0_horizons_20260910/` 与 `logs/upper_na_f1/` 的逐局 JSON
++直接复算，不转述任何报告。**此前标记为"未复现、不得引用"的一批数字，本次全部对上，该标记撤销。**
++
++---
++
++## 1. 更正：撤销 T0 修订令 §2 的失效标记
++
++`docs/T0_AMENDMENT_20260910.md` §2 把 h35 那一行、算力口径等标为"无产物支撑"。
++当时判断正确——那些产物确实不在任何仓库里。但下层 T1 已把它们重新跑了出来并推送，
++现在复算结果与当初交接文档所述**一致**：
++
++| 项 | 交接文档所述 | 本次复算 | 判定 |
++|---|---|---|---|
++| h35 完成 | 9/12 | **9/12** | 对上 |
++| h35 平均完成时间 | 88.4 s | **88.5 s** | 对上 |
++| h35 平均力冲量 | 167.2 N·s | **167.2 N·s** | 对上 |
++| h35 串行 p95 | 0.82× | **0.77×** | 接近，以本次为准 |
++
++**仍然作废的**：回报审计（+14.11 / −24.0）与动作空间审计（a₀ = −0.76 ~ −0.81）
++这两组数字对应的脚本至今不在仓库中，没有产物，**继续不得引用**。
++
++---
++
++## 2. 四时域主表（完成率与质量列）
++
++完成时间与力冲量按**已完成回合**取均值；最差真值归一化裕度跨**全部**回合，
++包括失败的那些——在自己输掉的回合上擦边界，不该换来一个干净的裕度列。
++
++| 时域 | 完成 | 平均完成时间 | 平均力冲量 | 最差真值裕度 | 失败种子 |
++|---|---|---|---|---|---|
++| h20 (2.0 s) | 8/12 | 128.4 s | — | −0.003 | 262001, 262005, 262006, 262011 |
++| h30 (3.0 s) | 9/12 | 97.4 s | 172.1 N·s | −0.018 | 262005, 262006, 262011 |
++| **h35 (3.5 s)** | **9/12** | **88.5 s** | **167.2 N·s** | −0.015 | 262005, 262006, 262011 |
++| h50 (5.0 s) | **10/12** | **76.6 s** | — | −0.012 | 262005, 262006 |
++
++h20/h50 的力冲量为空：这两个时域的 10 个完成回合来自更早的 `upper_na_f1` 批次，
++那批记录没有 `force_impulse_n_s` 字段。**不要拿 h30/h35 的燃料去跨时域比 h20/h50**，
++缺就是缺。要补需要重跑那 20 局。
++
++**四时域失败集合的交集是 {262005, 262006}**，与上层此前独立复算一致。
++
++---
++
++## 3. 算力：串行单进程、关闭事后诊断、seed 262000 前 300 控制步
++
++| 时域 | mean | p95 | max | 超 100 ms 的步 |
++|---|---|---|---|---|
++| h20 | 42.02 ms (0.42×) | 47.53 ms (0.48×) | 226.1 ms | **1 / 300** |
++| h30 | 62.67 ms (0.63×) | 68.21 ms (0.68×) | 326.8 ms | **1 / 300** |
++| **h35** | **72.15 ms (0.72×)** | **77.44 ms (0.77×)** | 371.9 ms | **2 / 300** |
++| h50 | 106.20 ms (1.06×) | 113.59 ms (1.14×) | 627.0 ms | **269 / 300** |
++
++### 关于 max：它是冷启动，不是复发性质
++
++四个时域的最差一步**都是第 0 步**。次差一步分别是 68.6 / 73.3 / 109.7 / 128.9 ms。
++所以 max 那一栏描述的是首次求解的一次性代价，飞行系统只付一次。
++**论文里报 max 必须注明它落在第 0 步**，否则读者会以为这是每秒都可能发生的尾部。
++
++### 真正把 h35 和 h50 分开的不是 p95，是超预算步数占比
++
++p95 只差 1.14× 对 0.77×，看着像"稍微超一点"。但**超 100 ms 的步数是 269/300 对 2/300**——
++h50 是几乎每一步都超时，h35 是几乎每一步都不超。这个二元对比比 p95 更有说服力，
++建议作为论文里的算力主证据。
++
++`status_counts` 在 h35 上为 300/300 `optimal`，无回退。
++
++---
++
++## 4. 这张表怎么用
++
++- **Pure MPC 行取 h35**：燃料最优（167.2 N·s，比 h50 省，比 h30 省）且在实时预算内。
++- **h50 作为"非实时长时域参考行"**，说明延长时域的收益递减：完成数 9→10/12，
++  代价是超预算步从 2/300 涨到 269/300。
++- **主论点不靠算力**：{262005, 262006} 在四个时域下同样失败，
++  而 h50 只超预算 1.14×——**加长时域既不是买不起，也解决不了问题**。
++  算力是旁证，不是承重墙。
++
++---
++
++## 5. 复算方式
++
++```powershell
++# 完成率与质量列
++python -B -m experiments.summarize_p0
++```
++
++或直接读 `logs/p0_horizons_20260910/fixed_h{20,30,35,50}_2620{00..11}.json`
++与 `logs/upper_na_f1/na_f1_h{20,50}_2620{00..11}.json` 的
++`completed` / `terminal_time_s` / `force_impulse_n_s` /
++`minimum_truth_normalized_margin` 字段；算力读同目录 `compute_h*.json`。
+-- 
+2.43.0
+

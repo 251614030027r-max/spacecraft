@@ -31,7 +31,8 @@ from stable_baselines3 import SAC
 
 from env.phase2_env import Phase2Mode, phase2_environment_config
 from env.se3_rendezvous_env import SE3RendezvousConfig, SE3RendezvousEnv
-from env.task import Phase2MissionConfig, Phase2TaskConfig
+from env.reward import PrecaptureRewardConfig
+from env.task import Phase2MissionConfig, Phase2TaskConfig, PrecaptureTaskConfig
 from env.termination import SuccessThresholds
 from eval.metrics import main_table_metrics, summarize
 from train.configs import PURE_SAC
@@ -51,6 +52,12 @@ def environment_config_from_manifest(
             values[key] = Phase2TaskConfig(**values[key])
     if isinstance(values.get("phase2_mission"), dict):
         values["phase2_mission"] = Phase2MissionConfig(**values["phase2_mission"])
+    if isinstance(values.get("precapture_task"), dict):
+        values["precapture_task"] = PrecaptureTaskConfig(**values["precapture_task"])
+    if isinstance(values.get("precapture_reward"), dict):
+        values["precapture_reward"] = PrecaptureRewardConfig(
+            **values["precapture_reward"]
+        )
     if isinstance(values.get("success_thresholds"), dict):
         values["success_thresholds"] = SuccessThresholds(
             **values["success_thresholds"]
