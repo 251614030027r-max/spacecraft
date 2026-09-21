@@ -21,7 +21,10 @@ from typing import Any
 import numpy as np
 
 from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
-from env.phase2_env import precapture_planning_environment_config
+from env.phase2_env import (
+    precapture_adaptive_capture_environment_config,
+    precapture_planning_environment_config,
+)
 
 
 TERMINATION_KEYS = (
@@ -58,6 +61,22 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--phase-time-observation", action="store_true")
     parser.add_argument("--execution-feedback", action="store_true")
+    parser.add_argument(
+        "--adaptive-task",
+        action="store_true",
+        help=(
+            "Replay on the adaptive sync-entry task and include its staging-"
+            "direction observation. Must match the checkpoint manifest."
+        ),
+    )
+    parser.add_argument(
+        "--baseline-anchored-residual",
+        action="store_true",
+        help=(
+            "Interpret the checkpoint action as the baseline-anchored arrival "
+            "residual used by the adaptive mainline."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 
@@ -66,11 +85,20 @@ def main() -> None:
     args = parse_args()
     if args.output.exists():
         raise FileExistsError(args.output)
+    if args.baseline_anchored_residual and args.parametrization != "arrival_condition":
+        raise ValueError(
+            "--baseline-anchored-residual requires arrival_condition"
+        )
     from stable_baselines3 import SAC
 
     policy = SAC.load(args.model, device="cpu")
+    base_environment_config = (
+        precapture_adaptive_capture_environment_config()
+        if args.adaptive_task
+        else precapture_planning_environment_config()
+    )
     environment_config = replace(
-        precapture_planning_environment_config(), cache_target_trajectory=False
+        base_environment_config, cache_target_trajectory=False
     )
 
     episodes: list[dict[str, Any]] = []
@@ -86,6 +114,8 @@ def main() -> None:
                     args.phase_time_observation
                 ),
                 include_execution_feedback_observation=args.execution_feedback,
+                baseline_anchored_residual=args.baseline_anchored_residual,
+                include_staging_direction_observation=args.adaptive_task,
             ),
         )
         expected = int(np.prod(policy.observation_space.shape))
@@ -174,6 +204,8 @@ def main() -> None:
                 "parametrization": args.parametrization,
                 "phase_time_observation": args.phase_time_observation,
                 "execution_feedback": args.execution_feedback,
+                "adaptive_task": args.adaptive_task,
+                "baseline_anchored_residual": args.baseline_anchored_residual,
                 "episodes": episodes,
             },
             indent=2,
