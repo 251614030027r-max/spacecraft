@@ -546,7 +546,14 @@ def main() -> None:
         peak_force_n = peak_torque_nm = 0.0
         minimum_truth_normalized_margin = float("inf")
         waypoints: list[list[float]] = []
+        decision_times_s: list[float] = []
+        policy_actions_raw: list[list[float]] | None = (
+            [] if policy is not None else None
+        )
+        applied_actions: list[list[float]] = []
         qp_infeasible_steps_total = 0
+        zero_fallback_steps_total = 0
+        maximum_successful_slack: float | None = None
         first_infeasible_time_s: float | None = None
         consecutive_zero_wrench_steps = 0
         max_consecutive_zero_wrench_steps = 0
@@ -559,6 +566,7 @@ def main() -> None:
             if policy is not None:
                 started = perf_counter()
                 action, _ = policy.predict(observation, deterministic=True)
+                raw_policy_action = np.asarray(action, dtype=float).copy()
                 if args.deployment_gate:
                     nominal_action = np.zeros_like(action)
                     advantage = critic_min_q(
@@ -586,6 +594,14 @@ def main() -> None:
                 action = generator.uniform(-1.0, 1.0, size=env.action_space.shape)
                 inference_s = perf_counter() - started
 
+            decision_times_s.append(float(env.env.time_seconds))
+            if policy_actions_raw is not None:
+                policy_actions_raw.append(
+                    [float(v) for v in raw_policy_action.reshape(-1)]
+                )
+            applied_actions.append(
+                [float(v) for v in np.asarray(action).reshape(-1)]
+            )
             waypoint = env.waypoint_from_action(action)
             waypoints.append([float(v) for v in waypoint])
             # Inline the decision so each control step's cost is separable.
@@ -614,6 +630,15 @@ def main() -> None:
                     qp_infeasible_steps_total += 1
                     if first_infeasible_time_s is None:
                         first_infeasible_time_s = float(env.env.time_seconds)
+                if diagnostics.used_zero_fallback:
+                    zero_fallback_steps_total += 1
+                else:
+                    successful_slack = float(diagnostics.maximum_slack)
+                    maximum_successful_slack = (
+                        successful_slack
+                        if maximum_successful_slack is None
+                        else max(maximum_successful_slack, successful_slack)
+                    )
                 if np.count_nonzero(wrench) == 0:
                     consecutive_zero_wrench_steps += 1
                     max_consecutive_zero_wrench_steps = max(
@@ -777,6 +802,8 @@ def main() -> None:
                 "time_failure": bool(info.get("time_failure", False)),
                 "distance_failure": bool(info.get("distance_failure", False)),
                 "qp_infeasible_steps_total": qp_infeasible_steps_total,
+                "zero_fallback_steps_total": zero_fallback_steps_total,
+                "maximum_successful_slack": maximum_successful_slack,
                 "first_infeasible_time_s": first_infeasible_time_s,
                 "max_consecutive_zero_wrench_steps": (
                     max_consecutive_zero_wrench_steps
@@ -824,6 +851,9 @@ def main() -> None:
                 "gate_mean_advantage": (
                     float(np.mean(gate_advantages)) if gate_advantages else None
                 ),
+                "decision_times_s": decision_times_s,
+                "policy_actions_raw": policy_actions_raw,
+                "applied_actions": applied_actions,
                 "waypoints_target_frame": waypoints,
             }
         )
@@ -867,6 +897,21 @@ def main() -> None:
         "gate_advantage_margin": (
             args.gate_advantage_margin if args.deployment_gate else None
         ),
+        "action_trace_semantics": {
+            "decision_times_s": "episode time at the start of each decision",
+            "policy_actions_raw": (
+                "deterministic normalized policy action before the deployment gate; "
+                "null for scripted controls"
+            ),
+            "applied_actions": (
+                "action passed to waypoint_from_action after any deployment-gate "
+                "fallback"
+            ),
+            "alignment": (
+                "decision_times_s, policy_actions_raw when present, applied_actions, "
+                "and waypoints_target_frame are index-aligned"
+            ),
+        },
         "timing_probe": args.timing_probe,
         "entry_phase_gate_deg": args.entry_phase_gate_deg if args.timing_probe else None,
         "timed_entry_settings": (
