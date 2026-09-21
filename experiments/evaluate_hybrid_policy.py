@@ -176,6 +176,22 @@ def truth_violation_step_counts(info: dict[str, Any]) -> dict[str, int | None]:
     }
 
 
+def arrival_blend_before_ratchet(
+    action: np.ndarray, *, baseline_anchored_residual: bool
+) -> float:
+    """Return the arrival blend named by ``action`` before monotone latching.
+
+    This is diagnostic instrumentation only.  Keeping the calculation here
+    makes the distinction between an accepted raw residual and an effective
+    task-reference change explicit without changing the environment mapping.
+    """
+
+    raw_commit = float(np.clip(np.asarray(action).reshape(-1)[0], -1.0, 1.0))
+    if baseline_anchored_residual:
+        raw_commit = float(np.clip(1.0 + 2.0 * raw_commit, -1.0, 1.0))
+    return 0.5 * (raw_commit + 1.0)
+
+
 def summarize_entry_channel(
     records: list[dict[str, Any]], entry_limits: dict[str, float]
 ) -> dict[str, Any]:
@@ -267,6 +283,15 @@ def parse_args() -> argparse.Namespace:
         "--model",
         type=Path,
         help="Trained SAC checkpoint. Omit to run one of the controls.",
+    )
+    parser.add_argument(
+        "--stochastic-policy",
+        action="store_true",
+        help=(
+            "Sample the loaded policy instead of using its deterministic mean. "
+            "Diagnostic only: approximates the final policy's training-time "
+            "exploration distribution. Default remains deterministic."
+        ),
     )
     parser.add_argument(
         "--phase-time-observation",
@@ -414,6 +439,8 @@ def main() -> None:
     partial_output = args.output.with_suffix(args.output.suffix + ".partial")
     if (args.model is None) == (args.control is None):
         raise ValueError("give exactly one of --model or --control")
+    if args.stochastic_policy and args.model is None:
+        raise ValueError("--stochastic-policy requires --model")
     control_source_estimated = args.control_source == "estimated"
     if control_source_estimated and not args.perception:
         raise ValueError("--control-source estimated requires --perception")
@@ -551,6 +578,11 @@ def main() -> None:
             [] if policy is not None else None
         )
         applied_actions: list[list[float]] = []
+        blends_before_ratchet: list[float | None] = []
+        blends_after_ratchet: list[float | None] = []
+        references_changed: list[bool] = []
+        latch_step: int | None = None
+        latch_cause: str | None = None
         qp_infeasible_steps_total = 0
         zero_fallback_steps_total = 0
         maximum_successful_slack: float | None = None
@@ -563,9 +595,12 @@ def main() -> None:
         gate_advantages: list[float] = []
         terminated = truncated = False
         while not (terminated or truncated):
+            gate_fallback = False
             if policy is not None:
                 started = perf_counter()
-                action, _ = policy.predict(observation, deterministic=True)
+                action, _ = policy.predict(
+                    observation, deterministic=not args.stochastic_policy
+                )
                 raw_policy_action = np.asarray(action, dtype=float).copy()
                 if args.deployment_gate:
                     nominal_action = np.zeros_like(action)
@@ -579,6 +614,7 @@ def main() -> None:
                     else:
                         # Fall back to the nominal (fixed-setpoint Pure MPC).
                         action = nominal_action
+                        gate_fallback = True
                 inference_s = perf_counter() - started
             elif args.control == "desired_pose":
                 started = perf_counter()
@@ -602,8 +638,36 @@ def main() -> None:
             applied_actions.append(
                 [float(v) for v in np.asarray(action).reshape(-1)]
             )
+            blend_before = (
+                arrival_blend_before_ratchet(
+                    action,
+                    baseline_anchored_residual=args.baseline_anchored_residual,
+                )
+                if args.parametrization == "arrival_condition"
+                else None
+            )
             waypoint = env.waypoint_from_action(action)
             waypoints.append([float(v) for v in waypoint])
+            blend_after = (
+                float(env._commit_blend)
+                if args.parametrization == "arrival_condition"
+                and env.hybrid_config.monotone_commit
+                else blend_before
+            )
+            reference_changed = not bool(
+                np.allclose(waypoint, desired, rtol=0.0, atol=1.0e-9)
+            )
+            blends_before_ratchet.append(blend_before)
+            blends_after_ratchet.append(blend_after)
+            references_changed.append(reference_changed)
+            if latch_step is None and blend_after is not None and blend_after >= 1.0:
+                latch_step = len(waypoints) - 1
+                if gate_fallback:
+                    latch_cause = "gate_fallback"
+                elif policy is not None:
+                    latch_cause = "policy"
+                else:
+                    latch_cause = "scripted"
             # Inline the decision so each control step's cost is separable.
             for index in range(env.hybrid_config.decision_period_steps):
                 assert env.env.relative is not None
@@ -854,6 +918,11 @@ def main() -> None:
                 "decision_times_s": decision_times_s,
                 "policy_actions_raw": policy_actions_raw,
                 "applied_actions": applied_actions,
+                "blend_before_ratchet": blends_before_ratchet,
+                "blend_after_ratchet": blends_after_ratchet,
+                "reference_changed": references_changed,
+                "latch_step": latch_step,
+                "latch_cause": latch_cause,
                 "waypoints_target_frame": waypoints,
             }
         )
@@ -894,6 +963,7 @@ def main() -> None:
         "opportunity_task": args.opportunity_task,
         "baseline_anchored_residual": args.baseline_anchored_residual,
         "deployment_gate": args.deployment_gate,
+        "stochastic_policy": args.stochastic_policy,
         "gate_advantage_margin": (
             args.gate_advantage_margin if args.deployment_gate else None
         ),
