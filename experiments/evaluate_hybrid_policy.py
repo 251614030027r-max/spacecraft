@@ -62,6 +62,21 @@ VIOLATION_STEP_KEYS = (
 #: clean bang-bang: hold until the phase is right, then commit and stay.
 _TIMED_COMMIT_ACTION = np.array([1.0, 0.0], dtype=np.float64)
 _TIMED_HOLD_ACTION = np.array([-1.0, 0.0], dtype=np.float64)
+_STAGED_RESIDUAL_COMMIT_ACTION = np.array([0.0, 0.0], dtype=np.float64)
+_STAGED_RESIDUAL_HOLD_ACTION = np.array([-1.0, 0.0], dtype=np.float64)
+
+
+def staged_residual_action(decision: int, stage_decisions: int) -> np.ndarray:
+    """Scripted residual arm: full inertial hold, then nominal commit."""
+
+    if decision < 0 or stage_decisions < 0:
+        raise ValueError("decision indices and --stage-decisions must be non-negative")
+    action = (
+        _STAGED_RESIDUAL_HOLD_ACTION
+        if decision < stage_decisions
+        else _STAGED_RESIDUAL_COMMIT_ACTION
+    )
+    return action.copy()
 
 
 class ScriptedEntryTiming:
@@ -261,6 +276,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--episodes", type=int, required=True)
     parser.add_argument("--seed", type=int, required=True)
+    parser.add_argument(
+        "--seeds",
+        help=(
+            "Optional comma-separated explicit episode seeds. Its length must "
+            "equal --episodes; --seed remains provenance for the requested block."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument(
@@ -310,13 +332,22 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--control",
-        choices=["desired_pose", "random", "timed_entry"],
+        choices=["desired_pose", "random", "timed_entry", "staged_residual"],
         help=(
             "Run without a model. 'desired_pose' is the fixed-setpoint lower "
             "layer delivered through the wrapper (the immediate-entry A arm and "
             "the row the coupled policy has to beat). 'timed_entry' is the "
             "scripted timing oracle B arm (hold at the inertial staging point, "
             "commit when the entry phase is favourable). 'random' is the floor."
+        ),
+    )
+    parser.add_argument(
+        "--stage-decisions",
+        type=int,
+        default=0,
+        help=(
+            "staged_residual only: number of initial decisions commanding the "
+            "full inertial hold before switching to the zero-residual baseline."
         ),
     )
     parser.add_argument(
@@ -449,6 +480,18 @@ def main() -> None:
             "--control timed_entry requires --parametrization arrival_condition "
             "(the hold/commit actions live on that interface)"
         )
+    if args.control == "staged_residual" and (
+        args.parametrization != "arrival_condition"
+        or not args.baseline_anchored_residual
+    ):
+        raise ValueError(
+            "--control staged_residual requires arrival_condition and "
+            "--baseline-anchored-residual"
+        )
+    if args.stage_decisions < 0:
+        raise ValueError("--stage-decisions must be non-negative")
+    if args.stage_decisions and args.control != "staged_residual":
+        raise ValueError("--stage-decisions is only valid with staged_residual")
     if args.deployment_gate and (
         args.model is None or not args.baseline_anchored_residual
     ):
@@ -470,6 +513,13 @@ def main() -> None:
     controller_times_s: list[float] = []
     environment_times_s: list[float] = []
     generator = np.random.default_rng(args.seed)
+    episode_seeds = (
+        [int(item.strip()) for item in args.seeds.split(",") if item.strip()]
+        if args.seeds
+        else list(range(args.seed, args.seed + args.episodes))
+    )
+    if len(episode_seeds) != args.episodes:
+        raise ValueError("--seeds length must equal --episodes")
     if args.adaptive_task:
         if args.perception or args.timing_probe or args.opportunity_task:
             raise ValueError(
@@ -519,8 +569,7 @@ def main() -> None:
         "closing_speed_m_s": float(task.closing_speed_limit(entry_axial_remaining)),
     }
 
-    for episode in range(args.episodes):
-        seed = args.seed + episode
+    for episode, seed in enumerate(episode_seeds):
         env = PrecaptureHybridEnv(
             environment_config=environment_config,
             hybrid_config=PrecaptureHybridConfig(
@@ -624,6 +673,12 @@ def main() -> None:
                 assert timing is not None
                 started = perf_counter()
                 action = timing.action(info)
+                inference_s = perf_counter() - started
+            elif args.control == "staged_residual":
+                started = perf_counter()
+                action = staged_residual_action(
+                    len(applied_actions), args.stage_decisions
+                )
                 inference_s = perf_counter() - started
             else:
                 started = perf_counter()
@@ -954,6 +1009,7 @@ def main() -> None:
         "source": str(args.model) if args.model is not None else args.control,
         "episodes": args.episodes,
         "seed_block": args.seed,
+        "episode_seeds": episode_seeds,
         "horizon": args.horizon,
         "waypoint_parametrization": args.parametrization,
         "phase_time_observation": args.phase_time_observation,
@@ -990,6 +1046,11 @@ def main() -> None:
                 "commit_lead_speed_m_s": args.commit_lead_speed_m_s,
             }
             if args.control == "timed_entry"
+            else None
+        ),
+        "staged_residual_settings": (
+            {"stage_decisions": args.stage_decisions}
+            if args.control == "staged_residual"
             else None
         ),
         "hyperparameters": {"gamma": SAC_MPC_HYBRID.gamma},
