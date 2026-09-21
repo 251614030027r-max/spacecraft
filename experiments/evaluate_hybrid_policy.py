@@ -66,15 +66,33 @@ _STAGED_RESIDUAL_COMMIT_ACTION = np.array([0.0, 0.0], dtype=np.float64)
 _STAGED_RESIDUAL_HOLD_ACTION = np.array([-1.0, 0.0], dtype=np.float64)
 
 
-def staged_residual_action(decision: int, stage_decisions: int) -> np.ndarray:
-    """Scripted residual arm: full inertial hold, then nominal commit."""
+def staged_residual_action(
+    decision: int,
+    stage_decisions: int,
+    hold_commit_residual: float = -1.0,
+) -> np.ndarray:
+    """Scripted residual arm: hold at a chosen blend, then nominal commit.
+
+    ``hold_commit_residual`` selects *where* it holds, which matters because
+    the commit channel's blend sets the reference radius: with the hold frozen
+    at a 20 m start, -1.0 keeps the full 20 m (sit still and do not approach at
+    all) while -0.265 gives blend 0.735, i.e. about 7.4 m -- the radius the
+    offline feasibility certificate stages at on the hard cases. An arm that
+    only ever holds at -1.0 tests whether *sitting at the start radius* is
+    worth anything, which is not the same question as whether staging is, so a
+    null result there must not be read as staging having no value.
+    """
 
     if decision < 0 or stage_decisions < 0:
         raise ValueError("decision indices and --stage-decisions must be non-negative")
+    if not -1.0 <= hold_commit_residual < 0.0:
+        raise ValueError(
+            "--stage-commit-residual must be in [-1, 0): a non-negative commit "
+            "residual maps to full commit, which is not a hold"
+        )
+    hold = np.array([float(hold_commit_residual), 0.0], dtype=np.float64)
     action = (
-        _STAGED_RESIDUAL_HOLD_ACTION
-        if decision < stage_decisions
-        else _STAGED_RESIDUAL_COMMIT_ACTION
+        hold if decision < stage_decisions else _STAGED_RESIDUAL_COMMIT_ACTION
     )
     return action.copy()
 
@@ -307,6 +325,18 @@ def parse_args() -> argparse.Namespace:
         help="Trained SAC checkpoint. Omit to run one of the controls.",
     )
     parser.add_argument(
+        "--stage-commit-residual",
+        type=float,
+        default=-1.0,
+        help=(
+            "staged_residual only: the commit residual held during the staging "
+            "phase, in [-1, 0). -1.0 holds the frozen start radius (sit still "
+            "and do not approach); -0.265 gives blend 0.735, about 7.4 m from a "
+            "20 m start, the radius the offline feasibility certificate stages "
+            "at on the hard cases."
+        ),
+    )
+    parser.add_argument(
         "--stochastic-policy",
         action="store_true",
         help=(
@@ -487,6 +517,10 @@ def main() -> None:
         raise ValueError(
             "--control staged_residual requires arrival_condition and "
             "--baseline-anchored-residual"
+        )
+    if args.control != "staged_residual" and args.stage_commit_residual != -1.0:
+        raise ValueError(
+            "--stage-commit-residual is only valid with --control staged_residual"
         )
     if args.stage_decisions < 0:
         raise ValueError("--stage-decisions must be non-negative")
@@ -680,7 +714,9 @@ def main() -> None:
             elif args.control == "staged_residual":
                 started = perf_counter()
                 action = staged_residual_action(
-                    len(applied_actions), args.stage_decisions
+                    len(applied_actions),
+                    args.stage_decisions,
+                    args.stage_commit_residual,
                 )
                 inference_s = perf_counter() - started
             else:
@@ -1052,7 +1088,10 @@ def main() -> None:
             else None
         ),
         "staged_residual_settings": (
-            {"stage_decisions": args.stage_decisions}
+            {
+                "stage_decisions": args.stage_decisions,
+                "stage_commit_residual": args.stage_commit_residual,
+            }
             if args.control == "staged_residual"
             else None
         ),
