@@ -508,6 +508,9 @@ def main() -> None:
         from stable_baselines3 import SAC
 
         policy = SAC.load(args.model, device="cpu")
+        if args.stochastic_policy:
+            # A stochastic diagnostic still has to be artifact-reproducible.
+            policy.set_random_seed(args.seed)
 
     records: list[dict[str, Any]] = []
     controller_times_s: list[float] = []
