@@ -33,3 +33,31 @@ roll-outs. D0 is a post-hoc estimate from each final policy's stochastic
 distribution; it must not be described as a measurement captured during
 training.
 
+## D0 -- post-hoc training-reachability estimate
+
+All three final policies were rolled out stochastically for 12 episodes on
+seeds 262000--262011. This samples the final policies' stochastic
+distributions; it is **not** a trace retained from training.
+
+| model | latch Q1 / median / Q3 | latch=0 | null | effective reference changed | latch cause |
+| --- | --- | ---: | ---: | ---: | --- |
+| 262410 | 0 / 0 / 0 | 12/12 (100%) | 0 | 0/973 (0%) | policy 12/12 |
+| 262411 | 0 / 0 / 0 | 12/12 (100%) | 0 | 0/973 (0%) | policy 12/12 |
+| 262412 | 0 / 0 / 0 | 12/12 (100%) | 0 | 0/973 (0%) | policy 12/12 |
+
+The episode decision count is 973 for each model because every policy locks to
+the same Pure-MPC reference on decision zero and therefore reproduces the same
+8 completions and 4 failures. This satisfies the preregistered D0 threshold
+(`median <= 2`) by the strongest possible margin and supports R2. Per the
+protocol, R2 remains an indicated root cause rather than a final unique verdict
+until the required cross-reading is complete.
+
+Artifacts (generated from pushed commit `2dea3dc`, whose code includes C1--C3
+and the stochastic seeding fix):
+
+- `eval/adp/d0_stochastic_262410.json` -- SHA-256
+  `423952da57beb21345e1f815d43c1109c287939bd3180f89b30985dfb1e766e0`;
+- `eval/adp/d0_stochastic_262411.json` -- SHA-256
+  `66c2629d3f3cc426b8c180e14ae46a230245b0601ef1308019989f03bbb2bb08`;
+- `eval/adp/d0_stochastic_262412.json` -- SHA-256
+  `c55e56dc50f80ca05ec047b8afb3b0524232aabb821d21707a4d73e275e801c8`.
