@@ -139,6 +139,11 @@ class PrecaptureHybridConfig:
     task_progress_retreat_limit_m: float = 0.5
     task_commit_advance_limit: float = 0.05
     task_commit_retreat_limit: float = 0.02
+    #: Metric cap on the actual reference displacement produced jointly by the
+    #: two task axes in one decision. The commitment axis is dimensionless but
+    #: sweeps an arc whose length grows with staging radius and target phase;
+    #: this cap therefore applies after the independent axis limits.
+    v2_reference_step_max_m: float = 0.4
     #: ``arrival_condition`` only. The commit blend may only advance:
     #: ``b_k = max(b_{k-1}, b_k_commanded)``.
     #:
@@ -237,6 +242,8 @@ class PrecaptureHybridConfig:
             raise ValueError("V2 task-state rate limits must be positive")
         if self.task_commit_retreat_limit >= self.task_commit_advance_limit:
             raise ValueError("V2 commitment retreat must be slower than advance")
+        if self.v2_reference_step_max_m <= 0.0:
+            raise ValueError("V2 reference step limit must be positive")
         if (
             self.baseline_anchored_residual
             and self.waypoint_parametrization != "arrival_condition"
@@ -406,6 +413,7 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._task_commitment: float | None = None
         self._last_task_proposal: tuple[float, float] | None = None
         self._last_proposal_accepted = True
+        self._last_v2_reference_step_m = 0.0
         self._feedback = np.zeros(3, dtype=np.float64)
 
     def _ratchet_observation_active(self) -> bool:
@@ -562,16 +570,63 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 self.hybrid_config.task_commit_advance_limit,
             )
         )
-        return (
-            float(
-                np.clip(
-                    self._task_progress_m + progress_delta,
-                    0.0,
-                    self.v2_progress_max_m,
-                )
-            ),
-            float(np.clip(self._task_commitment + commitment_delta, 0.0, 1.0)),
+        current_progress = self._task_progress_m
+        current_commitment = self._task_commitment
+
+        def state_at(scale: float) -> tuple[float, float]:
+            return (
+                float(
+                    np.clip(
+                        current_progress + scale * progress_delta,
+                        0.0,
+                        self.v2_progress_max_m,
+                    )
+                ),
+                float(
+                    np.clip(
+                        current_commitment + scale * commitment_delta,
+                        0.0,
+                        1.0,
+                    )
+                ),
+            )
+
+        candidate = state_at(1.0)
+        current_reference = self.reference_for_task_state(
+            current_progress, current_commitment
         )
+        candidate_reference = self.reference_for_task_state(*candidate)
+        if (
+            float(np.linalg.norm(candidate_reference - current_reference))
+            <= self.hybrid_config.v2_reference_step_max_m
+        ):
+            self._last_v2_reference_step_m = float(
+                np.linalg.norm(candidate_reference - current_reference)
+            )
+            return candidate
+
+        # The joint reference map is nonlinear (slerp plus the changing
+        # radius), so a one-shot proportional scale does not guarantee a
+        # metric bound. Eight pure-geometry bisection iterations give 1/256
+        # resolution without adding any MPC solve.
+        lower, upper = 0.0, 1.0
+        for _ in range(8):
+            middle = 0.5 * (lower + upper)
+            middle_reference = self.reference_for_task_state(*state_at(middle))
+            if (
+                float(np.linalg.norm(middle_reference - current_reference))
+                <= self.hybrid_config.v2_reference_step_max_m
+            ):
+                lower = middle
+            else:
+                upper = middle
+        applied = state_at(lower)
+        self._last_v2_reference_step_m = float(
+            np.linalg.norm(
+                self.reference_for_task_state(*applied) - current_reference
+            )
+        )
+        return applied
 
     def reference_for_task_state(
         self, progress_m: float, commitment: float
@@ -642,6 +697,7 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 # Architectural baseline floor: rejection is a stateless bypass
                 # to the original desired-pose reference. It cannot advance or
                 # otherwise mutate the learned task state.
+                self._last_v2_reference_step_m = 0.0
                 return np.asarray(
                     self.environment_config.precapture_task.desired_position,
                     dtype=np.float64,
@@ -887,6 +943,7 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             self._task_commitment = None
         self._last_task_proposal = None
         self._last_proposal_accepted = True
+        self._last_v2_reference_step_m = 0.0
         self._feedback = np.zeros(3, dtype=np.float64)
         return self._policy_observation(observation), info
 
@@ -1008,6 +1065,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 float(self._task_progress_m),
                 float(self._task_commitment),
             ]
+            info["hybrid_v2_reference_step_m"] = float(
+                self._last_v2_reference_step_m
+            )
         info["hybrid_control_steps"] = control_steps
         info["hybrid_qp_zero_fallbacks"] = zero_fallbacks
         info["hybrid_feedback_fallback_fraction"] = zero_fallbacks / control_steps

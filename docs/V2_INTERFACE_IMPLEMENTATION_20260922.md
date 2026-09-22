@@ -49,8 +49,12 @@ Correctness smoke（非方向判据）：
 - QP zero fallback `0`，真值约束违约步合计 `0`；
 - 架构 fallback 已触发；强制拒绝相对 Pure MPC 的 `max |Δwrench| = 0.0`。
 
-Smoke 产物：`eval/adp/v2_interface_smoke.json`，SHA-256 `94bd230a847828825027264ed072c2f9e14fc2a1340840f039648518833e0db7`。
+Smoke 产物：`eval/adp/v2_interface_smoke.json`；在默认 `0.40 m` 修复后刷新，SHA-256 `75d663131831166dbfd09abdc2939c3d2981d378044727ff2251f1bd864fa593`。
 
 ## 5. 停止边界
 
 V2 接口通过 T1–T6 与 smoke。按执行单到此停止：未启动训练、未接 governor、未改 reward/SAC/MPC/任务参数，也未把本次接口修复表述为方法创新。
+
+## 6. 后续米单位上界修复
+
+复核发现承诺轴的无量纲限速不能约束实际参考弧长；大半径、大夹角下单步参考位移可达 `2.98 m`。在两轴独立限幅之后新增同相位参考欧氏位移上界，默认 `v2_reference_step_max_m=0.40`，超限时仅用 8 次纯几何二分共同缩放两轴增量，不增加 MPC 求解。T7 覆盖 12/15/19 m、45/90/120/近 180°及不同轴组合，钉住实际增量不超过上界。四档扫描与最终裁决见 `docs/V2_RATE_LIMIT_SWEEP_STOP_20260922.md`；全套最终为 `283 passed, 3 xfailed`，未训练。

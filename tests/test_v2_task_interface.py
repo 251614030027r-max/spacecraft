@@ -150,6 +150,21 @@ def test_t6_limiter_is_monotonic_and_has_no_scanned_dead_zone() -> None:
     env = _v2_env()
     try:
         env.reset(seed=262005)
+        # T6 isolates the independent axis limiter in a geometry where the
+        # new metric reference cap is inactive. Large-angle metric saturation
+        # is covered separately by T7 without weakening either assertion.
+        assert env.env.target_state is not None
+        commit = np.asarray(env.environment_config.precapture_task.desired_position)
+        commit /= np.linalg.norm(commit)
+        angle = np.deg2rad(10.0)
+        hold = np.array(
+            [
+                np.cos(angle) * commit[0] - np.sin(angle) * commit[1],
+                np.sin(angle) * commit[0] + np.cos(angle) * commit[1],
+                commit[2],
+            ]
+        )
+        env._hold_inertial = np.asarray(env.env.target_state.rotation) @ hold
         _set_task_state(env, 5.0, 0.5)
         radius_outputs = []
         for rho_m in np.linspace(4.6, 5.4, 21):
@@ -169,5 +184,56 @@ def test_t6_limiter_is_monotonic_and_has_no_scanned_dead_zone() -> None:
             commitment_outputs.append(env._task_commitment)
         assert commitment_outputs == sorted(commitment_outputs)
         assert len(np.unique(np.round(commitment_outputs, 12))) == 21
+    finally:
+        env.close()
+
+
+def test_t7_reference_displacement_is_bounded_in_metres() -> None:
+    env = _v2_env()
+    try:
+        env.reset(seed=262000)
+        assert env.env.target_state is not None
+        rotation = np.asarray(env.env.target_state.rotation)
+        commit = np.asarray(env.environment_config.precapture_task.desired_position)
+        commit /= np.linalg.norm(commit)
+        for radius_m in (12.0, 15.0, 19.0):
+            for angle_deg in (45.0, 90.0, 120.0, 180.0):
+                # Keep the requested 180-degree corner while avoiding the
+                # undefined interpolation axis of an exactly antipodal pair.
+                angle = np.deg2rad(min(angle_deg, 180.0 - 1.0e-6))
+                hold = np.array(
+                    [
+                        np.cos(angle) * commit[0] - np.sin(angle) * commit[1],
+                        np.sin(angle) * commit[0] + np.cos(angle) * commit[1],
+                        commit[2],
+                    ]
+                )
+                hold /= np.linalg.norm(hold)
+                for proposal in ("both_maximum", "commitment_only", "distance_only"):
+                    env._hold_radius_m = radius_m
+                    env._hold_inertial = rotation @ hold
+                    env._task_progress_m = 0.0
+                    env._task_commitment = 0.0
+                    before = env.reference_for_task_state(0.0, 0.0)
+                    target_progress = (
+                        env.v2_progress_max_m
+                        if proposal in {"both_maximum", "distance_only"}
+                        else 0.0
+                    )
+                    target_commitment = (
+                        1.0
+                        if proposal in {"both_maximum", "commitment_only"}
+                        else 0.0
+                    )
+                    after = env.waypoint_from_action(
+                        env.action_for_task_state(
+                            target_progress, target_commitment
+                        )
+                    )
+                    displacement = float(np.linalg.norm(after - before))
+                    assert (
+                        displacement
+                        <= env.hybrid_config.v2_reference_step_max_m + 1.0e-9
+                    )
     finally:
         env.close()
