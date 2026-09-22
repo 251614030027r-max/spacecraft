@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument(
         "--parametrization",
-        choices=["absolute", "radial_local", "arrival_condition"],
+        choices=["absolute", "radial_local", "arrival_condition", "task_state_v2"],
         default="arrival_condition",
         help=(
             "How the action names the reference. 'absolute' is what the first "

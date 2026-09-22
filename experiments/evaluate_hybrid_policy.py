@@ -346,7 +346,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--parametrization",
-        choices=["absolute", "radial_local", "arrival_condition"],
+        choices=["absolute", "radial_local", "arrival_condition", "task_state_v2"],
         default="radial_local",
         help="Action parametrisation used by the trained policy or control.",
     )

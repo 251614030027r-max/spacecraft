@@ -128,6 +128,17 @@ class PrecaptureHybridConfig:
     #: ``exp(+-0.35)`` about the radius the hold point was frozen at, so the
     #: channel spans roughly the 12-18 m band T2 scanned from a 15-20 m start.
     hold_radius_action_gain: float = 0.35
+    #: V2 two-axis task-state limiter. Progress is distance advanced from the
+    #: episode's inertial staging radius, in metres; commitment is dimensionless
+    #: in [0, 1]. Each proposal is an
+    #: absolute desired task state, while the applied state moves by at most
+    #: these per-decision increments. Commitment can retreat, but more slowly
+    #: than it advances, replacing the irreversible V1 ratchet with explicit
+    #: jitter suppression.
+    task_progress_advance_limit_m: float = 0.5
+    task_progress_retreat_limit_m: float = 0.5
+    task_commit_advance_limit: float = 0.05
+    task_commit_retreat_limit: float = 0.02
     #: ``arrival_condition`` only. The commit blend may only advance:
     #: ``b_k = max(b_{k-1}, b_k_commanded)``.
     #:
@@ -212,10 +223,20 @@ class PrecaptureHybridConfig:
             "absolute",
             "radial_local",
             "arrival_condition",
+            "task_state_v2",
         }:
             raise ValueError("unknown waypoint parametrisation")
         if min(self.radial_action_gain, self.lateral_action_gain) <= 0.0:
             raise ValueError("action gains must be positive")
+        if min(
+            self.task_progress_advance_limit_m,
+            self.task_progress_retreat_limit_m,
+            self.task_commit_advance_limit,
+            self.task_commit_retreat_limit,
+        ) <= 0.0:
+            raise ValueError("V2 task-state rate limits must be positive")
+        if self.task_commit_retreat_limit >= self.task_commit_advance_limit:
+            raise ValueError("V2 commitment retreat must be slower than advance")
         if (
             self.baseline_anchored_residual
             and self.waypoint_parametrization != "arrival_condition"
@@ -237,7 +258,7 @@ class PrecaptureHybridConfig:
     def action_dimension(self) -> int:
         if self.waypoint_parametrization == "absolute":
             return 3
-        if self.waypoint_parametrization == "arrival_condition":
+        if self.waypoint_parametrization in {"arrival_condition", "task_state_v2"}:
             return 2
         return 4
 
@@ -354,6 +375,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         if self._ratchet_observation_active():
             low = np.concatenate((low, np.zeros(1)))
             high = np.concatenate((high, np.ones(1)))
+        if self._task_state_observation_active():
+            low = np.concatenate((low, np.zeros(2)))
+            high = np.concatenate((high, np.ones(2)))
         if self.hybrid_config.include_execution_feedback_observation:
             low = np.concatenate((low, np.zeros(3)))
             high = np.concatenate((high, np.ones(3)))
@@ -363,6 +387,7 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         if (
             self.hybrid_config.include_target_phase_and_time_observation
             or self._ratchet_observation_active()
+            or self._task_state_observation_active()
             or self.hybrid_config.include_execution_feedback_observation
             or self.hybrid_config.include_staging_direction_observation
         ):
@@ -377,6 +402,10 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._hold_inertial: FloatArray | None = None
         self._hold_radius_m = 0.0
         self._commit_blend = 0.0
+        self._task_progress_m: float | None = None
+        self._task_commitment: float | None = None
+        self._last_task_proposal: tuple[float, float] | None = None
+        self._last_proposal_accepted = True
         self._feedback = np.zeros(3, dtype=np.float64)
 
     def _ratchet_observation_active(self) -> bool:
@@ -384,6 +413,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             self.hybrid_config.waypoint_parametrization == "arrival_condition"
             and self.hybrid_config.monotone_commit
         )
+
+    def _task_state_observation_active(self) -> bool:
+        return self.hybrid_config.waypoint_parametrization == "task_state_v2"
 
     def _policy_observation(self, observation: np.ndarray) -> np.ndarray:
         """Append the scheduling state and the lower layer's execution feedback.
@@ -418,6 +450,19 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             # problem is no longer Markov, and the policy would be guessing at
             # its own past. It is a scalar in [0, 1], not a tuning knob.
             parts.append(np.array([self._commit_blend], dtype=np.float64))
+        if self._task_state_observation_active():
+            if self._task_progress_m is None or self._task_commitment is None:
+                raise RuntimeError("V2 task state must be initialized before observation")
+            span = self.v2_progress_max_m
+            parts.append(
+                np.array(
+                    [
+                        self._task_progress_m / span if span > 0.0 else 0.0,
+                        self._task_commitment,
+                    ],
+                    dtype=np.float64,
+                )
+            )
         if self.hybrid_config.include_execution_feedback_observation:
             parts.append(self._feedback)
         if self.hybrid_config.include_staging_direction_observation:
@@ -460,7 +505,119 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         assert self.env.relative is not None
         return se3_exp(relative_to_vector(self.env.relative)[:6])[:3, 3]
 
-    def waypoint_from_action(self, action: np.ndarray) -> FloatArray:
+    @property
+    def v2_radius_min_m(self) -> float:
+        """Smallest V2 task radius, outside the original keep-out sphere."""
+
+        return max(
+            self.hybrid_config.minimum_waypoint_radius_m,
+            self.environment_config.precapture_task.keepout_radius_m,
+        )
+
+    @property
+    def v2_progress_max_m(self) -> float:
+        if self._hold_radius_m <= 0.0:
+            raise RuntimeError("V2 hold radius is not initialized")
+        return max(self._hold_radius_m - self.v2_radius_min_m, 0.0)
+
+    def action_for_task_state(self, progress_m: float, commitment: float) -> FloatArray:
+        """Encode an absolute V2 task-state proposal into the bounded action."""
+
+        if self.hybrid_config.waypoint_parametrization != "task_state_v2":
+            raise ValueError("task-state actions require task_state_v2")
+        if not np.isfinite(progress_m) or not np.isfinite(commitment):
+            raise ValueError("task state must be finite")
+        progress = float(np.clip(progress_m, 0.0, self.v2_progress_max_m))
+        progress_action = (
+            2.0 * progress / self.v2_progress_max_m - 1.0
+            if self.v2_progress_max_m > 0.0
+            else -1.0
+        )
+        commitment_action = 2.0 * float(np.clip(commitment, 0.0, 1.0)) - 1.0
+        return np.array([progress_action, commitment_action], dtype=np.float64)
+
+    def _task_state_from_action(self, action: FloatArray) -> tuple[float, float]:
+        progress = 0.5 * (float(action[0]) + 1.0) * self.v2_progress_max_m
+        commitment = 0.5 * (float(action[1]) + 1.0)
+        return float(progress), float(commitment)
+
+    def _limit_task_state(
+        self, proposed_progress_m: float, proposed_commitment: float
+    ) -> tuple[float, float]:
+        if self._task_progress_m is None or self._task_commitment is None:
+            raise RuntimeError("V2 task state is not initialized")
+        progress_delta = float(proposed_progress_m - self._task_progress_m)
+        progress_delta = float(
+            np.clip(
+                progress_delta,
+                -self.hybrid_config.task_progress_retreat_limit_m,
+                self.hybrid_config.task_progress_advance_limit_m,
+            )
+        )
+        commitment_delta = float(proposed_commitment - self._task_commitment)
+        commitment_delta = float(
+            np.clip(
+                commitment_delta,
+                -self.hybrid_config.task_commit_retreat_limit,
+                self.hybrid_config.task_commit_advance_limit,
+            )
+        )
+        return (
+            float(
+                np.clip(
+                    self._task_progress_m + progress_delta,
+                    0.0,
+                    self.v2_progress_max_m,
+                )
+            ),
+            float(np.clip(self._task_commitment + commitment_delta, 0.0, 1.0)),
+        )
+
+    def reference_for_task_state(
+        self, progress_m: float, commitment: float
+    ) -> FloatArray:
+        """Generate the protected V2 reference for an already-limited state.
+
+        Radius and commitment remain independent: commitment equal to one
+        aligns the direction with the capture geometry but does not erase the
+        distance axis or force the terminal radius.  The original keep-out is
+        the only geometric lower bound; no phase or far-range gate is added.
+        """
+
+        assert self.env.target_state is not None
+        position = self._current_position()
+        rotation = np.asarray(self.env.target_state.rotation, dtype=np.float64)
+        if self._hold_inertial is None:
+            inertial = rotation @ position
+            norm = float(np.linalg.norm(inertial))
+            if norm < 1.0e-9:
+                inertial, norm = np.array([1.0, 0.0, 0.0]), 1.0
+            self._hold_inertial = inertial / norm
+            self._hold_radius_m = float(np.linalg.norm(position))
+        desired = np.asarray(
+            self.environment_config.precapture_task.desired_position,
+            dtype=np.float64,
+        )
+        commit_direction = desired / np.linalg.norm(desired)
+        hold_direction = rotation.T @ self._hold_inertial
+        direction = _slerp(
+            hold_direction,
+            commit_direction,
+            float(np.clip(commitment, 0.0, 1.0)),
+        )
+        progress = float(np.clip(progress_m, 0.0, self.v2_progress_max_m))
+        radius = float(
+            np.clip(
+                self._hold_radius_m - progress,
+                self.v2_radius_min_m,
+                self.hybrid_config.maximum_waypoint_radius_m,
+            )
+        )
+        return radius * direction
+
+    def waypoint_from_action(
+        self, action: np.ndarray, *, proposal_accepted: bool = True
+    ) -> FloatArray:
         """Map a bounded action to a target-body-frame point.
 
         Absolute under both parametrisations: the policy names a place to be,
@@ -477,6 +634,21 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         if not np.all(np.isfinite(raw)):
             raise ValueError("action must be finite")
         raw = np.clip(raw, -1.0, 1.0)
+        if self.hybrid_config.waypoint_parametrization == "task_state_v2":
+            proposed = self._task_state_from_action(raw)
+            self._last_task_proposal = proposed
+            self._last_proposal_accepted = bool(proposal_accepted)
+            if not proposal_accepted:
+                # Architectural baseline floor: rejection is a stateless bypass
+                # to the original desired-pose reference. It cannot advance or
+                # otherwise mutate the learned task state.
+                return np.asarray(
+                    self.environment_config.precapture_task.desired_position,
+                    dtype=np.float64,
+                )
+            applied = self._limit_task_state(*proposed)
+            self._task_progress_m, self._task_commitment = applied
+            return self.reference_for_task_state(*applied)
         if self.hybrid_config.waypoint_parametrization == "arrival_condition":
             if self.hybrid_config.baseline_anchored_residual:
                 # ``raw`` is the residual on the nominal arrival action
@@ -531,6 +703,17 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                     1.0,
                 )
             return base
+        if self.hybrid_config.waypoint_parametrization == "task_state_v2":
+            radius = float(np.linalg.norm(target))
+            desired = np.asarray(
+                self.environment_config.precapture_task.desired_position,
+                dtype=np.float64,
+            )
+            desired_direction = desired / np.linalg.norm(desired)
+            target_direction = target / radius if radius > 1.0e-9 else desired_direction
+            commitment = 1.0 if np.allclose(target_direction, desired_direction) else 0.0
+            progress = self._hold_radius_m - radius
+            return self.action_for_task_state(progress, commitment)
         if self.hybrid_config.waypoint_parametrization == "absolute":
             return np.clip(
                 target / self.hybrid_config.waypoint_scale_m, -1.0, 1.0
@@ -691,13 +874,44 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._hold_inertial = None
         self._hold_radius_m = 0.0
         self._commit_blend = 0.0
+        if self._task_state_observation_active():
+            position = self._current_position()
+            self._hold_radius_m = float(np.linalg.norm(position))
+            assert self.env.target_state is not None
+            inertial = np.asarray(self.env.target_state.rotation) @ position
+            self._hold_inertial = inertial / np.linalg.norm(inertial)
+            self._task_progress_m = 0.0
+            self._task_commitment = 0.0
+        else:
+            self._task_progress_m = None
+            self._task_commitment = None
+        self._last_task_proposal = None
+        self._last_proposal_accepted = True
         self._feedback = np.zeros(3, dtype=np.float64)
         return self._policy_observation(observation), info
 
     def step(
         self, action: np.ndarray
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        waypoint = self.waypoint_from_action(action)
+        return self._step_with_acceptance(action, proposal_accepted=True)
+
+    def step_with_proposal(
+        self, action: np.ndarray, *, proposal_accepted: bool
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """Step with an explicit architecture-level proposal decision."""
+
+        if self.hybrid_config.waypoint_parametrization != "task_state_v2":
+            raise ValueError("explicit proposal acceptance requires task_state_v2")
+        return self._step_with_acceptance(
+            action, proposal_accepted=bool(proposal_accepted)
+        )
+
+    def _step_with_acceptance(
+        self, action: np.ndarray, *, proposal_accepted: bool
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        waypoint = self.waypoint_from_action(
+            action, proposal_accepted=proposal_accepted
+        )
         initial_potential = self._current_reward_potential()
         integrated_reward_without_shaping = 0.0
         removed_micro_shaping = 0.0
@@ -783,6 +997,17 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         info = dict(info)
         info["hybrid_waypoint_target_frame"] = [float(v) for v in waypoint]
         info["hybrid_waypoint_radius_m"] = float(np.linalg.norm(waypoint))
+        if self._task_state_observation_active():
+            info["hybrid_proposal_accepted"] = bool(proposal_accepted)
+            info["hybrid_task_state_proposed"] = (
+                list(self._last_task_proposal)
+                if self._last_task_proposal is not None
+                else None
+            )
+            info["hybrid_task_state_applied"] = [
+                float(self._task_progress_m),
+                float(self._task_commitment),
+            ]
         info["hybrid_control_steps"] = control_steps
         info["hybrid_qp_zero_fallbacks"] = zero_fallbacks
         info["hybrid_feedback_fallback_fraction"] = zero_fallbacks / control_steps
