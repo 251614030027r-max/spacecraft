@@ -121,3 +121,30 @@ def test_staged_residual_rejects_hold_levels_that_are_not_holds(
     # below -1 is outside the action box.
     with pytest.raises(ValueError):
         staged_residual_action(0, 5, level)
+
+
+def test_noisy_commit_arm_is_centred_and_bounded() -> None:
+    """The arm that re-measures the ratchet's justification on this task."""
+
+    from experiments.evaluate_hybrid_policy import noisy_commit_action
+
+    generator = np.random.default_rng(262000)
+    samples = [
+        noisy_commit_action(generator, -0.5, 0.09) for _ in range(2000)
+    ]
+    commits = np.array([a[0] for a in samples])
+    assert commits.mean() == pytest.approx(-0.5, abs=0.01)
+    assert commits.std() == pytest.approx(0.09, abs=0.01)
+    assert commits.min() >= -1.0 and commits.max() <= 1.0
+    # The radius channel is untouched: this arm varies the commit only.
+    assert all(a[1] == 0.0 for a in samples)
+
+
+@pytest.mark.parametrize(
+    "mean,sigma", [(-1.5, 0.09), (1.5, 0.09), (-0.5, -0.01)]
+)
+def test_noisy_commit_arm_rejects_bad_settings(mean: float, sigma: float) -> None:
+    from experiments.evaluate_hybrid_policy import noisy_commit_action
+
+    with pytest.raises(ValueError):
+        noisy_commit_action(np.random.default_rng(0), mean, sigma)

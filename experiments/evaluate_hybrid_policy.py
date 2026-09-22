@@ -66,6 +66,37 @@ _STAGED_RESIDUAL_COMMIT_ACTION = np.array([0.0, 0.0], dtype=np.float64)
 _STAGED_RESIDUAL_HOLD_ACTION = np.array([-1.0, 0.0], dtype=np.float64)
 
 
+def noisy_commit_action(
+    generator: np.random.Generator,
+    mean_commit_residual: float,
+    sigma: float,
+) -> np.ndarray:
+    """Scripted arm: an interior commit residual plus Gaussian action noise.
+
+    This re-creates, on the current task and interface, the experiment that
+    justified the commit ratchet: a scripted upper layer holding an *interior*
+    mean commit with sigma = 0.09 of action noise turned 8 of 8 completing
+    seeds into 0 of 8 once the ratchet was removed, because the blend could
+    then fall as well as rise. That measurement was taken on the old planning
+    task (15-20 m start, no staging channel), so it cannot simply be inherited
+    by the adaptive task; running this arm with and without
+    --no-monotone-commit re-measures it where it is now being relied on.
+
+    The mean is in residual coordinates: under the baseline-anchored map
+    a_commit = clip(1 + 2r), so r = -0.5 gives a_commit = 0, the interior mean
+    the original experiment used.
+    """
+
+    if sigma < 0.0:
+        raise ValueError("--noisy-commit-sigma must be non-negative")
+    if not -1.0 <= mean_commit_residual <= 1.0:
+        raise ValueError("--noisy-commit-mean must be in [-1, 1]")
+    commit = float(
+        np.clip(mean_commit_residual + generator.normal(0.0, sigma), -1.0, 1.0)
+    )
+    return np.array([commit, 0.0], dtype=np.float64)
+
+
 def staged_residual_action(
     decision: int,
     stage_decisions: int,
@@ -325,6 +356,36 @@ def parse_args() -> argparse.Namespace:
         help="Trained SAC checkpoint. Omit to run one of the controls.",
     )
     parser.add_argument(
+        "--noisy-commit-mean",
+        type=float,
+        default=-0.5,
+        help=(
+            "noisy_commit only: mean commit residual. -0.5 maps to a_commit = 0, "
+            "the interior mean the ratchet's justifying experiment used."
+        ),
+    )
+    parser.add_argument(
+        "--noisy-commit-sigma",
+        type=float,
+        default=0.09,
+        help=(
+            "noisy_commit only: standard deviation of the action noise. 0.09 is "
+            "the value at which removing the ratchet turned 8 of 8 completing "
+            "seeds into 0 of 8 on the old planning task."
+        ),
+    )
+    parser.add_argument(
+        "--no-monotone-commit",
+        dest="monotone_commit",
+        action="store_false",
+        help=(
+            "Remove the commit ratchet, so the blend may fall as well as rise. "
+            "Required to re-measure the ratchet's justification on this task. "
+            "It also drops the ratchet observation, so a model trained with the "
+            "ratchet cannot be loaded against it."
+        ),
+    )
+    parser.add_argument(
         "--stage-commit-residual",
         type=float,
         default=-1.0,
@@ -362,7 +423,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--control",
-        choices=["desired_pose", "random", "timed_entry", "staged_residual"],
+        choices=[
+            "desired_pose",
+            "random",
+            "timed_entry",
+            "staged_residual",
+            "noisy_commit",
+        ],
         help=(
             "Run without a model. 'desired_pose' is the fixed-setpoint lower "
             "layer delivered through the wrapper (the immediate-entry A arm and "
@@ -490,6 +557,7 @@ def parse_args() -> argparse.Namespace:
             "baseline. Requires --perception."
         ),
     )
+    parser.set_defaults(monotone_commit=True)
     return parser.parse_args()
 
 
@@ -517,6 +585,19 @@ def main() -> None:
         raise ValueError(
             "--control staged_residual requires arrival_condition and "
             "--baseline-anchored-residual"
+        )
+    if args.control == "noisy_commit" and not (
+        args.parametrization == "arrival_condition"
+        and args.baseline_anchored_residual
+    ):
+        raise ValueError(
+            "--control noisy_commit requires --parametrization arrival_condition "
+            "and --baseline-anchored-residual: its mean is in residual coordinates"
+        )
+    if not args.monotone_commit and args.model is not None:
+        raise ValueError(
+            "--no-monotone-commit drops the ratchet observation, so a model "
+            "trained with it cannot be evaluated against this configuration"
         )
     if args.control != "staged_residual" and args.stage_commit_residual != -1.0:
         raise ValueError(
@@ -618,6 +699,7 @@ def main() -> None:
                 ),
                 include_execution_feedback_observation=args.execution_feedback,
                 baseline_anchored_residual=args.baseline_anchored_residual,
+                monotone_commit=args.monotone_commit,
                 include_staging_direction_observation=(
                     args.opportunity_task or args.adaptive_task
                 ),
@@ -710,6 +792,12 @@ def main() -> None:
                 assert timing is not None
                 started = perf_counter()
                 action = timing.action(info)
+                inference_s = perf_counter() - started
+            elif args.control == "noisy_commit":
+                started = perf_counter()
+                action = noisy_commit_action(
+                    generator, args.noisy_commit_mean, args.noisy_commit_sigma
+                )
                 inference_s = perf_counter() - started
             elif args.control == "staged_residual":
                 started = perf_counter()
@@ -1059,6 +1147,15 @@ def main() -> None:
         "baseline_anchored_residual": args.baseline_anchored_residual,
         "deployment_gate": args.deployment_gate,
         "stochastic_policy": args.stochastic_policy,
+        "monotone_commit": bool(args.monotone_commit),
+        "noisy_commit_settings": (
+            {
+                "mean_commit_residual": args.noisy_commit_mean,
+                "sigma": args.noisy_commit_sigma,
+            }
+            if args.control == "noisy_commit"
+            else None
+        ),
         "gate_advantage_margin": (
             args.gate_advantage_margin if args.deployment_gate else None
         ),
