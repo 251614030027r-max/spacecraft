@@ -160,6 +160,18 @@ class PrecaptureHybridConfig:
     #: sits -- and a rate limit sized to the authority would need 138
     #: decisions to reach the commit, which is 276 s of a 300 s episode.
     #:
+    #: **Struck 2026-09-22, do not cite for the adaptive task.** The 8/8-to-0/8
+    #: figure above was taken on the old planning task (15-20 m start, no
+    #: staging channel). Re-run on the adaptive task over 8 seeds with the same
+    #: interior mean and sigma (``--control noisy_commit``), the arm completes
+    #: **0/8 either way**, so the measurement does not transfer and cannot
+    #: justify the ratchet here. What it does still show is cost: without the
+    #: ratchet equivalent dv doubles, 6.717 to 12.549, and eight timeouts become
+    #: six distance breaches, so the chatter is real even though the completion
+    #: comparison is non-discriminating. V2 (``task_state_v2``) therefore keeps
+    #: the jitter suppression and drops the absolute latch. See
+    #: ``docs/ROUND1_EXTERNAL_REVIEW_20260922.md`` section 1.7.
+    #:
     #: What the traces show is oscillation, not travel: the dead seeds walk
     #: ``a_commit`` up and down and spend the authority reversing. The ratchet
     #: removes exactly that, with no tunable constant, while leaving a commit

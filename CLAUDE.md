@@ -10,17 +10,49 @@ SAC-MPC coupling.** Everything about `single_phase`, the Waypoint, the A1/A2/A3
 perception line and the 24D mission schemas is history; it is kept under
 *Historical research line* because the lessons transfer, not because it is live.
 
-> **Live status -- 2026-09-19.** Direction is settled: the **adaptive sync-entry
-> mainline** (`Direction discipline (2026-09-18, current)` below). The three
-> adaptive-task seeds (262410/411/412) were **stopped and are being retrained
-> from zero** after a measured **reward units bug**: the safety proximity
-> warning was not time-integrated, so a legal capture scored ~-75 while a hover
-> scored ~+4 (the objective was inverted and the critic the deployment gate
-> reads was being poisoned). Fixed in `env/reward.py`; a clean MPC completion is
-> unchanged at +26, so Pure MPC stays a fair baseline. See
-> `docs/REWARD_UNITS_FIX_20260919.md`. Retrain command: runsheet 2b. The
+> **Live status -- 2026-09-22.** Round 1 of the adaptive mainline is **closed**;
+> the work is now **V2 interface + coupling design**, and **no training is
+> running**.
+>
+> **What round 1 established.** `adp_rf_262410/411/412` trained from zero to
+> 60,000 decisions under the corrected reward. Formal 48-seed evaluation: Pure
+> MPC 36/48, both models 36/48, paired retained 36 / rescued 0 / destroyed 0 /
+> both-failed 12 -- but effective intervention was **0.114% and 0.484%**, so the
+> rows are Pure MPC repeated and **the coupling was never tested**. Two claims
+> are therefore forbidden: "the coupling is ineffective" (it did not act) and
+> "baseline retention is verified" (retention by inaction is the identity
+> `tests/test_baseline_residual.py` already pins).
+>
+> **Root cause: R5, single.** `a_commit = clip(1 + 2r)` maps every `r >= 0` to
+> one reference -- half the channel, with **gradient identically zero** -- and
+> the commit ratchet compressed the whole decision into step 0, leaving the
+> other ~40 inert (after one gate fallback, 15 sampled actions give 1 reference:
+> 100% inert). Training walked all three seeds into that plateau: staging
+> intervention ran 4-6% at 5k (262412 hit 14.8% at 10k) and reached **exactly 0%
+> by 60k**. R2 (never explored), R3 (inexpressible) and R4 (no decision in the
+> task) are **refuted**; the gate is secondary at 23-25%.
+>
+> **The task does contain the decision.** Scripted staging on the 12 both-failed
+> seeds rescues 2 at a 10 s hold and a **disjoint** 2 at 30 s, all
+> zero-violation; applied to the 36 Pure MPC completes it destroys 1 and 7. So a
+> blanket rule is +1 at best and -5 at worst, while a per-state choice is
+> **+4 (40/48)** -- an oracle upper bound, and the measured value of a learned
+> state-dependent layer. The **regime-level** framing ("staging wins as tumble
+> rises") is measured false: blanket staging degrades faster and turns the worst
+> truth margin negative at 2.36 and 3.54 deg/s.
+>
+> **Where the work is.** V2 replaces the interface: two decoupled axes
+> (`task_state_v2`), asymmetric rate limits with no absolute ratchet, baseline
+> recovery moved to the **architecture** level (forced rejection is bitwise Pure
+> MPC), and a metric cap on the per-decision reference step. Suite 283 passed, 3
+> xfailed. Coupling direction and the three core references are in
+> `docs/V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md`.
+>
+> Read, in order: `docs/ADAPTIVE_ROUND1_CLOSEOUT_20260921.md`,
+> `docs/ROUND1_EXTERNAL_REVIEW_20260922.md`,
+> `docs/V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md`. The
 > `Current state -- 2026-09-16` and `-- 2026-09-12` blocks below are prior
-> context, superseded by the 2026-09-18 discipline block.
+> context.
 
 ---
 
