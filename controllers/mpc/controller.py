@@ -40,6 +40,8 @@ FloatArray = NDArray[np.float64]
 class MPCStepDiagnostics:
     status: str
     solve_time_s: float
+    solver_stats_solve_time_s: float
+    pre_solve_setup_wall_s: float
     solver_iterations: int
     outer_iterations: int
     objective: float
@@ -650,6 +652,8 @@ class MPCController:
         controls = warm_start.copy()
         status = "not_solved"
         total_solve_time = 0.0
+        solver_stats_solve_time = 0.0
+        pre_solve_setup_wall = 0.0
         constraint_linearization_time = 0.0
         model_linearization_time = 0.0
         rollout_time = 0.0
@@ -661,6 +665,7 @@ class MPCController:
                 started_rollout = perf_counter()
                 nominal_states = self._rollout(state, controls)
                 rollout_time += perf_counter() - started_rollout
+                started_pre_solve_setup = perf_counter()
                 cached_linearization: tuple[FloatArray, FloatArray, FloatArray] | None = None
                 for index in range(self.config.horizon_steps):
                     if use_exact:
@@ -727,6 +732,7 @@ class MPCController:
                             offset + self.config.constraint_tightening
                         )
                 self._x0.value = state
+                pre_solve_setup_wall += perf_counter() - started_pre_solve_setup
                 started = perf_counter()
                 solver_options = dict(
                     solver=self.config.solver,
@@ -751,6 +757,8 @@ class MPCController:
                 status = str(self._problem.status)
                 completed_outer = outer + 1
                 stats = self._problem.solver_stats
+                if stats.solve_time is not None:
+                    solver_stats_solve_time += float(stats.solve_time)
                 solver_iterations += int(stats.num_iters or 0)
                 if status not in {cp.OPTIMAL, cp.OPTIMAL_INACCURATE} or self._u.value is None:
                     raise RuntimeError(f"QP status {status}")
@@ -854,6 +862,8 @@ class MPCController:
         return command, MPCStepDiagnostics(
             status=status,
             solve_time_s=total_solve_time,
+            solver_stats_solve_time_s=solver_stats_solve_time,
+            pre_solve_setup_wall_s=pre_solve_setup_wall,
             solver_iterations=solver_iterations,
             outer_iterations=completed_outer,
             objective=objective,
