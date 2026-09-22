@@ -58,3 +58,9 @@ V2 接口通过 T1–T6 与 smoke。按执行单到此停止：未启动训练�
 ## 6. 后续米单位上界修复
 
 复核发现承诺轴的无量纲限速不能约束实际参考弧长；大半径、大夹角下单步参考位移可达 `2.98 m`。在两轴独立限幅之后新增同相位参考欧氏位移上界，默认 `v2_reference_step_max_m=0.40`，超限时仅用 8 次纯几何二分共同缩放两轴增量，不增加 MPC 求解。T7 覆盖 12/15/19 m、45/90/120/近 180°及不同轴组合，钉住实际增量不超过上界。四档扫描与最终裁决见 `docs/V2_RATE_LIMIT_SWEEP_STOP_20260922.md`；全套最终为 `283 passed, 3 xfailed`，未训练。
+
+## 7. 训练门记录管道与开训前检查
+
+训练 CLI 已确认同时支持 `--parametrization task_state_v2` 与 `--adaptive-task`，并把两项写入 manifest。为避免 Monitor 只保存终止步快照而使 10k 活性门为空，V2 现按回合累计并仅在终止 info 发出三个标量：`hybrid_v2_episode_changed_fraction`（生效参考相对固定设定点改变的决策占比，绝对容差 `1e-9`）、`hybrid_v2_episode_mean_reference_step_m` 和 `hybrid_v2_episode_accepted_fraction`。`train_hybrid.py` 只在 `task_state_v2` 下把三键加入 Monitor，其他参数化不产生也不读取这些键。
+
+G1/G2 定向结果为 `2 passed`，分别验证回合汇总与逐决策统计一致、其他参数化无键泄漏。活性探针同时纠正为每决策只经 `env.step()` 应用一次 action：V2 三种子整段改变率、后半段改变率均为 `1.000`，不同参考均为 `40/40`；V1 对照后半段均为 `0.000`。全套回归为 `285 passed, 3 xfailed`；三个 xfail 仍是既有 V1 诊断钉子。未启动训练。

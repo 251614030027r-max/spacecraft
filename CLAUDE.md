@@ -44,7 +44,7 @@ perception line and the 24D mission schemas is history; it is kept under
 > **Where the work is.** V2 replaces the interface: two decoupled axes
 > (`task_state_v2`), asymmetric rate limits with no absolute ratchet, baseline
 > recovery moved to the **architecture** level (forced rejection is bitwise Pure
-> MPC), and a metric cap on the per-decision reference step. Suite 283 passed, 3
+> MPC), and a metric cap on the per-decision reference step. Suite 285 passed, 3
 > xfailed. Coupling direction and the three core references are in
 > `docs/V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md`.
 >

@@ -7,6 +7,7 @@ marker rather than silently inheriting an untested fix.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -235,5 +236,86 @@ def test_t7_reference_displacement_is_bounded_in_metres() -> None:
                         displacement
                         <= env.hybrid_config.v2_reference_step_max_m + 1.0e-9
                     )
+    finally:
+        env.close()
+
+
+def test_g1_v2_terminal_info_matches_per_decision_episode_statistics() -> None:
+    env = PrecaptureHybridEnv(
+        environment_config=replace(
+            precapture_adaptive_capture_environment_config(), max_time_s=4.0
+        ),
+        hybrid_config=PrecaptureHybridConfig(
+            horizon_steps=35,
+            waypoint_parametrization="task_state_v2",
+            runtime_diagnostics=False,
+            include_target_phase_and_time_observation=True,
+            include_staging_direction_observation=True,
+        ),
+    )
+    try:
+        env.reset(seed=262000)
+        desired = np.asarray(
+            env.environment_config.precapture_task.desired_position,
+            dtype=np.float64,
+        )
+        changed: list[bool] = []
+        reference_steps: list[float] = []
+        accepted: list[bool] = []
+        terminal_info: dict[str, Any] | None = None
+        for index in range(10):
+            proposal_accepted = index != 0
+            _, _, terminated, truncated, info = env.step_with_proposal(
+                np.array([1.0, 1.0]),
+                proposal_accepted=proposal_accepted,
+            )
+            waypoint = np.asarray(info["hybrid_waypoint_target_frame"])
+            changed.append(float(np.linalg.norm(waypoint - desired)) > 1.0e-9)
+            reference_steps.append(float(info["hybrid_v2_reference_step_m"]))
+            accepted.append(proposal_accepted)
+            if terminated or truncated:
+                terminal_info = info
+                break
+        assert terminal_info is not None
+        assert 0.0 <= terminal_info["hybrid_v2_episode_changed_fraction"] <= 1.0
+        assert terminal_info["hybrid_v2_episode_mean_reference_step_m"] >= 0.0
+        assert 0.0 <= terminal_info["hybrid_v2_episode_accepted_fraction"] <= 1.0
+        assert terminal_info["hybrid_v2_episode_changed_fraction"] == pytest.approx(
+            np.mean(changed)
+        )
+        assert terminal_info[
+            "hybrid_v2_episode_mean_reference_step_m"
+        ] == pytest.approx(np.mean(reference_steps))
+        assert terminal_info["hybrid_v2_episode_accepted_fraction"] == pytest.approx(
+            np.mean(accepted)
+        )
+    finally:
+        env.close()
+
+
+def test_g2_v2_episode_statistics_do_not_leak_to_other_parametrizations() -> None:
+    env = PrecaptureHybridEnv(
+        environment_config=replace(
+            precapture_adaptive_capture_environment_config(), max_time_s=2.0
+        ),
+        hybrid_config=PrecaptureHybridConfig(
+            horizon_steps=35,
+            waypoint_parametrization="arrival_condition",
+            runtime_diagnostics=False,
+        ),
+    )
+    try:
+        env.reset(seed=262001)
+        desired = np.asarray(env.environment_config.precapture_task.desired_position)
+        _, _, terminated, truncated, info = env.step(
+            env.action_for_waypoint(desired)
+        )
+        assert terminated or truncated
+        for key in (
+            "hybrid_v2_episode_changed_fraction",
+            "hybrid_v2_episode_mean_reference_step_m",
+            "hybrid_v2_episode_accepted_fraction",
+        ):
+            assert key not in info
     finally:
         env.close()

@@ -1,6 +1,6 @@
 # 文档权威地图
 
-> 2026-09-22 静态整理。范围为 `docs/` 当前全部 94 份 Markdown（80 份既有顶层文件、本文及 13 份 `handoffs/` 文件）。文件保持原位；本页只标状态，不改变证据路径。
+> 2026-09-22 静态整理。范围为 `docs/` 当前全部 95 份 Markdown（81 份既有顶层文件、本文及 13 份 `handoffs/` 文件）。文件保持原位；本页只标状态，不改变证据路径。
 
 状态只有三类：**LIVE** 当前有效且新窗口应优先读；**EVIDENCE** 已结案但仍支撑当前事实或审计链；**CLOSED** 历史研究线，保留但勿据此重开方向。发生冲突时，以 `../CLAUDE.md` 和最新 LIVE 文档为准。
 
@@ -16,6 +16,7 @@
 | `V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md` | 当前耦合设计方向与三篇核心文献。 |
 | `V2_INTERFACE_IMPLEMENTATION_20260922.md` | V2 接口实现、架构地板与验证。 |
 | `V2_RATE_LIMIT_DECISION_20260922.md` | 米单位参考步长上界 `0.40 m` 的最终裁定。 |
+| `V2_TRAINING_ORDER_20260923.md` | V2 第一轮训练单；训练前步骤已完成，启动仍需用户明确同意。 |
 | `ADAPTIVE_MAINLINE_RUNSHEET.md` | 当前主线运行框架；训练仍需用户新指令。 |
 | `PURE_MPC_ROW_VERIFIED.md` | 冻结 Pure MPC 基线行。 |
 | `REPRODUCIBILITY.md` | 当前环境与复现入口。 |

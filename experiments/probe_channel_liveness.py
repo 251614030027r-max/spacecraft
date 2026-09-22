@@ -65,15 +65,15 @@ def run(parametrization, seed, rng):
     # visible well inside that; running to the 300 s cap only costs solves.
     while not (terminated or truncated) and total < 40:
         action = rng.uniform(-1.0, 1.0, size=env.action_space.shape)
-        ref = np.asarray(env.waypoint_from_action(action), dtype=np.float64)
+        _, _, terminated, truncated, info = env.step(action)
+        ref = np.asarray(info["hybrid_waypoint_target_frame"], dtype=np.float64)
         refs.append(ref)
-        is_changed = not bool(np.allclose(ref, desired))
+        is_changed = float(np.linalg.norm(ref - desired)) > 1.0e-9
         changed += int(is_changed)
         total += 1
-        _, _, terminated, truncated, _ = env.step(action)
     half = max(total // 2, 1)
     for i, r in enumerate(refs):
-        if not np.allclose(r, desired):
+        if float(np.linalg.norm(r - desired)) > 1.0e-9:
             if i < half:
                 first_half += 1
             else:

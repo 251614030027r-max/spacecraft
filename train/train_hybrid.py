@@ -308,16 +308,23 @@ def main() -> None:
         + (["--adaptive-task"] if args.adaptive_task else [])
     )
     manifest_path.write_text(json.dumps(manifest, indent=1, default=str))
+    info_keywords = (
+        "completed",
+        "terminal_region_active",
+        "illegal_terminal_entry_count",
+        "hybrid_waypoint_radius_m",
+        "hybrid_qp_zero_fallbacks",
+    )
+    if hybrid_config.waypoint_parametrization == "task_state_v2":
+        info_keywords += (
+            "hybrid_v2_episode_changed_fraction",
+            "hybrid_v2_episode_mean_reference_step_m",
+            "hybrid_v2_episode_accepted_fraction",
+        )
     env = Monitor(
         raw_env,
         filename=str(log_dir / "train"),
-        info_keywords=(
-            "completed",
-            "terminal_region_active",
-            "illegal_terminal_entry_count",
-            "hybrid_waypoint_radius_m",
-            "hybrid_qp_zero_fallbacks",
-        ),
+        info_keywords=info_keywords,
     )
     model = SAC(
         "MlpPolicy",

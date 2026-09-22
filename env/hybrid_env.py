@@ -426,6 +426,10 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._last_task_proposal: tuple[float, float] | None = None
         self._last_proposal_accepted = True
         self._last_v2_reference_step_m = 0.0
+        self._v2_episode_decisions = 0
+        self._v2_episode_changed_decisions = 0
+        self._v2_episode_reference_step_sum_m = 0.0
+        self._v2_episode_accepted_decisions = 0
         self._feedback = np.zeros(3, dtype=np.float64)
 
     def _ratchet_observation_active(self) -> bool:
@@ -956,6 +960,10 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._last_task_proposal = None
         self._last_proposal_accepted = True
         self._last_v2_reference_step_m = 0.0
+        self._v2_episode_decisions = 0
+        self._v2_episode_changed_decisions = 0
+        self._v2_episode_reference_step_sum_m = 0.0
+        self._v2_episode_accepted_decisions = 0
         self._feedback = np.zeros(3, dtype=np.float64)
         return self._policy_observation(observation), info
 
@@ -981,6 +989,19 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         waypoint = self.waypoint_from_action(
             action, proposal_accepted=proposal_accepted
         )
+        if self._task_state_observation_active():
+            desired = np.asarray(
+                self.environment_config.precapture_task.desired_position,
+                dtype=np.float64,
+            )
+            self._v2_episode_decisions += 1
+            self._v2_episode_changed_decisions += int(
+                float(np.linalg.norm(waypoint - desired)) > 1.0e-9
+            )
+            self._v2_episode_reference_step_sum_m += float(
+                self._last_v2_reference_step_m
+            )
+            self._v2_episode_accepted_decisions += int(proposal_accepted)
         initial_potential = self._current_reward_potential()
         integrated_reward_without_shaping = 0.0
         removed_micro_shaping = 0.0
@@ -1080,6 +1101,18 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             info["hybrid_v2_reference_step_m"] = float(
                 self._last_v2_reference_step_m
             )
+            if terminated or truncated:
+                decisions = self._v2_episode_decisions
+                assert decisions > 0
+                info["hybrid_v2_episode_changed_fraction"] = float(
+                    self._v2_episode_changed_decisions / decisions
+                )
+                info["hybrid_v2_episode_mean_reference_step_m"] = float(
+                    self._v2_episode_reference_step_sum_m / decisions
+                )
+                info["hybrid_v2_episode_accepted_fraction"] = float(
+                    self._v2_episode_accepted_decisions / decisions
+                )
         info["hybrid_control_steps"] = control_steps
         info["hybrid_qp_zero_fallbacks"] = zero_fallbacks
         info["hybrid_feedback_fallback_fraction"] = zero_fallbacks / control_steps
