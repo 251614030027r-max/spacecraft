@@ -48,7 +48,7 @@ for seed in (262000, 262001, 262005, 262011):
         previous = waypoint
         _, _, terminated, truncated, info = env.step(action)
         decisions += 1
-        usages.append(float(info.get("mean_actuator_usage", float("nan"))))
+        usages.append(float(info.get("hybrid_feedback_mean_actuator_usage", float("nan"))))
     completed = bool(info.get("completed", False))
     m = np.array(motions) if motions else np.array([np.nan])
     finite = [v for v in usages if np.isfinite(v)]
@@ -58,9 +58,10 @@ for seed in (262000, 262001, 262005, 262011):
                  float(np.mean(u)) if len(u) else float("nan")))
 
 print(f'{"seed":<8}{"ended":>8}{"decisions":>11}{"time_s":>9}'
-      f'{"ref_move_median_m":>20}{"ref_move_max_m":>16}')
+      f'{"ref_move_median_m":>20}{"ref_move_max_m":>16}{"actuator":>10}')
 for r in rows:
-    print(f'{r[0]:<8}{str(r[1]):>8}{r[2]:>11}{r[3]:>9.1f}{r[4]:>20.3f}{r[5]:>16.3f}')
+    print(f'{r[0]:<8}{str(r[1]):>8}{r[2]:>11}{r[3]:>9.1f}'
+          f'{r[4]:>20.3f}{r[5]:>16.3f}{r[6]:>10.3f}')
 print()
 print("V1 reference, from env/hybrid_env.py: completing episodes held the")
 print("waypoint to 0.000-0.015 m per decision at 0.20-0.28 actuator usage;")
