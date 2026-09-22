@@ -3,15 +3,32 @@
 ## 当前必须阅读
 
 1. `../CLAUDE.md`：冻结的 adaptive sync-entry 主线和科学边界；
-2. `ADAPTIVE_MAINLINE_RUNSHEET.md`：三种子从零重训、10k/30k/60k 检查和正式评估；
-3. `REWARD_UNITS_FIX_20260919.md`：首轮训练无效的原因与量纲修复；
-4. `TRAINING_PREFLIGHT_AUDIT_20260919.md`：训练前静态、测试和真实闭环审计；
-5. `FAST_TUMBLING_CAPTURE_MOTIVATION.md`：物理需求、翻滚率与论文表述；
-6. `BIDIRECTIONAL_SACMPC_EXECUTION.md`：基线锚定与双向耦合设计背景；
-7. `EVIDENCE_INDEX.md`、`REPRODUCIBILITY.md`：证据和复现索引。
+2. `INDEX.md`：全部文档的 LIVE / EVIDENCE / CLOSED 权威地图；
+3. `ADAPTIVE_ROUND1_CLOSEOUT_20260921.md`：第一轮收尾与 R5 根因终判；
+4. `ROUND1_EXTERNAL_REVIEW_20260922.md`：外部审查件；
+5. `V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md`：当前耦合方向；
+6. `V2_INTERFACE_IMPLEMENTATION_20260922.md`、`V2_RATE_LIMIT_DECISION_20260922.md`：V2 实现与 `0.40 m` 裁决；
+7. `ADAPTIVE_MAINLINE_RUNSHEET.md`、`PURE_MPC_ROW_VERIFIED.md`：运行框架与冻结基线；
+8. `EVIDENCE_INDEX.md`、`REPRODUCIBILITY.md`：证据和复现索引。
+
+## 2026-09-21/22 新增证据（13 份）
+
+1. `ADAPTIVE_ROUND1_CLOSEOUT_20260921.md`；
+2. `COUPLING_DEFECT_DIAGNOSIS_LOG_20260921.md`；
+3. `COUPLING_DEFECT_DIAGNOSIS_ORDER_20260921.md`；
+4. `DECK_CLEARING_ORDER_20260922.md`；
+5. `ROUND1_EXTERNAL_REVIEW_20260922.md`；
+6. `V2_EXECUTION_ORDER_20260922.md`；
+7. `V2_EXECUTION_SIGNAL_AUDIT_20260922.md`；
+8. `V2_FIX_ORDER_RATE_LIMIT_20260922.md`；
+9. `V2_INTERFACE_IMPLEMENTATION_20260922.md`；
+10. `V2_RATE_LIMIT_DECISION_20260922.md`；
+11. `V2_RATE_LIMIT_SWEEP_STOP_20260922.md`；
+12. `V2_REVIEW_RATE_LIMIT_20260922.md`；
+13. `V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md`。
 
 ## 历史材料
 
 `T*`、`A1/A2/A3/G0`、非合作探针、timing probe、旧 `MAINLINE/OPPORTUNITY` runsheet 和 9 月 16 日以前的阶段报告只记录研究演进。它们可以解释为什么当前设计如此选择，但不是现行执行单，也不得用于恢复相位硬门、外层硬走廊或旧训练配置。
 
-交接文件统一放在 `handoffs/`；根目录不再放新增 handoff。当前事实发生变化时，优先更新上述七个入口，而不是继续新增并列说明文件。
+交接文件统一放在 `handoffs/`；根目录不再放新增 handoff。当前事实发生变化时，优先更新 LIVE 入口和 `INDEX.md`，而不是继续新增并列说明文件。

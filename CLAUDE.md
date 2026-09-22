@@ -481,6 +481,11 @@ diagnostic probes. Repository changes go on an explicit branch, one auditable
 stage per commit. The sandbox has no numeric stack by default; build a venv
 and install `numpy scipy cvxpy gymnasium stable-baselines3 pytest`.
 
+Training artifacts (model ZIPs, checkpoints, TensorBoard events and evaluation
+JSON) are ignored by default. Publish evidence only by explicitly force-adding
+the individual file with `git add -f`, and record its path plus SHA-256 in the
+supporting document. Never commit an entire artifact directory.
+
 ---
 
 ## Historical research line

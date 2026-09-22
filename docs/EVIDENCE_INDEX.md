@@ -14,6 +14,24 @@
 
 旧 `adp_262410/411/412` 的 checkpoint、模型和 TensorBoard 已删除：其 critic 学到“悬停优于合法完成”的反向目标，不能用于恢复训练或部署门。旧校准重复目录 `eval/cal/` 已删除；当前小样本校准保留于本机 `eval/cal2/`。
 
+### 2026-09-21/22 第一轮收尾与 V2（13 份）
+
+1. `docs/ADAPTIVE_ROUND1_CLOSEOUT_20260921.md`：第一轮收尾、R5 根因终判与模型哈希；
+2. `docs/COUPLING_DEFECT_DIAGNOSIS_LOG_20260921.md`：D0–D4 诊断日志与复现实物；
+3. `docs/COUPLING_DEFECT_DIAGNOSIS_ORDER_20260921.md`：缺陷诊断预登记执行单；
+4. `docs/DECK_CLEARING_ORDER_20260922.md`：进入耦合设计前的零机时收尾边界；
+5. `docs/ROUND1_EXTERNAL_REVIEW_20260922.md`：第一轮外部审查件；
+6. `docs/V2_EXECUTION_ORDER_20260922.md`：V2 实现预登记执行单；
+7. `docs/V2_EXECUTION_SIGNAL_AUDIT_20260922.md`：离线执行信号审计；
+8. `docs/V2_FIX_ORDER_RATE_LIMIT_20260922.md`：米单位限速缺陷修复单；
+9. `docs/V2_INTERFACE_IMPLEMENTATION_20260922.md`：V2 实现、测试与架构地板；
+10. `docs/V2_RATE_LIMIT_DECISION_20260922.md`：`0.40 m` 上界最终裁决；
+11. `docs/V2_RATE_LIMIT_SWEEP_STOP_20260922.md`：四档扫描、探针纠偏与停止记录；
+12. `docs/V2_REVIEW_RATE_LIMIT_20260922.md`：米位移无界缺陷复核；
+13. `docs/V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md`：当前耦合方向与核心文献。
+
+文档状态与新窗口阅读顺序以 `docs/INDEX.md` 为权威地图；上述文件只提供证据或当前裁决，不自动授权训练。
+
 ## 当前正式基线证据
 
 ### 非合作探针 2（2026-09-16）
