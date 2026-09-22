@@ -623,12 +623,40 @@ def linearize_precapture_constraint_margins(
     )
     jacobian[:, 3:6] = position_gradient @ left_jacobian
     jacobian[:, 9:] = rate_gradient @ rotation
-    nominal = normalized_precapture_constraint_margins(
-        x,
-        task,
-        target_angular_velocity_rad_s=target_omega,
-        terminal_latched=terminal_latched,
-        corridor_facets=corridor_facets,
-        distance_scale_m=distance_scale_m,
-    )
+    # Reuse the geometry already computed for the Jacobian. Calling
+    # normalized_precapture_constraint_margins here repeated the pose, FOV,
+    # region-gate, rate and speed calculations for every horizon stage.
+    nominal = np.full(count, _INACTIVE_MARGIN, dtype=np.float64)
+    nominal[0] = (range_m - task.keepout_radius_m) / task.keepout_radius_m
+    nominal[1] = (task.fov_half_angle_rad - angle) / task.fov_half_angle_rad
+    if terminal:
+        displacement = position - task.port_position
+        axial = float(geometry.axis @ displacement)
+        lateral = displacement - axial * geometry.axis
+        polygon_radius = (
+            axial
+            * np.tan(task.corridor_half_angle_rad)
+            * np.cos(np.pi / corridor_facets)
+        )
+        nominal[4] = axial / distance_scale_m
+        nominal[5 : 5 + corridor_facets] = (
+            polygon_radius - geometry.directions @ lateral
+        ) / distance_scale_m
+        nominal[corridor_facets + 5] = (
+            task.terminal_total_speed_limit_m_s - speed
+        ) / task.terminal_total_speed_limit_m_s
+        nominal[corridor_facets + 6] = (
+            task.closing_speed_limit(axial_remaining)
+            - float(-geometry.axis @ position_rate)
+        ) / task.closing_speed_max_m_s
+    else:
+        nominal[2] = (
+            task.outer_inertial_speed_limit_m_s - inertial_speed
+        ) / task.outer_inertial_speed_limit_m_s
+        radial_direction = position / max(range_m, _DEGENERATE)
+        radial_closing_speed = float(-radial_direction @ inertial_velocity)
+        nominal[3] = (
+            task.outer_radial_closing_speed_limit(range_m)
+            - radial_closing_speed
+        ) / task.outer_inertial_speed_limit_m_s
     return jacobian, jacobian @ x - nominal
