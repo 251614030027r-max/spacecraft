@@ -10,6 +10,68 @@
 
 ---
 
+## 第 00 步：先补三处脚手架，否则方案里有两项读不出来
+
+**上层自查发现的缺口，不补则重演第一轮"判据写在纸上、数没记下来"。**
+
+### 00.1 评估记录里加逐决策的任务状态（Q2 的前提）
+
+`experiments/evaluate_hybrid_policy.py` **目前完全不记录任务状态**——
+`grep task_state` 只命中参数化的 choices。而 **Q2 需要每个完成回合最后 20 个决策的
+参考步长与 `ρ`/`c` 是否顶边界**。
+
+**不补这一项，第 1 步跑完 144 个 episode 之后 Q2 答不出来，得整批重跑。**
+
+在每回合记录里加（`task_state_v2` 下才出现）：
+
+| 字段 | 内容 |
+|---|---|
+| `task_state_applied` | 逐决策的 `(ρ, c)`，与 `decision_times_s` 索引对齐 |
+| `task_state_proposed` | 逐决策的策略提议 `(ρ, c)` |
+| `v2_reference_step_m` | 逐决策的参考位移（米） |
+| `v2_progress_max_m` | **本回合**的 `ρ` 上界（它依赖回合初始暂存半径，**每回合不同**） |
+
+> **`v2_progress_max_m` 必须逐回合记录。** 它是 `hold_radius − v2_radius_min_m`，
+> 随初始半径变化。用一个全局常数去判"是否顶边界"会判错。
+
+env 侧的 `hybrid_task_state_applied` / `hybrid_task_state_proposed` /
+`hybrid_v2_reference_step_m` 已经在 `info` 里，只需在评估循环里逐决策收集。
+
+### 00.2 加强制全拒的 CLI 入口（第 2 步的前提）
+
+`evaluate_hybrid_policy.py` **没有任何 force-reject 入口**（`grep` 无命中）。
+第 2 步按现在的写法跑不起来。
+
+加一个 `--force-reject-all`：调用
+`env.step_with_proposal(action, proposal_accepted=False)`，与 T4 测试同一口径。
+**它必须同时要求 `--model`**（要复验的是"最终模型在被全拒时"仍逐位等于基线）。
+
+### 00.3 评估命令一律取自训练 manifest，不要手写
+
+训练把观测 flag 硬编码为 `include_target_phase_and_time_observation=True`，
+执行反馈默认开，所以 V2 的评估**必须**带 `--phase-time-observation --execution-feedback`。
+**本文第 1、3 步里我手写的命令漏了这两个**（会被观测维度守卫拒绝——守卫是好的，
+但说明手写命令不可信）。
+
+**正确做法**：
+
+```
+python -c "import json;print(' '.join(json.load(open('logs/v2_262410/manifest.json'))['evaluation_flags']))"
+```
+
+**把打印出来的那串 flag 原样拼进评估命令**，再加 `--model` / `--output` / `--episodes` / `--seed`。
+三个种子各自读自己的 manifest。这条是 CLAUDE.md 陷阱 6（"按 manifest 而不是猜 flag"）。
+
+### 00.4 验收
+
+- 加两个测试：记录字段在 `task_state_v2` 下存在且与逐决策统计一致 / 其他参数化下不出现；
+- `--force-reject-all` 在一个 episode 上跑通；
+- 全套回归仍绿。
+
+**00 步不完成，不许开始第 0 步。**
+
+---
+
 ## 第 0 步：MPC 等价性核对（必做，最先，否则整张主表作废）
 
 ### 为什么
@@ -67,15 +129,15 @@ python -B -m experiments.evaluate_hybrid_policy --episodes 48 --seed 262000 --ho
 
 ```
 for SEED in 262410 262411 262412; do
-  python -B -m experiments.evaluate_hybrid_policy --episodes 48 --seed 262000 --horizon 35 \
-    --parametrization task_state_v2 --adaptive-task \
+  FLAGS=$(python -c "import json;print(' '.join(json.load(open('logs/v2_'$SEED'/manifest.json'))['evaluation_flags']))")
+  python -B -m experiments.evaluate_hybrid_policy --episodes 48 --seed 262000 $FLAGS \
     --model logs/v2_${SEED}/final_model.zip \
     --output eval/adp/final_v2_nominal_${SEED}.json
 done
 ```
 
+- **flag 一律取自 manifest**（见 00.3），不要手写；
 - **确定性**（默认，不要加 `--stochastic-policy`）——这是唯一能和基线比的口径；
-- **不要**加 `--baseline-anchored-residual`（V2 会拒绝）；
 - **不要**加 `--deployment-gate`（这一轮没有仲裁层，策略提议一律接受）。
 
 ---
@@ -88,18 +150,30 @@ done
 
 ```
 for SEED in 262410 262411 262412; do
-  <强制全拒模式> --episodes 4 --seed 262000 --horizon 35 \
-    --parametrization task_state_v2 --adaptive-task \
-    --model logs/v2_${SEED}/final_model.zip \
+  FLAGS=$(python -c "import json;print(' '.join(json.load(open('logs/v2_'$SEED'/manifest.json'))['evaluation_flags']))")
+  python -B -m experiments.evaluate_hybrid_policy --episodes 4 --seed 262000 $FLAGS \
+    --force-reject-all --model logs/v2_${SEED}/final_model.zip \
     --output eval/adp/final_v2_floor_${SEED}.json
 done
 ```
 
-（强制全拒的入口用现有 `step_with_proposal(..., proposal_accepted=False)` 那条路径，
-和 T4 测试同一口径。）
+（`--force-reject-all` 是 00.2 加的，走 `step_with_proposal(..., proposal_accepted=False)`，
+与 T4 测试同一口径。）
 
 **预注册判读**：`max |Δwrench|` 必须是 **0.0**。
 **任何非零 → 立即停，报上层，这是 bug，不是结果。**
+
+---
+
+## 第 2b 步：算力行（1 次，约 2 分钟）
+
+```
+python -B -m experiments.profile_precapture_mpc --no-diagnostics
+```
+
+V2 的限速器是纯几何二分、不解 MPC，**预期不增加求解成本**。但这一行论文要用，
+且能证实"零额外在线求解"这个设计承诺。报 p95/控制周期、超周期步数、以及 max 列
+（**那是第 0 步冷启动，不是稳态尾部**，见陷阱 3）。
 
 ---
 
@@ -116,9 +190,9 @@ for R in 0.10 0.30; do
     --parametrization arrival_condition --adaptive-task --tumble-scale $R \
     --control desired_pose --output eval/adp/final_mpc_r${R}.json
   for SEED in 262410 262411 262412; do
-    python -B -m experiments.evaluate_hybrid_policy --episodes 24 --seed 262000 --horizon 35 \
-      --parametrization task_state_v2 --adaptive-task --tumble-scale $R \
-      --model logs/v2_${SEED}/final_model.zip \
+    FLAGS=$(python -c "import json;print(' '.join(json.load(open('logs/v2_'$SEED'/manifest.json'))['evaluation_flags']))")
+    python -B -m experiments.evaluate_hybrid_policy --episodes 24 --seed 262000 $FLAGS \
+      --tumble-scale $R --model logs/v2_${SEED}/final_model.zip \
       --output eval/adp/final_v2_r${R}_${SEED}.json
   done
 done
@@ -154,6 +228,7 @@ done
 
 1. 参考步长（米）随时间；
 2. 同一时刻 `ρ` 是否 ≥ 0.99·`v2_progress_max_m`、`c` 是否 ≥ 0.99。
+   **`v2_progress_max_m` 用该回合自己记录的那个值**（见 00.1），不是全局常数。
 
 | 观测 | 结论 | 下一步 |
 |---|---|---|
@@ -234,7 +309,11 @@ done
    新基线：完成 __/48，零违约 __/48
 
 1. 主表（每个种子一行）
-   种子 | 完成/48 | 零违约完成/48 | 平均 Δv | 平均完成时间 | 全局最薄真值归一化裕度 | QP 无解 | 零推力回退
+   种子 | 完成/48 | 零违约完成/48 | 平均 Δv | 平均完成时间 | 全局最薄真值归一化裕度 | 非法进入回合数 | QP 无解 | 零推力回退
+
+1b. 算力行（一次，任一种子，串行单进程）
+   p95/控制周期 = ___ ；超周期步数 = __/300 ；max 列（= 第 0 步冷启动）= ___ ms
+   与 Pure MPC 的 h35 基准 0.77x 对比：___（限速器是纯几何二分，预期无明显增加）
 
 2. 架构地板：max|Δwrench| = ___（必须 0.0）
 
@@ -251,6 +330,22 @@ done
    "V2 确定性 __/48 对基线 __/48；rescued __ / destroyed __；Q2 判定 __；
     种子分布 __；因此下一步应 ___（引用第 4 节对应格）"
 ```
+
+---
+
+## 附：开跑前 30 秒自检
+
+```
+ls -la logs/v2_26241{0,1,2}/final_model.zip          # 三个都在?
+python -c "import json;[print(s, json.load(open(f'logs/v2_{s}/manifest.json'))['observation_dimension'], json.load(open(f'logs/v2_{s}/manifest.json'))['actual_decision_steps']) for s in (262410,262411,262412)]"
+git rev-parse HEAD                                   # 记下来,所有产物都指向它
+git status --porcelain                               # 必须干净
+```
+
+三个 `final_model.zip` 缺任何一个、或 `actual_decision_steps` 不是 60000、
+或工作树不干净 → **先报上层，不要开跑**。
+
+**产物报告前，生成它们的提交必须已推送远端**——第一轮出现过"数字指向一个别人看不到的提交"。
 
 ---
 
