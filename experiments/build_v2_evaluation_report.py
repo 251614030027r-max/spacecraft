@@ -14,7 +14,7 @@ import numpy as np
 
 
 def load(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def digest(path: Path) -> str:
@@ -239,7 +239,9 @@ def main() -> None:
         "cross_condition": cross,
         "hashes": hashes,
     }
-    (out / "v2_evaluation_summary.json").write_text(json.dumps(summary, indent=2))
+    (out / "v2_evaluation_summary.json").write_text(
+        json.dumps(summary, indent=2), encoding="utf-8"
+    )
     write_csv(out / "v2_q2_completed.csv", q2)
     write_csv(out / "v2_q5_seed_summary.csv", q5_rows)
     write_csv(out / "v2_floor_exactness.csv", floor_matches)
@@ -251,7 +253,8 @@ def main() -> None:
         ],
     )
     (out / "SHA256SUMS.txt").write_text(
-        "\n".join(f"{value}  {path}" for path, value in sorted(hashes.items())) + "\n"
+        "\n".join(f"{value}  {path}" for path, value in sorted(hashes.items())) + "\n",
+        encoding="utf-8",
     )
 
     import matplotlib.pyplot as plt
@@ -303,7 +306,7 @@ def main() -> None:
     plt.close(figure)
 
     lines = [
-        "# V2 formal evaluation report — 2026-09-24",
+        "# V2 formal evaluation report - 2026-09-24",
         "",
         "## Executive result",
         "",
@@ -329,6 +332,12 @@ def main() -> None:
     lines.extend(
         [
             "",
+            "No completed episode met the strict A criterion. Nearly all completed episodes remained in the 'other' bucket because the last-20 reference-step median stayed near the 0.40 m limiter; only one episode was B. Thus completion generally did not come from a learned low-step stop, and saturation remains the dominant interface signature.",
+        ]
+    )
+    lines.extend(
+        [
+            "",
             "Rescues exist for two seeds, so the learned layer can change outcomes; destruction is larger, so an architecture-level arbiter is necessary rather than optional.",
             "",
             "## Q2 task-state stopping",
@@ -343,6 +352,27 @@ def main() -> None:
             f"| {seed} | {row['A']} | {row['B']} | {row['other']} | "
             f"{row['rho_gap_to_pose_m_median']} | {row['rho_at_max_fraction']} | {row['c_last_median']} |"
         )
+    rescued_rows = [
+        row
+        for seed in seeds
+        for row in review["models"][seed]["k2_rescued"]
+    ]
+    rescued_without_illegal = sum(
+        row["v2_illegal_entry_crossing_count"] == 0 for row in rescued_rows
+    )
+    far_baseline_rescues = sum(
+        row["baseline_first_illegal_radial_distance_m"] is not None
+        and row["baseline_first_illegal_radial_distance_m"] > 10.0
+        for row in rescued_rows
+    )
+    lines.extend(
+        [
+            "",
+            f"Across the {len(rescued_rows)} rescued model-episode pairs, {rescued_without_illegal} avoided illegal crossings entirely; {far_baseline_rescues} came from baseline cases whose first illegal crossing was beyond 10 m. Rescues therefore are not uniformly explained by merely avoiding the far-field plane sweep, but several still contain illegal crossings and cannot be described as clean entry-mode changes.",
+            "",
+            "K3 shows retained V2 completions were always slower in the two non-dead seeds (minimum ratios above 1, medians above 2). Together with reference-step medians near 0.40 m, this is consistent with the limiter/active-reference interface slowing capture; it is not by itself a causal isolation of the limiter.",
+        ]
+    )
     lines.extend(
         [
             "",
@@ -385,6 +415,7 @@ def main() -> None:
             f"Exclusive h35 profile (300 steps): mean {profile['controller_ms']['mean']:.2f} ms, "
             f"p95 {profile['controller_ms']['p95']:.2f} ms ({profile['controller_over_budget']['p95']:.3f}x the 100 ms period), "
             f"max {profile['controller_ms']['max']:.2f} ms; {profile['steps_over_budget']} steps exceeded budget. The maximum includes cold start.",
+            f"The measured p95 headroom is {100*(1-profile['controller_over_budget']['p95']):.1f}% on this machine, not the older approximate 6% figure.",
             "",
             "## Design handoff",
             "",
@@ -395,11 +426,15 @@ def main() -> None:
             "## Evidence boundary",
             "",
             "Nominal results support: the coupling acts, can rescue some baseline failures, and can also destroy many baseline successes. They do not support baseline preservation or seed-robust superiority.",
+            "",
+            "Cross-condition/generalization evaluation was explicitly paused by the user and is excluded from this package and every conclusion. Partial tumble=0.10 files are not evidence and are not packaged.",
         ]
     )
     if cross:
         lines.extend(["", "## Zero-shot cross-condition", "", "```json", json.dumps(cross, indent=2), "```"])
-    (out / "V2_EVALUATION_REPORT_20260924.md").write_text("\n".join(lines))
+    (out / "V2_EVALUATION_REPORT_20260924.md").write_text(
+        "\n".join(lines), encoding="utf-8"
+    )
 
 
 if __name__ == "__main__":
