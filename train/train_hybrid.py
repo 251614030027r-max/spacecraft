@@ -185,6 +185,7 @@ def main() -> None:
         "run_name": args.run_name,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "seed": args.seed,
+        "waypoint_parametrization": args.parametrization,
         "requested_decision_steps": args.steps,
         "fresh_initialization": True,
         "critic_initialization": "fresh",
