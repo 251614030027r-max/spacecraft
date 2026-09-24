@@ -166,3 +166,36 @@ def test_v3_branch_and_switch_count_are_reported_without_observation_bit() -> No
         assert env.observation_space.shape == observation_shape
     finally:
         env.close()
+
+
+def test_v3_observation_matches_v2_layout_and_has_no_branch_bit() -> None:
+    environment = precapture_adaptive_capture_environment_config()
+    common = dict(
+        runtime_diagnostics=False,
+        include_target_phase_and_time_observation=True,
+        include_staging_direction_observation=True,
+    )
+    v2 = PrecaptureHybridEnv(
+        environment_config=environment,
+        hybrid_config=PrecaptureHybridConfig(
+            waypoint_parametrization="task_state_v2", **common
+        ),
+    )
+    v3 = PrecaptureHybridEnv(
+        environment_config=environment,
+        hybrid_config=PrecaptureHybridConfig(
+            waypoint_parametrization="task_state_v3", **common
+        ),
+    )
+    try:
+        v2_observation, _ = v2.reset(seed=262004)
+        v3_observation, _ = v3.reset(seed=262004)
+        assert v3.observation_space.shape == v2.observation_space.shape
+        assert np.array_equal(v3_observation, v2_observation)
+        v3._select_v3_branch("baseline")
+        assert np.array_equal(
+            v3._policy_observation(v3.env._observation()), v3_observation
+        )
+    finally:
+        v2.close()
+        v3.close()
