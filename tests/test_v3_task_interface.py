@@ -7,13 +7,20 @@ from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
 from env.phase2_env import precapture_adaptive_capture_environment_config
 
 
-def _v3_env(*, reference_step_max_m: float = 0.4) -> PrecaptureHybridEnv:
+def _v3_env(
+    *,
+    reference_step_max_m: float = 0.4,
+    decision_period_steps: int = 20,
+    horizon_steps: int = 20,
+) -> PrecaptureHybridEnv:
     env = PrecaptureHybridEnv(
         environment_config=precapture_adaptive_capture_environment_config(),
         hybrid_config=PrecaptureHybridConfig(
             waypoint_parametrization="task_state_v3",
             runtime_diagnostics=False,
             v2_reference_step_max_m=reference_step_max_m,
+            decision_period_steps=decision_period_steps,
+            horizon_steps=horizon_steps,
         ),
     )
     env.reset(seed=262004)
@@ -112,5 +119,50 @@ def test_v3_reference_jump_monitor_distinguishes_target_and_inertial_frames() ->
         assert inertial_jump == pytest.approx(
             np.linalg.norm(rotation @ (second - first))
         )
+    finally:
+        env.close()
+
+
+def test_v3_learned_to_baseline_resets_controller_and_is_one_way() -> None:
+    env = _v3_env()
+    try:
+        env._select_v3_branch("learned")
+        env.controller._nominal_controls.fill(2.0)
+        env.controller._drift.fill(3.0)
+        env.controller._control_step = 7
+        env.controller._held_external_reference = np.ones(3)
+        env.controller._held_external_velocity.fill(4.0)
+
+        env._select_v3_branch("baseline")
+        assert np.array_equal(
+            env.controller._nominal_controls,
+            np.zeros_like(env.controller._nominal_controls),
+        )
+        assert np.array_equal(env.controller._drift, np.zeros_like(env.controller._drift))
+        assert env.controller._control_step == 0
+        assert env.controller._held_external_reference is None
+        assert np.array_equal(
+            env.controller._held_external_velocity,
+            np.zeros_like(env.controller._held_external_velocity),
+        )
+        assert env._hybrid_branch_switches == 1
+        with pytest.raises(ValueError, match="baseline.*learned"):
+            env._select_v3_branch("learned")
+    finally:
+        env.close()
+
+
+def test_v3_branch_and_switch_count_are_reported_without_observation_bit() -> None:
+    env = _v3_env(decision_period_steps=1, horizon_steps=2)
+    try:
+        observation_shape = env.observation_space.shape
+        _, _, terminated, truncated, info = env.step_with_branch(
+            np.zeros(2), branch="learned"
+        )
+        assert not (terminated or truncated)
+        assert info["hybrid_branch"] == "learned"
+        assert info["hybrid_branch_switches"] == 0
+        assert info["hybrid_task_action_raw"] == [0.0, 0.0]
+        assert env.observation_space.shape == observation_shape
     finally:
         env.close()

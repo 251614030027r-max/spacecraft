@@ -443,6 +443,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._v3_reference_jumps_inertial_m: list[float] = []
         self._last_v3_reference_jump_target_m = 0.0
         self._last_v3_reference_jump_inertial_m = 0.0
+        self._hybrid_branch: str | None = None
+        self._hybrid_branch_switches = 0
+        self._last_v3_task_action_raw: list[float] | None = None
         self._feedback = np.zeros(3, dtype=np.float64)
 
     def _ratchet_observation_active(self) -> bool:
@@ -1175,13 +1178,48 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._v3_reference_jumps_inertial_m = []
         self._last_v3_reference_jump_target_m = 0.0
         self._last_v3_reference_jump_inertial_m = 0.0
+        self._hybrid_branch = None
+        self._hybrid_branch_switches = 0
+        self._last_v3_task_action_raw = None
         self._feedback = np.zeros(3, dtype=np.float64)
         return self._policy_observation(observation), info
 
     def step(
         self, action: np.ndarray
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        if self.hybrid_config.waypoint_parametrization == "task_state_v3":
+            return self.step_with_branch(action, branch="learned")
         return self._step_with_acceptance(action, proposal_accepted=True)
+
+    def _select_v3_branch(self, branch: str) -> None:
+        if self.hybrid_config.waypoint_parametrization != "task_state_v3":
+            raise ValueError("explicit branch selection requires task_state_v3")
+        if branch not in {"learned", "baseline"}:
+            raise ValueError("branch must be 'learned' or 'baseline'")
+        if self._hybrid_branch == "baseline" and branch == "learned":
+            raise ValueError("baseline to learned switching is not supported")
+        if self._hybrid_branch == "learned" and branch == "baseline":
+            self.controller.reset()
+            self._hybrid_branch_switches += 1
+        self._hybrid_branch = branch
+
+    def step_with_branch(
+        self, action: np.ndarray, *, branch: str
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """Execute one V3 decision on the learned or Pure-MPC branch."""
+
+        raw = np.asarray(action, dtype=np.float64).reshape(-1)
+        if raw.size != self.hybrid_config.action_dimension:
+            raise ValueError("action has the wrong dimension")
+        if not np.all(np.isfinite(raw)):
+            raise ValueError("action must be finite")
+        self._select_v3_branch(branch)
+        self._last_v3_task_action_raw = [float(v) for v in np.clip(raw, -1.0, 1.0)]
+        return self._step_with_acceptance(
+            raw,
+            proposal_accepted=True,
+            branch=branch,
+        )
 
     def step_with_proposal(
         self, action: np.ndarray, *, proposal_accepted: bool
@@ -1195,11 +1233,23 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         )
 
     def _step_with_acceptance(
-        self, action: np.ndarray, *, proposal_accepted: bool
+        self,
+        action: np.ndarray,
+        *,
+        proposal_accepted: bool,
+        branch: str | None = None,
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        waypoint = self.waypoint_from_action(
-            action, proposal_accepted=proposal_accepted
-        )
+        if branch == "baseline":
+            waypoint = np.asarray(
+                self.environment_config.precapture_task.desired_position,
+                dtype=np.float64,
+            )
+            self._last_task_proposal = None
+            self._last_proposal_accepted = True
+        else:
+            waypoint = self.waypoint_from_action(
+                action, proposal_accepted=proposal_accepted
+            )
         if self.hybrid_config.waypoint_parametrization == "task_state_v3":
             self._record_v3_reference_jump(waypoint)
         if self._task_state_observation_active():
@@ -1350,6 +1400,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                     if self._v3_reference_jumps_inertial_m
                     else 0.0
                 )
+            info["hybrid_branch"] = self._hybrid_branch
+            info["hybrid_branch_switches"] = int(self._hybrid_branch_switches)
+            info["hybrid_task_action_raw"] = self._last_v3_task_action_raw
         info["hybrid_control_steps"] = control_steps
         info["hybrid_qp_zero_fallbacks"] = zero_fallbacks
         info["hybrid_feedback_fallback_fraction"] = zero_fallbacks / control_steps
