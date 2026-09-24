@@ -10,9 +10,27 @@ SAC-MPC coupling.** Everything about `single_phase`, the Waypoint, the A1/A2/A3
 perception line and the 24D mission schemas is history; it is kept under
 *Historical research line* because the lessons transfer, not because it is live.
 
-> **Live status -- 2026-09-22.** Round 1 of the adaptive mainline is **closed**;
-> the work is now **V2 interface + coupling design**, and **no training is
-> running**.
+> **Live status -- 2026-09-24.** Round 1 is **closed**. **V2 trained 60,000
+> decisions from zero on three seeds** (`logs/v2_262410/411/412`), and the
+> **formal evaluation is in flight on the user's machine** against the
+> preregistered readings in `docs/V2_EVALUATION_PLAN_20260923.md`. Nothing is
+> retrained and no coupling design changes until that report lands and is read
+> against the Q1-Q7 table -- the user's stated order is evaluation first, design
+> second.
+>
+> **Window handoff: `docs/handoffs/WINDOW_HANDOFF_20260924.md`**, with the
+> opening prompt in `docs/handoffs/NEXT_WINDOW_PROMPT_20260924.md`. It carries
+> the coupling-design discussion in full (the three core references, the
+> novelty hazard to concede, the four calls still open) and the upper window's
+> own measurement errors. Read it before acting.
+>
+> V2 training progress reported by the lower window at 10k/20k/30k/40k was
+> roughly 5.2 / 17.1 / 21.5 / 31.3 per cent mean completion, with seed 262410
+> still at 0 and about 100 per cent of steps saturated at 0.38-0.39 against the
+> 0.40 m cap. **Those figures are window reports, not artifacts** -- do not cite
+> them. The comparison against Pure MPC's 36/48 is only answerable by the
+> deterministic evaluation, because V1's dead channel made stochastic and
+> deterministic rates coincide while V2's live channel should separate them.
 >
 > **What round 1 established.** `adp_rf_262410/411/412` trained from zero to
 > 60,000 decisions under the corrected reward. Formal 48-seed evaluation: Pure
