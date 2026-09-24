@@ -254,6 +254,54 @@ def main() -> None:
         "\n".join(f"{value}  {path}" for path, value in sorted(hashes.items())) + "\n"
     )
 
+    import matplotlib.pyplot as plt
+
+    labels = ["Pure MPC", *seeds]
+    completed = [summary["baseline"]["completed"], *(summary["models"][s]["completed"] for s in seeds)]
+    figure, axes = plt.subplots(1, 2, figsize=(11, 4.5))
+    axes[0].bar(labels, completed, color=["#555555", "#d95f02", "#1b9e77", "#7570b3"])
+    axes[0].axhline(36, color="black", linestyle="--", linewidth=1, label="Pure MPC 36/48")
+    axes[0].set_ylim(0, 48)
+    axes[0].set_ylabel("completed episodes / 48")
+    axes[0].set_title("Nominal deterministic completion")
+    axes[0].legend()
+    bottoms = np.zeros(3)
+    for key, color in zip(
+        ("retained", "rescued", "destroyed", "both_failed"),
+        ("#1b9e77", "#66a61e", "#d95f02", "#7570b3"),
+    ):
+        values = [review["models"][seed]["quadrants"][key] for seed in seeds]
+        axes[1].bar(seeds, values, bottom=bottoms, label=key, color=color)
+        bottoms += np.asarray(values)
+    axes[1].set_ylim(0, 48)
+    axes[1].set_title("Paired outcome quadrants")
+    axes[1].legend(fontsize=8)
+    figure.tight_layout()
+    figure.savefig(out / "v2_nominal_outcomes.png", dpi=180)
+    plt.close(figure)
+
+    figure, axis = plt.subplots(figsize=(7, 5))
+    colors = {"262410": "#d95f02", "262411": "#1b9e77", "262412": "#7570b3"}
+    for seed in seeds:
+        rows = [row for row in q2 if row["model_seed"] == seed]
+        if rows:
+            axis.scatter(
+                [row["rho_gap_to_pose_m"] for row in rows],
+                [row["step_last20_median_m"] for row in rows],
+                label=seed,
+                color=colors[seed],
+                alpha=0.8,
+            )
+    axis.axhline(0.05, color="black", linestyle="--", linewidth=1)
+    axis.axvspan(-0.25, 0.25, color="#cccccc", alpha=0.25)
+    axis.set_xlabel("final rho gap to capture pose (m)")
+    axis.set_ylabel("median reference step over last 20 decisions (m)")
+    axis.set_title("Completed-episode task-state stopping diagnostic")
+    axis.legend()
+    figure.tight_layout()
+    figure.savefig(out / "v2_task_state_diagnostics.png", dpi=180)
+    plt.close(figure)
+
     lines = [
         "# V2 formal evaluation report — 2026-09-24",
         "",
