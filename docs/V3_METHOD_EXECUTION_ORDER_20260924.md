@@ -1,6 +1,6 @@
 # V3 方法执行单：策略层价值仲裁（给下层）
 
-*2026-09-24，上层窗口。**状态：草案，等 P2′ 判读后定稿**。前置：T0 接口修复（`docs/V3_T0_INTERFACE_FIX_ORDER_20260924.md`）完成并验收。*
+*2026-09-24，上层窗口。**状态：已定稿（P2′ 通过）**。前置：T0 接口修复（`docs/V3_T0_INTERFACE_FIX_ORDER_20260924.md`）完成并验收。*
 *仲裁结构依据：P2 结果 `docs/V3_P1_P2_RESULT_20260924.md` 与 P2′ 结果 `docs/V3_P2PRIME_RESULT_20260924.md`。*
 
 ---
@@ -17,7 +17,7 @@
 | 学习层偏离 2 s 后交回 Pure MPC | 0 / 9 | 0 / 18 | `eval/adp/v3_p1_p2_readout.json` |
 | 学习层偏离 10 s 后交回 Pure MPC | 2 / 9 | 0 / 18 | 同上 |
 | 两个策略各自继续，按价值选（s_0/s_1/s_5，事后） | 8 / 9 | 0 / 18 | 同上 |
-| 同上，新回合 + 新检查点（预注册确认） | 见 P2′ | 见 P2′ | `eval/adp/v3_p2prime_readout.json` |
+| 同上，66 个新回合 + 新检查点 k=10/20（预注册确认） | **9 / 9** | **0 / 66** | `eval/adp/v3_p2prime_readout.json` |
 
 学习层的价值是长时程的，截短了再交给短时域 MPC 就拿不到；而且学习策略带到的某些状态上，Pure MPC 接手会直接失败
 （262412/262005 硬约束失败，262412/262027 飞出）。所以仲裁必须比较**两个策略各自继续到底**的价值。
@@ -100,7 +100,7 @@ V_b 没见过这些状态就会高估，仲裁就会把系统交回一个接不�
 - 切到 baseline 时按 T0.4 调用 `controller.reset()`；切到 learned 时按 T0.4 连续初始化 z；
 - 额外在线计算只有 10 次小网络前向（每 2 s 一次），**不增加 MPC 求解**。
 
-## M5｜评估
+## M5｜正式评估（M6 通过后才跑）
 
 `experiments/evaluate_hybrid_policy.py` 增加 `--arbiter {off,conservative}`、`--learned-value <path>`、`--baseline-value <path>`。
 每个种子、评估块 262000–262047，跑两行：
