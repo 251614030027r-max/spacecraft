@@ -346,7 +346,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--parametrization",
-        choices=["absolute", "radial_local", "arrival_condition", "task_state_v2"],
+        choices=[
+            "absolute",
+            "radial_local",
+            "arrival_condition",
+            "task_state_v2",
+            "task_state_v3",
+        ],
         default="radial_local",
         help="Action parametrisation used by the trained policy or control.",
     )
@@ -766,6 +772,11 @@ def main() -> None:
         task_state_applied: list[list[float]] = []
         task_state_proposed: list[list[float]] = []
         v2_reference_step_m: list[float] = []
+        branches: list[str] = []
+        task_actions_raw: list[list[float]] = []
+        reference_jumps_target_m: list[float] = []
+        reference_jumps_inertial_m: list[float] = []
+        branch_switches: list[int] = []
         control_wrenches: list[list[float]] | None = (
             [] if args.force_reject_all or args.control == "desired_pose" else None
         )
@@ -806,7 +817,11 @@ def main() -> None:
                 inference_s = perf_counter() - started
             elif args.control == "desired_pose":
                 started = perf_counter()
-                action = env.action_for_waypoint(desired)
+                action = (
+                    np.zeros(env.action_space.shape, dtype=np.float64)
+                    if args.parametrization == "task_state_v3"
+                    else env.action_for_waypoint(desired)
+                )
                 inference_s = perf_counter() - started
             elif args.control == "timed_entry":
                 assert timing is not None
@@ -848,15 +863,38 @@ def main() -> None:
                 if args.parametrization == "arrival_condition"
                 else None
             )
-            waypoint = env.waypoint_from_action(
-                action, proposal_accepted=not args.force_reject_all
-            )
-            waypoints.append([float(v) for v in waypoint])
-            if args.parametrization == "task_state_v2":
-                assert env._last_task_proposal is not None
-                task_state_proposed.append(
-                    [float(v) for v in env._last_task_proposal]
+            if args.parametrization == "task_state_v3":
+                branch = "baseline" if args.control == "desired_pose" else "learned"
+                env._select_v3_branch(branch)
+                if branch == "baseline":
+                    waypoint = np.asarray(desired, dtype=np.float64)
+                    env._last_task_proposal = None
+                else:
+                    waypoint = env.waypoint_from_action(action)
+                env._record_v3_reference_jump(waypoint)
+                branches.append(branch)
+                task_actions_raw.append(
+                    [float(v) for v in np.asarray(action).reshape(-1)]
                 )
+                reference_jumps_target_m.append(
+                    float(env._last_v3_reference_jump_target_m)
+                )
+                reference_jumps_inertial_m.append(
+                    float(env._last_v3_reference_jump_inertial_m)
+                )
+                branch_switches.append(int(env._hybrid_branch_switches))
+            else:
+                waypoint = env.waypoint_from_action(
+                    action, proposal_accepted=not args.force_reject_all
+                )
+            waypoints.append([float(v) for v in waypoint])
+            if args.parametrization in {"task_state_v2", "task_state_v3"}:
+                if env._last_task_proposal is not None:
+                    task_state_proposed.append(
+                        [float(v) for v in env._last_task_proposal]
+                    )
+                else:
+                    task_state_proposed.append([])
                 task_state_applied.append(
                     [float(env._task_progress_m), float(env._task_commitment)]
                 )
@@ -1147,7 +1185,34 @@ def main() -> None:
                         "v2_reference_step_m": v2_reference_step_m,
                         "v2_progress_max_m": float(env.v2_progress_max_m),
                     }
-                    if args.parametrization == "task_state_v2"
+                    if args.parametrization in {"task_state_v2", "task_state_v3"}
+                    else {}
+                ),
+                **(
+                    {
+                        "branch": branches,
+                        "task_action_raw": task_actions_raw,
+                        "reference_jump_target_m": reference_jumps_target_m,
+                        "reference_jump_inertial_m": reference_jumps_inertial_m,
+                        "branch_switches": branch_switches,
+                        "reference_jump_target_max_m": float(
+                            max(reference_jumps_target_m, default=0.0)
+                        ),
+                        "reference_jump_target_p95_m": float(
+                            np.percentile(reference_jumps_target_m, 95)
+                            if reference_jumps_target_m
+                            else 0.0
+                        ),
+                        "reference_jump_inertial_max_m": float(
+                            max(reference_jumps_inertial_m, default=0.0)
+                        ),
+                        "reference_jump_inertial_p95_m": float(
+                            np.percentile(reference_jumps_inertial_m, 95)
+                            if reference_jumps_inertial_m
+                            else 0.0
+                        ),
+                    }
+                    if args.parametrization == "task_state_v3"
                     else {}
                 ),
                 **(

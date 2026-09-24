@@ -43,7 +43,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument(
         "--parametrization",
-        choices=["absolute", "radial_local", "arrival_condition", "task_state_v2"],
+        choices=[
+            "absolute",
+            "radial_local",
+            "arrival_condition",
+            "task_state_v2",
+            "task_state_v3",
+        ],
         default="arrival_condition",
         help=(
             "How the action names the reference. 'absolute' is what the first "
@@ -187,11 +193,16 @@ def main() -> None:
         "only actuator path from 17 m to contact; there is no phase switch",
         "action_space": (
             f"{hybrid_config.action_dimension}D action, "
-            f"parametrisation={hybrid_config.waypoint_parametrization}, "
-            "resolved to an absolute waypoint in the target body frame, "
-            f"radially clipped to [{hybrid_config.minimum_waypoint_radius_m}, "
-            f"{hybrid_config.maximum_waypoint_radius_m}] m. The interface to "
-            "the MPC is the unchanged 3D waypoint in every parametrisation."
+            + f"parametrisation={hybrid_config.waypoint_parametrization}, "
+            + (
+                "interpreted as bounded task-state increments on the learned "
+                "branch, with zero action holding the task state fixed, "
+                if hybrid_config.waypoint_parametrization == "task_state_v3"
+                else "resolved to an absolute waypoint in the target body frame, "
+            )
+            + f"radially clipped to [{hybrid_config.minimum_waypoint_radius_m}, "
+            + f"{hybrid_config.maximum_waypoint_radius_m}] m. The interface to "
+            + "the MPC is the unchanged 3D waypoint in every parametrisation."
             + (
                 " The commit blend is ratcheted -- it may only advance -- and "
                 "its level is appended to the observation so the decision stays "
@@ -203,6 +214,9 @@ def main() -> None:
         ),
         "monotone_commit": hybrid_config.monotone_commit,
         "baseline_anchored_residual": hybrid_config.baseline_anchored_residual,
+        "training_branch": (
+            "learned" if args.parametrization == "task_state_v3" else None
+        ),
         "observation_space": (
             "canonical 24D full-state core"
             + (
@@ -315,11 +329,19 @@ def main() -> None:
         "hybrid_waypoint_radius_m",
         "hybrid_qp_zero_fallbacks",
     )
-    if hybrid_config.waypoint_parametrization == "task_state_v2":
+    if hybrid_config.waypoint_parametrization in {"task_state_v2", "task_state_v3"}:
         info_keywords += (
             "hybrid_v2_episode_changed_fraction",
             "hybrid_v2_episode_mean_reference_step_m",
             "hybrid_v2_episode_accepted_fraction",
+        )
+    if hybrid_config.waypoint_parametrization == "task_state_v3":
+        info_keywords += (
+            "hybrid_v3_episode_reference_jump_target_max_m",
+            "hybrid_v3_episode_reference_jump_target_p95_m",
+            "hybrid_v3_episode_reference_jump_inertial_max_m",
+            "hybrid_v3_episode_reference_jump_inertial_p95_m",
+            "hybrid_branch_switches",
         )
     env = Monitor(
         raw_env,
