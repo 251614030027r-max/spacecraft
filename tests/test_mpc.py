@@ -496,6 +496,49 @@ def test_precapture_constraint_jacobian_matches_central_differences() -> None:
         assert np.allclose(jacobian @ state - offset, nominal, atol=1.0e-12)
 
 
+def test_precapture_linearization_nominal_is_exact_on_256_states() -> None:
+    """The presolve inline margin rewrite must preserve the public function."""
+
+    from controllers.mpc.constraints import (
+        linearize_precapture_constraint_margins,
+        normalized_precapture_constraint_margins,
+    )
+    from env.task import PrecaptureTaskConfig
+
+    rng = np.random.default_rng(20260924)
+    task = PrecaptureTaskConfig()
+    target_omega = np.array([0.01, 0.04, -0.005])
+    maximum_difference = 0.0
+    for index in range(256):
+        state = np.zeros(12, dtype=np.float64)
+        state[:3] = rng.uniform(-0.25, 0.25, size=3)
+        radius = rng.uniform(3.0, 25.0)
+        direction = rng.normal(size=3)
+        state[3:6] = radius * direction / np.linalg.norm(direction)
+        state[6:9] = rng.uniform(-0.08, 0.08, size=3)
+        state[9:] = rng.uniform(-0.35, 0.35, size=3)
+        terminal_latched = bool(index % 3 == 0)
+        jacobian, offset = linearize_precapture_constraint_margins(
+            state,
+            task,
+            target_angular_velocity_rad_s=target_omega,
+            terminal_latched=terminal_latched,
+            corridor_facets=8,
+        )
+        public = normalized_precapture_constraint_margins(
+            state,
+            task,
+            target_angular_velocity_rad_s=target_omega,
+            terminal_latched=terminal_latched,
+            corridor_facets=8,
+        )
+        maximum_difference = max(
+            maximum_difference,
+            float(np.max(np.abs(jacobian @ state - offset - public))),
+        )
+    assert maximum_difference < 1.0e-12
+
+
 def test_precapture_mpc_requires_explicit_latch_and_solves() -> None:
     from controllers.mpc import precapture_mpc_config
     from env.phase2_env import precapture_planning_environment_config
