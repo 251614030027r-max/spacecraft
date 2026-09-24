@@ -356,6 +356,14 @@ def parse_args() -> argparse.Namespace:
         help="Trained SAC checkpoint. Omit to run one of the controls.",
     )
     parser.add_argument(
+        "--force-reject-all",
+        action="store_true",
+        help=(
+            "Evaluate a loaded task_state_v2 policy while rejecting every "
+            "proposal through the architecture-level nominal bypass."
+        ),
+    )
+    parser.add_argument(
         "--noisy-commit-mean",
         type=float,
         default=-0.5,
@@ -570,6 +578,10 @@ def main() -> None:
         raise ValueError("give exactly one of --model or --control")
     if args.stochastic_policy and args.model is None:
         raise ValueError("--stochastic-policy requires --model")
+    if args.force_reject_all and args.model is None:
+        raise ValueError("--force-reject-all requires --model")
+    if args.force_reject_all and args.parametrization != "task_state_v2":
+        raise ValueError("--force-reject-all requires --parametrization task_state_v2")
     control_source_estimated = args.control_source == "estimated"
     if control_source_estimated and not args.perception:
         raise ValueError("--control-source estimated requires --perception")
@@ -687,7 +699,9 @@ def main() -> None:
         "closing_speed_m_s": float(task.closing_speed_limit(entry_axial_remaining)),
     }
 
+    evaluation_started = perf_counter()
     for episode, seed in enumerate(episode_seeds):
+        episode_started = perf_counter()
         env = PrecaptureHybridEnv(
             environment_config=environment_config,
             hybrid_config=PrecaptureHybridConfig(
@@ -749,6 +763,12 @@ def main() -> None:
         blends_before_ratchet: list[float | None] = []
         blends_after_ratchet: list[float | None] = []
         references_changed: list[bool] = []
+        task_state_applied: list[list[float]] = []
+        task_state_proposed: list[list[float]] = []
+        v2_reference_step_m: list[float] = []
+        control_wrenches: list[list[float]] | None = (
+            [] if args.force_reject_all or args.control == "desired_pose" else None
+        )
         latch_step: int | None = None
         latch_cause: str | None = None
         qp_infeasible_steps_total = 0
@@ -828,8 +848,19 @@ def main() -> None:
                 if args.parametrization == "arrival_condition"
                 else None
             )
-            waypoint = env.waypoint_from_action(action)
+            waypoint = env.waypoint_from_action(
+                action, proposal_accepted=not args.force_reject_all
+            )
             waypoints.append([float(v) for v in waypoint])
+            if args.parametrization == "task_state_v2":
+                assert env._last_task_proposal is not None
+                task_state_proposed.append(
+                    [float(v) for v in env._last_task_proposal]
+                )
+                task_state_applied.append(
+                    [float(env._task_progress_m), float(env._task_commitment)]
+                )
+                v2_reference_step_m.append(float(env._last_v2_reference_step_m))
             blend_after = (
                 float(env._commit_blend)
                 if args.parametrization == "arrival_condition"
@@ -871,6 +902,8 @@ def main() -> None:
                     terminal_latched=bool(info["terminal_region_active"]),
                     external_reference=waypoint,
                 )
+                if control_wrenches is not None:
+                    control_wrenches.append([float(v) for v in wrench])
                 controller_s = perf_counter() - started
                 if str(diagnostics.status).startswith("infeasible"):
                     qp_infeasible_steps_total += 1
@@ -1106,6 +1139,22 @@ def main() -> None:
                 "latch_step": latch_step,
                 "latch_cause": latch_cause,
                 "waypoints_target_frame": waypoints,
+                "wall_clock_s": perf_counter() - episode_started,
+                **(
+                    {
+                        "task_state_applied": task_state_applied,
+                        "task_state_proposed": task_state_proposed,
+                        "v2_reference_step_m": v2_reference_step_m,
+                        "v2_progress_max_m": float(env.v2_progress_max_m),
+                    }
+                    if args.parametrization == "task_state_v2"
+                    else {}
+                ),
+                **(
+                    {"control_wrenches": control_wrenches}
+                    if control_wrenches is not None
+                    else {}
+                ),
             }
         )
         partial_output.parent.mkdir(parents=True, exist_ok=True)
@@ -1147,6 +1196,8 @@ def main() -> None:
         "baseline_anchored_residual": args.baseline_anchored_residual,
         "deployment_gate": args.deployment_gate,
         "stochastic_policy": args.stochastic_policy,
+        "force_reject_all": args.force_reject_all,
+        "total_wall_clock_s": perf_counter() - evaluation_started,
         "monotone_commit": bool(args.monotone_commit),
         "noisy_commit_settings": (
             {
