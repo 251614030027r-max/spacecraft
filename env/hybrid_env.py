@@ -435,6 +435,8 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._v2_episode_changed_decisions = 0
         self._v2_episode_reference_step_sum_m = 0.0
         self._v2_episode_accepted_decisions = 0
+        self._v3_blend_axis: FloatArray | None = None
+        self._v3_blend_angle: float | None = None
         self._feedback = np.zeros(3, dtype=np.float64)
 
     def _ratchet_observation_active(self) -> bool:
@@ -536,6 +538,84 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
 
         assert self.env.relative is not None
         return se3_exp(relative_to_vector(self.env.relative)[:6])[:3, 3]
+
+    @staticmethod
+    def _fallback_blend_axis(direction: FloatArray) -> FloatArray:
+        """Return a deterministic unit axis orthogonal to ``direction``."""
+
+        basis = np.zeros(3, dtype=np.float64)
+        basis[int(np.argmin(np.abs(direction)))] = 1.0
+        axis = np.cross(direction, basis)
+        return axis / np.linalg.norm(axis)
+
+    def _v3_memory_axis_direction(
+        self,
+        hold_direction: FloatArray,
+        desired_direction: FloatArray,
+        commitment: float,
+    ) -> FloatArray:
+        """Blend directions on a rotation axis continuous across antipodes.
+
+        The endpoint pair alone does not define a stable shortest-arc axis near
+        opposite directions.  Projecting the previous axis onto the current
+        solution plane selects the closest valid axis, and unwrapping the
+        signed angle preserves the same branch of the rotation over time.
+        """
+
+        hold = np.asarray(hold_direction, dtype=np.float64).reshape(3)
+        desired = np.asarray(desired_direction, dtype=np.float64).reshape(3)
+        hold /= np.linalg.norm(hold)
+        desired /= np.linalg.norm(desired)
+        difference = hold - desired
+
+        if self._v3_blend_axis is None:
+            axis = np.cross(hold, desired)
+            if float(np.linalg.norm(axis)) < 1.0e-10:
+                axis = self._fallback_blend_axis(hold)
+        else:
+            previous_axis = self._v3_blend_axis
+            denominator = float(difference @ difference)
+            if denominator > 1.0e-14:
+                axis = previous_axis - (
+                    float(previous_axis @ difference) / denominator
+                ) * difference
+            else:
+                axis = previous_axis - float(previous_axis @ hold) * hold
+            if float(np.linalg.norm(axis)) < 1.0e-10:
+                axis = np.cross(hold, desired)
+            if float(np.linalg.norm(axis)) < 1.0e-10:
+                axis = self._fallback_blend_axis(hold)
+
+        axis = axis / np.linalg.norm(axis)
+        if self._v3_blend_axis is not None and float(axis @ self._v3_blend_axis) < 0.0:
+            axis = -axis
+        hold_perpendicular = hold - float(hold @ axis) * axis
+        desired_perpendicular = desired - float(desired @ axis) * axis
+        signed_angle = float(
+            np.arctan2(
+                axis @ np.cross(hold_perpendicular, desired_perpendicular),
+                hold_perpendicular @ desired_perpendicular,
+            )
+        )
+        if self._v3_blend_angle is not None:
+            signed_angle += 2.0 * np.pi * round(
+                (self._v3_blend_angle - signed_angle) / (2.0 * np.pi)
+            )
+        self._v3_blend_axis = axis
+        self._v3_blend_angle = signed_angle
+
+        weight = float(np.clip(commitment, 0.0, 1.0))
+        if weight <= 0.0:
+            return hold.copy()
+        if weight >= 1.0:
+            return desired.copy()
+        angle = weight * signed_angle
+        direction = (
+            np.cos(angle) * hold
+            + np.sin(angle) * np.cross(axis, hold)
+            + (1.0 - np.cos(angle)) * float(axis @ hold) * axis
+        )
+        return direction / np.linalg.norm(direction)
 
     @property
     def v2_radius_min_m(self) -> float:
@@ -743,11 +823,18 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         )
         commit_direction = desired / np.linalg.norm(desired)
         hold_direction = rotation.T @ self._hold_inertial
-        direction = _slerp(
-            hold_direction,
-            commit_direction,
-            float(np.clip(commitment, 0.0, 1.0)),
-        )
+        if self.hybrid_config.waypoint_parametrization == "task_state_v3":
+            direction = self._v3_memory_axis_direction(
+                hold_direction,
+                commit_direction,
+                commitment,
+            )
+        else:
+            direction = _slerp(
+                hold_direction,
+                commit_direction,
+                float(np.clip(commitment, 0.0, 1.0)),
+            )
         progress = float(np.clip(progress_m, 0.0, self.v2_progress_max_m))
         minimum_radius = (
             float(np.linalg.norm(desired))
@@ -1047,6 +1134,8 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._v2_episode_changed_decisions = 0
         self._v2_episode_reference_step_sum_m = 0.0
         self._v2_episode_accepted_decisions = 0
+        self._v3_blend_axis = None
+        self._v3_blend_angle = None
         self._feedback = np.zeros(3, dtype=np.float64)
         return self._policy_observation(observation), info
 
