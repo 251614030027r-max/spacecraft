@@ -437,6 +437,12 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._v2_episode_accepted_decisions = 0
         self._v3_blend_axis: FloatArray | None = None
         self._v3_blend_angle: float | None = None
+        self._v3_last_reference_target: FloatArray | None = None
+        self._v3_last_reference_inertial: FloatArray | None = None
+        self._v3_reference_jumps_target_m: list[float] = []
+        self._v3_reference_jumps_inertial_m: list[float] = []
+        self._last_v3_reference_jump_target_m = 0.0
+        self._last_v3_reference_jump_inertial_m = 0.0
         self._feedback = np.zeros(3, dtype=np.float64)
 
     def _ratchet_observation_active(self) -> bool:
@@ -616,6 +622,33 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             + (1.0 - np.cos(angle)) * float(axis @ hold) * axis
         )
         return direction / np.linalg.norm(direction)
+
+    def _record_v3_reference_jump(self, waypoint: FloatArray) -> tuple[float, float]:
+        """Record the actual cross-decision reference change in both frames."""
+
+        assert self.env.target_state is not None
+        target_reference = np.asarray(waypoint, dtype=np.float64).reshape(3).copy()
+        inertial_reference = (
+            np.asarray(self.env.target_state.rotation, dtype=np.float64)
+            @ target_reference
+        )
+        if self._v3_last_reference_target is None:
+            target_jump = inertial_jump = 0.0
+        else:
+            assert self._v3_last_reference_inertial is not None
+            target_jump = float(
+                np.linalg.norm(target_reference - self._v3_last_reference_target)
+            )
+            inertial_jump = float(
+                np.linalg.norm(inertial_reference - self._v3_last_reference_inertial)
+            )
+        self._v3_last_reference_target = target_reference
+        self._v3_last_reference_inertial = inertial_reference
+        self._last_v3_reference_jump_target_m = target_jump
+        self._last_v3_reference_jump_inertial_m = inertial_jump
+        self._v3_reference_jumps_target_m.append(target_jump)
+        self._v3_reference_jumps_inertial_m.append(inertial_jump)
+        return target_jump, inertial_jump
 
     @property
     def v2_radius_min_m(self) -> float:
@@ -1136,6 +1169,12 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._v2_episode_accepted_decisions = 0
         self._v3_blend_axis = None
         self._v3_blend_angle = None
+        self._v3_last_reference_target = None
+        self._v3_last_reference_inertial = None
+        self._v3_reference_jumps_target_m = []
+        self._v3_reference_jumps_inertial_m = []
+        self._last_v3_reference_jump_target_m = 0.0
+        self._last_v3_reference_jump_inertial_m = 0.0
         self._feedback = np.zeros(3, dtype=np.float64)
         return self._policy_observation(observation), info
 
@@ -1161,6 +1200,8 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         waypoint = self.waypoint_from_action(
             action, proposal_accepted=proposal_accepted
         )
+        if self.hybrid_config.waypoint_parametrization == "task_state_v3":
+            self._record_v3_reference_jump(waypoint)
         if self._task_state_observation_active():
             desired = np.asarray(
                 self.environment_config.precapture_task.desired_position,
@@ -1284,6 +1325,30 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 )
                 info["hybrid_v2_episode_accepted_fraction"] = float(
                     self._v2_episode_accepted_decisions / decisions
+                )
+        if self.hybrid_config.waypoint_parametrization == "task_state_v3":
+            info["reference_jump_target_m"] = float(
+                self._last_v3_reference_jump_target_m
+            )
+            info["reference_jump_inertial_m"] = float(
+                self._last_v3_reference_jump_inertial_m
+            )
+            if terminated or truncated:
+                info["hybrid_v3_episode_reference_jump_target_max_m"] = float(
+                    max(self._v3_reference_jumps_target_m, default=0.0)
+                )
+                info["hybrid_v3_episode_reference_jump_target_p95_m"] = float(
+                    np.percentile(self._v3_reference_jumps_target_m, 95)
+                    if self._v3_reference_jumps_target_m
+                    else 0.0
+                )
+                info["hybrid_v3_episode_reference_jump_inertial_max_m"] = float(
+                    max(self._v3_reference_jumps_inertial_m, default=0.0)
+                )
+                info["hybrid_v3_episode_reference_jump_inertial_p95_m"] = float(
+                    np.percentile(self._v3_reference_jumps_inertial_m, 95)
+                    if self._v3_reference_jumps_inertial_m
+                    else 0.0
                 )
         info["hybrid_control_steps"] = control_steps
         info["hybrid_qp_zero_fallbacks"] = zero_fallbacks

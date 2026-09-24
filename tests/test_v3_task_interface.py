@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
 from env.phase2_env import precapture_adaptive_capture_environment_config
@@ -91,5 +92,25 @@ def test_v3_memory_axis_blend_preserves_both_endpoints() -> None:
         assert np.linalg.norm(
             env._v3_memory_axis_direction(hold, desired, 1.0) - desired
         ) < 1.0e-12
+    finally:
+        env.close()
+
+
+def test_v3_reference_jump_monitor_distinguishes_target_and_inertial_frames() -> None:
+    env = _v3_env()
+    try:
+        first = np.array([4.0, 0.0, 0.0], dtype=np.float64)
+        target_jump, inertial_jump = env._record_v3_reference_jump(first)
+        assert target_jump == 0.0
+        assert inertial_jump == 0.0
+
+        assert env.env.target_state is not None
+        rotation = env.env.target_state.rotation
+        second = np.array([4.0, 0.3, 0.0], dtype=np.float64)
+        target_jump, inertial_jump = env._record_v3_reference_jump(second)
+        assert target_jump == pytest.approx(np.linalg.norm(second - first))
+        assert inertial_jump == pytest.approx(
+            np.linalg.norm(rotation @ (second - first))
+        )
     finally:
         env.close()
