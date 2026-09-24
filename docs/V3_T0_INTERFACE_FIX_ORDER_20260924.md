@@ -1,6 +1,6 @@
 # V3 T0：接口修复执行单（给下层）
 
-*2026-09-24，上层窗口。基线：分支 `claude/sac-mpc-coupling-design-ns7g6i` 当前 HEAD。*
+*2026-09-24，上层窗口（v2：按审查意见改为单向交回，去掉分支观测位）。基线：分支 `claude/sac-mpc-coupling-design-ns7g6i` 当前 HEAD。*
 
 **性质：修 bug + 搭骨架，不是方法创新，不训练。** 与 P2（上层沙箱在跑）并行，互不依赖。
 依据：`docs/V2_EVALUATION_REPORT_20260924.md` 与 `docs/COUPLING_DESIGN_PROPOSAL_20260924.md` 第 0 节中的三个接口缺陷。
@@ -33,7 +33,7 @@ z_candidate = clip(z + [δρ, δc])
 **a = 0 表示任务状态不动**，不是 Pure MPC（Pure MPC 是独立分支，见 T0.4）。
 
 **ρ 的上界改为正好落在抓取位姿**：`ρ_max = hold_radius − |desired_position|`（当前是 `hold_radius − 2.5`，比抓取位姿多 0.5 m）。
-这样 `z = (ρ_max, 1)` 对应的参考**严格等于** Pure MPC 的参考 `desired_position`，为 T0.4 的连续切换提供条件。
+这样 `z = (ρ_max, 1)` 对应的参考**严格等于** Pure MPC 的参考 `desired_position`：学习分支能恰好到达抓取位姿，不再像 V2 那样越过 0.5 m。
 
 **测试**：
 - `a = 0` 连续 10 步，施加状态不变；
@@ -91,9 +91,9 @@ T0.2 让映射在时间上连续之后，"同一时刻比较 + 度量上限"就�
 
 ---
 
-## T0.4 显式分支与切换（Pure MPC 是独立分支）
+## T0.4 显式分支与单向交回（Pure MPC 是独立分支）
 
-**状态**：新增 `mode ∈ {baseline, learned}`，以及 `z`、上一决策施加的参考 `r_last`。
+**状态**：新增当前分支 `branch ∈ {baseline, learned}`，以及 `z`、上一决策施加的参考 `r_last`。
 
 **新接口**（沿用 V2 的 `step_with_proposal` 思路，改为显式选分支）：
 ```python
@@ -102,26 +102,27 @@ env.step_with_branch(action, branch="learned" | "baseline")
 - `baseline`：施加 `desired_position`，逐位等于 Pure MPC；
 - `learned`：按 T0.1–T0.2 施加 `r(z)`。
 
-**切换规则**（这两条都是修 bug，不是新机制）：
-1. **learned → baseline**：切换那一刻调用 `self.controller.reset()`。
+**切换规则（第一版只允许单向）**：
+1. **第 0 个决策**：两个分支都可以选；
+2. **learned → baseline**：切换那一刻调用 `self.controller.reset()`。
    原因：下层用"相邻两次参考之差 / 2 s"估计参考速度。不重置的话，十几米的参考跳变会变成每秒数米的前馈速度指令。
    重置后，含义就是"从当前状态重新启动 Pure MPC"，与 Pure MPC 从初始状态启动完全同构。
-   上层沙箱的 P2 rollout 已按这个定义实现（`experiments/probe_base_policy_rollout.py`）。
-2. **baseline → learned**：`z` 初始化为 `(ρ_max, 1)`，对应的参考就是 Pure MPC 当前的参考，**切换瞬间参考不动**。
-   策略之后可以从这里后退或保持。这一条依赖 T0.1 的 ρ 上界修改。
+   上层沙箱的 P2 / P2′ rollout 就是按这个定义实现的（`experiments/probe_base_policy_rollout.py`）；
+3. **baseline → learned：本版禁止**。某回合一旦执行过 `baseline`，之后再请求 `learned` 直接抛异常。
+   理由：P2′ 只验证过"开局选择"和"学习分支上交回"，没有验证"Pure MPC 运行一段后再切回学习策略"。
 
 **测试**：
 - 全程 `baseline`：逐控制步 wrench 与 Pure MPC 相等（复用现有地板测试写法，12 回合）；
 - 第 k 个决策从 `learned` 切到 `baseline` 之后，controller 的内部状态与新建 controller 的状态逐字段相等；
-- 从 `baseline` 切到 `learned` 的第一个决策，施加的参考与切换前相同（差 < 1e-12）；
-- 切换计数写进 info（`hybrid_branch`、`hybrid_branch_switches`）。
+- 执行过 `baseline` 后请求 `learned` 抛异常；
+- 分支与切换计数写进 info（`hybrid_branch`、`hybrid_branch_switches`）。
 
 ---
 
 ## T0.5 观测
 
-`task_state_v3` 的观测在 V2 的基础上加一维 `mode`（0 = baseline，1 = learned）。
-任务状态 `(ρ/ρ_max, c)` 保留。维度守卫照旧：用错维度加载模型要拒绝。
+**与 V2 相同，不加分支位。** 学习策略只在 `learned` 分支上运行（训练时恒为 learned，部署时一旦交回就不再回来），
+所以它永远看不到 baseline 状态，分支位会是常数。任务状态 `(ρ/ρ_max, c)` 保留。维度守卫照旧。
 
 ---
 
