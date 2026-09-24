@@ -241,6 +241,7 @@ class PrecaptureHybridConfig:
             "radial_local",
             "arrival_condition",
             "task_state_v2",
+            "task_state_v3",
         }:
             raise ValueError("unknown waypoint parametrisation")
         if min(self.radial_action_gain, self.lateral_action_gain) <= 0.0:
@@ -277,7 +278,11 @@ class PrecaptureHybridConfig:
     def action_dimension(self) -> int:
         if self.waypoint_parametrization == "absolute":
             return 3
-        if self.waypoint_parametrization in {"arrival_condition", "task_state_v2"}:
+        if self.waypoint_parametrization in {
+            "arrival_condition",
+            "task_state_v2",
+            "task_state_v3",
+        }:
             return 2
         return 4
 
@@ -439,7 +444,10 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         )
 
     def _task_state_observation_active(self) -> bool:
-        return self.hybrid_config.waypoint_parametrization == "task_state_v2"
+        return self.hybrid_config.waypoint_parametrization in {
+            "task_state_v2",
+            "task_state_v3",
+        }
 
     def _policy_observation(self, observation: np.ndarray) -> np.ndarray:
         """Append the scheduling state and the lower layer's execution feedback.
@@ -476,7 +484,7 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             parts.append(np.array([self._commit_blend], dtype=np.float64))
         if self._task_state_observation_active():
             if self._task_progress_m is None or self._task_commitment is None:
-                raise RuntimeError("V2 task state must be initialized before observation")
+                raise RuntimeError("task state must be initialized before observation")
             span = self.v2_progress_max_m
             parts.append(
                 np.array(
@@ -541,26 +549,90 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
     @property
     def v2_progress_max_m(self) -> float:
         if self._hold_radius_m <= 0.0:
-            raise RuntimeError("V2 hold radius is not initialized")
+            raise RuntimeError("task-state hold radius is not initialized")
+        if self.hybrid_config.waypoint_parametrization == "task_state_v3":
+            desired = np.asarray(
+                self.environment_config.precapture_task.desired_position,
+                dtype=np.float64,
+            )
+            return max(self._hold_radius_m - float(np.linalg.norm(desired)), 0.0)
         return max(self._hold_radius_m - self.v2_radius_min_m, 0.0)
 
     def action_for_task_state(self, progress_m: float, commitment: float) -> FloatArray:
-        """Encode an absolute V2 task-state proposal into the bounded action."""
+        """Encode a task-state proposal into the bounded policy action."""
 
-        if self.hybrid_config.waypoint_parametrization != "task_state_v2":
-            raise ValueError("task-state actions require task_state_v2")
+        parametrization = self.hybrid_config.waypoint_parametrization
+        if parametrization not in {"task_state_v2", "task_state_v3"}:
+            raise ValueError("task-state actions require a task-state parametrisation")
         if not np.isfinite(progress_m) or not np.isfinite(commitment):
             raise ValueError("task state must be finite")
         progress = float(np.clip(progress_m, 0.0, self.v2_progress_max_m))
+        commitment = float(np.clip(commitment, 0.0, 1.0))
+        if parametrization == "task_state_v3":
+            if self._task_progress_m is None or self._task_commitment is None:
+                raise RuntimeError("task state is not initialized")
+            progress_delta = progress - self._task_progress_m
+            commitment_delta = commitment - self._task_commitment
+            progress_scale = (
+                self.hybrid_config.task_progress_advance_limit_m
+                if progress_delta >= 0.0
+                else self.hybrid_config.task_progress_retreat_limit_m
+            )
+            commitment_scale = (
+                self.hybrid_config.task_commit_advance_limit
+                if commitment_delta >= 0.0
+                else self.hybrid_config.task_commit_retreat_limit
+            )
+            return np.clip(
+                np.array(
+                    [
+                        progress_delta / progress_scale,
+                        commitment_delta / commitment_scale,
+                    ],
+                    dtype=np.float64,
+                ),
+                -1.0,
+                1.0,
+            )
         progress_action = (
             2.0 * progress / self.v2_progress_max_m - 1.0
             if self.v2_progress_max_m > 0.0
             else -1.0
         )
-        commitment_action = 2.0 * float(np.clip(commitment, 0.0, 1.0)) - 1.0
+        commitment_action = 2.0 * commitment - 1.0
         return np.array([progress_action, commitment_action], dtype=np.float64)
 
     def _task_state_from_action(self, action: FloatArray) -> tuple[float, float]:
+        if self.hybrid_config.waypoint_parametrization == "task_state_v3":
+            if self._task_progress_m is None or self._task_commitment is None:
+                raise RuntimeError("task state is not initialized")
+            progress_limit = (
+                self.hybrid_config.task_progress_advance_limit_m
+                if float(action[0]) >= 0.0
+                else self.hybrid_config.task_progress_retreat_limit_m
+            )
+            commitment_limit = (
+                self.hybrid_config.task_commit_advance_limit
+                if float(action[1]) >= 0.0
+                else self.hybrid_config.task_commit_retreat_limit
+            )
+            return (
+                float(
+                    np.clip(
+                        self._task_progress_m + float(action[0]) * progress_limit,
+                        0.0,
+                        self.v2_progress_max_m,
+                    )
+                ),
+                float(
+                    np.clip(
+                        self._task_commitment
+                        + float(action[1]) * commitment_limit,
+                        0.0,
+                        1.0,
+                    )
+                ),
+            )
         progress = 0.5 * (float(action[0]) + 1.0) * self.v2_progress_max_m
         commitment = 0.5 * (float(action[1]) + 1.0)
         return float(progress), float(commitment)
@@ -677,10 +749,15 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             float(np.clip(commitment, 0.0, 1.0)),
         )
         progress = float(np.clip(progress_m, 0.0, self.v2_progress_max_m))
+        minimum_radius = (
+            float(np.linalg.norm(desired))
+            if self.hybrid_config.waypoint_parametrization == "task_state_v3"
+            else self.v2_radius_min_m
+        )
         radius = float(
             np.clip(
                 self._hold_radius_m - progress,
-                self.v2_radius_min_m,
+                minimum_radius,
                 self.hybrid_config.maximum_waypoint_radius_m,
             )
         )
@@ -705,7 +782,10 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         if not np.all(np.isfinite(raw)):
             raise ValueError("action must be finite")
         raw = np.clip(raw, -1.0, 1.0)
-        if self.hybrid_config.waypoint_parametrization == "task_state_v2":
+        if self.hybrid_config.waypoint_parametrization in {
+            "task_state_v2",
+            "task_state_v3",
+        }:
             proposed = self._task_state_from_action(raw)
             self._last_task_proposal = proposed
             self._last_proposal_accepted = bool(proposal_accepted)
@@ -775,7 +855,10 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                     1.0,
                 )
             return base
-        if self.hybrid_config.waypoint_parametrization == "task_state_v2":
+        if self.hybrid_config.waypoint_parametrization in {
+            "task_state_v2",
+            "task_state_v3",
+        }:
             radius = float(np.linalg.norm(target))
             desired = np.asarray(
                 self.environment_config.precapture_task.desired_position,
