@@ -1,8 +1,34 @@
-# v3b 正式训练指令（T0b 完成后）
+# v3c 正式训练指令（v3b 在 QP 门停止、近场半径下限修复之后）
 
-*2026-09-25，上层窗口。分支 `claude/sac-mpc-coupling-design-ns7g6i`。**训练代码提交：`85dd37ac7fbf3fb47e17791a8b7b652be49e3231`**（之后只有文档提交）。全套测试 308 passed、3 xfailed。*
+*2026-09-25，上层窗口。分支 `claude/sac-mpc-coupling-design-ns7g6i`。**训练代码提交：`63b8ebbd9609ee9fc0d541266627d4b173ec48eb`**（之后只有文档提交）。全套测试 311 passed、3 xfailed。*
 
 ---
+
+## 0a. v3b 为什么停、改了什么（本版新增）
+
+v3b 在约 12.3k 时，三个种子都触发了预注册的 QP 健康门（最近 100 回合零推力回退率 > 1e-3，单回合最多 238 步零推力）；参考跳变违例始终为 0。
+**健康门起了作用**：它拦住的是一个真实的接口缺陷，不是噪声。
+
+**原因（沙箱复现，不用模型；产物 `eval/adp/v3c_nearfield_qp_diagnosis.json`）**：学习分支可以"推得很近但还没承诺"，
+参考点进了 6 m 入口区、却偏离走廊轴 58°–109°。MPC 在入口区内会启用走廊约束，参考却要把它拉出走廊，需要的松弛超过上限，
+QP 无解，于是零推力回退成批出现。Pure MPC 的参考永远在轴上，所以从不触发。
+
+| 脚本策略（全速推进，承诺保持在 c） | 修复前零推力率 | 修复后 |
+|---|---:|---:|
+| c = 0.3 | 1.3 × 10⁻²（单回合 113 步） | 5.3 × 10⁻⁴（最多 8 步） |
+| c = 0.6 | 3.4 × 10⁻⁴ | 0 |
+| c = 0.9 / 1.0 | 0 / 0 | —— |
+| 均匀随机 / 偏向接近的随机 | 3.1 × 10⁻⁵ / 4.1 × 10⁻⁵ | 不变；跳变违例 0 |
+
+**修复（只改学习分支的接口，Pure MPC 不动）**：承诺 c ≤ 0.8 时，学习参考半径不低于 6.5 m（入口区外 0.5 m）；
+c 从 0.8 到 0.95 线性降到抓取位姿 3 m。推进量 ρ 本身同步截断，不会在看不见的地方累积。
+下限在目标映射里，所以 T0b 的逐步跳变上界不变（提交 `63b8ebb`，新增 3 个测试）。
+
+**这条约束的含义**：学习策略可以在 6.5 m 以外随意暂存、等待，但要进入 6 m 入口区，必须先基本对准走廊。
+这与第一轮离线可行性证书的暂存点 7.42 m 一致，也与"从侧面进入入口平面导致非法进入"的实测失败机理一致。
+
+**v3b 运行目录处置**：`v3b_262420/421/422` 原样保留（monitor、manifest、checkpoint），各加侧车 `STOPPED_QP_GATE.md`，
+写明"在预注册 QP 健康门停止，接口近场缺陷，已由 63b8ebb 修复；不续训、不作学习能力结论"。
 
 ## 0. 训练前已完成的事（上层接管后处理完毕）
 
@@ -40,14 +66,14 @@
 git fetch origin claude/sac-mpc-coupling-design-ns7g6i
 git checkout claude/sac-mpc-coupling-design-ns7g6i
 git pull --ff-only origin claude/sac-mpc-coupling-design-ns7g6i
-git rev-parse HEAD                 # 训练代码提交为 85dd37ac7fbf3fb47e17791a8b7b652be49e3231；若 HEAD 更新，git diff 85dd37ac7fbf3fb47e17791a8b7b652be49e3231 HEAD --stat 只能出现 docs/ 下的文件
+git rev-parse HEAD                 # 训练代码提交为 63b8ebbd9609ee9fc0d541266627d4b173ec48eb；若 HEAD 更新，git diff 63b8ebbd9609ee9fc0d541266627d4b173ec48eb HEAD --stat 只能出现 docs/ 下的文件
 git status --porcelain --untracked-files=no   # 必须为空
 python -B -m pytest -q tests/test_v3_task_interface.py tests/test_check_v3b_training_health.py
 ```
 
 测试必须全绿；工作树必须干净（manifest 会记录 `code_dirty`，不干净的运行作废）。
 
-旧运行 `v3_262420 / 421 / 422` 保持原样（已有 `CONTAMINATED.md`），**不续训、不复用运行名、不加载其 checkpoint**。
+旧运行 `v3_*`（已有 `CONTAMINATED.md`）与 `v3b_*`（加 `STOPPED_QP_GATE.md`）都保持原样，**不续训、不复用运行名、不加载其 checkpoint**。
 
 ## 2. 启动（三个 PowerShell 窗口，一个种子一个）
 
@@ -55,15 +81,15 @@ python -B -m pytest -q tests/test_v3_task_interface.py tests/test_check_v3b_trai
 
 ```powershell
 $env:OMP_NUM_THREADS="1"; $env:MKL_NUM_THREADS="1"; $env:OPENBLAS_NUM_THREADS="1"
-python -u -B -m train.train_hybrid --steps 60000 --seed 262420 --run-name v3b_262420 --horizon 35 --parametrization task_state_v3 --adaptive-task --device cpu
+python -u -B -m train.train_hybrid --steps 60000 --seed 262420 --run-name v3c_262420 --horizon 35 --parametrization task_state_v3 --adaptive-task --device cpu
 ```
 ```powershell
 $env:OMP_NUM_THREADS="1"; $env:MKL_NUM_THREADS="1"; $env:OPENBLAS_NUM_THREADS="1"
-python -u -B -m train.train_hybrid --steps 60000 --seed 262421 --run-name v3b_262421 --horizon 35 --parametrization task_state_v3 --adaptive-task --device cpu
+python -u -B -m train.train_hybrid --steps 60000 --seed 262421 --run-name v3c_262421 --horizon 35 --parametrization task_state_v3 --adaptive-task --device cpu
 ```
 ```powershell
 $env:OMP_NUM_THREADS="1"; $env:MKL_NUM_THREADS="1"; $env:OPENBLAS_NUM_THREADS="1"
-python -u -B -m train.train_hybrid --steps 60000 --seed 262422 --run-name v3b_262422 --horizon 35 --parametrization task_state_v3 --adaptive-task --device cpu
+python -u -B -m train.train_hybrid --steps 60000 --seed 262422 --run-name v3c_262422 --horizon 35 --parametrization task_state_v3 --adaptive-task --device cpu
 ```
 
 - 超参全部用默认值（与 V2 相同：γ 0.99、`ent_coef` 0.005 固定、`n_critics` 2、学习率、batch、网络都不改），**不加任何其他参数**；
@@ -72,7 +98,7 @@ python -u -B -m train.train_hybrid --steps 60000 --seed 262422 --run-name v3b_26
 
 **开跑 1 分钟后检查 manifest**（每个运行各一次）：
 ```powershell
-python -c "import json,sys;m=json.load(open(sys.argv[1]));print({k:m.get(k) for k in ('code_commit','code_dirty','observation_dimension','action_dimension','training_branch','waypoint_parametrization','seed')})" logs/v3b_262420/manifest.json
+python -c "import json,sys;m=json.load(open(sys.argv[1]));print({k:m.get(k) for k in ('code_commit','code_dirty','observation_dimension','action_dimension','training_branch','waypoint_parametrization','seed')})" logs/v3c_262420/manifest.json
 ```
 必须是：`code_commit` 等于第 1 节记下的值，`code_dirty` 为 False，`observation_dimension` 42，`action_dimension` 2，`training_branch` "learned"，`waypoint_parametrization` "task_state_v3"。有任何一项不对，立刻停掉该运行并报告。
 
@@ -80,7 +106,7 @@ python -c "import json,sys;m=json.load(open(sys.argv[1]));print({k:m.get(k) for 
 
 在 **10k、20k、30k、40k、50k** 附近各跑一次（只读，不影响训练）：
 ```powershell
-python -B -m experiments.check_v3b_training_health logs/v3b_262420 logs/v3b_262421 logs/v3b_262422
+python -B -m experiments.check_v3b_training_health logs/v3c_262420 logs/v3c_262421 logs/v3c_262422
 ```
 
 | 规则 | 条件 | 动作 |
@@ -115,7 +141,7 @@ python -B -m experiments.check_v3b_training_health logs/v3b_262420 logs/v3b_2624
 
 ## 7. 禁止事项
 
-- 不续训旧 `v3_*` 运行，不复用旧运行名，不加载旧 checkpoint；
+- 不续训旧 `v3_*`、`v3b_*` 运行，不复用旧运行名，不加载旧 checkpoint；
 - 不改奖励、MPC、限速上界、任务参数、超参；
 - 不因训练中的完成率调整任何东西；
 - 工作树不干净时不开跑。
