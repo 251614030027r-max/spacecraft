@@ -144,6 +144,19 @@ class PrecaptureHybridConfig:
     #: sweeps an arc whose length grows with staging radius and target phase;
     #: this cap therefore applies after the independent axis limits.
     v2_reference_step_max_m: float = 0.4
+    #: ``task_state_v3`` only. Near-field admissibility of learned references.
+    #: Inside the entry region the MPC enforces the approach corridor, so a
+    #: reference that is close in but far off the corridor axis makes the QP
+    #: need more slack than it is allowed, and the zero-wrench fallback fires
+    #: in bursts (scripted probe: commitment held at 0.3 -> 1.3e-2 fallback
+    #: rate, bursts of 113 steps; at 0.9 and 1.0 -> 0). The learned radius is
+    #: therefore floored at ``v3_nearfield_radius_m`` (outside the 6 m entry
+    #: region) while commitment is at or below ``v3_nearfield_commit_low`` and
+    #: the floor falls linearly to the capture pose at
+    #: ``v3_nearfield_commit_high``. Pure MPC (the baseline branch) is untouched.
+    v3_nearfield_radius_m: float = 6.5
+    v3_nearfield_commit_low: float = 0.8
+    v3_nearfield_commit_high: float = 0.95
     #: ``arrival_condition`` only. The commit blend may only advance:
     #: ``b_k = max(b_{k-1}, b_k_commanded)``.
     #:
@@ -631,7 +644,7 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         radius = float(
             np.clip(
                 self._hold_radius_m - progress,
-                float(np.linalg.norm(desired)),
+                self._v3_radius_floor_m(weight),
                 self.hybrid_config.maximum_waypoint_radius_m,
             )
         )
@@ -767,6 +780,30 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             return max(self._hold_radius_m - float(np.linalg.norm(desired)), 0.0)
         return max(self._hold_radius_m - self.v2_radius_min_m, 0.0)
 
+    def _v3_radius_floor_m(self, commitment: float) -> float:
+        """Smallest learned reference radius admissible at this commitment."""
+
+        pose_radius = float(
+            np.linalg.norm(self.environment_config.precapture_task.desired_position)
+        )
+        low = self.hybrid_config.v3_nearfield_commit_low
+        high = self.hybrid_config.v3_nearfield_commit_high
+        weight = float(np.clip((high - float(commitment)) / (high - low), 0.0, 1.0))
+        return pose_radius + weight * (
+            self.hybrid_config.v3_nearfield_radius_m - pose_radius
+        )
+
+    def _v3_progress_limit_m(self, commitment: float) -> float:
+        """Progress bound that keeps the learned radius at or above the floor."""
+
+        return float(
+            np.clip(
+                self._hold_radius_m - self._v3_radius_floor_m(commitment),
+                0.0,
+                self.v2_progress_max_m,
+            )
+        )
+
     def action_for_task_state(self, progress_m: float, commitment: float) -> FloatArray:
         """Encode a task-state proposal into the bounded policy action."""
 
@@ -825,23 +862,21 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 if float(action[1]) >= 0.0
                 else self.hybrid_config.task_commit_retreat_limit
             )
-            return (
-                float(
-                    np.clip(
-                        self._task_progress_m + float(action[0]) * progress_limit,
-                        0.0,
-                        self.v2_progress_max_m,
-                    )
-                ),
-                float(
-                    np.clip(
-                        self._task_commitment
-                        + float(action[1]) * commitment_limit,
-                        0.0,
-                        1.0,
-                    )
-                ),
+            commitment = float(
+                np.clip(
+                    self._task_commitment + float(action[1]) * commitment_limit,
+                    0.0,
+                    1.0,
+                )
             )
+            progress = float(
+                np.clip(
+                    self._task_progress_m + float(action[0]) * progress_limit,
+                    0.0,
+                    self._v3_progress_limit_m(commitment),
+                )
+            )
+            return progress, commitment
         progress = 0.5 * (float(action[0]) + 1.0) * self.v2_progress_max_m
         commitment = 0.5 * (float(action[1]) + 1.0)
         return float(progress), float(commitment)
@@ -871,21 +906,23 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         current_commitment = self._task_commitment
 
         def state_at(scale: float) -> tuple[float, float]:
+            commitment = float(
+                np.clip(current_commitment + scale * commitment_delta, 0.0, 1.0)
+            )
+            progress_limit = (
+                self._v3_progress_limit_m(commitment)
+                if self.hybrid_config.waypoint_parametrization == "task_state_v3"
+                else self.v2_progress_max_m
+            )
             return (
                 float(
                     np.clip(
                         current_progress + scale * progress_delta,
                         0.0,
-                        self.v2_progress_max_m,
+                        progress_limit,
                     )
                 ),
-                float(
-                    np.clip(
-                        current_commitment + scale * commitment_delta,
-                        0.0,
-                        1.0,
-                    )
-                ),
+                commitment,
             )
 
         candidate = state_at(1.0)

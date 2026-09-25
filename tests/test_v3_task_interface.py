@@ -268,3 +268,40 @@ def test_v3_episode_qp_fallback_counters_accumulate_and_reset() -> None:
         assert env._episode_control_steps == 0
     finally:
         env.close()
+
+
+def test_v3_nearfield_radius_floor_follows_commitment() -> None:
+    env = _v3_env()
+    try:
+        pose = float(np.linalg.norm(env.environment_config.precapture_task.desired_position))
+        assert env._v3_radius_floor_m(0.0) == pytest.approx(6.5)
+        assert env._v3_radius_floor_m(0.8) == pytest.approx(6.5)
+        assert env._v3_radius_floor_m(0.95) == pytest.approx(pose)
+        assert env._v3_radius_floor_m(1.0) == pytest.approx(pose)
+        values = [env._v3_radius_floor_m(c) for c in np.linspace(0.8, 0.95, 16)]
+        assert all(b <= a + 1e-12 for a, b in zip(values, values[1:]))
+    finally:
+        env.close()
+
+
+def test_v3_uncommitted_advance_stops_outside_entry_region_without_hidden_progress() -> None:
+    env = _v3_env()
+    try:
+        for _ in range(60):
+            waypoint = env.waypoint_from_action(np.array([1.0, 0.0]))
+            assert float(np.linalg.norm(waypoint)) >= 6.5 - 1e-9
+        assert env._task_progress_m <= env._hold_radius_m - 6.5 + 1e-9
+    finally:
+        env.close()
+
+
+def test_v3_commitment_retreat_pulls_progress_back_to_the_floor() -> None:
+    env = _v3_env()
+    try:
+        env._task_commitment = 1.0
+        env._task_progress_m = env.v2_progress_max_m
+        for _ in range(20):
+            env.waypoint_from_action(np.array([0.0, -1.0]))
+        assert env._task_progress_m <= env._v3_progress_limit_m(env._task_commitment) + 1e-9
+    finally:
+        env.close()

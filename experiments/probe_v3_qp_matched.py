@@ -69,6 +69,7 @@ def run(seed: int, action_seed: int, bias: float = 0.0) -> dict:
             "completed": bool(info.get("completed", False)),
             "distance_failure": bool(info.get("distance_failure", False)),
             "max_jump_m": float(np.nanmax([r["jump_m"] for r in rows])) if rows else None,
+            "jump_bound_violations": int(info.get("hybrid_v3_episode_reference_jump_violations", -1)),
             "rows": rows,
         }
     finally:
