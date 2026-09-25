@@ -408,12 +408,18 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         if self.hybrid_config.include_staging_direction_observation:
             low = np.concatenate((low, -np.ones(3)))
             high = np.concatenate((high, np.ones(3)))
+        if self.hybrid_config.waypoint_parametrization == "task_state_v3":
+            # T0b: the actually applied direction is a cross-decision state.
+            # Exposing it keeps the scheduling problem Markov.
+            low = np.concatenate((low, -np.ones(3)))
+            high = np.concatenate((high, np.ones(3)))
         if (
             self.hybrid_config.include_target_phase_and_time_observation
             or self._ratchet_observation_active()
             or self._task_state_observation_active()
             or self.hybrid_config.include_execution_feedback_observation
             or self.hybrid_config.include_staging_direction_observation
+            or self.hybrid_config.waypoint_parametrization == "task_state_v3"
         ):
             self.observation_space = spaces.Box(
                 low=low.astype(np.float32),
@@ -435,14 +441,20 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._v2_episode_changed_decisions = 0
         self._v2_episode_reference_step_sum_m = 0.0
         self._v2_episode_accepted_decisions = 0
-        self._v3_blend_axis: FloatArray | None = None
-        self._v3_blend_angle: float | None = None
+        self._v3_applied_direction: FloatArray | None = None
+        self._v3_applied_radius_m: float | None = None
+        self._v3_direction_commit_count = 0
+        self._last_v3_direction_lag_rad = 0.0
+        self._v3_direction_lags_rad: list[float] = []
         self._v3_last_reference_target: FloatArray | None = None
         self._v3_last_reference_inertial: FloatArray | None = None
         self._v3_reference_jumps_target_m: list[float] = []
         self._v3_reference_jumps_inertial_m: list[float] = []
         self._last_v3_reference_jump_target_m = 0.0
         self._last_v3_reference_jump_inertial_m = 0.0
+        self._last_v3_reference_jump_limit_m = 0.0
+        self._v3_reference_jump_limits_m: list[float] = []
+        self._v3_reference_jump_violations = 0
         self._hybrid_branch: str | None = None
         self._hybrid_branch_switches = 0
         self._last_v3_task_action_raw: list[float] | None = None
@@ -518,6 +530,8 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                     np.asarray(self.env.target_state.rotation, dtype=np.float64).T
                     @ np.asarray(staging, dtype=np.float64)
                 )
+        if self.hybrid_config.waypoint_parametrization == "task_state_v3":
+            parts.append(self._v3_observation_direction())
         if len(parts) == 1:
             return observation
         augmented = np.concatenate(parts).astype(np.float32)
@@ -557,72 +571,145 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         axis = np.cross(direction, basis)
         return axis / np.linalg.norm(axis)
 
-    def _v3_memory_axis_direction(
-        self,
-        hold_direction: FloatArray,
-        desired_direction: FloatArray,
-        commitment: float,
+    @staticmethod
+    def _direction_step(
+        previous: FloatArray, goal: FloatArray, maximum_angle_rad: float
     ) -> FloatArray:
-        """Blend directions on a rotation axis continuous across antipodes.
+        """Pure shortest-arc slew step from ``previous`` toward ``goal``."""
 
-        The endpoint pair alone does not define a stable shortest-arc axis near
-        opposite directions.  Projecting the previous axis onto the current
-        solution plane selects the closest valid axis, and unwrapping the
-        signed angle preserves the same branch of the rotation over time.
-        """
-
-        hold = np.asarray(hold_direction, dtype=np.float64).reshape(3)
-        desired = np.asarray(desired_direction, dtype=np.float64).reshape(3)
-        hold /= np.linalg.norm(hold)
-        desired /= np.linalg.norm(desired)
-        difference = hold - desired
-
-        if self._v3_blend_axis is None:
-            axis = np.cross(hold, desired)
-            if float(np.linalg.norm(axis)) < 1.0e-10:
-                axis = self._fallback_blend_axis(hold)
+        start = np.asarray(previous, dtype=np.float64).reshape(3)
+        target = np.asarray(goal, dtype=np.float64).reshape(3)
+        start = start / np.linalg.norm(start)
+        target = target / np.linalg.norm(target)
+        cosine = float(np.clip(start @ target, -1.0, 1.0))
+        angle = float(np.arccos(cosine))
+        limit = max(float(maximum_angle_rad), 0.0)
+        if angle <= limit or angle < 1.0e-14:
+            return target.copy()
+        axis = np.cross(start, target)
+        if float(np.linalg.norm(axis)) < 1.0e-12:
+            axis = PrecaptureHybridEnv._fallback_blend_axis(start)
         else:
-            previous_axis = self._v3_blend_axis
-            denominator = float(difference @ difference)
-            if denominator > 1.0e-14:
-                axis = previous_axis - (
-                    float(previous_axis @ difference) / denominator
-                ) * difference
-            else:
-                axis = previous_axis - float(previous_axis @ hold) * hold
-            if float(np.linalg.norm(axis)) < 1.0e-10:
-                axis = np.cross(hold, desired)
-            if float(np.linalg.norm(axis)) < 1.0e-10:
-                axis = self._fallback_blend_axis(hold)
+            axis = axis / np.linalg.norm(axis)
+        step = min(limit, angle)
+        direction = (
+            np.cos(step) * start
+            + np.sin(step) * np.cross(axis, start)
+            + (1.0 - np.cos(step)) * float(axis @ start) * axis
+        )
+        return direction / np.linalg.norm(direction)
 
-        axis = axis / np.linalg.norm(axis)
-        if self._v3_blend_axis is not None and float(axis @ self._v3_blend_axis) < 0.0:
-            axis = -axis
-        hold_perpendicular = hold - float(hold @ axis) * axis
-        desired_perpendicular = desired - float(desired @ axis) * axis
-        signed_angle = float(
-            np.arctan2(
-                axis @ np.cross(hold_perpendicular, desired_perpendicular),
-                hold_perpendicular @ desired_perpendicular,
+    def _v3_geometry(
+        self, progress_m: float, commitment: float
+    ) -> tuple[float, FloatArray]:
+        """Return the radius and memoryless target direction for a task state."""
+
+        assert self.env.target_state is not None
+        assert self._hold_inertial is not None
+        rotation = np.asarray(self.env.target_state.rotation, dtype=np.float64)
+        desired = np.asarray(
+            self.environment_config.precapture_task.desired_position,
+            dtype=np.float64,
+        )
+        desired_direction = desired / np.linalg.norm(desired)
+        hold_direction = rotation.T @ self._hold_inertial
+        weight = float(np.clip(commitment, 0.0, 1.0))
+        cosine = float(np.clip(hold_direction @ desired_direction, -1.0, 1.0))
+        if cosine < -1.0 + 1.0e-10:
+            axis = self._fallback_blend_axis(hold_direction)
+            angle = np.pi * weight
+            goal = (
+                np.cos(angle) * hold_direction
+                + np.sin(angle) * np.cross(axis, hold_direction)
+            )
+        else:
+            goal = _slerp(hold_direction, desired_direction, weight)
+        goal = goal / np.linalg.norm(goal)
+        progress = float(np.clip(progress_m, 0.0, self.v2_progress_max_m))
+        radius = float(
+            np.clip(
+                self._hold_radius_m - progress,
+                float(np.linalg.norm(desired)),
+                self.hybrid_config.maximum_waypoint_radius_m,
             )
         )
-        if self._v3_blend_angle is not None:
-            signed_angle += 2.0 * np.pi * round(
-                (self._v3_blend_angle - signed_angle) / (2.0 * np.pi)
-            )
-        self._v3_blend_axis = axis
-        self._v3_blend_angle = signed_angle
+        return radius, goal
 
-        weight = float(np.clip(commitment, 0.0, 1.0))
-        if weight <= 0.0:
-            return hold.copy()
-        if weight >= 1.0:
-            return desired.copy()
-        angle = weight * signed_angle
+    def _preview_v3_reference(
+        self, progress_m: float, commitment: float
+    ) -> tuple[FloatArray, FloatArray, float]:
+        """Preview a V3 reference without mutating the applied direction."""
+
+        radius, goal = self._v3_geometry(progress_m, commitment)
+        if self._v3_applied_direction is None:
+            direction = goal.copy()
+        else:
+            assert self.env.target_state is not None
+            radial_change = (
+                0.0
+                if self._v3_applied_radius_m is None
+                else abs(radius - self._v3_applied_radius_m)
+            )
+            decision_period_s = (
+                self.hybrid_config.decision_period_steps
+                * self.environment_config.dt_s
+            )
+            natural_angle = (
+                1.2
+                * float(np.linalg.norm(self.env.target_state.omega))
+                * decision_period_s
+            )
+            action_budget_m = max(
+                0.0,
+                self.hybrid_config.v2_reference_step_max_m - radial_change,
+            )
+            maximum_angle = natural_angle + action_budget_m / radius
+            direction = self._direction_step(
+                self._v3_applied_direction, goal, maximum_angle
+            )
+        lag = float(
+            np.arccos(np.clip(float(direction @ goal), -1.0, 1.0))
+        )
+        return radius * direction, direction, lag
+
+    def _commit_v3_reference(
+        self, progress_m: float, commitment: float
+    ) -> FloatArray:
+        """Commit exactly one applied-direction transition for a learned decision."""
+
+        reference, direction, lag = self._preview_v3_reference(
+            progress_m, commitment
+        )
+        assert self.env.target_state is not None
+        radius = float(np.linalg.norm(reference))
+        natural_angle = (
+            1.2
+            * float(np.linalg.norm(self.env.target_state.omega))
+            * self.hybrid_config.decision_period_steps
+            * self.environment_config.dt_s
+        )
+        self._last_v3_reference_jump_limit_m = (
+            self.hybrid_config.v2_reference_step_max_m
+            + natural_angle * radius
+            + 1.0e-6
+        )
+        self._v3_applied_direction = direction.copy()
+        self._v3_applied_radius_m = radius
+        self._last_v3_direction_lag_rad = lag
+        self._v3_direction_lags_rad.append(lag)
+        self._v3_direction_commit_count += 1
+        return reference
+
+    def _v3_observation_direction(self) -> FloatArray:
+        """Return the committed direction, or the reset-time hold direction."""
+
+        if self._v3_applied_direction is not None:
+            return self._v3_applied_direction.copy()
+        assert self.env.target_state is not None
+        assert self._hold_inertial is not None
         direction = (
-            np.cos(angle) * hold
-            + np.sin(angle) * np.cross(axis, hold)
-            + (1.0 - np.cos(angle)) * float(axis @ hold) * axis
+            np.asarray(self.env.target_state.rotation, dtype=np.float64).T
+            @ self._hold_inertial
         )
         return direction / np.linalg.norm(direction)
 
@@ -651,6 +738,10 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._last_v3_reference_jump_inertial_m = inertial_jump
         self._v3_reference_jumps_target_m.append(target_jump)
         self._v3_reference_jumps_inertial_m.append(inertial_jump)
+        if self._hybrid_branch == "learned":
+            limit = float(self._last_v3_reference_jump_limit_m)
+            self._v3_reference_jump_limits_m.append(limit)
+            self._v3_reference_jump_violations += int(target_jump > limit)
         return target_jump, inertial_jump
 
     @property
@@ -857,20 +948,18 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             self.environment_config.precapture_task.desired_position,
             dtype=np.float64,
         )
+        if self.hybrid_config.waypoint_parametrization == "task_state_v3":
+            reference, _, _ = self._preview_v3_reference(
+                progress_m, commitment
+            )
+            return reference
         commit_direction = desired / np.linalg.norm(desired)
         hold_direction = rotation.T @ self._hold_inertial
-        if self.hybrid_config.waypoint_parametrization == "task_state_v3":
-            direction = self._v3_memory_axis_direction(
-                hold_direction,
-                commit_direction,
-                commitment,
-            )
-        else:
-            direction = _slerp(
-                hold_direction,
-                commit_direction,
-                float(np.clip(commitment, 0.0, 1.0)),
-            )
+        direction = _slerp(
+            hold_direction,
+            commit_direction,
+            float(np.clip(commitment, 0.0, 1.0)),
+        )
         progress = float(np.clip(progress_m, 0.0, self.v2_progress_max_m))
         minimum_radius = (
             float(np.linalg.norm(desired))
@@ -923,6 +1012,8 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 )
             applied = self._limit_task_state(*proposed)
             self._task_progress_m, self._task_commitment = applied
+            if self.hybrid_config.waypoint_parametrization == "task_state_v3":
+                return self._commit_v3_reference(*applied)
             return self.reference_for_task_state(*applied)
         if self.hybrid_config.waypoint_parametrization == "arrival_condition":
             if self.hybrid_config.baseline_anchored_residual:
@@ -1170,14 +1261,20 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._v2_episode_changed_decisions = 0
         self._v2_episode_reference_step_sum_m = 0.0
         self._v2_episode_accepted_decisions = 0
-        self._v3_blend_axis = None
-        self._v3_blend_angle = None
+        self._v3_applied_direction = None
+        self._v3_applied_radius_m = None
+        self._v3_direction_commit_count = 0
+        self._last_v3_direction_lag_rad = 0.0
+        self._v3_direction_lags_rad = []
         self._v3_last_reference_target = None
         self._v3_last_reference_inertial = None
         self._v3_reference_jumps_target_m = []
         self._v3_reference_jumps_inertial_m = []
         self._last_v3_reference_jump_target_m = 0.0
         self._last_v3_reference_jump_inertial_m = 0.0
+        self._last_v3_reference_jump_limit_m = 0.0
+        self._v3_reference_jump_limits_m = []
+        self._v3_reference_jump_violations = 0
         self._hybrid_branch = None
         self._hybrid_branch_switches = 0
         self._last_v3_task_action_raw = None
@@ -1383,6 +1480,20 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             info["reference_jump_inertial_m"] = float(
                 self._last_v3_reference_jump_inertial_m
             )
+            info["reference_jump_target_limit_m"] = float(
+                self._last_v3_reference_jump_limit_m
+            )
+            info["reference_jump_target_violation"] = bool(
+                self._hybrid_branch == "learned"
+                and self._last_v3_reference_jump_target_m
+                > self._last_v3_reference_jump_limit_m
+            )
+            info["hybrid_v3_reference_direction_lag_rad"] = float(
+                self._last_v3_direction_lag_rad
+            )
+            info["hybrid_v3_direction_commit_count"] = int(
+                self._v3_direction_commit_count
+            )
             if terminated or truncated:
                 info["hybrid_v3_episode_reference_jump_target_max_m"] = float(
                     max(self._v3_reference_jumps_target_m, default=0.0)
@@ -1399,6 +1510,17 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                     np.percentile(self._v3_reference_jumps_inertial_m, 95)
                     if self._v3_reference_jumps_inertial_m
                     else 0.0
+                )
+                info["hybrid_v3_episode_direction_lag_max_rad"] = float(
+                    max(self._v3_direction_lags_rad, default=0.0)
+                )
+                info["hybrid_v3_episode_direction_lag_p99_rad"] = float(
+                    np.percentile(self._v3_direction_lags_rad, 99)
+                    if self._v3_direction_lags_rad
+                    else 0.0
+                )
+                info["hybrid_v3_episode_reference_jump_violations"] = int(
+                    self._v3_reference_jump_violations
                 )
             info["hybrid_branch"] = self._hybrid_branch
             info["hybrid_branch_switches"] = int(self._hybrid_branch_switches)
