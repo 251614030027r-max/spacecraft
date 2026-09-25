@@ -128,16 +128,21 @@ class RateLimitedDirection:
 
     def __init__(self, omega_rad_s: float):
         self.u = None
+        self.r = None
         self.omega = omega_rad_s
 
     def __call__(self, h, d, c, radius):
         target = _geodesic(h, d, c)
         if self.u is None:
-            self.u = target
+            self.u, self.r = target, radius
             return target
-        max_angle = 1.2 * self.omega * DECISION_S + STEP_CAP_M / max(radius, 1e-6)
+        # 0.40 m budget split between the radius change and the extra turn,
+        # so |r'u' - r u| <= |r' - r| + r' angle(u, u') is provably bounded.
+        radius_change = abs(radius - self.r)
+        max_angle = 1.2 * self.omega * DECISION_S + max(0.0, STEP_CAP_M - radius_change) / max(radius, 1e-6)
         angle = float(np.arccos(np.clip(self.u @ target, -1.0, 1.0)))
         self.u = target if angle <= max_angle else _geodesic(self.u, target, max_angle / angle)
+        self.r = radius
         return self.u
 
 
@@ -177,10 +182,10 @@ def analyse(inputs: list[Path], output: Path) -> None:
                         r = max(radius0 - state[0], float(np.linalg.norm(desired)))
                         if label == "rate_limited":
                             # evaluate without committing the filter state
-                            saved = None if blend.u is None else blend.u.copy()
+                            saved = (None if blend.u is None else blend.u.copy(), blend.r)
                             out = r * blend(h, d, state[1], r)
                             if not commit_state:
-                                blend.u = saved
+                                blend.u, blend.r = saved
                             return out
                         return r * blend(h, d, state[1])
                     # same-instant metric cap on the task-state step, as in the env
@@ -200,6 +205,8 @@ def analyse(inputs: list[Path], output: Path) -> None:
                     refs.append(ref(z, True))
                     if i > 0:
                         jump = float(np.linalg.norm(refs[-1] - refs[-2]))
+                        bound = STEP_CAP_M + 1.2 * omega * DECISION_S * float(np.linalg.norm(refs[-1])) + 1e-6
+                        results[label + "_bound_violations"] = results.get(label + "_bound_violations", 0) + int(jump > bound)
                         if jump > worst:
                             worst = jump
                             worst_angle = float(np.degrees(np.arccos(np.clip(h @ d, -1, 1))))
@@ -211,6 +218,7 @@ def analyse(inputs: list[Path], output: Path) -> None:
     for label in ("v2_shortest_arc", "t0_memory_axis", "rate_limited"):
         vals = [r[label] for r in rows]
         summary[label] = {
+            "bound_violations": sum(r.get(label + "_bound_violations", 0) for r in rows),
             "max_jump_m": max(vals),
             "cases_over_3m": sum(v > 3.0 for v in vals),
             "cases": len(vals),
