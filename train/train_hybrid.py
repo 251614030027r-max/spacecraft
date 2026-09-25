@@ -197,7 +197,8 @@ def main() -> None:
             + f"parametrisation={hybrid_config.waypoint_parametrization}, "
             + (
                 "interpreted as bounded task-state increments on the learned "
-                "branch, with zero action holding the task state fixed, "
+                "branch, with zero action holding the task state fixed while "
+                "the applied direction continues its rate-limited tracking, "
                 if hybrid_config.waypoint_parametrization == "task_state_v3"
                 else "resolved to an absolute waypoint in the target body frame, "
             )
@@ -245,6 +246,12 @@ def main() -> None:
                 ", and the 3D episode-frozen inertial staging direction "
                 "expressed in the current target frame"
                 if hybrid_config.include_staging_direction_observation
+                else ""
+            )
+            + (
+                ", and the 3D unit direction actually applied by the V3 "
+                "reference slew state in the current target frame"
+                if hybrid_config.waypoint_parametrization == "task_state_v3"
                 else ""
             )
         ),
@@ -342,6 +349,9 @@ def main() -> None:
             "hybrid_v3_episode_reference_jump_target_p95_m",
             "hybrid_v3_episode_reference_jump_inertial_max_m",
             "hybrid_v3_episode_reference_jump_inertial_p95_m",
+            "hybrid_v3_episode_direction_lag_max_rad",
+            "hybrid_v3_episode_direction_lag_p99_rad",
+            "hybrid_v3_episode_reference_jump_violations",
             "hybrid_branch_switches",
         )
     env = Monitor(

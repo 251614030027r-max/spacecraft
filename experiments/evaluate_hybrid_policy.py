@@ -776,6 +776,8 @@ def main() -> None:
         task_actions_raw: list[list[float]] = []
         reference_jumps_target_m: list[float] = []
         reference_jumps_inertial_m: list[float] = []
+        reference_jump_limits_m: list[float] = []
+        reference_direction_lags_rad: list[float] = []
         branch_switches: list[int] = []
         control_wrenches: list[list[float]] | None = (
             [] if args.force_reject_all or args.control == "desired_pose" else None
@@ -881,6 +883,12 @@ def main() -> None:
                 )
                 reference_jumps_inertial_m.append(
                     float(env._last_v3_reference_jump_inertial_m)
+                )
+                reference_jump_limits_m.append(
+                    float(env._last_v3_reference_jump_limit_m)
+                )
+                reference_direction_lags_rad.append(
+                    float(env._last_v3_direction_lag_rad)
                 )
                 branch_switches.append(int(env._hybrid_branch_switches))
             else:
@@ -1210,6 +1218,17 @@ def main() -> None:
                             np.percentile(reference_jumps_inertial_m, 95)
                             if reference_jumps_inertial_m
                             else 0.0
+                        ),
+                        "reference_jump_target_limit_m": reference_jump_limits_m,
+                        "reference_jump_target_violation_count": int(
+                            np.count_nonzero(
+                                np.asarray(reference_jumps_target_m)
+                                > np.asarray(reference_jump_limits_m)
+                            )
+                        ),
+                        "reference_direction_lag_rad": reference_direction_lags_rad,
+                        "reference_direction_lag_max_rad": float(
+                            max(reference_direction_lags_rad, default=0.0)
                         ),
                     }
                     if args.parametrization == "task_state_v3"

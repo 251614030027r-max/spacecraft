@@ -61,43 +61,79 @@ def test_v3_terminal_task_state_is_exactly_the_desired_pose() -> None:
         env.close()
 
 
-def test_v3_memory_axis_blend_is_continuous_through_antipodal_direction() -> None:
-    desired = np.array([1.0, 0.0, 0.0], dtype=np.float64)
-    radius_m = 15.0
-    for commitment in (0.3, 0.5, 0.7):
-        env = _v3_env()
-        try:
-            previous_hold = None
-            previous_reference = None
-            for angle_deg in np.linspace(170.0, 190.0, 81):
-                angle = np.deg2rad(angle_deg)
-                hold = np.array([np.cos(angle), np.sin(angle), 0.0])
-                direction = env._v3_memory_axis_direction(
-                    hold, desired, commitment
-                )
-                reference = radius_m * direction
-                if previous_reference is not None and previous_hold is not None:
-                    natural = radius_m * float(np.linalg.norm(hold - previous_hold))
-                    jump = float(np.linalg.norm(reference - previous_reference))
-                    assert jump <= 1.2 * natural + 0.40 + 1.0e-12
-                previous_hold = hold
-                previous_reference = reference
-        finally:
-            env.close()
+def test_v3_direction_step_is_pure_and_handles_antipodes() -> None:
+    start = np.array([1.0, 0.0, 0.0])
+    goal = -start
+    first = PrecaptureHybridEnv._direction_step(start, goal, 0.2)
+    second = PrecaptureHybridEnv._direction_step(start, goal, 0.2)
+    assert np.array_equal(first, second)
+    assert np.linalg.norm(first) == pytest.approx(1.0)
+    assert np.arccos(np.clip(first @ start, -1.0, 1.0)) == pytest.approx(0.2)
 
 
-def test_v3_memory_axis_blend_preserves_both_endpoints() -> None:
+@pytest.mark.parametrize("closest_deg", [0.0, 3.0, 90.0, 177.0, 180.0])
+def test_v3_direction_state_obeys_dynamic_bound_across_singular_geometries(
+    closest_deg: float,
+) -> None:
+    radius = 25.0
+    omega = 0.05
+    period = 2.0
+    natural_angle = 1.2 * omega * period
+    action_budget = 0.4
+    applied = np.array([0.0, 1.0, 0.0])
+    previous_reference = radius * applied
+    for phase_deg in np.linspace(closest_deg - 25.0, closest_deg + 25.0, 101):
+        phase = np.deg2rad(phase_deg)
+        goal = np.array([np.cos(phase), np.sin(phase), 0.0])
+        applied = PrecaptureHybridEnv._direction_step(
+            applied, goal, natural_angle + action_budget / radius
+        )
+        reference = radius * applied
+        jump = float(np.linalg.norm(reference - previous_reference))
+        assert jump <= action_budget + natural_angle * radius + 1.0e-12
+        previous_reference = reference
+
+
+def test_v3_candidate_previews_are_read_only_and_commit_once() -> None:
     env = _v3_env()
     try:
-        desired = np.array([1.0, 0.0, 0.0], dtype=np.float64)
-        hold = np.array(
-            [np.cos(np.deg2rad(179.0)), np.sin(np.deg2rad(179.0)), 0.0]
+        assert env._v3_applied_direction is None
+        assert env._v3_direction_commit_count == 0
+        env._limit_task_state(0.5, 0.05)
+        assert env._v3_applied_direction is None
+        assert env._v3_direction_commit_count == 0
+
+        env.waypoint_from_action(np.ones(2, dtype=np.float64))
+        assert env._v3_applied_direction is not None
+        assert env._v3_direction_commit_count == 1
+        committed = env._v3_applied_direction.copy()
+        env._limit_task_state(1.0, 0.10)
+        assert np.array_equal(env._v3_applied_direction, committed)
+        assert env._v3_direction_commit_count == 1
+    finally:
+        env.close()
+
+
+def test_v3_direction_state_reaches_both_task_endpoints_exactly() -> None:
+    env = _v3_env()
+    try:
+        desired = np.asarray(
+            env.environment_config.precapture_task.desired_position,
+            dtype=np.float64,
         )
+        desired_direction = desired / np.linalg.norm(desired)
+        for _ in range(100):
+            env._commit_v3_reference(env.v2_progress_max_m, 1.0)
+        assert np.linalg.norm(env._v3_applied_direction - desired_direction) < 1.0e-12
         assert np.linalg.norm(
-            env._v3_memory_axis_direction(hold, desired, 0.0) - hold
+            env.reference_for_task_state(env.v2_progress_max_m, 1.0) - desired
         ) < 1.0e-12
+
+        env._v3_applied_direction = None
+        env._v3_applied_radius_m = None
+        env._commit_v3_reference(0.0, 0.0)
         assert np.linalg.norm(
-            env._v3_memory_axis_direction(hold, desired, 1.0) - desired
+            env._v3_applied_direction - env._v3_observation_direction()
         ) < 1.0e-12
     finally:
         env.close()
@@ -163,12 +199,23 @@ def test_v3_branch_and_switch_count_are_reported_without_observation_bit() -> No
         assert info["hybrid_branch"] == "learned"
         assert info["hybrid_branch_switches"] == 0
         assert info["hybrid_task_action_raw"] == [0.0, 0.0]
+        assert info["hybrid_v3_direction_commit_count"] == 1
         assert env.observation_space.shape == observation_shape
     finally:
         env.close()
 
 
-def test_v3_observation_matches_v2_layout_and_has_no_branch_bit() -> None:
+def test_v3_baseline_decision_does_not_commit_direction_state() -> None:
+    env = _v3_env(decision_period_steps=1, horizon_steps=2)
+    try:
+        _, _, _, _, info = env.step_with_branch(np.zeros(2), branch="baseline")
+        assert env._v3_applied_direction is None
+        assert info["hybrid_v3_direction_commit_count"] == 0
+    finally:
+        env.close()
+
+
+def test_v3_observation_appends_applied_direction_without_branch_bit() -> None:
     environment = precapture_adaptive_capture_environment_config()
     common = dict(
         runtime_diagnostics=False,
@@ -190,11 +237,15 @@ def test_v3_observation_matches_v2_layout_and_has_no_branch_bit() -> None:
     try:
         v2_observation, _ = v2.reset(seed=262004)
         v3_observation, _ = v3.reset(seed=262004)
-        assert v3.observation_space.shape == v2.observation_space.shape
-        assert np.array_equal(v3_observation, v2_observation)
+        assert v3.observation_space.shape == (v2.observation_space.shape[0] + 3,)
+        assert np.array_equal(v3_observation[:-3], v2_observation)
+        assert np.allclose(
+            v3_observation[-3:], v3._v3_observation_direction(), atol=1.0e-7
+        )
         v3._select_v3_branch("baseline")
         assert np.array_equal(
-            v3._policy_observation(v3.env._observation()), v3_observation
+            v3._policy_observation(v3.env._observation())[:-3],
+            v3_observation[:-3],
         )
     finally:
         v2.close()
