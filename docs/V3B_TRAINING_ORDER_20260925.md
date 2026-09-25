@@ -1,6 +1,6 @@
 # v3b 正式训练指令（T0b 完成后）
 
-*2026-09-25，上层窗口。分支 `claude/sac-mpc-coupling-design-ns7g6i`。本指令发出时的代码提交见第 1 节"预检"。*
+*2026-09-25，上层窗口。分支 `claude/sac-mpc-coupling-design-ns7g6i`。**训练代码提交：`85dd37ac7fbf3fb47e17791a8b7b652be49e3231`**（之后只有文档提交）。全套测试 308 passed、3 xfailed。*
 
 ---
 
@@ -40,7 +40,7 @@
 git fetch origin claude/sac-mpc-coupling-design-ns7g6i
 git checkout claude/sac-mpc-coupling-design-ns7g6i
 git pull --ff-only origin claude/sac-mpc-coupling-design-ns7g6i
-git rev-parse HEAD                 # 记下来；必须等于本指令所在提交或其后的纯文档提交
+git rev-parse HEAD                 # 训练代码提交为 85dd37ac7fbf3fb47e17791a8b7b652be49e3231；若 HEAD 更新，git diff 85dd37ac7fbf3fb47e17791a8b7b652be49e3231 HEAD --stat 只能出现 docs/ 下的文件
 git status --porcelain --untracked-files=no   # 必须为空
 python -B -m pytest -q tests/test_v3_task_interface.py tests/test_check_v3b_training_health.py
 ```
