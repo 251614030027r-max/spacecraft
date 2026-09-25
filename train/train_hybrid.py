@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
@@ -31,6 +32,25 @@ from train.hybrid_configs import (
     hybrid_model_kwargs,
     serializable_hybrid_hyperparameters,
 )
+
+
+def _code_provenance() -> dict:
+    """Commit and dirty flag of the checkout that is training, or None."""
+
+    root = Path(__file__).resolve().parents[1]
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        dirty = bool(
+            subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=no"],
+                cwd=root, capture_output=True, text=True, check=True,
+            ).stdout.strip()
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return {"code_commit": None, "code_dirty": None}
+    return {"code_commit": commit, "code_dirty": dirty}
 
 
 def parse_args() -> argparse.Namespace:
@@ -183,6 +203,7 @@ def main() -> None:
 
     manifest = {
         "run_name": args.run_name,
+        **_code_provenance(),
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "seed": args.seed,
         "waypoint_parametrization": args.parametrization,
@@ -352,6 +373,8 @@ def main() -> None:
             "hybrid_v3_episode_direction_lag_max_rad",
             "hybrid_v3_episode_direction_lag_p99_rad",
             "hybrid_v3_episode_reference_jump_violations",
+            "hybrid_v3_episode_qp_zero_fallbacks",
+            "hybrid_v3_episode_control_steps",
             "hybrid_branch_switches",
         )
     env = Monitor(

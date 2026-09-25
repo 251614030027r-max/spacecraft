@@ -438,6 +438,8 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._last_proposal_accepted = True
         self._last_v2_reference_step_m = 0.0
         self._v2_episode_decisions = 0
+        self._episode_qp_zero_fallbacks = 0
+        self._episode_control_steps = 0
         self._v2_episode_changed_decisions = 0
         self._v2_episode_reference_step_sum_m = 0.0
         self._v2_episode_accepted_decisions = 0
@@ -1258,6 +1260,8 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._last_proposal_accepted = True
         self._last_v2_reference_step_m = 0.0
         self._v2_episode_decisions = 0
+        self._episode_qp_zero_fallbacks = 0
+        self._episode_control_steps = 0
         self._v2_episode_changed_decisions = 0
         self._v2_episode_reference_step_sum_m = 0.0
         self._v2_episode_accepted_decisions = 0
@@ -1473,6 +1477,10 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 info["hybrid_v2_episode_accepted_fraction"] = float(
                     self._v2_episode_accepted_decisions / decisions
                 )
+        # Episode-level QP health, logged for training monitors only; it does
+        # not feed the observation, the reward or the controller.
+        self._episode_qp_zero_fallbacks += int(zero_fallbacks)
+        self._episode_control_steps += int(control_steps)
         if self.hybrid_config.waypoint_parametrization == "task_state_v3":
             info["reference_jump_target_m"] = float(
                 self._last_v3_reference_jump_target_m
@@ -1521,6 +1529,12 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 )
                 info["hybrid_v3_episode_reference_jump_violations"] = int(
                     self._v3_reference_jump_violations
+                )
+                info["hybrid_v3_episode_qp_zero_fallbacks"] = int(
+                    self._episode_qp_zero_fallbacks
+                )
+                info["hybrid_v3_episode_control_steps"] = int(
+                    self._episode_control_steps
                 )
             info["hybrid_branch"] = self._hybrid_branch
             info["hybrid_branch_switches"] = int(self._hybrid_branch_switches)

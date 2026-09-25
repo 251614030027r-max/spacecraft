@@ -250,3 +250,21 @@ def test_v3_observation_appends_applied_direction_without_branch_bit() -> None:
     finally:
         v2.close()
         v3.close()
+
+
+def test_v3_episode_qp_fallback_counters_accumulate_and_reset() -> None:
+    env = _v3_env()
+    try:
+        env.reset(seed=262004)
+        fallbacks = steps = 0
+        for _ in range(3):
+            _, _, _, _, info = env.step_with_branch(np.zeros(2), branch="learned")
+            fallbacks += int(info["hybrid_qp_zero_fallbacks"])
+            steps += int(info["hybrid_control_steps"])
+        assert env._episode_qp_zero_fallbacks == fallbacks
+        assert env._episode_control_steps == steps == 60
+        env.reset(seed=262005)
+        assert env._episode_qp_zero_fallbacks == 0
+        assert env._episode_control_steps == 0
+    finally:
+        env.close()
