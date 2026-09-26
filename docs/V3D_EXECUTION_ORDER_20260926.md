@@ -1,6 +1,6 @@
 # v3d 执行指令：训练 + 训练后方法流水线（给下层）
 
-*2026-09-26，上层窗口。分支 `claude/sac-mpc-coupling-design-ns7g6i`。**代码提交：`e4ddf6cd43ba4649d753189633e1e501f9171e2a`**（之后只有文档与证据提交）。全套测试 328 passed、3 xfailed。*
+*2026-09-26，上层窗口。分支 `claude/sac-mpc-coupling-design-ns7g6i`。**代码提交：`e4ddf6cd43ba4649d753189633e1e501f9171e2a`**（之后只有文档、证据与 CLAUDE.md 的提交）。全套测试 328 passed、3 xfailed。*
 *取代 `docs/V3D_TRAINING_ORDER_20260926.md`（那份从未开跑）和 `docs/V3C_TRAINING_ORDER_20260925.md`。审查全文见 `docs/V3D_REVIEW_20260926.md`。*
 *方法定义不变：`docs/V3_METHOD_EXECUTION_ORDER_20260924.md`（M1–M6 与第 6 节判读）；本指令只把它落成可直接运行的命令，并修正第 6 节里写死的"36/48"。*
 
@@ -27,7 +27,7 @@ git fetch origin claude/sac-mpc-coupling-design-ns7g6i
 git checkout claude/sac-mpc-coupling-design-ns7g6i
 git pull --ff-only origin claude/sac-mpc-coupling-design-ns7g6i
 git rev-parse HEAD
-git diff e4ddf6cd43ba4649d753189633e1e501f9171e2a HEAD --stat        # 只允许出现 docs/ 与 eval/ 下的文件
+git diff e4ddf6cd43ba4649d753189633e1e501f9171e2a HEAD --stat        # 只允许出现 docs/、eval/ 下的文件和 CLAUDE.md
 git status --porcelain --untracked-files=no   # 必须为空
 python -B -m pytest -q
 ```
