@@ -1,5 +1,7 @@
 # v3d 正式训练指令（v3c 在 QP 门停止、背面半球闸门修复之后）
 
+> **已被 `docs/V3D_EXECUTION_ORDER_20260926.md` 取代，从未开跑。** 开跑前的全面审查又发现并根治了多个问题（见 `docs/V3D_REVIEW_20260926.md`），训练代码提交随之更新。
+
 *2026-09-26，上层窗口。分支 `claude/sac-mpc-coupling-design-ns7g6i`。**训练代码提交：`7555185346fc120d86ccf78f35705f801bbb6ff8`**（之后只有文档、证据与一个只读计数脚本的提交，不改训练路径）。全套测试 312 passed、3 xfailed。*
 *本指令取代 `docs/V3C_TRAINING_ORDER_20260925.md`；第 1–7 节的流程与 v3c 相同，只改了代码提交与运行名。*
 

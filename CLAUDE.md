@@ -10,6 +10,20 @@ SAC-MPC coupling.** Everything about `single_phase`, the Waypoint, the A1/A2/A3
 perception line and the 24D mission schemas is history; it is kept under
 *Historical research line* because the lessons transfer, not because it is live.
 
+> **Live status -- 2026-09-26.** V3 (policy-level value arbitration: SAC task
+> policy + fitted V_L / V_B + initial choice and one-way handback) is the
+> method. v3b and v3c were stopped by the preregistered QP health gate; the
+> pre-v3d review (`docs/V3D_REVIEW_20260926.md`) traced both to one root cause
+> (the MPC imposed corridor rows where no legal entry leads) and found four
+> more defects, all fixed with tests in `9638f84`: legal-entry-cylinder gate
+> (Pure MPC completed episodes bitwise unchanged, 36 -> 37/48), **the formal
+> evaluator never updated the execution-feedback observation (every V2 and
+> round-1 model evaluation is invalid as a capability measure; erratum in
+> the V2 report)**, timeout now terminal for SAC, MPC reset now clears the
+> cached solver. M2-M6 are implemented. **Next: v3d training and the full
+> pipeline per `docs/V3D_EXECUTION_ORDER_20260926.md`.** The 2026-09-24 block
+> below is prior context.
+>
 > **Live status -- 2026-09-24.** Round 1 is **closed**. **V2 trained 60,000
 > decisions from zero on three seeds** (`logs/v2_262410/411/412`), and the
 > **formal evaluation is in flight on the user's machine** against the

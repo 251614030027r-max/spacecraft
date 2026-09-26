@@ -1,5 +1,18 @@
 # V2 formal evaluation report - 2026-09-24
 
+> **Erratum (2026-09-26, upper window).** `experiments/evaluate_hybrid_policy.py` runs each
+> decision's control steps itself and, until the fix of 2026-09-26, never updated the
+> 3D execution-feedback block of the policy observation: every V2 model (trained with
+> `--execution-feedback`, feedback live every decision) was evaluated with that block
+> fixed at zero. The model rows below (0/24/14 and the paired quadrants) are therefore
+> **not a valid measure of the trained policies** and must not be cited as such. The
+> Pure MPC row (no policy) is unaffected. The interface defects this report motivated
+> (bang-bang dithering, slerp antipodal flips, baseline not in the action space) were
+> established from interface geometry, training-time traces (correct observation) and
+> offline probes, not from these
+> completion counts, and stand. Fix and test: `PrecaptureHybridEnv.commit_execution_feedback`,
+> `tests/test_evaluator_observation_parity.py`; see `docs/V3D_REVIEW_20260926.md`.
+
 ## Executive result
 
 The V2 channel stayed active, but nominal capability did not preserve the Pure MPC baseline and seed robustness failed.
