@@ -18,7 +18,9 @@ the observation at k is the same in both episodes. Reported:
 3. wrong picks: checkpoints where the M4 rule picks a branch that fails while
    the other one completes (k = 0: initial choice; k > 0: stay vs hand back).
 
-Gate: agreement on the decisive checkpoints >= 0.80 -> proceed to M5 (items
+Gate: fewer than 5 decisive checkpoints -> INCONCLUSIVE (M5 may run, but no
+calibration claim may be made from this block); otherwise agreement on the
+decisive checkpoints >= 0.80 -> PASS, proceed to M5 (items
 2 and 3 are reported with the result); below -> stop and report. The tie
 tolerance was fixed on 2026-09-26, before any v3d data existed: where both
 branches finish with returns within 1.0 of each other (typically both
@@ -49,6 +51,7 @@ from train.v3_values import DECISION_GAMMA, ValueEnsemble, discounted_returns, o
 
 AGREEMENT_GATE = 0.80
 TIE_TOLERANCE = 1.0
+MIN_DECISIVE = 5
 
 
 def summarise(rows: list[dict], z: float) -> dict:
@@ -89,8 +92,10 @@ def summarise(rows: list[dict], z: float) -> dict:
         "critical_sign_accuracy": float(agree[critical].mean()) if critical.any() else None,
         "wrong_picks": wrong,
         "gate": (
-            "PASS"
-            if decisive_agreement is None or decisive_agreement >= AGREEMENT_GATE
+            "INCONCLUSIVE"
+            if decisive_agreement is None or int(decisive.sum()) < MIN_DECISIVE
+            else "PASS"
+            if decisive_agreement >= AGREEMENT_GATE
             else "STOP"
         ),
     }
@@ -160,6 +165,7 @@ def main() -> None:
         "z": args.z,
         "agreement_gate": AGREEMENT_GATE,
         "tie_tolerance": TIE_TOLERANCE,
+        "min_decisive_checkpoints": MIN_DECISIVE,
         "summary": summarise(rows, args.z),
         "by_checkpoint": {str(k): summarise([r for r in rows if r["k"] == k], args.z) for k in checkpoints},
         "rows": rows,

@@ -21,12 +21,25 @@ def test_near_ties_do_not_count_and_wrong_picks_are_counted() -> None:
     assert summary["sign_agreement_decisive"] == 0.5
     assert summary["critical_checkpoints"] == 2
     assert summary["wrong_picks"] == 1
-    assert summary["gate"] == "STOP"
+    assert summary["gate"] == "INCONCLUSIVE"  # only 2 decisive checkpoints
     assert summary["corr_sd_abs_error_L"] is None  # constant spread carries no information
 
 
-def test_all_ties_pass_the_gate_but_are_reported() -> None:
+def test_too_few_decisive_checkpoints_is_inconclusive_not_a_pass() -> None:
     summary = summarise([_row(0, 1.0, 0.0, 10.0, 10.2, True, True)], z=1.0)
     assert summary["decisive_checkpoints"] == 0
     assert summary["sign_agreement_decisive"] is None
-    assert summary["gate"] == "PASS"
+    assert summary["gate"] == "INCONCLUSIVE"
+    few = [_row(k, 5.0, 0.0, 15.0, -5.0, True, False) for k in (0, 10, 20, 30)]
+    assert summarise(few, z=1.0)["gate"] == "INCONCLUSIVE"  # 4 < 5, even at 100%
+
+
+def test_enough_agreeing_decisive_checkpoints_pass() -> None:
+    rows = [_row(k, 5.0, 0.0, 15.0, -5.0, True, False) for k in range(5)]
+    assert summarise(rows, z=1.0)["gate"] == "PASS"
+
+
+def test_enough_decisive_checkpoints_below_80_percent_stop() -> None:
+    right = [_row(k, 5.0, 0.0, 15.0, -5.0, True, False) for k in range(3)]
+    wrong = [_row(k, 0.0, 5.0, 15.0, -5.0, True, False) for k in range(3, 5)]
+    assert summarise(right + wrong, z=1.0)["gate"] == "STOP"  # 3/5 = 60%

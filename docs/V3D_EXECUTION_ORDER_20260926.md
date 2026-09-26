@@ -124,3 +124,31 @@ python -B -m experiments.v3_readout --pure-mpc eval/v3d/pure_mpc_262000.json --m
 - 不改奖励、MPC、任务参数、超参、限速上界、近场下限；
 - 不因训练中的完成率改任何东西；M6 未过不跑 M5；
 - 工作树不干净时不开跑；评估不挑 checkpoint，只用 `final_model.zip`。
+
+## 8. 补充（2026-09-26，读过下层预检之后）
+
+**8.1 开训不需要再拉代码。** 训练代码仍是 `e4ddf6c`，本机 HEAD `b05e389` 直接开跑，启动脚本的 HEAD 检查不用改。
+本次补充只改训练后的 M6 脚本；**第 3 节（Pure MPC 重跑）之前**执行一次 `git pull --ff-only`，之后的步骤都用新 HEAD，并在交回时报告该提交号。
+
+**8.2 M6 零样本漏洞（下层指出，已修）。** `decisive_checkpoints` 少于 5 时，M6 输出 `"gate": "INCONCLUSIVE"`，不再是 PASS：
+- `INCONCLUSIVE`：可以继续跑 M5，但**不得声称价值已校准**，需在交回中单列；
+- `PASS`：至少 5 个决定性检查点，且一致率 ≥ 80%；
+- `STOP`：至少 5 个决定性检查点，一致率 < 80%。该模型不跑 M5，报上层。
+
+**8.3 训练步数：保持 60k，不改。** 理由：
+- 前面各轮都是 60k，改成 50k 只省约六分之一时间，却破坏了与前几轮的可比性；
+- **v3d 本身就是最终的干净训练**。训练中若没有改任何代码，就不需要再跑一版"干净的 60k / 80k"，那等于同一实验重复一遍。只有训练中发现问题、改了代码，才需要从零重来；
+- 问题暴露得早：前两次停训分别在约 12k 和 22k，靠的是健康检查，而健康检查本来就在 10k / 20k 做；
+- 不根据中途结果延长到 80k：看了结果再加步数，属于"按结果调参"。
+
+**8.4 中途早读（只看，不作任何决定依据）。** 20k 与 40k 的 checkpoint 自动保存后，可以各跑一次（单进程，与训练并行）：
+```powershell
+python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 264100 --horizon 35 --parametrization task_state_v3 --phase-time-observation --execution-feedback --adaptive-task --model logs/v3d_262420/checkpoints/sac_mpc_20000_steps.zip --output eval/v3d/early/262420_20k.json
+```
+Pure MPC 在同一组种子上只跑一次作参照：
+```powershell
+python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 264100 --horizon 35 --parametrization arrival_condition --adaptive-task --control desired_pose --output eval/v3d/early/pure_mpc_264100.json
+```
+- 种子块 264100–264111 专用于早读，不与评估、校准、价值数据块重叠；
+- 早读结果**不得**用于停止训练、挑 checkpoint、改超参，也不进论文；它只回答"学习策略在确定性执行下是否已接近 Pure MPC"；
+- 如果机器负载太高、拖慢训练，就跳过，不影响任何正式步骤。
