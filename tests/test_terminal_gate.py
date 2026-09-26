@@ -148,3 +148,34 @@ def test_behind_the_port_plane_is_excluded_within_the_entry_radius() -> None:
     assert float(np.linalg.norm(position)) <= entry_plane_radius_m(task)
     assert not _predicted_terminal_active(position, task, terminal_latched=False)
     assert _predicted_terminal_active(position, task, terminal_latched=True)
+
+
+def test_the_ring_beside_the_entry_disc_is_excluded() -> None:
+    """Past the entry plane but outside the disc's cylinder: no legal entry leads here."""
+
+    task = PrecaptureTaskConfig()
+    # v3c 262422 20k, seed 264005: 5.4 m from the centre, ~65 deg off axis
+    position = np.array([-2.28, 4.90, 0.0])
+    displacement = position - task.port_position
+    axial = float(task.approach_axis @ displacement)
+    lateral = float(np.linalg.norm(displacement - axial * task.approach_axis))
+    assert 0.0 <= axial < task.entry_port_axial_distance_m
+    assert lateral > task.entry_disc_radius_m
+    assert float(np.linalg.norm(position)) <= entry_plane_radius_m(task)
+    assert not _predicted_terminal_active(position, task, terminal_latched=False)
+    assert _predicted_terminal_active(position, task, terminal_latched=True)
+
+
+def test_the_cylinder_keeps_every_state_a_legal_entry_can_reach_within_the_entry_radius() -> None:
+    """Inside the corridor cone and within 6 m, the rows are always active before the latch."""
+
+    task = PrecaptureTaskConfig()
+    axis = np.asarray(task.approach_axis, dtype=np.float64)
+    side = np.array([0.0, 1.0, 0.0])
+    for axial in np.linspace(0.0, task.entry_port_axial_distance_m - 1e-6, 25):
+        for fraction in np.linspace(0.0, 1.0, 11):
+            lateral = fraction * axial * np.tan(task.corridor_half_angle_rad)
+            position = task.port_position + axial * axis + lateral * side
+            if float(np.linalg.norm(position)) > entry_plane_radius_m(task):
+                continue
+            assert _predicted_terminal_active(position, task, terminal_latched=False)

@@ -189,6 +189,17 @@ class MPCController:
         self._held_external_velocity = np.zeros(3, dtype=np.float64)
 
     def reset(self) -> None:
+        # cvxpy keeps the solver object of the previous solve and, with
+        # warm_start, updates it in place instead of building a new one. That
+        # object carries internal numerical state, so without dropping it a
+        # "reset" controller is not the controller a fresh episode starts
+        # with: the same seed replayed in a reused environment differed by
+        # ~5e-7 N from the first step and in the observation by decision 6,
+        # while a fresh environment was bitwise identical. Dropping the cache
+        # makes every reset -- episode start or V3 handback -- a fresh start.
+        solver_cache = getattr(self._problem, "_solver_cache", None)
+        if solver_cache is not None:
+            solver_cache.clear()
         self._nominal_controls.fill(0.0)
         self._drift.fill(0.0)
         self._exact_linearization = None

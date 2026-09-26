@@ -487,6 +487,91 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             "task_state_v3",
         }
 
+    def actuator_usage(self, wrench: FloatArray) -> float:
+        """Peak normalised axis usage of one control step (feedback channel 3)."""
+
+        return max(
+            float(
+                np.max(
+                    np.abs(wrench[:3])
+                    / self.environment_config.max_torque_per_axis_nm
+                )
+            ),
+            float(
+                np.max(
+                    np.abs(wrench[3:])
+                    / self.environment_config.max_force_per_axis_n
+                )
+            ),
+        )
+
+    def commit_execution_feedback(
+        self,
+        *,
+        zero_fallbacks: int,
+        control_steps: int,
+        solved_steps: int,
+        solved_peak_slack: float,
+        actuator_usage_sum: float,
+    ) -> None:
+        """Set the execution feedback the next observation carries.
+
+        The only place ``_feedback`` is written after reset. Any code that runs
+        a decision's control steps itself (the evaluator does, to time each
+        step) must call this at the end of the decision, or the policy sees a
+        feedback block it never saw in training.
+        """
+
+        fallback_fraction = zero_fallbacks / control_steps if control_steps else 0.0
+        normalised_slack = (
+            solved_peak_slack / self.mpc_config.constraint_slack_limit
+            if solved_steps
+            else 0.0
+        )
+        self._feedback = np.clip(
+            np.array(
+                [
+                    fallback_fraction,
+                    normalised_slack,
+                    actuator_usage_sum / control_steps if control_steps else 0.0,
+                ],
+                dtype=np.float64,
+            ),
+            0.0,
+            1.0,
+        )
+
+    def policy_observation_slices(self) -> dict[str, slice]:
+        """Named blocks of the policy observation, in the order it is built.
+
+        Mirrors ``_policy_observation``; a test pins that the blocks tile the
+        observation exactly. The V3 baseline value masks ``task_state`` and
+        ``applied_direction``: they are the learned branch's private state and
+        do not influence what Pure MPC does from here.
+        """
+
+        sizes: list[tuple[str, int]] = [
+            ("core", int(np.prod(self.env.observation_space.shape)))
+        ]
+        if self.hybrid_config.include_target_phase_and_time_observation:
+            sizes += [("target_attitude", 6), ("remaining_time", 1)]
+        if self._ratchet_observation_active():
+            sizes.append(("commit_ratchet", 1))
+        if self._task_state_observation_active():
+            sizes.append(("task_state", 2))
+        if self.hybrid_config.include_execution_feedback_observation:
+            sizes.append(("execution_feedback", 3))
+        if self.hybrid_config.include_staging_direction_observation:
+            sizes.append(("staging_direction", 3))
+        if self.hybrid_config.waypoint_parametrization == "task_state_v3":
+            sizes.append(("applied_direction", 3))
+        slices: dict[str, slice] = {}
+        start = 0
+        for name, size in sizes:
+            slices[name] = slice(start, start + size)
+            start += size
+        return slices
+
     def _policy_observation(self, observation: np.ndarray) -> np.ndarray:
         """Append the scheduling state and the lower layer's execution feedback.
 
@@ -1447,20 +1532,7 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             # sustained co-rotation already needs the full three-axis
             # authority at range -- so a peak channel would be a constant and
             # carry nothing the upper layer could act on.
-            actuator_usage_sum += max(
-                float(
-                    np.max(
-                        np.abs(wrench[:3])
-                        / self.environment_config.max_torque_per_axis_nm
-                    )
-                ),
-                float(
-                    np.max(
-                        np.abs(wrench[3:])
-                        / self.environment_config.max_force_per_axis_n
-                    )
-                ),
-            )
+            actuator_usage_sum += self.actuator_usage(wrench)
             observation, step_reward, terminated, truncated, info = self.env.step(
                 wrench_to_normalized(
                     GeneralizedForce.from_vector(wrench),
@@ -1585,25 +1657,12 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         info["hybrid_feedback_force_peak"] = max(force_usage)
         info["hybrid_feedback_torque_mean"] = float(np.mean(torque_usage))
         info["hybrid_feedback_torque_peak"] = max(torque_usage)
-        fallback_fraction = (
-            zero_fallbacks / control_steps if control_steps else 0.0
-        )
-        normalised_slack = (
-            solved_peak_slack / self.mpc_config.constraint_slack_limit
-            if solved_steps
-            else 0.0
-        )
-        self._feedback = np.clip(
-            np.array(
-                [
-                    fallback_fraction,
-                    normalised_slack,
-                    actuator_usage_sum / control_steps if control_steps else 0.0,
-                ],
-                dtype=np.float64,
-            ),
-            0.0,
-            1.0,
+        self.commit_execution_feedback(
+            zero_fallbacks=zero_fallbacks,
+            control_steps=control_steps,
+            solved_steps=solved_steps,
+            solved_peak_slack=solved_peak_slack,
+            actuator_usage_sum=actuator_usage_sum,
         )
         info["hybrid_feedback_fallback_fraction"] = float(self._feedback[0])
         info["hybrid_feedback_solved_peak_slack"] = float(self._feedback[1])

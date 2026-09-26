@@ -333,6 +333,34 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--arbiter",
+        choices=("off", "one_way"),
+        default="off",
+        help=(
+            "V3 only (M4/M5): 'one_way' chooses the branch per decision from "
+            "the fitted values -- initial choice, then learned -> baseline "
+            "handback only. Needs --model and --values."
+        ),
+    )
+    parser.add_argument(
+        "--values",
+        type=Path,
+        default=None,
+        help="M3 output dir holding values_L.pt and values_B.pt",
+    )
+    parser.add_argument("--arbiter-z", type=float, default=1.0)
+    parser.add_argument(
+        "--max-decisions",
+        type=int,
+        default=None,
+        help="tests only: stop each episode after this many decisions",
+    )
+    parser.add_argument(
+        "--record-observations",
+        action="store_true",
+        help="tests only: store the observation fed to the policy at each decision",
+    )
     parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument(
         "--tumble-scale",
@@ -645,6 +673,26 @@ def main() -> None:
             # A stochastic diagnostic still has to be artifact-reproducible.
             policy.set_random_seed(args.seed)
 
+    arbiter = None
+    if args.arbiter != "off":
+        if policy is None or args.parametrization != "task_state_v3":
+            raise ValueError("--arbiter needs --model and --parametrization task_state_v3")
+        if args.stochastic_policy:
+            raise ValueError("--arbiter evaluates the deterministic policy")
+        if args.values is None:
+            raise ValueError("--arbiter needs --values")
+        from train.v3_values import OneWayArbiter, ValueEnsemble, sha256_file
+
+        arbiter = OneWayArbiter(
+            ValueEnsemble.load(args.values / "values_L.pt"),
+            ValueEnsemble.load(args.values / "values_B.pt"),
+            z=args.arbiter_z,
+        )
+        arbiter_files = {
+            "values_L_sha256": sha256_file(args.values / "values_L.pt"),
+            "values_B_sha256": sha256_file(args.values / "values_B.pt"),
+        }
+
     records: list[dict[str, Any]] = []
     controller_times_s: list[float] = []
     environment_times_s: list[float] = []
@@ -779,6 +827,7 @@ def main() -> None:
         reference_jump_limits_m: list[float] = []
         reference_direction_lags_rad: list[float] = []
         branch_switches: list[int] = []
+        arbiter_values: list[list[float]] = []
         control_wrenches: list[list[float]] | None = (
             [] if args.force_reject_all or args.control == "desired_pose" else None
         )
@@ -795,7 +844,12 @@ def main() -> None:
         gate_deviations = 0
         gate_advantages: list[float] = []
         terminated = truncated = False
+        policy_observations: list[list[float]] = []
         while not (terminated or truncated):
+            if args.max_decisions is not None and len(decision_times_s) >= args.max_decisions:
+                break
+            if args.record_observations:
+                policy_observations.append([float(v) for v in np.asarray(observation).reshape(-1)])
             gate_fallback = False
             if policy is not None:
                 started = perf_counter()
@@ -866,7 +920,19 @@ def main() -> None:
                 else None
             )
             if args.parametrization == "task_state_v3":
-                branch = "baseline" if args.control == "desired_pose" else "learned"
+                if arbiter is not None:
+                    decision = arbiter.decide(observation, env._hybrid_branch)
+                    branch = decision.branch
+                    arbiter_values.append(
+                        [
+                            decision.mu_learned,
+                            decision.sd_learned,
+                            decision.mu_baseline,
+                            decision.sd_baseline,
+                        ]
+                    )
+                else:
+                    branch = "baseline" if args.control == "desired_pose" else "learned"
                 env._select_v3_branch(branch)
                 if branch == "baseline":
                     waypoint = np.asarray(desired, dtype=np.float64)
@@ -928,6 +994,15 @@ def main() -> None:
                 else:
                     latch_cause = "scripted"
             # Inline the decision so each control step's cost is separable.
+            # The execution feedback is accumulated exactly as the
+            # environment's own decision step does and committed through the
+            # same method, so the policy sees the observation it trained on.
+            decision_zero_fallbacks = 0
+            decision_control_steps = 0
+            decision_solved_steps = 0
+            decision_solved_peak_slack = 0.0
+            decision_actuator_usage_sum = 0.0
+            raw_observation = None
             for index in range(env.hybrid_config.decision_period_steps):
                 assert env.env.relative is not None
                 assert env.env.target_state is not None
@@ -951,6 +1026,13 @@ def main() -> None:
                 if control_wrenches is not None:
                     control_wrenches.append([float(v) for v in wrench])
                 controller_s = perf_counter() - started
+                decision_zero_fallbacks += int(diagnostics.used_zero_fallback)
+                if not diagnostics.used_zero_fallback:
+                    decision_solved_steps += 1
+                    decision_solved_peak_slack = max(
+                        decision_solved_peak_slack, float(diagnostics.maximum_slack)
+                    )
+                decision_actuator_usage_sum += env.actuator_usage(wrench)
                 if str(diagnostics.status).startswith("infeasible"):
                     qp_infeasible_steps_total += 1
                     if first_infeasible_time_s is None:
@@ -984,7 +1066,7 @@ def main() -> None:
                 peak_force_n = max(peak_force_n, force_norm)
                 peak_torque_nm = max(peak_torque_nm, torque_norm)
                 started = perf_counter()
-                observation, _, terminated, truncated, info = env.env.step(
+                raw_observation, _, terminated, truncated, info = env.env.step(
                     wrench_to_normalized(
                         GeneralizedForce.from_vector(wrench),
                         max_torque_per_axis_nm=(
@@ -995,7 +1077,8 @@ def main() -> None:
                         ),
                     )
                 )
-                observation = env._policy_observation(observation)
+                decision_control_steps += 1
+                observation = env._policy_observation(raw_observation)
                 environment_times_s.append(perf_counter() - started)
                 # An illegal crossing does not latch.  Once the chaser returns
                 # outside the entry plane, the next outside-to-inside crossing
@@ -1090,6 +1173,15 @@ def main() -> None:
                 )
                 if terminated or truncated:
                     break
+            env.commit_execution_feedback(
+                zero_fallbacks=decision_zero_fallbacks,
+                control_steps=decision_control_steps,
+                solved_steps=decision_solved_steps,
+                solved_peak_slack=decision_solved_peak_slack,
+                actuator_usage_sum=decision_actuator_usage_sum,
+            )
+            assert raw_observation is not None
+            observation = env._policy_observation(raw_observation)
 
         zero_violation = all(
             int(info[key]) == 0 for key in VIOLATION_STEP_KEYS if key in info
@@ -1199,6 +1291,24 @@ def main() -> None:
                 **(
                     {
                         "branch": branches,
+                        "learned_branch_share": (
+                            float(np.mean([b == "learned" for b in branches]))
+                            if branches
+                            else 0.0
+                        ),
+                        "started_on_learned": bool(branches and branches[0] == "learned"),
+                        "handback_decision": next(
+                            (
+                                i
+                                for i in range(1, len(branches))
+                                if branches[i - 1] == "learned"
+                                and branches[i] == "baseline"
+                            ),
+                            None,
+                        ),
+                        "arbiter_values_muL_sdL_muB_sdB": (
+                            arbiter_values if arbiter is not None else None
+                        ),
                         "task_action_raw": task_actions_raw,
                         "reference_jump_target_m": reference_jumps_target_m,
                         "reference_jump_inertial_m": reference_jumps_inertial_m,
@@ -1237,6 +1347,11 @@ def main() -> None:
                 **(
                     {"control_wrenches": control_wrenches}
                     if control_wrenches is not None
+                    else {}
+                ),
+                **(
+                    {"policy_observations": policy_observations}
+                    if args.record_observations
                     else {}
                 ),
             }
@@ -1279,6 +1394,14 @@ def main() -> None:
         "opportunity_task": args.opportunity_task,
         "baseline_anchored_residual": args.baseline_anchored_residual,
         "deployment_gate": args.deployment_gate,
+        "arbiter": args.arbiter,
+        "arbiter_z": args.arbiter_z if args.arbiter != "off" else None,
+        "arbiter_values": (
+            {"dir": str(args.values), **arbiter_files} if args.arbiter != "off" else None
+        ),
+        "execution_feedback_in_evaluation": "committed per decision via "
+        "PrecaptureHybridEnv.commit_execution_feedback (fixed 2026-09-26; "
+        "before that the evaluator left it at zero)",
         "stochastic_policy": args.stochastic_policy,
         "force_reject_all": args.force_reject_all,
         "total_wall_clock_s": perf_counter() - evaluation_started,

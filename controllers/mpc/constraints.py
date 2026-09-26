@@ -232,41 +232,43 @@ def _predicted_terminal_active(
 ) -> bool:
     """Activate MPC terminal rows at predicted entry, without changing truth latch.
 
-    The axial test alone is a **half-space** -- with the task's own numbers it
-    is ``p_x > -6`` -- and it carries no bound on range, so it imposed the
-    approach corridor on a chaser 16 m from the target and 15 m off the
-    approach axis. The linearised corridor facet there wants about 4.0
-    normalised units of slack against a ``constraint_slack_limit`` of 2.0, so
-    the QP reported ``infeasible`` and the zero-wrench fallback handed the
-    chaser to ``omega * r``. That cost 1594 control steps at h20 and 2161 at
-    h35 over twelve seeds.
+    Two conditions, each with one job:
 
-    The truth side never agreed with it: ``normalized_precapture_truth_margins``
-    gates the same rows on ``terminal_latched`` alone, and the environment
-    scores a corridor violation only once the latch has armed on a legal
-    entry-disc crossing. The optimiser was refusing to solve because of a
-    region the task does not judge.
+    1. **Inside the legal-entry cylinder** -- past the entry plane
+       (``0 <= port axial < entry_port_axial_distance_m``) and within the
+       entry disc's radius of the approach axis. The truth latch arms only on
+       a crossing inside that disc, and a latched trajectory that honours the
+       corridor stays inside the cone, which lies inside this cylinder. A
+       predicted state outside it cannot be a legitimately latched state, so
+       the task never scores the corridor there; imposing it only asks the QP
+       for something it cannot give.
+    2. **Within the entry radius of the target centre** -- the anticipation
+       zone the baseline MPC was validated with (docs/TERMINAL_GATE_DEFECT.md).
 
-    Bounding the half-space by the entry-plane radius takes that to zero on all
-    24 episodes measured and leaves the force impulse on the commonly completed
-    ones identical to 0.1 N s. See ``docs/TERMINAL_GATE_DEFECT.md``.
+    History, each step measured. The axial half-space alone reached 16 m out
+    (fixed by condition 2). Condition 2 alone still covered the back
+    hemisphere (v3c 262422: a 108-step zero-wrench burst at port axial
+    -4.4 m) and the ring beside the disc (262422 20k: a 5-step burst 65 deg
+    off axis at 5.4 m); condition 1 removes both at once. A path-based gate
+    (rows armed at the first predicted legal crossing) was also tried and
+    rejected: it anticipates at the disc rim, outside condition 2, and so
+    changed every Pure MPC episode -- a redesign of the frozen baseline, not a
+    bug fix. Condition 1 leaves every completed Pure MPC episode of the 48
+    evaluation seeds bitwise identical; it changes the course of 7 of the 12
+    failures, all of them after an illegal (outside-disc) entry that the old
+    gate then held in the corridor unlatched, and one of them (262034) now
+    backs out and re-enters legally: 36 -> 37/48, zero violations
+    (eval/adp/v3d_gate_pure_mpc_count.json, docs/V3D_REVIEW_20260926.md).
     """
 
     if terminal_latched:
         return True
-    port_displacement = position - task.port_position
+    port_displacement = np.asarray(position, dtype=np.float64) - task.port_position
     port_axial_distance = float(task.approach_axis @ port_displacement)
-    if port_axial_distance >= task.entry_port_axial_distance_m:
+    if not 0.0 <= port_axial_distance < task.entry_port_axial_distance_m:
         return False
-    # Behind the port plane the approach corridor has no geometric meaning:
-    # its apex is the port and it opens forward along the approach axis. The
-    # bounded half-space above still covered the whole back hemisphere within
-    # the entry radius, so a chaser there (reached by co-rotating round the
-    # target, or by an inertial hold that the target turns under) was given
-    # corridor rows it cannot satisfy, the QP went infeasible and the zero
-    # fallback fired in bursts (v3c 262422: 108 consecutive steps from 6.65 m,
-    # port axial -4.37 m). Truth never judges the corridor unless latched.
-    if port_axial_distance < 0.0:
+    lateral = port_displacement - port_axial_distance * task.approach_axis
+    if float(np.linalg.norm(lateral)) > task.entry_disc_radius_m:
         return False
     point = np.asarray(position, dtype=np.float64)
     return bool(float(np.linalg.norm(point)) <= entry_plane_radius_m(task))
