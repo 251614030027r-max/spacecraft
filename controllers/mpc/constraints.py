@@ -258,6 +258,16 @@ def _predicted_terminal_active(
     port_axial_distance = float(task.approach_axis @ port_displacement)
     if port_axial_distance >= task.entry_port_axial_distance_m:
         return False
+    # Behind the port plane the approach corridor has no geometric meaning:
+    # its apex is the port and it opens forward along the approach axis. The
+    # bounded half-space above still covered the whole back hemisphere within
+    # the entry radius, so a chaser there (reached by co-rotating round the
+    # target, or by an inertial hold that the target turns under) was given
+    # corridor rows it cannot satisfy, the QP went infeasible and the zero
+    # fallback fired in bursts (v3c 262422: 108 consecutive steps from 6.65 m,
+    # port axial -4.37 m). Truth never judges the corridor unless latched.
+    if port_axial_distance < 0.0:
+        return False
     point = np.asarray(position, dtype=np.float64)
     return bool(float(np.linalg.norm(point)) <= entry_plane_radius_m(task))
 

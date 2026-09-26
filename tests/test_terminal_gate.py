@@ -136,3 +136,15 @@ def test_the_range_bound_is_what_excludes_the_defect_state() -> None:
     assert axial < task.entry_port_axial_distance_m  # the old gate fired here
     assert float(np.linalg.norm(position)) > entry_plane_radius_m(task)
     assert not _predicted_terminal_active(position, task, terminal_latched=False)
+
+
+def test_behind_the_port_plane_is_excluded_within_the_entry_radius() -> None:
+    """The corridor opens forward from the port; the back hemisphere is not terminal."""
+
+    task = PrecaptureTaskConfig()
+    position = np.array([2.87, 4.5, 0.0])  # far side of the target, inside 6 m
+    axial = float(task.approach_axis @ (position - task.port_position))
+    assert axial < 0.0
+    assert float(np.linalg.norm(position)) <= entry_plane_radius_m(task)
+    assert not _predicted_terminal_active(position, task, terminal_latched=False)
+    assert _predicted_terminal_active(position, task, terminal_latched=True)
