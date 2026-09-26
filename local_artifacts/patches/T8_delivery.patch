@@ -1,0 +1,811 @@
+From 5920b3dc9a6b2f0ab706478b9c463206e6ef2bec Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 11 Sep 2026 02:46:36 +0000
+Subject: [PATCH 1/3] docs: record the disconnected feasible set on the frozen
+ interface
+
+The full 42-cell grid on the one rescuable persistent-failure seed completes
+14 cells, and the successes fall into two separated regions with failure
+between and inside them: 3/7 at a pure inertial hold, 0/7 one step in, then
+5/7 and 5/7 at the two staging radii nearest the offline plan's, then 0/7
+closer still. Interpolating between two working settings lands in the hole.
+
+That non-convexity is the strongest available argument for a learned upper
+layer, and it rules out reading the result as a retuned setpoint. The best
+cell completes in 122.1 s where the earlier interface needed 271.2 s.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ docs/T6_COUPLING_INTERFACE.md | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/docs/T6_COUPLING_INTERFACE.md b/docs/T6_COUPLING_INTERFACE.md
+index 558c2f5..fd6cadd 100644
+--- a/docs/T6_COUPLING_INTERFACE.md
++++ b/docs/T6_COUPLING_INTERFACE.md
+@@ -134,6 +134,32 @@ T4 的横向扫描同样全败，结论是：
+ 
+ ---
+ 
++## 4b. 262005 在新接口上的完整网格：可行集不连通
++
++42 格（6 个暂存位置 × 7 个切入时刻），14 格完成。按暂存位置分组：
++
++| `a_commit` 暂存值 | 对应半径 | 完成 |
++|---|---|---|
++| −1.00（纯惯性等待） | 17.8 m | **3/7** |
++| −0.50 | 14.1 m | **0/7** |
++| 0.00 | 10.4 m | 1/7 |
++| **+0.35** | **7.8 m** | **5/7** |
++| **+0.50** | **6.7 m** | **5/7** |
++| +0.80 | 4.5 m | **0/7** |
++
++**成功区有两块，中间隔着一整块失败区，内侧也是失败区。** 在两个可行设置
++（−1.00 与 +0.35）之间插值会掉进 −0.50 的空洞；再往里推到 +0.80 又全灭。
++
++这是本工作支撑「需要学习层」最强的一条论据：
++
++- 上层动作空间里的可行集**非凸且不连通**，梯度法与手写规则都会掉进空洞；
++- 救援是**挑剔的**，不是「离得越近越好」，这排除了「只是重调了设定点」的质疑；
++- 最好的一格（+0.35，7.8 m 暂存，80 s 切入）**122.1 s 完成**，
++  而旧接口在同一工况上最快是 271.2 s。
++
++新接口因此既保住了旧接口唯一的救援能力，又把它的质量提高了一倍以上，
++而挑剔性没有被抹平——后者正是「这里存在一个值得学的决策」的证据。
++
+ ## 5. 本轮工程边界
+ 
+ - `controllers/`、`dynamics/`、`env/task.py`、`env/reward.py`、任务与环境配置：**未改动**
+-- 
+2.43.0
+
+
+From 00313ea6c23ec78ca94e9b1c2a738b32a0604998 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 03:21:03 +0000
+Subject: [PATCH 2/3] feat: adapt the evaluation path to the coupling
+ interface, and record T7
+
+The evaluation CLI now accepts the arrival-condition parametrisation and the
+execution-feedback observation, and refuses to load a checkpoint against an
+observation or action space it never saw -- a 34D policy fed a 31D
+observation used to be a silent mismatch. Self-consistency: the
+fixed-setpoint control through the wrapper completes 262000 at 113.6 s and
+fails 262001 at 38.7 s, matching the 113.5 / 38.6 s already on record.
+
+T7 verdict, recomputed from the four monitor files rather than summarised:
+the interface is what made the coupling learnable at all. The previous 4D
+parametrisation completed 0 of 1308 episodes over three seeds at 25k
+decisions; the new 2D one reaches 17.8% inside its first 10k decisions and
+75% over the last hundred. Nothing else changed, so nothing else can explain
+it.
+
+Two of four seeds complete nothing, and they are not idle: their return
+improves monotonically while their timeout fraction climbs from ~35% to
+~68%, their illegal-entry rate matches the learning seeds, and their
+reference radius parks at ~7 m instead of closing to ~4.7 m. They learned to
+run out the clock rather than to finish -- the hover pathology this
+repository already documented, reappearing in the new action space. The
+split is settled inside the first fifth of training, which points at
+exploration rather than interface capacity.
+
+The feedback ablation does not support the reverse channel: the run without
+it is ahead on first success, on every quartile bin and on final return. One
+learning seed per arm is far below the three the project rules require, so
+this is recorded as unsupported with the point estimate against it, not as a
+measured cost.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ docs/T7_RESULTS_AND_VERDICT.md        | 189 ++++++++++++++++++++++++++
+ experiments/evaluate_hybrid_policy.py |  32 ++++-
+ 2 files changed, 220 insertions(+), 1 deletion(-)
+ create mode 100644 docs/T7_RESULTS_AND_VERDICT.md
+
+diff --git a/docs/T7_RESULTS_AND_VERDICT.md b/docs/T7_RESULTS_AND_VERDICT.md
+new file mode 100644
+index 0000000..d7b232d
+--- /dev/null
++++ b/docs/T7_RESULTS_AND_VERDICT.md
+@@ -0,0 +1,189 @@
++# T7 训练结果与裁决（2026-09-12）
++
++数据源：下层 `T7_UPPER_REVIEW_20260912` 交付包，四组 `train.monitor.csv` 上层独立复算。
++四组均从零完成 60,000 上层决策步，无删种子、无挑检查点。
++
++---
++
++## 1. 头条：接口成了
++
++**这是本项目第一个学会完成任务的耦合策略。**
++
++| | 动作接口 | 预算 | 完成 |
++|---|---|---|---|
++| V3/V4（旧） | `radial_local` 4D | 25k 决策 × 3 种子 | **0 / 1308** |
++| V2（新） | `arrival_condition` 2D | 60k 决策 | **最后 100 回合 75%** |
++
++而且在**对齐预算**下也成立：V2/262200 的**头 10k 决策**就有 17.8% 完成率，
++旧接口在 25k 决策内一次都没完成过。首次成功出现在第 5,942 决策。
++
++T6 那次接口重构是这轮唯一改动，因此这个差别只能归给它。
++
++---
++
++## 2. 四个种子的分化：两个学会完成，两个学会拖延
++
++按训练回合四分位分箱（上层复算，非报告转述）：
++
++| | 四分位1 | 2 | 3 | 4 | 最后100 |
++|---|---|---|---|---|---|
++| **V2/262200 完成率** | 20% | 31% | 66% | 71% | **75%** |
++| 　　超时回合占比 | 24% | 35% | 10% | **4%** | 4% |
++| 　　平均回报 | −12.5 | −1.4 | +6.9 | +9.9 | **+12.4** |
++| **V3/262300 完成率** | 0.6% | 19% | 34% | 55% | **55%** |
++| 　　超时回合占比 | 28% | 32% | 29% | **7%** | 6% |
++| 　　平均回报 | −22.9 | −9.8 | −3.5 | +1.8 | **+1.0** |
++| **V2/262201 完成率** | 0 | 0 | 0 | 0 | **0** |
++| 　　超时回合占比 | 31% | 60% | 60% | **69%** | 69% |
++| 　　平均回报 | −17.9 | −10.1 | −9.7 | −8.3 | −9.5 |
++| **V3/262301 完成率** | 0 | 0 | 0 | 0 | **0** |
++| 　　超时回合占比 | 39% | 61% | 71% | **67%** | 60% |
++| 　　平均回报 | −17.1 | −10.7 | −8.2 | −9.0 | −11.1 |
++
++### 两个零成功种子不是"没学到东西"，是**学会了别的东西**
++
++它们的回报单调改善（−18 → −8.5），**但改善的来源是超时占比从约 35% 升到约 68%**。
++活种子的超时占比反向走到 4–7%。也就是：
++
++> **死种子收敛到"撑到 300 s 上限而不完成"，活种子收敛到"进去并完成"。**
++
++两条线索确认这不是"没在尝试"：
++
++- **非法进入次数两组几乎相同**（每回合约 0.4–0.5 次）——死种子照样穿越入口面，只是穿得不合法；
++- **终止时的参考半径**：死种子约 6.7–7.2 m，活种子约 4.5–5.2 m——死种子停在暂存区不往里推。
++
++这正是 `CLAUDE.md` 里记录过的**悬停病**在新动作空间里的复现：
++「若某个种子停在 `time_failure`、无违约、接近时间上限，它就是到了悬停，
++此时时域/完成奖励成为约束因子」。旧任务上悬停能白拿 73% 的脚本回报；
++本任务里"拖到超时"同样是一条低风险的次优解——不完成不会吃 −20 的失败罚，
++而每一次尝试切入都可能吃到。
++
++**这是一个探索壁垒，不是接口容量问题。** 分化在训练前 20% 就定了
++（活种子首次成功在第 5,942 / 13,062 决策）。
++
++---
++
++## 3. 反馈通道：无支撑，且方向一致地反着
++
++| | 首次成功 | 最后100 | 最后100 回报 | 每一分箱 |
++|---|---|---|---|---|
++| V2（无反馈） | **5,942** | **75%** | **+12.4** | 全部更高 |
++| V3（有反馈） | 13,062 | 55% | +1.0 | 全部更低 |
++
++**每一列都是 V2 更好，不是互有胜负。** 但每版只有一个活种子，
++按项目规矩（≥3 训练种子报分布）**这不足以下因果结论**，
++也不能说"反馈使性能下降 20 个百分点"。
++
++诚实表述只能是：**本轮消融不支持反馈通道带来收益，点估计方向不利。**
++
++一个可检验的机制假设（尚未验证）：反馈量是**策略自身近期动作的函数**，
++因此在训练早期它是随策略漂移的非平稳输入——三维额外输入在策略稳定前
++携带的信息少于它带来的分布漂移。这与 T5 预检的结论一致：
++当时就只有 6 个回合、规则事后拟合、无留出集，本就没到证据级别。
++
++**这条不必急着砍，但它现在不能当论文的第一创新点写。**
++
++---
++
++## 4. 工程状态
++
++`experiments/evaluate_hybrid_policy.py` 已适配（本次改动）：
++
++- `--parametrization arrival_condition`
++- `--execution-feedback`
++- 加载检查点时**校验观测/动作维数与环境一致**，不匹配直接报错并提示去读 manifest，
++  杜绝"把 34 维策略喂 31 维观测"这类静默错配
++
++自洽性核验：`--control desired_pose` 在 262000 完成于 **113.6 s**、262001 失败于 **38.7 s**，
++与仓库记录的 113.5 / 38.6 s 一致，说明适配没有改变下层行为。
++
++---
++
++## 5. 裁决：下一轮做什么
++
++### 授权
++
++1. **正式评估四个 final_model**，同一预先确定的 12 种子块，关闭探索，串行单进程。
++   命令见 §6。**保留全部训练种子**，包括两个零成功种子；不许只报最好种子。
++2. **补到每版 3 个训练种子**（项目规矩的下限）。当前 n=2 且其中一个全零，
++   噪声底线约 ±37 个百分点，在这个底线上比较任何机制都没有意义。
++3. **配对回放**：各取一个死种子和一个活种子，记录 `a_commit` / `a_radius` 的时序、
++   真实距离、几何裕度、进入事件、终止原因、反馈三量、累计回退、燃料。
++   **重点验一件事**：死种子的 `a_commit` 是否长期停在负半轴（＝长期等待）。
++   这是 §2 那条诊断的直接判据。
++
++### 不授权
++
++- 不改奖励、不改 MPC、不改任务定义、不加姿态通道
++- 不上 V4（预测回传）——在当前噪声底线上测不出来，等 3 种子基线稳了再排队
++- 不因为 V3 落后就现在砍掉反馈通道；n=2 不足以砍
++
++### 下一个单因子，我的建议
++
++拿到第三个种子后，若分化仍是"一半学会完成、一半学会拖延"，
++**下一个单因子应是探索温度 `ent_coef`**，而不是奖励或接口。
++
++理由：动作空间已从 6D/4D 降到 **2D**，而 `ent_coef` 仍沿用为高维动作定的 0.005。
++分化又发生在训练前 20%，是典型的探索问题。这是一个改动最小、
++与"不许把答案写进奖励"红线不冲突的因子。
++
++**注意**：`target_entropy = -3.0` 在固定 `ent_coef` 下是惰性字段，不参与计算；
++若将来改用自动温度，2D 动作应重设该值，且 `CLAUDE.md` 记录过自动温度发散的历史。
++
++---
++
++## 6. 评估命令
++
++```powershell
++# 四个训练好的策略（注意 V2/V3 的观测开关不同，写错会直接报错而不是静默错配）
++python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 262000 `
++    --horizon 20 --parametrization arrival_condition `
++    --phase-time-observation --execution-feedback `
++    --model logs\t7_retry1_20260911\sac_mpc_v3_bidirectional_262300\final_model.zip `
++    --output eval_v3_262300.json
++
++python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 262000 `
++    --horizon 20 --parametrization arrival_condition `
++    --phase-time-observation --execution-feedback `
++    --model logs\t7_retry1_20260911\sac_mpc_v3_bidirectional_262301\final_model.zip `
++    --output eval_v3_262301.json
++
++python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 262000 `
++    --horizon 20 --parametrization arrival_condition --phase-time-observation `
++    --model logs\t7_retry1_20260911\sac_mpc_v2_arrival_262200\final_model.zip `
++    --output eval_v2_262200.json
++
++python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 262000 `
++    --horizon 20 --parametrization arrival_condition --phase-time-observation `
++    --model logs\t7_retry1_20260911\sac_mpc_v2_arrival_262201\final_model.zip `
++    --output eval_v2_262201.json
++
++# 同场景对照行：经包装器交付的固定设定点下层（= Pure MPC）
++python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 262000 `
++    --horizon 20 --parametrization arrival_condition --phase-time-observation `
++    --control desired_pose --output eval_control_desired_pose.json
++```
++
++**串行单进程跑**。并行耗时不构成任何实时性结论。
++
++### 补种子
++
++```powershell
++python -B -m train.train_hybrid --steps 60000 --seed 262302 --parametrization arrival_condition --run-name sac_mpc_v3_bidirectional_262302
++python -B -m train.train_hybrid --steps 60000 --seed 262202 --parametrization arrival_condition --no-execution-feedback --run-name sac_mpc_v2_arrival_262202
++```
++
++---
++
++## 7. 论文口径
++
++这一轮能写进论文的是两条，都成立：
++
++1. **上层表达方式决定耦合能否学起来。** 同一个下层、同一个奖励、同一个任务，
++   仅改上层动作的参数化，完成率从 0/1308 变成 75%。
++2. **上层动作空间的可行集非凸且不连通**（T6 的 42 格扫描：
++   −1.00 处 3/7、−0.50 处 0/7、+0.35 处 5/7、+0.80 处 0/7）。
++   梯度法与手写规则在结构上会掉进空洞——这是"必须用学习"的数学理由。
++
++不能写的是：反馈通道有收益（本轮不支持），以及任何"我们解决了所有困难工况"的说法
++（262006 仍未被任何位置决策救回，其失败是指向失败）。
+diff --git a/experiments/evaluate_hybrid_policy.py b/experiments/evaluate_hybrid_policy.py
+index e9395fd..e685814 100644
+--- a/experiments/evaluate_hybrid_policy.py
++++ b/experiments/evaluate_hybrid_policy.py
+@@ -118,7 +118,7 @@ def parse_args() -> argparse.Namespace:
+     parser.add_argument("--horizon", type=int, default=20)
+     parser.add_argument(
+         "--parametrization",
+-        choices=["absolute", "radial_local"],
++        choices=["absolute", "radial_local", "arrival_condition"],
+         default="radial_local",
+         help="Action parametrisation used by the trained policy or control.",
+     )
+@@ -132,6 +132,16 @@ def parse_args() -> argparse.Namespace:
+         action="store_true",
+         help="Use the V4 31D observation expected by phase/time-trained policies.",
+     )
++    parser.add_argument(
++        "--execution-feedback",
++        action="store_true",
++        help=(
++            "Append the lower layer's 3D execution summary, as the coupled "
++            "policies trained with the reverse channel expect. A policy is "
++            "loaded against the observation it was trained on, so this has to "
++            "match the run's manifest rather than be guessed."
++        ),
++    )
+     parser.add_argument(
+         "--control",
+         choices=["desired_pose", "random"],
+@@ -190,8 +200,27 @@ def main() -> None:
+                 include_target_phase_and_time_observation=(
+                     args.phase_time_observation
+                 ),
++                include_execution_feedback_observation=args.execution_feedback,
+             )
+         )
++        if policy is not None and episode == 0:
++            expected = int(np.prod(policy.observation_space.shape))
++            actual = int(np.prod(env.observation_space.shape))
++            if expected != actual:
++                raise ValueError(
++                    f"the checkpoint expects a {expected}D observation and this "
++                    f"configuration builds a {actual}D one. Set "
++                    "--phase-time-observation / --execution-feedback to match "
++                    "the run's manifest instead of loading a policy against an "
++                    "observation it never saw."
++                )
++            expected_action = int(np.prod(policy.action_space.shape))
++            actual_action = int(np.prod(env.action_space.shape))
++            if expected_action != actual_action:
++                raise ValueError(
++                    f"the checkpoint expects a {expected_action}D action and "
++                    f"this parametrisation gives {actual_action}D"
++                )
+         observation, info = env.reset(seed=seed)
+         desired = env.environment_config.precapture_task.desired_position
+         minimum_margins = {
+@@ -429,6 +458,7 @@ def main() -> None:
+         "horizon": args.horizon,
+         "waypoint_parametrization": args.parametrization,
+         "phase_time_observation": args.phase_time_observation,
++        "execution_feedback": args.execution_feedback,
+         "hyperparameters": {"gamma": SAC_MPC_HYBRID.gamma},
+         "compute_note": (
+             "valid only if this ran serially in a single process; the MPC is "
+-- 
+2.43.0
+
+
+From 0405efd67bbb79f7c9b2d51a39fa7eed55ebd6dd Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 03:37:53 +0000
+Subject: [PATCH 3/3] feat: add the per-decision replay diagnostic and the T8
+ execution order
+
+The T7 monitor keeps one row per episode, which shows that two of four seeds
+run the clock out but not how they do it. replay_hybrid_policy.py runs a
+checkpoint deterministically and records, per decision, the commanded action,
+true range, reference radius, geometry margins, entry events, feedback
+summary, fallback count and the termination flags -- and prints the fraction
+of decisions whose commit channel sits on the negative half, which is the
+directly falsifiable form of the T7 hypothesis that the dead seeds simply
+learned to wait. It is read-only and changes no configuration.
+
+The execution order covers the formal twelve-seed evaluation of all four
+checkpoints plus the fixed-setpoint control row, the third training seed each
+version needs to meet the three-seed rule, the paired dead-versus-live
+replay, and a one-off timing breakdown of the decision cost. It keeps all
+four seeds including the two that complete nothing, and it stops rather than
+improvising if the replay falsifies the waiting hypothesis.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ docs/T8_EXECUTION_ORDER.md          | 207 ++++++++++++++++++++++++++++
+ experiments/replay_hybrid_policy.py | 187 +++++++++++++++++++++++++
+ 2 files changed, 394 insertions(+)
+ create mode 100644 docs/T8_EXECUTION_ORDER.md
+ create mode 100644 experiments/replay_hybrid_policy.py
+
+diff --git a/docs/T8_EXECUTION_ORDER.md b/docs/T8_EXECUTION_ORDER.md
+new file mode 100644
+index 0000000..2b527c3
+--- /dev/null
++++ b/docs/T8_EXECUTION_ORDER.md
+@@ -0,0 +1,207 @@
++# T8 执行单：正式评估、补种子、死种子诊断（2026-09-12）
++
++> 读者：下层执行窗口（`D:\py\DRL2`）。本文自包含。
++> 前置：远端 `9cd503a` + 本次增量补丁 `T8_delivery.patch`。
++> **授权范围：S1–S5。不改奖励、不改 MPC、不改任务定义、不加新动作通道。**
++
++---
++
++## 0. 上一轮发生了什么（一句话）
++
++T7 四组训练全部跑完 60,000 决策步。**耦合第一次学会了完成任务**——
++最好的种子最后 100 回合完成 75%，而上一代接口三种子 25k 步是 0/1308。
++但四个种子里**两个完成率恒为 0**，而且它们不是不动：回报在改善，
++改善来源是超时回合占比从 35% 涨到 68%——**它们学会了拖到 300 秒上限**。
++
++本轮要做三件事：把四个模型正式评估出来、把种子补到 3 个、搞清楚死种子在干什么。
++
++---
++
++## S1：应用增量补丁
++
++补丁放仓库根目录（与 `.git` 同级）：
++
++```powershell
++cd D:\py\DRL2
++git status --short          # 必须干净
++git am -3 T8_delivery.patch
++python -B -m pytest -q
++```
++
++补丁含 3 条提交，改动三处：
++
++| 文件 | 改动 |
++|---|---|
++| `experiments/evaluate_hybrid_policy.py` | 支持 `--parametrization arrival_condition` 与 `--execution-feedback`；**加载检查点时校验观测/动作维数**，不匹配直接报错 |
++| `experiments/replay_hybrid_policy.py` | **新增**，逐决策回放诊断脚本（只读） |
++| `docs/` | T7 裁决、本执行单 |
++
++**回归预期**：本地原有数 + 0（本补丁未加测试）。上一轮你那边是 217 passed，
++若仍是 217 即通过；**数字不同先报告**。
++
++### 自洽性核验（上游已做，本机可复核）
++
++评估路径没有改变下层行为：`--control desired_pose` 在 262000 完成于 **113.6 s**、
++262001 失败于 **38.7 s**，与仓库记录的 113.5 / 38.6 s 一致。
++
++---
++
++## S2：正式评估四个模型（**串行单进程**）
++
++同一 12 种子块 262000–262011，关闭探索。**保留全部四个种子，包括两个零成功的。**
++
++**注意观测开关必须与 manifest 一致**：V3 训练时开了反馈（34 维），V2 没开（31 维）。
++写错现在会直接报错，不会静默错配。
++
++```powershell
++# V3（有反馈，34 维）
++python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 262000 --horizon 20 `
++    --parametrization arrival_condition --phase-time-observation --execution-feedback `
++    --model logs\t7_retry1_20260911\sac_mpc_v3_bidirectional_262300\final_model.zip `
++    --output logs\t8_eval\eval_v3_262300.json
++
++python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 262000 --horizon 20 `
++    --parametrization arrival_condition --phase-time-observation --execution-feedback `
++    --model logs\t7_retry1_20260911\sac_mpc_v3_bidirectional_262301\final_model.zip `
++    --output logs\t8_eval\eval_v3_262301.json
++
++# V2（无反馈，31 维）
++python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 262000 --horizon 20 `
++    --parametrization arrival_condition --phase-time-observation `
++    --model logs\t7_retry1_20260911\sac_mpc_v2_arrival_262200\final_model.zip `
++    --output logs\t8_eval\eval_v2_262200.json
++
++python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 262000 --horizon 20 `
++    --parametrization arrival_condition --phase-time-observation `
++    --model logs\t7_retry1_20260911\sac_mpc_v2_arrival_262201\final_model.zip `
++    --output logs\t8_eval\eval_v2_262201.json
++
++# 同场景对照行：经包装器交付的固定设定点下层（= Pure MPC）
++python -B -m experiments.evaluate_hybrid_policy --episodes 12 --seed 262000 --horizon 20 `
++    --parametrization arrival_condition --phase-time-observation `
++    --control desired_pose --output logs\t8_eval\eval_control_desired_pose.json
++```
++
++**这五条必须串行、单进程、不与训练同时跑。** 其中的 compute 列是实时性证据，
++任何并行运行的耗时都作废。
++
++**报回来**：每个 JSON 的完成数、完成时间、力冲量、最差真值裕度、
++`controller p95/budget`。
++
++---
++
++## S3：补第三个种子（可与 S2 之外的时间并行）
++
++项目规矩是 ≥3 训练种子报分布。当前每版只有 1 个活种子，噪声底线约 ±37 个百分点，
++在这个底线上比较任何机制都没有意义。
++
++```powershell
++python -B -m train.train_hybrid --steps 60000 --seed 262302 `
++    --parametrization arrival_condition --run-name sac_mpc_v3_bidirectional_262302
++
++python -B -m train.train_hybrid --steps 60000 --seed 262202 `
++    --parametrization arrival_condition --no-execution-feedback `
++    --run-name sac_mpc_v2_arrival_262202
++```
++
++从零开始、不载检查点、参数一字不改。训练可以并行，**但 S2 的评估必须单独串行跑**。
++
++---
++
++## S4：死种子诊断（本轮最关键的一步）
++
++T7 裁决给出一个**可证伪的假设**：
++
++> 零成功种子收敛到「长期等待、拖到上限」，
++> 也就是它的 `a_commit` 长期停在**负半轴**（负＝在外面惯性冻结地等，正＝往里切）。
++
++补丁新增的 `experiments/replay_hybrid_policy.py` 就是验这一条的。
++它逐决策记录动作、真实距离、参考半径、各几何裕度、进入事件、
++反馈三量、回退数、终止原因，并直接打印 `a_commit` 落在负半轴的比例。
++
++```powershell
++# 死种子
++python -B -m experiments.replay_hybrid_policy --episodes 4 --seed 262000 `
++    --parametrization arrival_condition --phase-time-observation --execution-feedback `
++    --model logs\t7_retry1_20260911\sac_mpc_v3_bidirectional_262301\final_model.zip `
++    --output logs\t8_eval\replay_v3_262301_dead.json
++
++python -B -m experiments.replay_hybrid_policy --episodes 4 --seed 262000 `
++    --parametrization arrival_condition --phase-time-observation `
++    --model logs\t7_retry1_20260911\sac_mpc_v2_arrival_262201\final_model.zip `
++    --output logs\t8_eval\replay_v2_262201_dead.json
++
++# 活种子（配对对照，同样的 4 个场景）
++python -B -m experiments.replay_hybrid_policy --episodes 4 --seed 262000 `
++    --parametrization arrival_condition --phase-time-observation --execution-feedback `
++    --model logs\t7_retry1_20260911\sac_mpc_v3_bidirectional_262300\final_model.zip `
++    --output logs\t8_eval\replay_v3_262300_live.json
++
++python -B -m experiments.replay_hybrid_policy --episodes 4 --seed 262000 `
++    --parametrization arrival_condition --phase-time-observation `
++    --model logs\t7_retry1_20260911\sac_mpc_v2_arrival_262200\final_model.zip `
++    --output logs\t8_eval\replay_v2_262200_live.json
++```
++
++**要回答的四个问题**（照 JSON 直接答，不要推测）：
++
++1. 死种子的 `fraction_commit_negative` 是不是明显高于活种子？
++   `action_mean[0]`、`action_min/max[0]` 分别是多少？
++2. 死种子的 `ended_by` 主要是 `time_failure` 还是别的？
++3. 死种子在整条轨迹上 `true_range_m` 停在哪个范围？活种子推到多近？
++4. **反馈三量在死/活种子上是不是近乎常量？**
++   （`hybrid_feedback_*` 三列的取值范围。若三列几乎不动，
++   说明这条通道在部署时携带的信息很少，对解释 T7 的消融结果直接相关。）
++
++---
++
++## S5：一次性耗时分解（不在正式运行中加持续诊断）
++
++一个上层决策约 1.3 秒，其中 MPC 求解约 0.84 秒。要知道这 0.84 秒里
++**真正解 QP 占多少、CVXPY 每次调用的组装开销占多少**。
++
++做法：短窗口（例如 300 个控制步）分别计时
++参考构造 / 线性化 / CVXPY 装配 / 求解器求解 / RK45 传播 / 网络更新，
++覆盖 `learning_starts=2000` **之后**的阶段，不能只测随机采样阶段。
++
++**这只是测量，本轮不做任何优化实现。** 若组装开销占大头，
++下一轮再考虑绕过 CVXPY 直接更新求解器数据——那属于纯实现改动，
++必须与现实现逐位对照后才能采用。
++
++**明确不算加速**（会改变控制行为，等于换实验）：放大仿真步长、
++降低 MPC 调用频率、缩短预测时域、放松求解容差、用近似控制器替代 MPC。
++
++---
++
++## 红线（不变）
++
++1. **算力只认串行单进程。** 并行仅用于训练，任何并行耗时不构成实时结论。
++2. **违约按 RK45 真值 + 真实几何判**，不用 MPC 的预测裕度代替。
++3. **不看结果调参数**：不换种子、不挑检查点、不删失败种子。四个种子全部报。
++4. **每次训练从零开始**，不续训、不载检查点。
++5. **任务参数冻结**：几何、约束、时限、奖励一律不动。
++6. 不加第三个动作通道、不加姿态通道、不给「正确进入时机」额外奖励。
++
++---
++
++## 什么情况停下来报告
++
++- S1 回归数与本地上一轮不一致
++- S2 任一评估报观测/动作维数不匹配（说明 manifest 与命令开关对不上，**不要靠试**，去读 manifest）
++- S4 的四个问题里，死种子的 `fraction_commit_negative` **并不**明显高于活种子
++  （那说明 T7 裁决的假设被证伪，下一个单因子要重选，别自行推进）
++- 补种子时又出现全程零成功，或出现此前那种进程无故停止
++- 任何看起来需要改任务／奖励／MPC 才能推进的情况
++
++---
++
++## 交回来的东西
++
++1. S2 的五个评估 JSON + 一张汇总表
++2. S3 两个新训练的日志目录（跑完再报，中途不用报）
++3. S4 的四个回放 JSON + 上面四个问题的直接回答
++4. S5 的耗时分解结果
++5. 推送本轮全部提交
++
++**不要**在本轮修改任何运行代码、不要自行启动第三轮训练方案、
++不要因为 V3 落后就移除反馈通道——每版只有 1 个活种子，不足以下这个结论。
+diff --git a/experiments/replay_hybrid_policy.py b/experiments/replay_hybrid_policy.py
+new file mode 100644
+index 0000000..0f7bd6f
+--- /dev/null
++++ b/experiments/replay_hybrid_policy.py
+@@ -0,0 +1,187 @@
++"""Per-decision replay of a trained coupling policy, for diagnosis only.
++
++T7 produced two seeds per version that complete nothing while their return
++still improves, and the monitor only keeps one row per episode -- enough to
++see *that* they run the clock out, not *how*. This records what the upper
++layer actually commanded, decision by decision, so a dead seed and a live one
++can be put side by side.
++
++It is a read-only diagnostic. It runs the policy deterministically, changes
++no configuration, and writes one JSON file.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from dataclasses import replace
++from pathlib import Path
++from typing import Any
++
++import numpy as np
++
++from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
++from env.phase2_env import precapture_planning_environment_config
++
++
++TERMINATION_KEYS = (
++    "time_failure",
++    "distance_failure",
++    "keepout_failure",
++    "fov_failure",
++    "outer_speed_failure",
++    "outer_radial_failure",
++    "terminal_constraint_failure",
++    "transition_speed_failure",
++)
++
++MARGIN_KEYS = (
++    "fov_margin_rad",
++    "keepout_margin_m",
++    "outer_radial_margin_m_s",
++    "outer_inertial_speed_margin_m_s",
++    "terminal_total_speed_margin_m_s",
++    "closing_speed_margin_m_s",
++)
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--model", type=Path, required=True)
++    parser.add_argument("--episodes", type=int, default=4)
++    parser.add_argument("--seed", type=int, default=262000)
++    parser.add_argument("--horizon", type=int, default=20)
++    parser.add_argument(
++        "--parametrization",
++        choices=["absolute", "radial_local", "arrival_condition"],
++        default="arrival_condition",
++    )
++    parser.add_argument("--phase-time-observation", action="store_true")
++    parser.add_argument("--execution-feedback", action="store_true")
++    parser.add_argument("--output", type=Path, required=True)
++    return parser.parse_args()
++
++
++def main() -> None:
++    args = parse_args()
++    if args.output.exists():
++        raise FileExistsError(args.output)
++    from stable_baselines3 import SAC
++
++    policy = SAC.load(args.model, device="cpu")
++    environment_config = replace(
++        precapture_planning_environment_config(), cache_target_trajectory=False
++    )
++
++    episodes: list[dict[str, Any]] = []
++    for index in range(args.episodes):
++        seed = args.seed + index
++        env = PrecaptureHybridEnv(
++            environment_config=environment_config,
++            hybrid_config=PrecaptureHybridConfig(
++                horizon_steps=args.horizon,
++                waypoint_parametrization=args.parametrization,
++                runtime_diagnostics=False,
++                include_target_phase_and_time_observation=(
++                    args.phase_time_observation
++                ),
++                include_execution_feedback_observation=args.execution_feedback,
++            ),
++        )
++        expected = int(np.prod(policy.observation_space.shape))
++        actual = int(np.prod(env.observation_space.shape))
++        if expected != actual:
++            raise ValueError(
++                f"the checkpoint expects a {expected}D observation and this "
++                f"configuration builds a {actual}D one; match the run manifest"
++            )
++        observation, info = env.reset(seed=seed)
++        decisions: list[dict[str, Any]] = []
++        terminated = truncated = False
++        while not (terminated or truncated):
++            action, _ = policy.predict(observation, deterministic=True)
++            action = np.asarray(action, dtype=np.float64).reshape(-1)
++            observation, reward, terminated, truncated, info = env.step(action)
++            row = {
++                "t_s": round(float(env.env.time_seconds), 3),
++                "action": [round(float(v), 5) for v in action],
++                "reward": round(float(reward), 5),
++                "true_range_m": round(
++                    float(np.linalg.norm(env._current_position())), 4
++                ),
++                "waypoint_radius_m": round(
++                    float(info["hybrid_waypoint_radius_m"]), 4
++                ),
++                "qp_zero_fallbacks": int(info["hybrid_qp_zero_fallbacks"]),
++                "terminal_region_active": bool(info["terminal_region_active"]),
++                "entry_crossed": bool(info.get("terminal_entry_crossed", False)),
++                "entry_legal": bool(info.get("terminal_entry_legal", False)),
++                "illegal_entries": float(info["illegal_terminal_entry_count"]),
++            }
++            for key in MARGIN_KEYS:
++                if key in info:
++                    row[key] = round(float(info[key]), 5)
++            for key in (
++                "hybrid_feedback_fallback_fraction",
++                "hybrid_feedback_solved_peak_slack",
++                "hybrid_feedback_mean_actuator_usage",
++            ):
++                if key in info:
++                    row[key] = round(float(info[key]), 5)
++            decisions.append(row)
++        ended_by = [key for key in TERMINATION_KEYS if bool(info.get(key, False))]
++        actions = np.array([row["action"] for row in decisions])
++        episodes.append(
++            {
++                "seed": seed,
++                "completed": bool(info.get("completed", False)),
++                "decisions": len(decisions),
++                "end_time_s": round(float(env.env.time_seconds), 3),
++                "ended_by": ended_by or ["none_flagged"],
++                "illegal_entries": float(info["illegal_terminal_entry_count"]),
++                "terminal_region_active_at_end": bool(
++                    info["terminal_region_active"]
++                ),
++                "action_mean": [round(float(v), 5) for v in actions.mean(axis=0)],
++                "action_std": [round(float(v), 5) for v in actions.std(axis=0)],
++                "action_min": [round(float(v), 5) for v in actions.min(axis=0)],
++                "action_max": [round(float(v), 5) for v in actions.max(axis=0)],
++                # The hypothesis the T7 verdict wants tested: a seed that never
++                # completes may simply be holding. Under this parametrisation
++                # holding is the negative half of the first channel.
++                "fraction_commit_negative": round(
++                    float(np.mean(actions[:, 0] < 0.0)), 4
++                ),
++                "trace": decisions,
++            }
++        )
++        summary = episodes[-1]
++        print(
++            f"seed {seed}: completed={summary['completed']} "
++            f"decisions={summary['decisions']} "
++            f"ended_by={'/'.join(summary['ended_by'])} "
++            f"a_commit mean={summary['action_mean'][0]:+.3f} "
++            f"(neg {summary['fraction_commit_negative']:.0%}) "
++            f"a_radius mean={summary['action_mean'][1]:+.3f}",
++            flush=True,
++        )
++        env.close()
++
++    args.output.write_text(
++        json.dumps(
++            {
++                "model": str(args.model),
++                "parametrization": args.parametrization,
++                "phase_time_observation": args.phase_time_observation,
++                "execution_feedback": args.execution_feedback,
++                "episodes": episodes,
++            },
++            indent=2,
++        ),
++        encoding="utf-8",
++    )
++    print(f"wrote {args.output}")
++
++
++if __name__ == "__main__":
++    main()
+-- 
+2.43.0
+

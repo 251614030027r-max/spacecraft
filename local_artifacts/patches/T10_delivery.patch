@@ -1,0 +1,2628 @@
+From 0f7444dfd7537d1a1d06d053cfbe2b2dabb30f20 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 07:36:27 +0000
+Subject: [PATCH 1/6] measure: the MPC enforces the approach corridor 16 m from
+ the target
+
+_predicted_terminal_active gates the eleven terminal rows on a half-space,
+approach_axis @ (p - port) < 4.5, with no bound on range. Every state on that
+side of the plane has the approach corridor imposed on it at any distance,
+while normalized_precapture_truth_margins and the environment's violation
+accounting gate the same rows on the entry-disc latch. The optimiser therefore
+refuses to solve because of a region the task never judges.
+
+Measured statically: crossing the gate plane at a fixed 16.4 m range flips the
+worst corridor lateral row from inactive to -4.130, which needs twice the
+constraint_slack_limit of 2.0, so the QP reports infeasible and the zero-wrench
+fallback hands the chaser to omega * r. On 262001 that is 379 of 387 steps from
+t = 0.8 s, reproducing the recorded row of PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1
+exactly; the slack the QP actually demands there is 4.033 and the demanding row
+is a corridor lateral facet.
+
+diagnose_terminal_gate.py adds --terminal-gate proximity, which bounds the
+half-space by ||p|| <= ||port|| + entry_axial = 6.0 m. Both terms are frozen
+task parameters, so the treatment introduces no tunable constant. The 12-seed
+sweeps are in flight and no main-table row is restated here.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ docs/TERMINAL_GATE_DEFECT.md          | 176 +++++++++++++++++++++
+ experiments/diagnose_terminal_gate.py | 212 ++++++++++++++++++++++++++
+ 2 files changed, 388 insertions(+)
+ create mode 100644 docs/TERMINAL_GATE_DEFECT.md
+ create mode 100644 experiments/diagnose_terminal_gate.py
+
+diff --git a/docs/TERMINAL_GATE_DEFECT.md b/docs/TERMINAL_GATE_DEFECT.md
+new file mode 100644
+index 0000000..12ead70
+--- /dev/null
++++ b/docs/TERMINAL_GATE_DEFECT.md
+@@ -0,0 +1,176 @@
++# The MPC enforces the approach corridor 16 m from the target
++
++Measured 2026-09-12 in the upper-level sandbox, fixed setpoint only, no learned
++policy and no training. Reproduce with
++`python -B -m experiments.diagnose_terminal_gate`.
++
++## 1. What was being investigated
++
++`docs/PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §4 left one question open:
++
++> The zero-wrench fallback is a candidate defect, and it has not been changed.
++> Whether a better fallback (hold the previous shifted solution, or **re-solve
++> with the terminal rows relaxed**) rescues these four seeds is an open, cheap,
++> single-factor question.
++
++Its §3e and §3f closed the first half. `infeasible_fallback="shift"` rescues
++0 of 4 failures; raising `constraint_slack_limit` from 2.0 to 20.0 makes all 3
++tested failures die sooner. From those two negatives §3g concluded:
++
++> On these seeds the fixed setpoint is a reference for which the constrained
++> problem has no satisfying trajectory inside the linearised horizon. [...]
++> **The only remaining thing that can change is the reference itself** -- and
++> choosing the reference is precisely what an upper layer does.
++
++That sentence is the motivation the whole coupling line rests on. It is sound
++only if the constraint set is the right one. **The terminal rows were never
++audited, and they are not the right ones.**
++
++## 2. The defect
++
++`controllers/mpc/constraints._predicted_terminal_active` decides when the eleven
++terminal rows -- corridor axial, eight corridor lateral facets, terminal total
++speed, closing speed -- enter the QP:
++
++```python
++return bool(terminal_latched or port_axial_distance < task.entry_port_axial_distance_m)
++```
++
++With the task's frozen numbers (`port = (-1.5, 0, 0)`, `axis = (-1, 0, 0)`,
++`entry_port_axial_distance_m = 4.5`) the second clause is `p_x > -6`. It is a
++**half-space, with no bound on range**: every state on that side of the plane
++has the approach corridor imposed on it, at 6 m or at 26 m.
++
++The truth side does not agree. `normalized_precapture_truth_margins` gates the
++same rows on `terminal_latched` alone, and `SE3RendezvousEnv` scores a corridor
++violation only after `_terminal_region_entered` latches on a *legal entry-disc
++crossing*. `_predicted_terminal_active` is used at
++`controllers/mpc/constraints.py:308` and `:507` and nowhere else -- it is
++purely the optimiser's own view.
++
++**So the optimiser refuses to solve because of a region the task never judges.**
++
++## 3. Measured, three ways
++
++### 3a. Static, no trajectory involved
++
++Walking one coordinate across the gate plane at a fixed 16.4 m range, target
++tumble 0.041231 rad/s, nothing latched (`scratch: gate_unit3`):
++
++| `p_x` | range | `port_axial` | MPC gate | worst MPC corridor row | slack needed (cap **2.0**) | truth corridor row |
++|---:|---:|---:|---|---:|---:|---:|
++| -6.84 | 16.76 m | 5.340 | off | inactive | 0.000 | inactive |
++| -6.10 | 16.47 m | 4.600 | off | inactive | 0.000 | inactive |
++| **-5.99** | **16.43 m** | **4.490** | **ON** | **-4.130** | **4.130** | inactive |
++| -5.90 | 16.39 m | 4.400 | ON | -4.149 | 4.149 | inactive |
++| -5.50 | 16.25 m | 4.000 | ON | -4.236 | 4.236 | inactive |
++
++A step of 11 cm turns a satisfied constraint set into one that needs twice the
++available slack, 16.4 m from the target, while the truth margins stay inactive
++on both sides. The chaser is ~15 m off the approach axis and is being asked to
++be inside a cone whose radius there is about 2.9 m.
++
++### 3b. In the QP, on the seed the project calls a feasibility failure
++
++Seed 262001, h20, fixed setpoint. The baseline reproduces the recorded row of
++`docs/PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §2 exactly -- 387 steps,
++**379 infeasible**, first at **0.8 s**, final FOV margin -0.0007 rad.
++
++Re-running with the slack cap lifted so the same QP always solves, and reading
++the slack it then spends:
++
++| t | status (cap 2.0) | slack demanded |
++|---:|---|---:|
++| 0.0 - 0.7 s | optimal | 0.0001 |
++| **0.8 s** | **infeasible** | **4.033** |
++| 1.0 s | infeasible | 4.044 |
++| 1.2 s | infeasible | 4.223 |
++
++The demanding row is **row 8 -- a corridor lateral facet**. At t = 0.8 s the
++chaser is at target-frame `(-6.84, -10.91, 10.72)`, 16.75 m out, with
++`port_axial = 5.34`, so the gate is *off at the current state*: it is the h20
++rollout, drifting at 0.45 m/s of axial closure, that reaches across the plane
++inside the 2 s horizon. That is why infeasibility begins at 0.8 s and not at 0.
++
++`infeasible_fallback="zero"` then commands zero wrench. At `Lambda > 1` that is
++not station keeping, and the chaser drifts to a 49.96 deg FOV violation at
++38.7 s having never had a controller.
++
++### 3c. Closed loop, three seeds so far
++
++Fixed setpoint, h20, `--terminal-gate proximity` (§4) against the repository
++default. The two seeds that already worked reproduce, which is the self-check
++that the factor touched nothing else:
++
++| seed | default gate | proximity gate |
++|---|---|---|
++| 262000 | completes 113.6 s, 202.0 N s, 0 infeasible | completes **113.6 s, 202.0 N s**, 0 infeasible |
++| 262002 | completes 115.8 s, 132.2 N s, 0 infeasible | completes **115.9 s, 132.2 N s**, 0 infeasible |
++| 262001 | **fails 38.7 s**, 379/387 infeasible from 0.8 s | **completes 121.9 s**, 298.8 N s, **0/1219 infeasible** |
++
++`docs/PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §1 records 262001 completing in
++**121.8 s** on the pre-F1 tree. The proximity gate returns that completion while
++keeping F1's corridor preview inside the entry sphere.
++
++**The full 12-seed sweeps (h20 proximity, h35 default, h35 proximity) are in
++flight and are not reported here.** Until they land nothing in §5 is settled,
++and no main-table row may be restated.
++
++## 4. Single factor: bound the gate by range
++
++Treatment, and nothing else changes:
++
++```python
++terminal_latched or (port_axial_distance < entry_port_axial_distance_m
++                     and ||p|| <= ||port_position|| + entry_port_axial_distance_m)
++```
++
++`1.5 + 4.5 = 6.0 m` is where the entry plane sits relative to the target
++centre. Both terms are frozen task parameters, so the treatment adds **no
++tunable constant**. Reference, horizon, solver, slack cap and fallback are
++untouched.
++
++## 5. What is at stake, and what is not yet established
++
++The defect in §2 and §3a is established: it is a static property of the
++constraint assembly, it needs no trajectory, and it is independent of any
++sweep outcome. The optimiser imposes the approach corridor on states the task
++does not judge, and the resulting linearised violation is about twice the
++slack cap, so the QP reports `infeasible` rather than paying a penalty.
++
++What is **not** yet established is how much of the project's standing evidence
++that accounts for. The claims that would have to be re-derived if the sweeps
++confirm §3c are, in order of how much rests on them:
++
++1. `PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §3g -- *"the fixed setpoint is a
++   reference for which the constrained problem has no satisfying trajectory
++   [...] the only remaining thing that can change is the reference itself"*.
++   This is the motivation the coupling line is built on.
++2. The horizon-invariant failure set `{262005, 262006}` and the four-seed h20
++   failure set `{262001, 262005, 262006, 262011}`.
++3. `T6_COUPLING_INTERFACE.md`'s disconnected feasible set, which was scanned on
++   those seeds.
++4. The T8 reading that a learned upper layer *preserves lower-layer
++   feasibility* -- its strongest single piece of evidence is 262005, which the
++   fixed setpoint loses to 172 infeasible steps from t = 31.1 s and the learned
++   V2/262200 completes with 0.
++5. The h20/h50 compute trade, *"the horizon that wins every quality column is
++   the horizon that cannot be run at the control period"*. If the gate is what
++   was costing h20 its completions, that gap narrows.
++
++None of those is retracted here. They are listed so that the sweep is read as
++the test of them that it is.
++
++## 6. Reproduce
++
++```
++python -B -m experiments.diagnose_terminal_gate --horizon 20 \
++    --seeds 262000 262001 262002 262003 262004 262005 \
++            262006 262007 262008 262009 262010 262011 \
++    --terminal-gate proximity --output logs/terminal_gate/gate_h20.json
++```
++
++Drop `--terminal-gate proximity` for the repository default. The static table
++of §3a is `_predicted_terminal_active` and
++`normalized_precapture_constraint_margins` evaluated directly, with no
++environment involved.
+diff --git a/experiments/diagnose_terminal_gate.py b/experiments/diagnose_terminal_gate.py
+new file mode 100644
+index 0000000..4b0f395
+--- /dev/null
++++ b/experiments/diagnose_terminal_gate.py
+@@ -0,0 +1,212 @@
++"""Which states does the MPC enforce the approach corridor on?
++
++The lower layer's terminal rows -- corridor axial, the eight corridor lateral
++facets, terminal total speed and closing speed -- are switched on by
++``controllers.mpc.constraints._predicted_terminal_active``.  That predicate is
++a **half-space**::
++
++    terminal_latched or approach_axis @ (p - port) < entry_port_axial_distance_m
++
++With the task's own numbers (``port = (-1.5, 0, 0)``, ``axis = (-1, 0, 0)``,
++``entry_port_axial_distance_m = 4.5``) the second clause is ``p_x > -6``, and it
++carries **no bound on range**.  A chaser 16.75 m from the target with a 15 m
++lateral offset therefore has the approach corridor imposed on it, and the
++linearised corridor facet it violates asks for about 4.0 normalised units of
++slack against a ``constraint_slack_limit`` of 2.0.  The QP reports
++``infeasible``, ``infeasible_fallback="zero"`` commands zero wrench, and at
++``Lambda > 1`` a chaser with no wrench is handed to ``omega * r``.
++
++The truth side does not agree with this.  ``normalized_precapture_truth_margins``
++gates the same rows on ``terminal_latched`` alone, and the environment scores a
++corridor violation only once ``_terminal_region_entered`` has latched on a legal
++entry-disc crossing.  So the optimiser is refusing to solve because of a region
++the task never judges.
++
++``--terminal-gate proximity`` adds the missing bound and changes nothing else::
++
++    ... and ||p|| <= port_radius + entry_port_axial_distance_m   (= 6.0 m)
++
++Both terms are frozen task parameters -- that distance is where the entry plane
++sits relative to the target centre -- so the treatment introduces no tunable
++constant.  The reference, horizon, solver, slack cap and fallback are untouched,
++which makes this a single interpretable factor against the repository default.
++
++The upper action is the fixed setpoint throughout (``a = (+1, *)`` under
++``arrival_condition``), so this measures the lower layer alone.
++
++Reproduce::
++
++    python -B -m experiments.diagnose_terminal_gate --horizon 20 \\
++        --seeds 262000 262001 262002 262003 262004 262005 \\
++                262006 262007 262008 262009 262010 262011 \\
++        --terminal-gate proximity --output logs/terminal_gate/gate_h20.json
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from pathlib import Path
++from typing import Any
++
++import numpy as np
++
++import controllers.mpc.constraints as constraints
++from controllers.mpc.prediction import relative_to_vector
++from dynamics.types import GeneralizedForce
++from env.action import wrench_to_normalized
++from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
++from env.phase2_env import precapture_planning_environment_config
++from env.task import PrecaptureTaskConfig
++
++_HALF_SPACE_GATE = constraints._predicted_terminal_active
++
++
++def entry_plane_radius_m(task: PrecaptureTaskConfig) -> float:
++    """Distance from the target centre to the entry plane, from frozen terms."""
++
++    return float(
++        np.linalg.norm(task.port_position) + task.entry_port_axial_distance_m
++    )
++
++
++def install_proximity_gate(radius_m: float) -> None:
++    """Bound the half-space gate by range. Nothing else about it changes."""
++
++    def gated(position: Any, task: PrecaptureTaskConfig, *, terminal_latched: bool) -> bool:
++        if not _HALF_SPACE_GATE(position, task, terminal_latched=terminal_latched):
++            return False
++        if terminal_latched:
++            return True
++        point = np.asarray(position, dtype=np.float64)
++        return bool(float(np.linalg.norm(point)) <= radius_m)
++
++    constraints._predicted_terminal_active = gated
++
++
++def restore_gate() -> None:
++    constraints._predicted_terminal_active = _HALF_SPACE_GATE
++
++
++def run_episode(seed: int, horizon: int) -> dict[str, Any]:
++    env = PrecaptureHybridEnv(
++        environment_config=precapture_planning_environment_config(),
++        hybrid_config=PrecaptureHybridConfig(
++            horizon_steps=horizon,
++            waypoint_parametrization="arrival_condition",
++            runtime_diagnostics=False,
++        ),
++    )
++    task = env.environment_config.precapture_task
++    _, info = env.reset(seed=seed)
++    desired = np.asarray(task.desired_position, dtype=np.float64)
++    infeasible_steps = 0
++    first_infeasible_time_s: float | None = None
++    consecutive_zero = 0
++    max_consecutive_zero = 0
++    force_impulse = 0.0
++    torque_impulse = 0.0
++    steps = 0
++    terminated = truncated = False
++    while not (terminated or truncated):
++        waypoint = env.waypoint_from_action(env.action_for_waypoint(desired))
++        for _ in range(env.hybrid_config.decision_period_steps):
++            assert env.env.relative is not None
++            assert env.env.target_state is not None
++            wrench, diagnostics = env.controller.command(
++                relative_to_vector(env.env.relative),
++                target_state=env.env.target_state,
++                time_seconds=env.env.time_seconds,
++                terminal_latched=bool(info["terminal_region_active"]),
++                external_reference=waypoint,
++            )
++            if str(diagnostics.status).startswith("infeasible"):
++                infeasible_steps += 1
++                if first_infeasible_time_s is None:
++                    first_infeasible_time_s = round(float(env.env.time_seconds), 1)
++            if np.count_nonzero(wrench) == 0:
++                consecutive_zero += 1
++                max_consecutive_zero = max(max_consecutive_zero, consecutive_zero)
++            else:
++                consecutive_zero = 0
++            force_impulse += (
++                float(np.linalg.norm(wrench[3:])) * env.environment_config.dt_s
++            )
++            torque_impulse += (
++                float(np.linalg.norm(wrench[:3])) * env.environment_config.dt_s
++            )
++            _, _, terminated, truncated, info = env.env.step(
++                wrench_to_normalized(
++                    GeneralizedForce.from_vector(wrench),
++                    max_torque_per_axis_nm=(
++                        env.environment_config.max_torque_per_axis_nm
++                    ),
++                    max_force_per_axis_n=env.environment_config.max_force_per_axis_n,
++                )
++            )
++            steps += 1
++            if terminated or truncated:
++                break
++    return {
++        "seed": seed,
++        "horizon": horizon,
++        "completed": bool(info["completed"]),
++        "end_time_s": round(float(env.env.time_seconds), 2),
++        "steps": steps,
++        "qp_infeasible_steps": infeasible_steps,
++        "first_infeasible_time_s": first_infeasible_time_s,
++        "max_consecutive_zero_wrench_steps": max_consecutive_zero,
++        "force_impulse_n_s": round(force_impulse, 3),
++        "torque_impulse_nm_s": round(torque_impulse, 4),
++        "illegal_terminal_entry_count": int(info["illegal_terminal_entry_count"]),
++        "terminal_region_active": bool(info["terminal_region_active"]),
++        "final_range_m": round(float(info["target_center_distance_m"]), 3),
++        "final_fov_margin_rad": round(float(info["fov_margin_rad"]), 4),
++        "time_failure": bool(info["time_failure"]),
++        "distance_failure": bool(info["distance_failure"]),
++    }
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--seeds", type=int, nargs="+", required=True)
++    parser.add_argument("--horizon", type=int, default=20)
++    parser.add_argument(
++        "--terminal-gate",
++        choices=["half_space", "proximity"],
++        default="half_space",
++        help="half_space is the repository default; proximity adds the range bound",
++    )
++    parser.add_argument("--output", type=Path, required=True)
++    return parser.parse_args()
++
++
++def main() -> None:
++    args = parse_args()
++    if args.output.exists():
++        raise FileExistsError(args.output)
++    args.output.parent.mkdir(parents=True, exist_ok=True)
++    radius_m = entry_plane_radius_m(PrecaptureTaskConfig())
++    if args.terminal_gate == "proximity":
++        install_proximity_gate(radius_m)
++    try:
++        records = []
++        for seed in args.seeds:
++            record = run_episode(seed, args.horizon)
++            record["terminal_gate"] = args.terminal_gate
++            record["proximity_radius_m"] = radius_m
++            records.append(record)
++            print(json.dumps(record), flush=True)
++            args.output.write_text(json.dumps(records, indent=2))
++    finally:
++        restore_gate()
++    completed = sum(record["completed"] for record in records)
++    print(
++        f"{args.terminal_gate} h{args.horizon}: "
++        f"{completed}/{len(records)} completed",
++        flush=True,
++    )
++
++
++if __name__ == "__main__":
++    main()
+-- 
+2.43.0
+
+
+From a93330b9b3f648591e5c61ca953ccf4b7db4db8b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 08:03:07 +0000
+Subject: [PATCH 2/6] measure: the terminal-gate defect is real, and it was not
+ costing the completions
+
+Twelve seeds, fixed setpoint, both horizons. Bounding the half-space gate by
+range takes QP infeasibility from 1594 steps to 0 at h20 and from 2161 to 0 at
+h35 -- not one of the 24 gated episodes ever loses the controller -- while the
+force impulse on the commonly completed episodes is identical to 0.1 N s
+(192.4 vs 192.4 at h20, 173.3 vs 173.3 at h35). The h35 default column
+reproduces PURE_MPC_ROW_VERIFIED exactly: 9/12, 88.5 s, 167.2 N s.
+
+The completion count does not move: 8/12 either way at h20, 9/12 to 8/12 at
+h35, and {262005, 262006, 262011} fail under all four configurations. So the
+infeasibility was never the cause of the failures.
+
+What the failures are instead: every timeout under the corrected gate ends
+parked at 3.00 m -- the desired pose -- with healthy pointing, one illegal
+entry-plane crossing, and the latch never armed. The latch only arms on an
+outside-to-inside crossing, so once inside, a fixed setpoint at the desired
+pose can never re-arm it. That is verbatim the pre-F1 mechanism F1 was
+introduced to remove, and both halves of that trade are now measured.
+
+This retracts PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1 section 3g, and with it the
+T8 reading that the learned layer's contribution is preserving lower-layer
+feasibility. What survives is sharper: on 262005 the corrected fixed setpoint
+spends 930.6 N s, parks and never latches after 1 illegal crossing, while
+V2/262200 completes at 282.8 s with 0 illegal crossings. The learned layer
+times the entry; the fixed setpoint cannot.
+
+The proximity gate is the diagnosis, not the proposed final gate: it gives no
+corridor preview outside 6 m, so the illegal crossings F1 suppressed return.
+Every T7/T8 training run was made against the defective lower layer and cannot
+be reported as a coupled row until the gate is settled and the runs redone.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ docs/TERMINAL_GATE_DEFECT.md        | 152 ++++++++++++-----
+ logs/terminal_gate/default_h35.json | 242 ++++++++++++++++++++++++++++
+ logs/terminal_gate/gate_h20.json    | 242 ++++++++++++++++++++++++++++
+ logs/terminal_gate/gate_h35.json    | 242 ++++++++++++++++++++++++++++
+ 4 files changed, 834 insertions(+), 44 deletions(-)
+ create mode 100644 logs/terminal_gate/default_h35.json
+ create mode 100644 logs/terminal_gate/gate_h20.json
+ create mode 100644 logs/terminal_gate/gate_h35.json
+
+diff --git a/docs/TERMINAL_GATE_DEFECT.md b/docs/TERMINAL_GATE_DEFECT.md
+index 12ead70..627ddba 100644
+--- a/docs/TERMINAL_GATE_DEFECT.md
++++ b/docs/TERMINAL_GATE_DEFECT.md
+@@ -96,25 +96,67 @@ inside the 2 s horizon. That is why infeasibility begins at 0.8 s and not at 0.
+ not station keeping, and the chaser drifts to a 49.96 deg FOV violation at
+ 38.7 s having never had a controller.
+ 
+-### 3c. Closed loop, three seeds so far
+-
+-Fixed setpoint, h20, `--terminal-gate proximity` (§4) against the repository
+-default. The two seeds that already worked reproduce, which is the self-check
+-that the factor touched nothing else:
+-
+-| seed | default gate | proximity gate |
+-|---|---|---|
+-| 262000 | completes 113.6 s, 202.0 N s, 0 infeasible | completes **113.6 s, 202.0 N s**, 0 infeasible |
+-| 262002 | completes 115.8 s, 132.2 N s, 0 infeasible | completes **115.9 s, 132.2 N s**, 0 infeasible |
+-| 262001 | **fails 38.7 s**, 379/387 infeasible from 0.8 s | **completes 121.9 s**, 298.8 N s, **0/1219 infeasible** |
+-
+-`docs/PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §1 records 262001 completing in
+-**121.8 s** on the pre-F1 tree. The proximity gate returns that completion while
+-keeping F1's corridor preview inside the entry sphere.
+-
+-**The full 12-seed sweeps (h20 proximity, h35 default, h35 proximity) are in
+-flight and are not reported here.** Until they land nothing in §5 is settled,
+-and no main-table row may be restated.
++### 3c. Closed loop, 12 seeds, two horizons
++
++Fixed setpoint, seeds 262000-262011, `--terminal-gate proximity` (§4) against
++the repository default. The h35 default column reproduces
++`docs/PURE_MPC_ROW_VERIFIED.md` exactly -- 9/12, 88.5 s, 167.2 N s, failing
++`{262005, 262006, 262011}` -- which is the independent check that this harness
++is the same measurement.
++
++| | completed | mean t | mean force impulse | **QP infeasible steps** | illegal entries | failing seeds |
++|---|---:|---:|---:|---:|---:|---|
++| h20 default | 8/12 | 128.5 s | 208.2 N s | **1 594** | 9 | 262001, 262005, 262006, 262011 |
++| h20 proximity | 8/12 | 124.4 s | 205.7 N s | **0** | 5 | 262003, 262005, 262006, 262011 |
++| h35 default | 9/12 | 88.5 s | 167.2 N s | **2 161** | 4 | 262005, 262006, 262011 |
++| h35 proximity | 8/12 | 78.6 s | 173.3 N s | **0** | 5 | 262001, 262005, 262006, 262011 |
++
++**Paired on the episodes both arms complete, the force impulse is identical**
++-- 192.4 N s against 192.4 N s at h20 (7 seeds), 173.3 against 173.3 at h35
++(8 seeds). The factor changed nothing where the QP was already solving, which
++is the self-check that it touched only what it was meant to.
++
++Two readings, and the second matters more than the first.
++
++**The defect is removed.** Not one of the 24 proximity-gated episodes ever
++loses the controller: 1 594 and 2 161 infeasible steps become 0 and 0. On
++262001 at h20 that converts a 38.7 s drift into a 121.9 s completion, and
++`PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §1 records the pre-F1 tree completing
++that same seed in 121.8 s.
++
++**And it does not move the completion count**: 8/12 either way at h20, and
++9/12 to 8/12 at h35. `{262005, 262006, 262011}` fail under all four
++configurations. **So infeasibility was never what was costing the
++completions.** The hard seeds are hard with a controller that never gives up.
++
++## 3d. What the failures actually are, once the controller stops giving up
++
++Every timeout under the corrected gate ends in the same state:
++
++| | end t | force impulse | **final range** | FOV margin | illegal entries | **latched** |
++|---|---:|---:|---:|---:|---:|---|
++| h20 prox 262003 | 300.0 s | 287.3 N s | **3.00 m** | 0.872 rad | 1 | **no** |
++| h20 prox 262005 | 300.0 s | 930.6 N s | **3.00 m** | 0.854 rad | 1 | **no** |
++| h20 prox 262011 | 300.0 s | 501.1 N s | **3.00 m** | 0.871 rad | 1 | **no** |
++| h35 prox 262001 | 300.0 s | 351.1 N s | **3.00 m** | 0.873 rad | 2 | **no** |
++| h35 prox 262005 | 300.0 s | 636.9 N s | **3.00 m** | 0.872 rad | 1 | **no** |
++| h35 prox 262006 | 300.0 s | 584.5 N s | **3.00 m** | 0.873 rad | 1 | **no** |
++| h35 prox 262011 | 300.0 s | 378.1 N s | **3.00 m** | 0.873 rad | 1 | **no** |
++
++3.00 m is `||desired_position||`. **The chaser flies to the goal, crosses the
++entry plane illegally on the way, and then sits on the goal with healthy
++pointing until the clock runs out**, because the latch only arms on an
++outside-to-inside crossing (`SE3RendezvousEnv`, `evaluate_terminal_entry_crossing`,
++guarded by `not self._terminal_region_entered`). Once inside, re-arming
++requires flying back out past the entry plane and coming in again, and a fixed
++setpoint at the desired pose has no reason to ever do that.
++
++This is verbatim the pre-F1 failure mechanism that
++`PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §1 recorded and that F1 was
++introduced to remove: *"illegal entry-plane crossing, never re-latched; chaser
++then parks on the desired pose to the 300 s cap."* F1 removed it by imposing
++the corridor early enough to shape the approach -- and paid for that with a
++hard infeasibility at 16 m. Both halves of that trade are now measured.
+ 
+ ## 4. Single factor: bound the gate by range
+ 
+@@ -130,36 +172,58 @@ centre. Both terms are frozen task parameters, so the treatment adds **no
+ tunable constant**. Reference, horizon, solver, slack cap and fallback are
+ untouched.
+ 
+-## 5. What is at stake, and what is not yet established
++**It is a correct diagnosis and it is not proposed as the final gate.** It
++removes the defect cleanly, but it gives the optimiser no corridor preview
++outside 6 m, so the illegal crossings F1 was suppressing come back (h35
++illegal entries 4 -> 5, and 262001 at h35 flips from a 167.5 s completion to a
++300 s park). Choosing the region the corridor should be enforced over -- and
++whether entry legality belongs as a region constraint at all rather than as a
++constraint on the crossing -- is a lower-layer design decision that is now
++well posed and is not settled here.
+ 
+-The defect in §2 and §3a is established: it is a static property of the
+-constraint assembly, it needs no trajectory, and it is independent of any
+-sweep outcome. The optimiser imposes the approach corridor on states the task
+-does not judge, and the resulting linearised violation is about twice the
+-slack cap, so the QP reports `infeasible` rather than paying a penalty.
++## 5. What this does to the standing claims
+ 
+-What is **not** yet established is how much of the project's standing evidence
+-that accounts for. The claims that would have to be re-derived if the sweeps
+-confirm §3c are, in order of how much rests on them:
++**Retracted.**
+ 
+ 1. `PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §3g -- *"the fixed setpoint is a
+    reference for which the constrained problem has no satisfying trajectory
+-   [...] the only remaining thing that can change is the reference itself"*.
+-   This is the motivation the coupling line is built on.
+-2. The horizon-invariant failure set `{262005, 262006}` and the four-seed h20
+-   failure set `{262001, 262005, 262006, 262011}`.
+-3. `T6_COUPLING_INTERFACE.md`'s disconnected feasible set, which was scanned on
+-   those seeds.
+-4. The T8 reading that a learned upper layer *preserves lower-layer
+-   feasibility* -- its strongest single piece of evidence is 262005, which the
+-   fixed setpoint loses to 172 infeasible steps from t = 31.1 s and the learned
+-   V2/262200 completes with 0.
+-5. The h20/h50 compute trade, *"the horizon that wins every quality column is
+-   the horizon that cannot be run at the control period"*. If the gate is what
+-   was costing h20 its completions, that gap narrows.
+-
+-None of those is retracted here. They are listed so that the sweep is read as
+-the test of them that it is.
++   inside the linearised horizon"* -- is **false as stated**. With the gate
++   bounded by range the QP solves on every one of 24 episodes' steps and the
++   same seeds still fail. The infeasibility was the gate, not the reference.
++   §3e and §3f closed the two escape routes they tested; the constraint set
++   itself was never audited, and §4 of that document had listed exactly that
++   audit as still open.
++2. Any sentence explaining a failure *by* infeasibility -- including the T8
++   reading that the learned upper layer's contribution is that it **preserves
++   lower-layer feasibility**. Its headline evidence was 262005: the fixed
++   setpoint takes 172 infeasible steps from t = 31.1 s, V2/262200 takes 0.
++   Under the corrected gate the fixed setpoint takes **0** infeasible steps on
++   262005 and still fails.
++
++**Survives, and is stronger for being restated.**
++
++262005 under the corrected h20 gate: the fixed setpoint runs the full 300 s,
++spends 930.6 N s, parks at 3.00 m and never latches, with **1 illegal
++crossing**. V2/262200 completes it at 282.8 s with **0 illegal crossings**.
++The learned layer's advantage is real and it is not about feasibility -- it is
++that it **timed its entry so the one crossing was legal**. The fixed setpoint
++structurally cannot do that: aimed at the desired pose it flies in when the
++geometry says go, and once inside it cannot re-arm the latch without backing
++out, which `PRECAPTURE_ENTRY_WINDOW_GAP.md` §3 already observed the lower
++layer has no representation of.
++
++That is what `a_commit` parametrises in the T6 interface -- hold outside,
++commit when the crossing will be legal -- so the interface was built for the
++right decision variable even while the motivating diagnosis was wrong.
++
++**Unresolved, and expensive.**
++
++Every training run in T7 and T8 was made against the defective lower layer.
++Those runs stay valid measurements of *that* system; they are not measurements
++of the intended one, and the policies were free to shape themselves around a
++controller that abandons the chaser on a geometric technicality. Nothing from
++them can be reported as a coupled row until the gate is settled and the runs
++are redone from zero.
+ 
+ ## 6. Reproduce
+ 
+diff --git a/logs/terminal_gate/default_h35.json b/logs/terminal_gate/default_h35.json
+new file mode 100644
+index 0000000..2586734
+--- /dev/null
++++ b/logs/terminal_gate/default_h35.json
+@@ -0,0 +1,242 @@
++[
++  {
++    "seed": 262000,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 69.0,
++    "steps": 690,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 172.48,
++    "torque_impulse_nm_s": 6.461,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.205,
++    "final_fov_margin_rad": 0.8658,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262001,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 167.5,
++    "steps": 1675,
++    "qp_infeasible_steps": 927,
++    "first_infeasible_time_s": 0.0,
++    "max_consecutive_zero_wrench_steps": 927,
++    "force_impulse_n_s": 118.66,
++    "torque_impulse_nm_s": 8.692,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.195,
++    "final_fov_margin_rad": 0.855,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262002,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 72.2,
++    "steps": 722,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 147.33,
++    "torque_impulse_nm_s": 7.279,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.197,
++    "final_fov_margin_rad": 0.8566,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262003,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 95.5,
++    "steps": 955,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 190.71,
++    "torque_impulse_nm_s": 9.376,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.158,
++    "final_fov_margin_rad": 0.8279,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262004,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 77.0,
++    "steps": 770,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 259.84,
++    "torque_impulse_nm_s": 4.712,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.197,
++    "final_fov_margin_rad": 0.8578,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262005,
++    "horizon": 35,
++    "completed": false,
++    "end_time_s": 30.2,
++    "steps": 302,
++    "qp_infeasible_steps": 38,
++    "first_infeasible_time_s": 23.7,
++    "max_consecutive_zero_wrench_steps": 33,
++    "force_impulse_n_s": 179.28,
++    "torque_impulse_nm_s": 7.23,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 10.282,
++    "final_fov_margin_rad": -0.0134,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262006,
++    "horizon": 35,
++    "completed": false,
++    "end_time_s": 29.8,
++    "steps": 298,
++    "qp_infeasible_steps": 251,
++    "first_infeasible_time_s": 4.7,
++    "max_consecutive_zero_wrench_steps": 251,
++    "force_impulse_n_s": 40.7,
++    "torque_impulse_nm_s": 1.235,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 15.353,
++    "final_fov_margin_rad": -0.0022,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262007,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 83.0,
++    "steps": 830,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 160.3,
++    "torque_impulse_nm_s": 6.8,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.196,
++    "final_fov_margin_rad": 0.857,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262008,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 75.0,
++    "steps": 750,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 180.91,
++    "torque_impulse_nm_s": 3.164,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.207,
++    "final_fov_margin_rad": 0.8647,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262009,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 85.3,
++    "steps": 853,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 130.24,
++    "torque_impulse_nm_s": 3.142,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.211,
++    "final_fov_margin_rad": 0.8689,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262010,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 71.8,
++    "steps": 718,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 144.22,
++    "torque_impulse_nm_s": 6.548,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.194,
++    "final_fov_margin_rad": 0.8566,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262011,
++    "horizon": 35,
++    "completed": false,
++    "end_time_s": 112.6,
++    "steps": 1126,
++    "qp_infeasible_steps": 945,
++    "first_infeasible_time_s": 18.1,
++    "max_consecutive_zero_wrench_steps": 945,
++    "force_impulse_n_s": 69.39,
++    "torque_impulse_nm_s": 2.004,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 30.031,
++    "final_fov_margin_rad": 0.0906,
++    "time_failure": false,
++    "distance_failure": true,
++    "terminal_gate": "half_space",
++    "proximity_radius_m": 6.0
++  }
++]
+\ No newline at end of file
+diff --git a/logs/terminal_gate/gate_h20.json b/logs/terminal_gate/gate_h20.json
+new file mode 100644
+index 0000000..88cb533
+--- /dev/null
++++ b/logs/terminal_gate/gate_h20.json
+@@ -0,0 +1,242 @@
++[
++  {
++    "seed": 262000,
++    "horizon": 20,
++    "completed": true,
++    "end_time_s": 113.6,
++    "steps": 1136,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 201.99,
++    "torque_impulse_nm_s": 5.345,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.225,
++    "final_fov_margin_rad": 0.8468,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262001,
++    "horizon": 20,
++    "completed": true,
++    "end_time_s": 121.9,
++    "steps": 1219,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 298.84,
++    "torque_impulse_nm_s": 4.959,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": true,
++    "final_range_m": 3.2,
++    "final_fov_margin_rad": 0.8082,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262002,
++    "horizon": 20,
++    "completed": true,
++    "end_time_s": 115.9,
++    "steps": 1159,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 132.18,
++    "torque_impulse_nm_s": 6.12,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.214,
++    "final_fov_margin_rad": 0.8254,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262003,
++    "horizon": 20,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 287.3,
++    "torque_impulse_nm_s": 9.519,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.001,
++    "final_fov_margin_rad": 0.8715,
++    "time_failure": true,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262004,
++    "horizon": 20,
++    "completed": true,
++    "end_time_s": 126.6,
++    "steps": 1266,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 299.3,
++    "torque_impulse_nm_s": 5.022,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.22,
++    "final_fov_margin_rad": 0.8388,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262005,
++    "horizon": 20,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 930.64,
++    "torque_impulse_nm_s": 75.184,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.003,
++    "final_fov_margin_rad": 0.8538,
++    "time_failure": true,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262006,
++    "horizon": 20,
++    "completed": false,
++    "end_time_s": 90.8,
++    "steps": 908,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 422.92,
++    "torque_impulse_nm_s": 14.1,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 6.351,
++    "final_fov_margin_rad": -0.003,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262007,
++    "horizon": 20,
++    "completed": true,
++    "end_time_s": 134.1,
++    "steps": 1341,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 198.12,
++    "torque_impulse_nm_s": 5.516,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.216,
++    "final_fov_margin_rad": 0.8281,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262008,
++    "horizon": 20,
++    "completed": true,
++    "end_time_s": 125.6,
++    "steps": 1256,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 222.45,
++    "torque_impulse_nm_s": 3.327,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.229,
++    "final_fov_margin_rad": 0.8613,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262009,
++    "horizon": 20,
++    "completed": true,
++    "end_time_s": 142.2,
++    "steps": 1422,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 110.19,
++    "torque_impulse_nm_s": 3.313,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.229,
++    "final_fov_margin_rad": 0.8668,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262010,
++    "horizon": 20,
++    "completed": true,
++    "end_time_s": 115.2,
++    "steps": 1152,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 182.28,
++    "torque_impulse_nm_s": 5.446,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.218,
++    "final_fov_margin_rad": 0.8313,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262011,
++    "horizon": 20,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 501.08,
++    "torque_impulse_nm_s": 29.05,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.001,
++    "final_fov_margin_rad": 0.8713,
++    "time_failure": true,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  }
++]
+\ No newline at end of file
+diff --git a/logs/terminal_gate/gate_h35.json b/logs/terminal_gate/gate_h35.json
+new file mode 100644
+index 0000000..e7e6e9c
+--- /dev/null
++++ b/logs/terminal_gate/gate_h35.json
+@@ -0,0 +1,242 @@
++[
++  {
++    "seed": 262000,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 69.0,
++    "steps": 690,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 172.48,
++    "torque_impulse_nm_s": 6.461,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.205,
++    "final_fov_margin_rad": 0.8658,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262001,
++    "horizon": 35,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 351.14,
++    "torque_impulse_nm_s": 3.934,
++    "illegal_terminal_entry_count": 2,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8727,
++    "time_failure": true,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262002,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 72.2,
++    "steps": 722,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 147.33,
++    "torque_impulse_nm_s": 7.279,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.197,
++    "final_fov_margin_rad": 0.8566,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262003,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 95.4,
++    "steps": 954,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 190.98,
++    "torque_impulse_nm_s": 9.204,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.159,
++    "final_fov_margin_rad": 0.8284,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262004,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 77.0,
++    "steps": 770,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 259.84,
++    "torque_impulse_nm_s": 4.712,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.197,
++    "final_fov_margin_rad": 0.8578,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262005,
++    "horizon": 35,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 636.94,
++    "torque_impulse_nm_s": 34.626,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8724,
++    "time_failure": true,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262006,
++    "horizon": 35,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 584.48,
++    "torque_impulse_nm_s": 23.556,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8726,
++    "time_failure": true,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262007,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 83.0,
++    "steps": 830,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 160.3,
++    "torque_impulse_nm_s": 6.8,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.196,
++    "final_fov_margin_rad": 0.857,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262008,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 75.0,
++    "steps": 750,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 180.91,
++    "torque_impulse_nm_s": 3.164,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.207,
++    "final_fov_margin_rad": 0.8647,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262009,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 85.3,
++    "steps": 853,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 130.24,
++    "torque_impulse_nm_s": 3.142,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.211,
++    "final_fov_margin_rad": 0.8689,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262010,
++    "horizon": 35,
++    "completed": true,
++    "end_time_s": 71.8,
++    "steps": 718,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 144.22,
++    "torque_impulse_nm_s": 6.548,
++    "illegal_terminal_entry_count": 0,
++    "terminal_region_active": true,
++    "final_range_m": 3.194,
++    "final_fov_margin_rad": 0.8566,
++    "time_failure": false,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  },
++  {
++    "seed": 262011,
++    "horizon": 35,
++    "completed": false,
++    "end_time_s": 300.0,
++    "steps": 3000,
++    "qp_infeasible_steps": 0,
++    "first_infeasible_time_s": null,
++    "max_consecutive_zero_wrench_steps": 0,
++    "force_impulse_n_s": 378.07,
++    "torque_impulse_nm_s": 13.797,
++    "illegal_terminal_entry_count": 1,
++    "terminal_region_active": false,
++    "final_range_m": 3.0,
++    "final_fov_margin_rad": 0.8726,
++    "time_failure": true,
++    "distance_failure": false,
++    "terminal_gate": "proximity",
++    "proximity_radius_m": 6.0
++  }
++]
+\ No newline at end of file
+-- 
+2.43.0
+
+
+From b72e0e64c3e9849196856dfca1f792525eac5b70 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 09:54:36 +0000
+Subject: [PATCH 3/6] docs: T7 to T9 review document for third-party audit
+
+Self-contained account of the round for a reviewer with only the repository.
+Every claim is tagged measured / inferred / undecided, the four things this
+session retracted are listed together with what replaced them, and section 9
+names the specific claims a reviewer should attack first.
+
+The load-bearing change: the coupling motivation no longer rests on the fixed
+setpoint making the QP infeasible. It rests on a timescale gap -- the decision
+that matters is when to commit to entry, which lives on the 152.4 s tumble
+period, while the optimiser's horizon is 2 s, and h50 is already 2.22x over
+the control period. No constraint formulation closes a 75x timescale gap.
+
+Section 8 puts the one open decision in front of the reader: which region the
+corridor constraint should be enforced over, with four candidates and the
+measured or derivable cost of each.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ docs/T7_T9_REVIEW_20260912.md | 268 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 268 insertions(+)
+ create mode 100644 docs/T7_T9_REVIEW_20260912.md
+
+diff --git a/docs/T7_T9_REVIEW_20260912.md b/docs/T7_T9_REVIEW_20260912.md
+new file mode 100644
+index 0000000..08fed60
+--- /dev/null
++++ b/docs/T7_T9_REVIEW_20260912.md
+@@ -0,0 +1,268 @@
++# T7 → T9 全程说明（供第三方窗口审查）
++
++写于 2026-09-12。读者假定只看过 git 仓库，没有参与讨论。
++
++**怎么读这份文件。** 每一条结论都标了下面三种之一：
++
++- **【测】** 有产物、可复算的测量。给出产物路径和复算命令。
++- **【推】** 从测量推出的解释。可能错，这份文件里已经有两条被自己推翻了。
++- **【决】** 还没定、需要人拍板的事。
++
++**审查重点在第 7、8 两节。** 前面是把账交代清楚，后面才是要讨论的东西。
++
++---
++
++## 0. 三十秒版本
++
++T7 训完四个种子，两活两死。T8 拿评估和回放去验"死种子学会了拖时间"，**证伪，闸门触发，停机**。我在同一批数据上另外查出上层接口的增益问题；再往下查"下层不可行"，发现那是一个**约束门控缺陷**——MPC 在离目标 16 m 处强制执行进场走廊，真值根本不判那个区域。修掉它，不可行从 1594/2161 步**归零**，但**完成数一步不动**，硬种子照样硬。
++
++净结果：**立论没塌，但它的理由换了一个**，而且换成了更结实的一个；代价是 T7 那四次训练是在有缺陷的下层里跑的，要重来。
++
++---
++
++## 1. 任务与下层（只写审查需要的）
++
++- 快速翻滚非合作目标预抓捕。目标自旋 0.041231 rad/s，周期 **152.4 s**。起始 15–20 m，**300 s 时限**，30 m 判失败。
++- 入口面在距目标中心 6 m 处，盘半径 3.151 m。**合法入场**＝径向 < 3.151 m 且目标系速度 ≤ 0.35 m/s 且接近速度 ≤ 0.20 m/s。
++- 完成＝位置 < 0.25 m、姿态 < 10°、速度 < 0.05 m/s、角速度 < 0.02 rad/s，保持 1 s，且**终端区已闩锁**。
++- 闩锁只在**由外向内**合法穿越入口盘时 arm（`env/se3_rendezvous_env.py`，`evaluate_terminal_entry_crossing`，外面套 `if not self._terminal_region_entered`）。**非法穿越只计数**，不闩锁、不结束回合、不扣奖励。
++- 下层：受约束 MPC，0.1 s 控制周期，CLARABEL，±5 N / ±0.6 N·m 每轴。约束是软的（松弛权重 1e4）但**松弛本身有上限 `constraint_slack_limit = 2.0`**，超过就是硬不可行；不可行回退是**零力零力矩**（`infeasible_fallback = "zero"`）。
++- 上层：SAC，每 2 s（20 个控制步）出一个动作，经 `external_local` 通道给 MPC 一个 3D 路径点。
++
++**一个贯穿全文的量。** Λ = ω·r / v_max。在终端速度上限 0.35 m/s 下 Λ=1 对应 r = 8.49 m，所以 15–20 m 起始段 Λ > 1：**不能悬停，必须持续共旋**。零推力在这里不是"原地不动"，是被 ω·r 甩开。
++
++---
++
++## 2. T7：四次训练（用户机器，`logs/t7_retry1_20260911/`）
++
++四个从零训练，各 60000 次决策，2D `arrival_condition` 接口：
++
++| | 末 100 回合完成率 | 首次成功 | 超时率 Q1→Q4 |
++|---|---|---|---|
++| V2 / 262200（无反馈） | **75%** | 5,942 | 24% → 4% |
++| V3 / 262300（有反馈） | 55% | 13,062 | 28% → 7% |
++| V2 / 262201 | **0** | — | 31% → 69% |
++| V3 / 262301 | **0** | — | 39% → 67% |
++
++**【测】接口是把耦合变成可学的那个单因子。** manifest 只差参数化一项，其余（31D 观测、时域、决策周期、折扣、学习率、批量、熵系数、tau、learning-starts、网络）全同。在共同预算 25,697 次决策上，4D `radial_local` 三个种子共 **0/1308** 完成，2D `arrival_condition` 最好种子 **55/285**。更早那次"加目标相位+剩余时间观测"的单因子在旧参数化上毫无变化 → 卡住的不是信息，是表达。产物 `docs/INTERFACE_SINGLE_FACTOR.md`。
++
++**⚠ 这一条需要复核**：两臂都跑在第 6 节说的有缺陷下层里。作为**相对比较**内部一致，但它是否迁移到修正后的下层，没测过。
++
++**【推，已被证伪，见第 4 节】** 当时我对两个死种子的解释是"学会了用负动作长期等待、把时间耗光"。
++
++**【测】反馈通道不支持。** V2 在首次成功、每个四分位、末端回报上全面领先 V3。但每臂只有一个活种子，低于三种子规则，所以是"**未获支持且点估计不利**"，不是"测到有害"。
++
++---
++
++## 3. T8 交付了什么（用户机器 `logs/t8_eval/`，已推到远端 `37c0786`）
++
++下层串行跑完 5 个 12 场景评估 + 4 个 4 场景回放。评估用 final_model、deterministic、h20、共同场景 262000–262011。
++
++**【测】主表现状（我独立复算过这五份 JSON）：**
++
++| | 完成 | 成功平均时间 | 成功平均力冲量 |
++|---|---:|---:|---:|
++| **固定设定点对照（h20）** | **8/12** | 128.5 s | **208.2 N·s** |
++| V2 / 262200 | 7/12 | 149.5 s | 429.4 N·s |
++| V3 / 262300 | 7/12 | 153.8 s | 523.4 N·s |
++| V2 / 262201 | 0/12 | — | — |
++| V3 / 262301 | 0/12 | — | — |
++
++在对照与 V2/262200 **都完成**的 6 个场景上配对：**174.5 vs 244.7 N·s，学习层贵 40%**。
++
++**燃料是最终判据，所以按这张表，耦合行现在输给自己的能力地板。** 这一条必须写进任何对外材料。
++
++唯一的例外：**262005**——对照组失败，V2/262200 **零真值违约、282.8 s 完成**（代价 1537 N·s）。见第 7 节，它的机制在第 6 节被改写了。
++
++---
++
++## 4. 第一道闸门：为什么停机
++
++执行单预设的停止条件是"死种子的负半轴动作占比**并不**明显高于活种子"。
++
++**【测】** 决策加权占比：V2 死 2.98% / 活 10.93%；V3 死 4.26% / 活 7.55%。死种子三个超时场景的负动作占比是 0%、0%、6.67%（V2）和 0%、0%、1.33%（V3）。**死种子比活种子更少用负动作。假设证伪，下层按规则停在这里，S3 补种子和 S5 耗时测量都没启动。**
++
++下层的处置正确，报告也没替我圆场。
++
++---
++
++## 5. 我在同一批回放里另外查出的东西（未经训练验证）
++
++**【测】动作与结果的分离是干净的，没有重叠：**
++
++| | 每决策路径点位移中位数 | 执行器平均占用 | a0 > 0.99 的决策占比 |
++|---|---:|---:|---:|
++| 每一条**完成**回合 | 0.000–0.015 m | 0.20–0.28 | **50.6%–100%** |
++| 每一条**超时**回合 | 0.27–0.62 m | **0.84–0.95** | **0%** |
++
++死种子总计 **0 / 940** 次决策的 a0 超过 0.99；活种子 212 / 395（53.7%）。飞行器一个 2 s 决策窗、静止起步的平动权限只有 **0.094 m**，而死种子指令的位移中位数是它的 3–7 倍（p90 到 2.8 m，最大 6.2 m）。
++
++**【测】同一条回合内部的对照**（V3/262300，场景 262000，同种子同场景同策略）：
++
++| | a0 | 路径点半径 | 执行器 | 真实距离 |
++|---|---|---|---|---|
++| t < 88 s | 0.79–0.98 漂移 | 3.2↔4.2 反复跳 | **0.76–1.00** | 16.29 → 13.08（86 s 走 3.2 m）|
++| t > 88 s | 钉死 > 0.99 | 锁在 3.00 m | **0.06–0.33** | 13.08 → 3.23（82 s 走 9.8 m）|
++
++**【推】** 接口增益 `∂半径/∂a0 = (3 − r_hold)/2 ≈ −6.5 m / 单位动作`，而 `r_hold` 冻结在 12–19 m。策略动作抖 0.09 就把设定点甩出 0.6 m，MPC 每 2 s 朝新点全力加速再反向，净位移接近零。**这个接口只有 a0→+1 那个角点好用，而那个角点就是 Pure MPC。** 这是我设计的 T6 接口的缺陷。
++
++**⚠ 这一条是推断，没有实验验证。** 验证它需要改接口再训练，目前压着没做。
++
++---
++
++## 6. T9：终端门控缺陷（本轮最重要的发现）
++
++### 6.1 起因
++
++`docs/PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §3e/§3f 测过两条下层补救，都是负的：`infeasible_fallback="shift"` 救 0/4，把 `constraint_slack_limit` 从 2.0 抬到 20.0 让 3/3 死得更快。由这两个负结果，§3g 得出：
++
++> 固定设定点是一个受约束问题在线性化时域内**无满足轨迹**的参考……**唯一还能改的只有参考本身**——而选参考正是上层要做的事。
++
++**整条耦合线架在这句话上。** 它只有在约束集本身正确时成立。而那份文档 §4 第 3 点自己写着，"re-solve with the terminal rows relaxed"这个审计**还没做**。没人做过。
++
++### 6.2 缺陷
++
++`controllers/mpc/constraints._predicted_terminal_active` 决定十一条终端行（走廊轴向、8 条走廊侧向面、终端总速、接近速度）何时进 QP：
++
++```python
++return bool(terminal_latched or port_axial_distance < task.entry_port_axial_distance_m)
++```
++
++代入冻结参数（port=(−1.5,0,0)、axis=(−1,0,0)、4.5 m），第二项就是 `p_x > −6`：**一个半空间，没有距离界**。离目标 6 m 还是 26 m，一律施加进场走廊。
++
++真值侧不是这么判的：`normalized_precapture_truth_margins` 只用 `terminal_latched`；环境记违约要等入口盘合法穿越闩锁之后。`_predicted_terminal_active` 只出现在 `constraints.py:308` 和 `:507`，**纯粹是优化器自己的视角**。
++
++**结论：优化器因为一个任务根本不评判的区域而拒绝求解。**
++
++### 6.3 【测】三个层面都测到了
++
++**静态**（不涉及任何轨迹，16.4 m 处横跨门控平面）：
++
++| `p_x` | 距离 | `port_axial` | MPC 门控 | 最差走廊行 | 需要松弛（上限 **2.0**） | 真值走廊行 |
++|---:|---:|---:|---|---:|---:|---:|
++| −6.10 | 16.47 m | 4.600 | 关 | 未激活 | 0.000 | 未激活 |
++| **−5.99** | **16.43 m** | **4.490** | **开** | **−4.130** | **4.130** | 未激活 |
++| −5.50 | 16.25 m | 4.000 | 开 | −4.236 | 4.236 | 未激活 |
++
++走 11 cm，约束集从满足变成需要两倍可用松弛。飞行器离轴约 15 m，被要求待在那里半径约 2.9 m 的锥内。
++
++**QP 层**（262001，h20）：基线逐位复现仓库记录——387 步、**379 步不可行**、首次 **0.8 s**、终末 FOV 裕度 −0.0007 rad。把松弛上限放开后重解同一问题，t=0.8 s 索要 **4.033**，最差行是 **row 8，走廊侧向面**。当前状态门控其实是关的（`port_axial = 5.34`），是 h20 的 2 s 预测滚出跨过了平面——这解释了为什么不可行恰好从 0.8 s 而不是 0 s 开始。
++
++**闭环，12 种子，两个时域**（单因子：给门控加距离界 `‖p‖ ≤ ‖port‖ + 4.5 = 6.0 m`，两项都是冻结参数，不引入可调常数）：
++
++| | 完成 | 平均时间 | 平均力冲量 | **QP 不可行步数** | 非法穿越 | 失败种子 |
++|---|---:|---:|---:|---:|---:|---|
++| h20 默认 | 8/12 | 128.5 s | 208.2 N·s | **1594** | 9 | 01,05,06,11 |
++| h20 加距离界 | 8/12 | 124.4 s | 205.7 N·s | **0** | 5 | 03,05,06,11 |
++| h35 默认 | 9/12 | 88.5 s | 167.2 N·s | **2161** | 4 | 05,06,11 |
++| h35 加距离界 | 8/12 | 78.6 s | 173.3 N·s | **0** | 5 | 01,05,06,11 |
++
++**h35 默认这一行逐项复现 `docs/PURE_MPC_ROW_VERIFIED.md`（9/12、88.5 s、167.2 N·s、失败集 {262005,262006,262011}）**——这是"沙箱这套测量和主线是同一套"的独立校验。
++
++**自检通过**：两臂都完成的回合上力冲量**完全相同**（h20 192.4 vs 192.4，7 个种子；h35 173.3 vs 173.3，8 个种子）。这个因子没碰到别的东西。
++
++### 6.4 【测】两个读数，第二个更重要
++
++**缺陷被消除**：24 个加门控的回合**没有一个**丢过控制器，1594 和 2161 步不可行变成 0 和 0。262001 在 h20 从 38.7 s 漂死变成 121.9 s 完成，而仓库记录 F1 之前那个种子正是 **121.8 s** 完成。
++
++**而完成数一步不动**：h20 8/12 对 8/12，h35 9/12 对 8/12，**{262005, 262006, 262011} 四种配置下全败**。
++
++**所以不可行从来不是丢完成数的原因。** 把"控制器中途撂挑子"彻底消除之后，硬种子照样硬。
++
++### 6.5 【测】真正的失败长什么样
++
++修正门控后每一个超时的终局一模一样（7 条，两个时域）：终末距离 **3.00 m**（正好 `‖desired_position‖`）、FOV 裕度 ~0.87（指向完好）、非法穿越 1–2 次、**闩锁为否**。
++
++**飞到目标、路上非法穿越一次、然后坐在目标上直到时限耗尽。** 因为闩锁只在由外向内穿越时 arm，人已经在里面，要重新 arm 就得先退出去再进来——固定设定点永远不会那么做。
++
++这是仓库自己记录的 **F1 之前**的失败机制原话："illegal entry-plane crossing, never re-latched; chaser then parks on the desired pose to the 300 s cap"。F1 用提前施加走廊换掉了它，代价是 16 m 处的硬不可行。**这笔交易的两头现在都测出来了。**
++
++---
++
++## 7. 现在的账
++
++### 7.1 撤回
++
++1. **`PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md` §3g** ——"固定设定点是受约束问题无满足轨迹的参考……唯一能改的只有参考本身"。**按字面讲是错的**：修正门控后 QP 每一步都解得出来，同样的种子照样失败。不可行是门控，不是参考。
++2. **T8 那条"学习上层的贡献是保住下层可行性"**。它的主证据是 262005（对照 172 步不可行 vs 学习 0 步）。修正门控后**对照组在 262005 上是 0 步不可行，照样失败**。
++3. **我自己的 T7 假设**"死种子靠负动作长期等待"（第 4 节证伪）。
++4. **姿态参考假设**（更早，`docs/ATTITUDE_REFERENCE_PROBE.md` 证伪，已从候选因子队列划掉）。
++
++### 7.2 仍然成立，而且更结实
++
++**262005 的对比换了说法但没消失。** 修正门控后对照组烧 930.6 N·s，停在 3.00 m，**1 次非法穿越**，永不闩锁；V2/262200 在 282.8 s 完成，**0 次非法穿越**。学习上层赢在**把那唯一一次穿越掐合法了**。固定设定点结构上做不到——它瞄着目标位姿，几何一允许就冲进去，进去之后没法重新 arm。
++
++**而这正是 T6 接口里 `a_commit` 本来就在参数化的变量**（外面惯性等待 ↔ 提交到目标位姿）。**接口当初选对了变量，只是立论说错了理由。**
++
++### 7.3 【推】最强、且不依赖任何缺陷的那条立论
++
++上面这些都不是根。根是**时间尺度**：
++
++- 真正要做的决定是"**什么时候提交入场**"，它活在目标自旋周期 **152.4 s** 的尺度上。
++- 优化器的时域是 **2 s**（h20），**75 倍之短**。h50 是 5 s，30 倍之短，而且 p95 已经是控制周期的 2.22 倍，**跑不了实时**。
++- 没有任何约束写法能补上 75 倍的时间尺度差。加上 Λ > 1 不能悬停，**"等到相位对了再进"这个动作，下层结构上不可能规划**。
++
++**这条不依赖门控、不依赖回退、不依赖松弛上限，也不会被任何下层修复削弱。** 如果要重写论文的动机段，我建议以它为主，262005 作为实例，门控缺陷作为"我们审计了下层、排除了实现假象"的方法学信用。
++
++### 7.4 作废
++
++**T7/T8 的四次训练全部跑在有缺陷的下层里。** 它们仍是对"那个系统"的有效测量，但不是对目标系统的；策略完全可以围着一个会撂挑子的控制器塑形。**门控定案前，任何耦合行不能进主表；定案后要从零重训。**
++
++不作废的：T6 接口设计与逐位能力地板、动作空间、217 项回归、评估/回放/诊断工具链、Pure MPC 行的四个时域测量（h35 我独立复现了）。
++
++---
++
++## 8. 【决】要拍板的事：走廊约束施加在哪个区域
++
++这是现在唯一卡住下层重训的决策。四个候选，代价都测过或能推：
++
++**A. 维持现状（F1 半空间）。** 代价：基线在 12 场景里 1594（h20）/2161（h35）步不可行、输出零推力。**评审一眼看穿，不可接受。**
++
++**B. 加距离界（我测的那个）。** `axial < 4.5 且 ‖p‖ ≤ 6.0`。零可调常数。不可行归零，完成数不变，配对燃料完全不变。代价：6 m 外没有任何走廊预览，F1 压住的非法穿越回来（h35 非法穿越 4→5，262001 在 h35 从 167.5 s 完成翻成 300 s 停摆）。
++
++**C. 预览带随时域伸缩。** 门控半径 = 6 m + v·T_horizon。预览给足又有界。代价：**门控与时域耦合**，h20 和 h35 的门控不再相同，"时域"就不再是一个干净的单因子（`CLAUDE.md` 陷阱 4）。
++
++**D. 语义修正：走廊只在闩锁后施加（与真值一致），另加一条"预测穿越入口面时穿越点必须落在盘内且速度合规"的约束。** 最正确，工作量最大。
++
++**D 有一个必须讲明的副作用，而且它关系到论文卖点：** 修得越好，下层自己越能掐时机，上层能做的事就越少。但按 7.3 的时间尺度论证，**下层即使约束写法完全正确，2 s 时域也规划不了 152 s 尺度的等待**，所以 D 不会吃掉上层的作用——**但这句话是推断，没测过**。如果要稳，可以在 D 落地后先跑一次固定设定点 12 种子，看完成数是否真的还是 8–9/12。
++
++**我的倾向：D，并在落地前先用 B 的产物做基线对照。** 但我不替你定，这正是想让审查窗口一起看的地方。
++
++---
++
++## 9. 给审查者的靶子（请优先攻击这几条）
++
++1. **第 6.3 的"真值不判那个区域"是否成立？** 请自己看 `constraints.py` 里 `normalized_precapture_truth_margins`（用 `terminal_latched`）与 `_predicted_terminal_active`（半空间）的差异，以及 `se3_rendezvous_env.py:1655` 起的闩锁逻辑。如果我读错了，第 6、7 节全垮。
++2. **"完成数不动 ⇒ 不可行不是原因"是否过强？** 完成数不动但失败种子集合变了（h20 从 {01,05,06,11} 变成 {03,05,06,11}）。我的说法是"硬种子照样硬"，但 262003 被换了进来，这值得单独查。
++3. **7.3 的时间尺度论证有没有漏洞？** 特别是：MPC 的终端代价能否隐式编码"等待"？仓库测过 learned terminal cost 有害（`AC4MPC` 那条），但那是另一件事。
++4. **第 5 节的接口增益是推断，没有实验。** 它预测"把 a0→+1 的角点之外的动作都变得可跟踪"会提升完成率。有没有比"改接口再训练"更便宜的证伪办法？
++5. **n 太小的地方**：反馈消融每臂只有一个活种子；262005 的救援只有一个种子一个场景。哪些结论我写得比 n 允许的更重？
++6. **我的错误记录**：这个会话里我推翻过自己四次（第 7.1 节）。请看我现在写成【推】的那些，有没有哪条我又在用叙事的口气讲还没验的东西。
++
++---
++
++## 10. 产物与复算
++
++| 内容 | 位置 |
++|---|---|
++| T7 四次训练 | 用户机器 `logs/t7_retry1_20260911/`；结论 `docs/T7_RESULTS_AND_VERDICT.md` |
++| 接口单因子核对 | `docs/INTERFACE_SINGLE_FACTOR.md` |
++| T8 五评估 + 四回放 | `logs/t8_eval/`（远端 `37c0786`）；复算脚本 `experiments/summarize_t8_gate.py` |
++| T8 闸门报告 | `docs/T8_GATE1_REPORT_20260912.md` |
++| T9 门控诊断 | `docs/TERMINAL_GATE_DEFECT.md`，产物 `logs/terminal_gate/{gate_h20,gate_h35,default_h35}.json` |
++| Pure MPC 行 | `docs/PURE_MPC_ROW_VERIFIED.md` |
++| 被本轮撤回的那份 | `docs/PRECAPTURE_ENTRY_WINDOW_GAP_WITH_F1.md`（§3g 作废，其余数据仍有效） |
++
++```
++# T9 复算（沙箱可跑，无需训练，无需 checkpoint）
++python -B -m experiments.diagnose_terminal_gate --horizon 20 \
++    --seeds 262000 262001 262002 262003 262004 262005 \
++            262006 262007 262008 262009 262010 262011 \
++    --terminal-gate proximity --output logs/terminal_gate/gate_h20.json
++# 去掉 --terminal-gate proximity 得到仓库默认那一臂
++
++# 回归
++python -B -m pytest -q      # 217 passed
++```
++
++**约束**（`CLAUDE.md` 全文有效，这里只重复最容易踩的）：每次实验严格一个可解释因子、自带提交与 manifest；违约只按 RK45 真值与真实几何判；不得对结果调参（不换种子、不挑 checkpoint、不丢失败种子）；训练一律从零；实时结论只认串行单进程；结论上报前 ≥3 个训练种子，报分布不报最好种子。
+-- 
+2.43.0
+
+
+From fc97a159391b58259d3fb6777e8120aa57d88c0a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 10:15:31 +0000
+Subject: [PATCH 4/6] docs: correct the timescale argument and record the
+ negative main-table result
+
+An external review caught section 7.3 overstating. A receding-horizon
+controller holds a state indefinitely by replanning, so the horizon does not
+bound how long a behaviour can last -- it bounds how far the objective can
+trade off. The 75x ratio is not a proof and is withdrawn.
+
+What replaces it is narrower and in two parts: the QP's objective over the next
+2 s scores nothing for waiting now to gain later, and its reference is
+exogenous and constant, so no preference for waiting can arise inside the
+optimiser either. That establishes the need for a state-dependent reference
+rule -- and not that the rule must be learned, since a hand-written script is
+also one. Separating those two requires the scripted arrival_condition sweep,
+not an argument.
+
+Also records what the convergence document omits: on the same 12-scenario
+block the best trained seed loses to the fixed setpoint on completion (7/12
+against 8/12) and on paired fuel (244.7 against 174.5 N s). Both that and the
+interface evidence were measured on the defective lower layer, so neither
+settles anything, but the negative comparison must travel with the positive
+one.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ docs/T7_T9_REVIEW_20260912.md | 23 +++++++++++++++++------
+ 1 file changed, 17 insertions(+), 6 deletions(-)
+
+diff --git a/docs/T7_T9_REVIEW_20260912.md b/docs/T7_T9_REVIEW_20260912.md
+index 08fed60..c36c2e6 100644
+--- a/docs/T7_T9_REVIEW_20260912.md
++++ b/docs/T7_T9_REVIEW_20260912.md
+@@ -194,15 +194,26 @@ return bool(terminal_latched or port_axial_distance < task.entry_port_axial_dist
+ 
+ **而这正是 T6 接口里 `a_commit` 本来就在参数化的变量**（外面惯性等待 ↔ 提交到目标位姿）。**接口当初选对了变量，只是立论说错了理由。**
+ 
+-### 7.3 【推】最强、且不依赖任何缺陷的那条立论
++### 7.3 【推，已被外部审查更正 2026-09-12】时间尺度论证
+ 
+-上面这些都不是根。根是**时间尺度**：
++**原文写的是**：决定活在 152.4 s 的自旋周期尺度上，优化器时域 2 s，短 75 倍，"没有任何约束写法能补上 75 倍的时间尺度差，下层结构上不可能规划等待"。
+ 
+-- 真正要做的决定是"**什么时候提交入场**"，它活在目标自旋周期 **152.4 s** 的尺度上。
+-- 优化器的时域是 **2 s**（h20），**75 倍之短**。h50 是 5 s，30 倍之短，而且 p95 已经是控制周期的 2.22 倍，**跑不了实时**。
+-- 没有任何约束写法能补上 75 倍的时间尺度差。加上 Λ > 1 不能悬停，**"等到相位对了再进"这个动作，下层结构上不可能规划**。
++**这句话过强，撤回。** 滚动时域控制器靠持续重规划可以无限期保持一个状态——固定设定点 MPC 就能一直悬在一个点上。时域长度约束的不是**行为能持续多久**，而是**目标函数能权衡多远**。把时间尺度比值本身当理论证明是错的。
+ 
+-**这条不依赖门控、不依赖回退、不依赖松弛上限，也不会被任何下层修复削弱。** 如果要重写论文的动机段，我建议以它为主，262005 作为实例，门控缺陷作为"我们审计了下层、排除了实现假象"的方法学信用。
++**更正后、且仍然成立的说法**，分两句，注意第二句才是关键：
++
++1. MPC 在 [t, t+2s] 上的目标函数里，**没有任何一项给"现在等一等，80 s 后相位对了再进"记分**。所以即使约束集完全正确，QP 内部也不存在偏好等待的理由——它不是"做不到等待"，是"没有理由选择等待"。而它的参考是**外生的、常值的**，所以这个理由也不可能从参考里来。
++2. 因此必需的是一条**状态相关的参考选择规则**，活在任务时间尺度上。**但这一条只证明"需要某种上层"，不证明"需要一个学习的上层"。** 手写脚本也是一条状态相关规则。
++
++**区分"要上层"和"要学习的上层"，只能靠实验**：在统一状态分布上，脚本化 `arrival_condition` 能覆盖多少、覆盖到什么程度就开始需要按状态调参。这正是第 8 节之后该做的廉价实验，不是可以靠论证跳过的一步。
++
++### 7.35 收敛文档漏掉的一条硬事实，必须一起带走
++
++外部收敛文档把 T7/T8 定位成"接口层面的相对证据仍有参考意义"，这没错，但它**没有写主表的绝对结果**。完整的账是：
++
++**在同一批 12 场景评估上，训练出来的最好种子输给固定设定点对照——完成 7/12 对 8/12，配对燃料 244.7 对 174.5 N·s，贵 40%。**
++
++这些数字同样跑在有缺陷的下层上，所以它们**不**证明耦合没用；但它们也**不**支持"学习层带来稳定正贡献"。目前为止，我们手上唯一的正面-对照比较是负的。任何对外材料和任何后续拍板都必须把这一条和"接口让它可学"并排放，不能只带后者。
+ 
+ ### 7.4 作废
+ 
+-- 
+2.43.0
+
+
+From 1d2ca6def7a27bd90d7c1474b92715b9f66c69cf Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 10:25:45 +0000
+Subject: [PATCH 5/6] fix: bound the MPC terminal gate by range, and add the
+ headroom tooling
+
+_predicted_terminal_active was an axial half-space with no bound on range, so
+the approach corridor was imposed on a chaser 16 m from the target and 15 m off
+the approach axis. The linearised facet there wants about 4.0 normalised units
+of slack against a constraint_slack_limit of 2.0, so the QP reported infeasible
+and the zero-wrench fallback handed the chaser to omega * r -- 1594 control
+steps at h20 and 2161 at h35 over twelve seeds. The truth side gates the same
+rows on the entry-disc latch alone, so the optimiser was refusing to solve
+because of a region the task does not judge.
+
+The gate now also requires ||p|| <= ||port|| + entry_axial = 6.0 m. Both terms
+are frozen task parameters, so no tunable constant is introduced, and the
+linearisation follows automatically because it branches on the same predicate.
+Measured: infeasible steps go to zero on all 24 episodes at both horizons, and
+the force impulse on the commonly completed episodes is identical to 0.1 N s.
+Completion does not improve -- 8/12 either way at h20 -- which is why the
+"the upper layer preserves feasibility" reading is withdrawn.
+
+tests/test_terminal_gate.py pins the MPC gate to the truth gate outside the
+entry sphere, keeps it firing inside, and keeps the axial clause intact.
+
+evaluate_arrival_condition_script.py drives the frozen 2D action directly so
+the commit-time sweep needs no checkpoint: commit_now is the bitwise Pure MPC
+floor, commit_at holds the inertially frozen point until a given time.
+
+diagnose_terminal_gate.py keeps the pre-fix predicate runnable behind
+--terminal-gate half_space so the comparison stays reproducible.
+
+Regression: 224 passed.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ controllers/mpc/constraints.py                |  44 +++-
+ experiments/diagnose_terminal_gate.py         |  46 ++--
+ .../evaluate_arrival_condition_script.py      | 207 ++++++++++++++++++
+ tests/test_terminal_gate.py                   | 138 ++++++++++++
+ 4 files changed, 407 insertions(+), 28 deletions(-)
+ create mode 100644 experiments/evaluate_arrival_condition_script.py
+ create mode 100644 tests/test_terminal_gate.py
+
+diff --git a/controllers/mpc/constraints.py b/controllers/mpc/constraints.py
+index 79b0cf4..e8e284b 100644
+--- a/controllers/mpc/constraints.py
++++ b/controllers/mpc/constraints.py
+@@ -212,20 +212,54 @@ def normalized_constraint_margins(
+ _INACTIVE_MARGIN = 1.0e3
+ 
+ 
++def entry_plane_radius_m(task: PrecaptureTaskConfig) -> float:
++    """Distance from the target centre to the entry plane.
++
++    ``||port_position|| + entry_port_axial_distance_m``. Both are frozen task
++    parameters, so this introduces no tunable constant.
++    """
++
++    return float(
++        np.linalg.norm(task.port_position) + task.entry_port_axial_distance_m
++    )
++
++
+ def _predicted_terminal_active(
+     position: FloatArray,
+     task: PrecaptureTaskConfig,
+     *,
+     terminal_latched: bool,
+ ) -> bool:
+-    """Activate MPC terminal rows at predicted entry, without changing truth latch."""
++    """Activate MPC terminal rows at predicted entry, without changing truth latch.
++
++    The axial test alone is a **half-space** -- with the task's own numbers it
++    is ``p_x > -6`` -- and it carries no bound on range, so it imposed the
++    approach corridor on a chaser 16 m from the target and 15 m off the
++    approach axis. The linearised corridor facet there wants about 4.0
++    normalised units of slack against a ``constraint_slack_limit`` of 2.0, so
++    the QP reported ``infeasible`` and the zero-wrench fallback handed the
++    chaser to ``omega * r``. That cost 1594 control steps at h20 and 2161 at
++    h35 over twelve seeds.
++
++    The truth side never agreed with it: ``normalized_precapture_truth_margins``
++    gates the same rows on ``terminal_latched`` alone, and the environment
++    scores a corridor violation only once the latch has armed on a legal
++    entry-disc crossing. The optimiser was refusing to solve because of a
++    region the task does not judge.
++
++    Bounding the half-space by the entry-plane radius takes that to zero on all
++    24 episodes measured and leaves the force impulse on the commonly completed
++    ones identical to 0.1 N s. See ``docs/TERMINAL_GATE_DEFECT.md``.
++    """
+ 
++    if terminal_latched:
++        return True
+     port_displacement = position - task.port_position
+     port_axial_distance = float(task.approach_axis @ port_displacement)
+-    return bool(
+-        terminal_latched
+-        or port_axial_distance < task.entry_port_axial_distance_m
+-    )
++    if port_axial_distance >= task.entry_port_axial_distance_m:
++        return False
++    point = np.asarray(position, dtype=np.float64)
++    return bool(float(np.linalg.norm(point)) <= entry_plane_radius_m(task))
+ 
+ 
+ def normalized_precapture_truth_margins(
+diff --git a/experiments/diagnose_terminal_gate.py b/experiments/diagnose_terminal_gate.py
+index 4b0f395..de4238d 100644
+--- a/experiments/diagnose_terminal_gate.py
++++ b/experiments/diagnose_terminal_gate.py
+@@ -22,7 +22,8 @@ corridor violation only once ``_terminal_region_entered`` has latched on a legal
+ entry-disc crossing.  So the optimiser is refusing to solve because of a region
+ the task never judges.
+ 
+-``--terminal-gate proximity`` adds the missing bound and changes nothing else::
++The repository now ships that bound; ``--terminal-gate half_space`` restores
++the pre-fix predicate so the comparison stays runnable. The bound is::
+ 
+     ... and ||p|| <= port_radius + entry_port_axial_distance_m   (= 6.0 m)
+ 
+@@ -39,7 +40,7 @@ Reproduce::
+     python -B -m experiments.diagnose_terminal_gate --horizon 20 \\
+         --seeds 262000 262001 262002 262003 262004 262005 \\
+                 262006 262007 262008 262009 262010 262011 \\
+-        --terminal-gate proximity --output logs/terminal_gate/gate_h20.json
++        --output logs/terminal_gate/gate_h20.json
+ """
+ 
+ from __future__ import annotations
+@@ -59,33 +60,31 @@ from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
+ from env.phase2_env import precapture_planning_environment_config
+ from env.task import PrecaptureTaskConfig
+ 
+-_HALF_SPACE_GATE = constraints._predicted_terminal_active
++_REPOSITORY_GATE = constraints._predicted_terminal_active
++entry_plane_radius_m = constraints.entry_plane_radius_m
+ 
+ 
+-def entry_plane_radius_m(task: PrecaptureTaskConfig) -> float:
+-    """Distance from the target centre to the entry plane, from frozen terms."""
++def install_half_space_gate() -> None:
++    """Restore the pre-fix gate: the axial half-space with no bound on range.
+ 
+-    return float(
+-        np.linalg.norm(task.port_position) + task.entry_port_axial_distance_m
+-    )
+-
+-
+-def install_proximity_gate(radius_m: float) -> None:
+-    """Bound the half-space gate by range. Nothing else about it changes."""
++    The repository now ships the range-bounded gate, so this is what the
++    ``half_space`` arm measures -- the historical behaviour, kept runnable so
++    the comparison in ``docs/TERMINAL_GATE_DEFECT.md`` stays reproducible.
++    """
+ 
+     def gated(position: Any, task: PrecaptureTaskConfig, *, terminal_latched: bool) -> bool:
+-        if not _HALF_SPACE_GATE(position, task, terminal_latched=terminal_latched):
+-            return False
+-        if terminal_latched:
+-            return True
+-        point = np.asarray(position, dtype=np.float64)
+-        return bool(float(np.linalg.norm(point)) <= radius_m)
++        port_displacement = np.asarray(position, dtype=np.float64) - task.port_position
++        port_axial_distance = float(task.approach_axis @ port_displacement)
++        return bool(
++            terminal_latched
++            or port_axial_distance < task.entry_port_axial_distance_m
++        )
+ 
+     constraints._predicted_terminal_active = gated
+ 
+ 
+ def restore_gate() -> None:
+-    constraints._predicted_terminal_active = _HALF_SPACE_GATE
++    constraints._predicted_terminal_active = _REPOSITORY_GATE
+ 
+ 
+ def run_episode(seed: int, horizon: int) -> dict[str, Any]:
+@@ -174,8 +173,9 @@ def parse_args() -> argparse.Namespace:
+     parser.add_argument(
+         "--terminal-gate",
+         choices=["half_space", "proximity"],
+-        default="half_space",
+-        help="half_space is the repository default; proximity adds the range bound",
++        default="proximity",
++        help="proximity is the repository behaviour; half_space restores the "
++        "pre-fix gate for comparison",
+     )
+     parser.add_argument("--output", type=Path, required=True)
+     return parser.parse_args()
+@@ -187,8 +187,8 @@ def main() -> None:
+         raise FileExistsError(args.output)
+     args.output.parent.mkdir(parents=True, exist_ok=True)
+     radius_m = entry_plane_radius_m(PrecaptureTaskConfig())
+-    if args.terminal_gate == "proximity":
+-        install_proximity_gate(radius_m)
++    if args.terminal_gate == "half_space":
++        install_half_space_gate()
+     try:
+         records = []
+         for seed in args.seeds:
+diff --git a/experiments/evaluate_arrival_condition_script.py b/experiments/evaluate_arrival_condition_script.py
+new file mode 100644
+index 0000000..19a6906
+--- /dev/null
++++ b/experiments/evaluate_arrival_condition_script.py
+@@ -0,0 +1,207 @@
++"""Scripted upper layers inside the frozen `arrival_condition` action space.
++
++This is the headroom question, asked without training: **on a lower layer that
++is semantically correct, does the choice of when to commit still decide the
++outcome?**
++
++The T6 action is two-dimensional, so the useful scripts are actions, not
++inverted waypoints:
++
++``commit_now``
++    ``a = (+1, 0)`` on every decision. The wrapper broadcasts the desired pose
++    unchanged, so this is the fixed-setpoint Pure MPC controller, bitwise. It
++    is the capability floor and the control row.
++
++``commit_at``
++    ``a = (-1, hold_radius_action)`` until ``--commit-time-s``, then
++    ``a = (+1, 0)``. The hold end of the blend is the *inertially frozen*
++    point, which is what waiting has to mean here -- a fixed target-frame point
++    co-rotates with the body-fixed approach axis and no entry window ever
++    opens.
++
++Sweeping ``--commit-time-s`` over one seed answers whether *some* commit time
++completes an episode the fixed setpoint fails. Sweeping it over the seed block
++answers whether that is a property of the state, which is what an upper layer
++would have to learn. Neither needs a trained policy.
++
++Nothing here is a reportable main-table row except ``commit_now``, which is the
++Pure MPC control.
++
++Reproduce::
++
++    python -B -m experiments.evaluate_arrival_condition_script --horizon 35 \\
++        --policy commit_at --commit-time-s 40 \\
++        --seeds 262000 262001 262002 --output logs/headroom/t40.json
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from pathlib import Path
++from typing import Any
++
++import numpy as np
++
++from controllers.mpc.prediction import relative_to_vector
++from dynamics.types import GeneralizedForce
++from env.action import wrench_to_normalized
++from env.hybrid_env import PrecaptureHybridConfig, PrecaptureHybridEnv
++from env.phase2_env import precapture_planning_environment_config
++
++
++def scripted_action(
++    policy: str,
++    time_seconds: float,
++    commit_time_s: float,
++    hold_radius_action: float,
++) -> np.ndarray:
++    if policy == "commit_now":
++        return np.array([1.0, 0.0], dtype=np.float64)
++    if policy == "commit_at":
++        if time_seconds < commit_time_s:
++            return np.array([-1.0, hold_radius_action], dtype=np.float64)
++        return np.array([1.0, 0.0], dtype=np.float64)
++    raise ValueError(f"unknown policy {policy!r}")
++
++
++def run_episode(
++    seed: int,
++    horizon: int,
++    policy: str,
++    commit_time_s: float,
++    hold_radius_action: float,
++) -> dict[str, Any]:
++    env = PrecaptureHybridEnv(
++        environment_config=precapture_planning_environment_config(),
++        hybrid_config=PrecaptureHybridConfig(
++            horizon_steps=horizon,
++            waypoint_parametrization="arrival_condition",
++            runtime_diagnostics=False,
++        ),
++    )
++    _, info = env.reset(seed=seed)
++    infeasible_steps = 0
++    first_infeasible_time_s: float | None = None
++    force_impulse = 0.0
++    torque_impulse = 0.0
++    steps = 0
++    waypoint_radii: list[float] = []
++    terminated = truncated = False
++    while not (terminated or truncated):
++        action = scripted_action(
++            policy,
++            float(env.env.time_seconds),
++            commit_time_s,
++            hold_radius_action,
++        )
++        waypoint = env.waypoint_from_action(action)
++        waypoint_radii.append(round(float(np.linalg.norm(waypoint)), 4))
++        for _ in range(env.hybrid_config.decision_period_steps):
++            assert env.env.relative is not None
++            assert env.env.target_state is not None
++            wrench, diagnostics = env.controller.command(
++                relative_to_vector(env.env.relative),
++                target_state=env.env.target_state,
++                time_seconds=env.env.time_seconds,
++                terminal_latched=bool(info["terminal_region_active"]),
++                external_reference=waypoint,
++            )
++            if str(diagnostics.status).startswith("infeasible"):
++                infeasible_steps += 1
++                if first_infeasible_time_s is None:
++                    first_infeasible_time_s = round(float(env.env.time_seconds), 1)
++            force_impulse += (
++                float(np.linalg.norm(wrench[3:])) * env.environment_config.dt_s
++            )
++            torque_impulse += (
++                float(np.linalg.norm(wrench[:3])) * env.environment_config.dt_s
++            )
++            _, _, terminated, truncated, info = env.env.step(
++                wrench_to_normalized(
++                    GeneralizedForce.from_vector(wrench),
++                    max_torque_per_axis_nm=(
++                        env.environment_config.max_torque_per_axis_nm
++                    ),
++                    max_force_per_axis_n=env.environment_config.max_force_per_axis_n,
++                )
++            )
++            steps += 1
++            if terminated or truncated:
++                break
++    return {
++        "seed": seed,
++        "horizon": horizon,
++        "policy": policy,
++        "commit_time_s": commit_time_s,
++        "hold_radius_action": hold_radius_action,
++        "completed": bool(info["completed"]),
++        "end_time_s": round(float(env.env.time_seconds), 2),
++        "steps": steps,
++        "qp_infeasible_steps": infeasible_steps,
++        "first_infeasible_time_s": first_infeasible_time_s,
++        "force_impulse_n_s": round(force_impulse, 3),
++        "torque_impulse_nm_s": round(torque_impulse, 4),
++        "illegal_terminal_entry_count": int(info["illegal_terminal_entry_count"]),
++        "terminal_region_active": bool(info["terminal_region_active"]),
++        "final_range_m": round(float(info["target_center_distance_m"]), 3),
++        "final_fov_margin_rad": round(float(info["fov_margin_rad"]), 4),
++        "time_failure": bool(info["time_failure"]),
++        "distance_failure": bool(info["distance_failure"]),
++        "first_waypoint_radius_m": waypoint_radii[0] if waypoint_radii else None,
++        "last_waypoint_radius_m": waypoint_radii[-1] if waypoint_radii else None,
++    }
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--seeds", type=int, nargs="+", required=True)
++    parser.add_argument("--horizon", type=int, default=35)
++    parser.add_argument(
++        "--policy", choices=["commit_now", "commit_at"], required=True
++    )
++    parser.add_argument(
++        "--commit-time-s",
++        type=float,
++        default=0.0,
++        help="commit_at only: hold the inertially frozen point until this time",
++    )
++    parser.add_argument(
++        "--hold-radius-action",
++        type=float,
++        default=0.0,
++        help="a[1] during the hold, in [-1, 1]; scales the frozen hold radius",
++    )
++    parser.add_argument("--output", type=Path, required=True)
++    return parser.parse_args()
++
++
++def main() -> None:
++    args = parse_args()
++    if args.output.exists():
++        raise FileExistsError(args.output)
++    if not -1.0 <= args.hold_radius_action <= 1.0:
++        raise ValueError("hold radius action must lie in [-1, 1]")
++    args.output.parent.mkdir(parents=True, exist_ok=True)
++    records = []
++    for seed in args.seeds:
++        record = run_episode(
++            seed,
++            args.horizon,
++            args.policy,
++            args.commit_time_s,
++            args.hold_radius_action,
++        )
++        records.append(record)
++        print(json.dumps(record), flush=True)
++        args.output.write_text(json.dumps(records, indent=2))
++    completed = sum(record["completed"] for record in records)
++    print(
++        f"{args.policy} t={args.commit_time_s} h{args.horizon}: "
++        f"{completed}/{len(records)} completed",
++        flush=True,
++    )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tests/test_terminal_gate.py b/tests/test_terminal_gate.py
+new file mode 100644
+index 0000000..e9fe1f6
+--- /dev/null
++++ b/tests/test_terminal_gate.py
+@@ -0,0 +1,138 @@
++"""The MPC's terminal rows must not fire on states the task does not judge.
++
++`_predicted_terminal_active` used to be an axial half-space with no bound on
++range, so a chaser 16 m from the target and 15 m off the approach axis had the
++approach corridor imposed on it.  The linearised facet there wants about four
++normalised units of slack against a `constraint_slack_limit` of 2.0, so the QP
++reported `infeasible` and the zero-wrench fallback handed the chaser to
++`omega * r`.  See `docs/TERMINAL_GATE_DEFECT.md`.
++"""
++
++import numpy as np
++
++from controllers.mpc.constraints import (
++    _INACTIVE_MARGIN,
++    _predicted_terminal_active,
++    entry_plane_radius_m,
++    normalized_precapture_constraint_margins,
++    normalized_precapture_truth_margins,
++)
++from dynamics.lie import make_transform, se3_log
++from env.task import PrecaptureTaskConfig
++
++_CORRIDOR_FACETS = 8
++_OMEGA = np.array([0.0, 0.0, 0.041231])
++
++
++def _state_at(position: np.ndarray) -> np.ndarray:
++    state = np.zeros(12, dtype=np.float64)
++    state[:6] = se3_log(make_transform(np.eye(3), position))
++    return state
++
++
++def test_entry_plane_radius_comes_from_frozen_task_terms() -> None:
++    task = PrecaptureTaskConfig()
++    assert np.isclose(
++        entry_plane_radius_m(task),
++        np.linalg.norm(task.port_position) + task.entry_port_axial_distance_m,
++    )
++    assert np.isclose(entry_plane_radius_m(task), 6.0)
++
++
++def test_terminal_rows_do_not_fire_far_from_the_target() -> None:
++    """The axial test alone would fire here; the range bound is what stops it."""
++
++    task = PrecaptureTaskConfig()
++    # 16.4 m out, 15 m off the approach axis, on the near side of the plane.
++    position = np.array([-5.90, -10.91, 10.72])
++    axial = float(task.approach_axis @ (position - task.port_position))
++    assert axial < task.entry_port_axial_distance_m
++    assert float(np.linalg.norm(position)) > entry_plane_radius_m(task)
++
++    assert not _predicted_terminal_active(position, task, terminal_latched=False)
++
++    margins = normalized_precapture_constraint_margins(
++        _state_at(position),
++        task,
++        target_angular_velocity_rad_s=_OMEGA,
++        terminal_latched=False,
++        corridor_facets=_CORRIDOR_FACETS,
++    )
++    corridor = margins[4 : 5 + _CORRIDOR_FACETS]
++    assert np.all(corridor == _INACTIVE_MARGIN)
++
++
++def test_mpc_gate_agrees_with_the_truth_gate_outside_the_entry_sphere() -> None:
++    """Whatever the optimiser refuses to solve for, the truth must also judge."""
++
++    task = PrecaptureTaskConfig()
++    for position in (
++        np.array([-5.90, -10.91, 10.72]),
++        np.array([-5.50, -10.91, 10.72]),
++        np.array([-2.00, -12.00, 9.00]),
++        np.array([1.00, -8.00, 14.00]),
++    ):
++        state = _state_at(position)
++        constraint = normalized_precapture_constraint_margins(
++            state,
++            task,
++            target_angular_velocity_rad_s=_OMEGA,
++            terminal_latched=False,
++            corridor_facets=_CORRIDOR_FACETS,
++        )
++        truth = normalized_precapture_truth_margins(
++            state, task, target_angular_velocity_rad_s=_OMEGA, terminal_latched=False
++        )
++        constraint_terminal_active = bool(
++            np.any(constraint[4 : 5 + _CORRIDOR_FACETS] != _INACTIVE_MARGIN)
++        )
++        truth_terminal_active = bool(truth[4] != _INACTIVE_MARGIN)
++        assert constraint_terminal_active == truth_terminal_active
++
++
++def test_terminal_rows_still_fire_inside_the_entry_region() -> None:
++    """The bound must not switch the corridor off where the task does want it."""
++
++    task = PrecaptureTaskConfig()
++    position = np.array([-3.0, 0.4, 0.3])
++    assert float(np.linalg.norm(position)) <= entry_plane_radius_m(task)
++    assert _predicted_terminal_active(position, task, terminal_latched=False)
++
++    margins = normalized_precapture_constraint_margins(
++        _state_at(position),
++        task,
++        target_angular_velocity_rad_s=_OMEGA,
++        terminal_latched=False,
++        corridor_facets=_CORRIDOR_FACETS,
++    )
++    assert np.all(margins[4 : 5 + _CORRIDOR_FACETS] != _INACTIVE_MARGIN)
++
++
++def test_latched_state_keeps_the_terminal_rows_at_any_range() -> None:
++    """Once the truth latch has armed, the corridor applies wherever the chaser is."""
++
++    task = PrecaptureTaskConfig()
++    position = np.array([-5.90, -10.91, 10.72])
++    assert float(np.linalg.norm(position)) > entry_plane_radius_m(task)
++    assert _predicted_terminal_active(position, task, terminal_latched=True)
++
++
++def test_behind_the_entry_plane_is_still_excluded() -> None:
++    """The axial clause has not been weakened, only bounded."""
++
++    task = PrecaptureTaskConfig()
++    position = np.array([-8.0, 0.0, 0.0])
++    axial = float(task.approach_axis @ (position - task.port_position))
++    assert axial > task.entry_port_axial_distance_m
++    assert not _predicted_terminal_active(position, task, terminal_latched=False)
++
++
++def test_the_range_bound_is_what_excludes_the_defect_state() -> None:
++    """Isolate the new clause: the axial test alone would have fired."""
++
++    task = PrecaptureTaskConfig()
++    position = np.array([-5.90, -10.91, 10.72])
++    axial = float(task.approach_axis @ (position - task.port_position))
++    assert axial < task.entry_port_axial_distance_m  # the old gate fired here
++    assert float(np.linalg.norm(position)) > entry_plane_radius_m(task)
++    assert not _predicted_terminal_active(position, task, terminal_latched=False)
+-- 
+2.43.0
+
+
+From a9ab68807bfbb20ba7b9fb1f0d1ab448ccb0573e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 12 Sep 2026 10:25:45 +0000
+Subject: [PATCH 6/6] docs: T10 execution order -- freeze the lower layer, then
+ measure headroom
+
+One question for the round: does a semantically correct fixed MPC still leave
+task-level decision headroom. No training, no checkpoints.
+
+S1 applies the patch and reproduces the 12-seed gate check (gate A: any
+non-zero qp_infeasible_steps stops the round rather than being patched around
+locally). S2 freezes the MPC. S3 runs the Pure MPC floor over 48 seeds -- the
+sampler already draws radius, direction, relative speed, pointing error and
+target phase, so widening the distribution is just more seeds and unfreezes
+nothing. S4 sweeps the commit time on the seeds that failed and reports the
+rescue rate, the shape of the feasible commit set, and the reverse cost.
+
+Gate B is the fork: no rescues, or one constant commit time capturing all of
+it, means no learned layer is needed and the round stops before any training.
+Only past it do S5 (interface gain calibration, with the bitwise floor
+re-verified) and S6 (three seeds from zero) happen.
+
+Carries the negative result forward explicitly: on the T8 block the best
+trained seed loses to the fixed setpoint on completion and on paired fuel.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfdW4y9TEkhu2Sc1bKnkER
+---
+ docs/T10_EXECUTION_ORDER.md | 230 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 230 insertions(+)
+ create mode 100644 docs/T10_EXECUTION_ORDER.md
+
+diff --git a/docs/T10_EXECUTION_ORDER.md b/docs/T10_EXECUTION_ORDER.md
+new file mode 100644
+index 0000000..e366595
+--- /dev/null
++++ b/docs/T10_EXECUTION_ORDER.md
+@@ -0,0 +1,230 @@
++# T10 执行单：下层清洗已完成，接下来验 headroom
++
++写于 2026-09-12。**下层窗口读这一份就够**，不需要参与过上层讨论。
++背景全文在 `docs/T7_T9_REVIEW_20260912.md`，机制细节在
++`docs/TERMINAL_GATE_DEFECT.md`。
++
++---
++
++## 0. 这一轮要回答的唯一问题
++
++**一个语义正确、不再人为制造失败的固定 MPC，是否仍然留有值得学习的任务级决策余量。**
++
++- **有** → 校准接口、冻结、三种子从零训练，进最终主表。
++- **没有** → 停下，不要训练，回上层重新设计方法。
++
++这一轮**不训练**。所有步骤都是评估和脚本，不需要 checkpoint。
++
++---
++
++## 1. 补丁里已经做完的事（不要重做）
++
++上层已经把下层的语义缺陷改掉并测完，补丁里包含：
++
++1. **门控修正**（`controllers/mpc/constraints._predicted_terminal_active`）。
++   原判据是一个轴向半空间 `p_x > -6`，**没有距离界**，所以离目标 16 m、离轴
++   15 m 的飞行器也被强制执行进场走廊；那里线性化后要 4.13 个归一化单位的松弛，
++   而 `constraint_slack_limit = 2.0`，于是 QP 报 `infeasible`，零推力回退把飞行器
++   交给 `omega * r`。真值侧从不判这个区域。现在加了距离界
++   `‖p‖ <= ‖port‖ + 4.5 = 6.0 m`，两项都是冻结任务参数，**不引入任何可调常数**。
++2. **7 项新测试**（`tests/test_terminal_gate.py`），把"MPC 门控与真值门控一致"钉住。
++3. **诊断工具** `experiments/diagnose_terminal_gate.py`，
++   `--terminal-gate half_space` 可复现修正前的行为做对照。
++4. **脚本上层工具** `experiments/evaluate_arrival_condition_script.py`（本轮主力）。
++5. **12 种子两时域的产物** `logs/terminal_gate/`。
++
++修正的效果，已测（固定设定点，12 种子）：
++
++| | 完成 | 平均时间 | 平均力冲量 | **QP 不可行步数** | 非法穿越 |
++|---|---:|---:|---:|---:|---:|
++| h20 修正前 | 8/12 | 128.5 s | 208.2 N·s | **1594** | 9 |
++| h20 修正后 | 8/12 | 124.4 s | 205.7 N·s | **0** | 5 |
++| h35 修正前 | 9/12 | 88.5 s | 167.2 N·s | **2161** | 4 |
++| h35 修正后 | 8/12 | 78.6 s | 173.3 N·s | **0** | 5 |
++
++两臂都完成的回合上力冲量**完全相同**（h20 192.4 对 192.4，h35 173.3 对 173.3）——
++这个因子只动了它该动的东西。
++
++**要记住的两条：**
++
++- 不可行**归零**，但**完成数没有提升**。所以"上层的作用是保住下层可行性"这个说法
++  已经作废，不要再用。
++- 修正后每一个超时失败的终局都一样：**停在 3.00 m**（正好是目标位姿）、指向完好、
++  **非法穿越 1–2 次、闩锁从未 arm**。闩锁只在由外向内穿越时 arm，人已经在里面就
++  再也 arm 不了。**这就是本轮要量化的 headroom。**
++
++---
++
++## 2. S1：落地与自检
++
++```
++git am -3 < T10_delivery.patch
++python -B -m pytest -q
++```
++
++**期望 224 passed**（原 217 + 新增 7）。
++
++自检（必须一致，否则停下报告）：
++
++```
++python -B -m experiments.diagnose_terminal_gate --horizon 20 \
++  --seeds 262000 262001 262002 262003 262004 262005 \
++          262006 262007 262008 262009 262010 262011 \
++  --output logs/t10/gate_h20_check.json
++```
++
++期望 **8/12，`qp_infeasible_steps` 全部为 0**，与 `logs/terminal_gate/gate_h20.json`
++逐条一致。
++
++> **闸门 A**：若 `qp_infeasible_steps` 出现非零，**停下报告**。那说明合法性行在
++> 6 m 球面上需要预览，是一个新的下层问题，不要自行加预览逻辑。
++
++补丁里的 `logs/terminal_gate/` 是用一份临时猴补丁测出来的；上层随后用**补丁内的
++正式代码**把两个时域各 12 个种子重跑了一遍，`completed`、`end_time_s`、`steps`、
++`qp_infeasible_steps`、`first_infeasible_time_s`、`illegal_terminal_entry_count`、
++`terminal_region_active`、`final_range_m`、`final_fov_margin_rad`、`time_failure`、
++`distance_failure` **全部逐位一致**，力冲量差异均小于 0.01 N·s（只是记录位数不同）。
++所以这一步是复现检查，不是重新测量——对不上就是环境或落地出了问题。
++
++---
++
++## 3. S2：正式冻结 MPC
++
++S1 通过后，**下层控制器冻结**。
++
++此后**不再**碰：`infeasible_fallback`、`constraint_slack_limit`、姿态参考、
++走廊面数、权重、时域默认值、任何 MPC 内部逻辑——除非发现新的、明确的代码错误
++（不是"某个种子表现不好"）。
++
++这一条是纪律，不是建议。上一轮就是因为不断在下层深挖，主线停了。
++
++---
++
++## 4. S3：Pure MPC 在统一分布上的基准
++
++**统一分布就是采样器本身，不需要新代码、不需要解冻任何参数。**
++`sample_precapture_planning_chaser_state` 已经在采初始半径（15–20 m，体积均匀）、
++方向、相对速度（≤0.10 m/s）、指向误差（≤5°）和目标初始相位。**种子就是样本。**
++所以"扩大分布"＝"多跑种子"。
++
++用 **262000–262047 共 48 个种子**（历史那 12 个是其子集，一切可比）：
++
++```
++python -B -m experiments.evaluate_arrival_condition_script --horizon 35 \
++  --policy commit_now --seeds $(seq 262000 262047) \
++  --output logs/t10/pure_mpc_h35_48.json
++```
++
++`commit_now` 就是 `a = (+1, ·)`，**逐位等于固定设定点 Pure MPC**，所以这一行
++既是分布基准也是主表的对照行。
++
++报告：完成数、成功平均时间、成功平均力冲量、**非法穿越总数**、
++`qp_infeasible_steps` 总数（应为 0）。
++
++> 机时估计：单回合 1–4 分钟，48 回合约 1–3 小时，**串行单进程**。
++
++---
++
++## 5. S4：headroom 测试（本轮的核心，不训练）
++
++问题：**同一个种子，换一个提交时机，结果会不会变。**
++
++对 S3 中**未完成**的种子，扫提交时间：
++
++```
++for T in 20 40 60 80 100 120 ; do
++  python -B -m experiments.evaluate_arrival_condition_script --horizon 35 \
++    --policy commit_at --commit-time-s $T --seeds <S3 失败的种子> \
++    --output logs/t10/commit_at_${T}.json
++done
++```
++
++`commit_at` 在 T 之前发 `a = (-1, 0)`——保持**惯性冻结点**（等待必须是惯性的：
++固定目标系点会跟着体固接近轴共旋，窗口永远不会打开），T 之后发 `a = (+1, 0)`。
++
++**要报的量：**
++
++1. **救援率**：S3 失败的种子里，有多少个存在**某个** T 能完成。
++2. 每个被救种子的最优 T、完成时间、力冲量、非法穿越数。
++3. 可行 T 的集合形状——是一个连续区间，还是散开的几段。
++4. 反向代价：S3 **已完成**的种子里，有多少个会被非零 T 弄坏（抽 6 个种子跑 T=40 即可）。
++
++> 机时估计：失败种子数 × 6 个 T。若 S3 失败约 15 个，则 90 回合，约 3–6 小时。
++
++---
++
++## 6. 闸门 B：这一轮的分叉
++
++**有 headroom** ＝ S4 的救援率明显不为零（比如 S3 失败的种子里有三分之一以上
++能被某个 T 救回），**且**可行 T 随种子变化（说明它是状态相关的，不是一个常数）。
++
++- **有** → 继续 S5。
++- **没有**（几乎救不回，或者所有种子都是同一个 T 最好）→ **停下报告，不要训练**。
++  后者尤其重要：如果一个**固定常数** T 就能拿到全部收益，那就不需要学习层，
++  写死即可，方法主张要重新设计。
++
++---
++
++## 7. S5：接口增益校准（只在闸门 B 通过后做）
++
++已测出的问题：`∂r_ref/∂a0 ≈ -6.5 m / 单位动作`（因为 hold 半径冻结在 12–19 m 而
++commit 半径是 3 m），而飞行器一个 2 s 决策窗、静止起步的平动权限只有 **0.094 m**。
++死种子指令的每决策位移中位数是权限的 3–7 倍，执行器占用 0.84–0.95，净位移接近零。
++
++校准目标：让典型策略动作变化引起的参考跳变落在 MPC 一个决策周期内能响应的量级。
++
++**这是改 T6 冻结接口，所以必须：**
++
++1. 自带单因子提交和 manifest；
++2. **重新验证 `a = (+1, ·)` 的逐位 Pure MPC 地板**——12 种子 × 300 控制步，
++   `max |Δwrench| = 0`。改增益很容易碰坏它，碰坏了整个接口的能力底线就没了；
++3. 校准完**立即冻结**，不再反复调。
++
++---
++
++## 8. S6：最终训练（只在 S5 完成后做）
++
++- **三个种子，全部从零**，60000 次决策，`arrival_condition`，无反馈。
++- 反馈通道**这一轮不进核心**。T7 点估计不利（V2 全面领先 V3），而且旧反馈里的
++  QP 回退/松弛信号受了错误门控污染。它日后作为独立消融，不和核心接口绑死。
++- 报分布，不报最好种子。
++
++---
++
++## 9. 不要做的事
++
++- 不要为了让 Hybrid 好看去找 Pure MPC 的弱点。**Pure MPC 越强，论文越站得住。**
++- 不要再围绕 262005 / 262006 单个种子讲故事。个例只用于机理解释，结论要落在分布上。
++- 不要动任何冻结任务参数——几何、约束、时限、奖励、**目标自旋率 `omega_T`**。
++  动了就和全部历史结果不可比。
++- 不要自行给 MPC 加预览逻辑、改回退、改松弛（见 S2）。
++- 不要并行跑评估（实时结论只认串行单进程）。训练可以并行。
++- 不要复用 T7/T8 的任何 checkpoint——它们是在有缺陷的下层上训的，作废。
++- 中途不要报常规进度，只在触闸门或最终交付时报。
++
++---
++
++## 10. 必须一起带走的一条负结果
++
++T8 的 12 场景评估里，**训练出的最好种子输给固定设定点对照——完成 7/12 对 8/12，
++配对燃料 244.7 对 174.5 N·s，贵 40%**。
++
++这些数字也跑在有缺陷的下层上，所以**不**证明耦合没用；但也**不**支持"学习层带来
++稳定正贡献"。目前手上唯一的正面-对照比较是负的。这一条要和"接口让它可学"并排带，
++不能只带后者。
++
++---
++
++## 11. 产物与复算
++
++| 内容 | 位置 |
++|---|---|
++| 门控缺陷与 12 种子两时域 | `docs/TERMINAL_GATE_DEFECT.md`，`logs/terminal_gate/` |
++| T7→T9 全程与撤回清单 | `docs/T7_T9_REVIEW_20260912.md` |
++| 本轮产物 | `logs/t10/` |
++| 门控回归 | `tests/test_terminal_gate.py` |
++
++约束（`CLAUDE.md` 全文有效，这里只重复最容易踩的）：每次实验严格一个可解释因子、
++自带提交与 manifest；违约只按 RK45 真值与真实几何判；不得对结果调参（不换种子、
++不挑 checkpoint、不丢失败种子）；训练一律从零；实时结论只认串行单进程；
++结论上报前 ≥3 个训练种子，报分布不报最好种子。
+-- 
+2.43.0
+

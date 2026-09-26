@@ -1,651 +1,548 @@
 # Working notes for this repository
 
-High-fidelity 6-DoF SE(3) pre-capture control for a tumbling non-cooperative
-target. Chaser 106 kg, target 225 kg free-tumbling, 500 km / 45 deg circular
+High-fidelity 6-DoF SE(3) **pre-capture** control for a fast-tumbling
+non-cooperative target. Chaser 106 kg, target 225 kg, 500 km / 45 deg circular
 orbit, RK45 truth with central gravity, second moments, gravity gradient and
-J2, 0.1 s control period, 200 s episode cap, +-5 N / +-0.6 N*m per axis.
+J2, 0.1 s control period, +-5 N / +-0.6 N*m per axis.
 
-## Current decision -- 2026-09-01 (supersedes older hybrid planning below)
+**The active task is `precapture_planning`, and the active work is the
+SAC-MPC coupling.** Everything about `single_phase`, the Waypoint, the A1/A2/A3
+perception line and the 24D mission schemas is history; it is kept under
+*Historical research line* because the lessons transfer, not because it is live.
 
-Four probes for a defensible SAC-MPC gap are now closed: learned terminal
-value, sampled target phase, target-model mismatch, and target-state
-observation error. After correcting an observation-error bug, all four are
-negative. The bug rotated the target's inertial velocity together with an
-attitude bias, injecting about 6.6 m/s of false relative velocity from the
-7.6 km/s orbital velocity. The correct estimator rotates only the attitude and
-keeps inertial position, velocity, and angular velocity unchanged.
+> **Live status -- 2026-09-26.** V3 (policy-level value arbitration: SAC task
+> policy + fitted V_L / V_B + initial choice and one-way handback) is the
+> method. v3b and v3c were stopped by the preregistered QP health gate; the
+> pre-v3d review (`docs/V3D_REVIEW_20260926.md`) traced both to one root cause
+> (the MPC imposed corridor rows where no legal entry leads) and found four
+> more defects, all fixed with tests in `9638f84`: legal-entry-cylinder gate
+> (Pure MPC completed episodes bitwise unchanged, 36 -> 37/48), **the formal
+> evaluator never updated the execution-feedback observation (every V2 and
+> round-1 model evaluation is invalid as a capability measure; erratum in
+> the V2 report)**, timeout now terminal for SAC, MPC reset now clears the
+> cached solver. M2-M6 are implemented. **Next: v3d training and the full
+> pipeline per `docs/V3D_EXECUTION_ORDER_20260926.md`.** The 2026-09-24 block
+> below is prior context.
+>
+> **Live status -- 2026-09-24.** Round 1 is **closed**. **V2 trained 60,000
+> decisions from zero on three seeds** (`logs/v2_262410/411/412`), and the
+> **formal evaluation is in flight on the user's machine** against the
+> preregistered readings in `docs/V2_EVALUATION_PLAN_20260923.md`. Nothing is
+> retrained and no coupling design changes until that report lands and is read
+> against the Q1-Q7 table -- the user's stated order is evaluation first, design
+> second.
+>
+> **Window handoff: `docs/handoffs/WINDOW_HANDOFF_20260924.md`**, with the
+> opening prompt in `docs/handoffs/NEXT_WINDOW_PROMPT_20260924.md`. It carries
+> the coupling-design discussion in full (the three core references, the
+> novelty hazard to concede, the four calls still open) and the upper window's
+> own measurement errors. Read it before acting.
+>
+> V2 training progress reported by the lower window at 10k/20k/30k/40k was
+> roughly 5.2 / 17.1 / 21.5 / 31.3 per cent mean completion, with seed 262410
+> still at 0 and about 100 per cent of steps saturated at 0.38-0.39 against the
+> 0.40 m cap. **Those figures are window reports, not artifacts** -- do not cite
+> them. The comparison against Pure MPC's 36/48 is only answerable by the
+> deterministic evaluation, because V1's dead channel made stochastic and
+> deterministic rates coincide while V2's live channel should separate them.
+>
+> **What round 1 established.** `adp_rf_262410/411/412` trained from zero to
+> 60,000 decisions under the corrected reward. Formal 48-seed evaluation: Pure
+> MPC 36/48, both models 36/48, paired retained 36 / rescued 0 / destroyed 0 /
+> both-failed 12 -- but effective intervention was **0.114% and 0.484%**, so the
+> rows are Pure MPC repeated and **the coupling was never tested**. Two claims
+> are therefore forbidden: "the coupling is ineffective" (it did not act) and
+> "baseline retention is verified" (retention by inaction is the identity
+> `tests/test_baseline_residual.py` already pins).
+>
+> **Root cause: R5, single.** `a_commit = clip(1 + 2r)` maps every `r >= 0` to
+> one reference -- half the channel, with **gradient identically zero** -- and
+> the commit ratchet compressed the whole decision into step 0, leaving the
+> other ~40 inert (after one gate fallback, 15 sampled actions give 1 reference:
+> 100% inert). Training walked all three seeds into that plateau: staging
+> intervention ran 4-6% at 5k (262412 hit 14.8% at 10k) and reached **exactly 0%
+> by 60k**. R2 (never explored), R3 (inexpressible) and R4 (no decision in the
+> task) are **refuted**; the gate is secondary at 23-25%.
+>
+> **The task does contain the decision.** Scripted staging on the 12 both-failed
+> seeds rescues 2 at a 10 s hold and a **disjoint** 2 at 30 s, all
+> zero-violation; applied to the 36 Pure MPC completes it destroys 1 and 7. So a
+> blanket rule is +1 at best and -5 at worst, while a per-state choice is
+> **+4 (40/48)** -- an oracle upper bound, and the measured value of a learned
+> state-dependent layer. The **regime-level** framing ("staging wins as tumble
+> rises") is measured false: blanket staging degrades faster and turns the worst
+> truth margin negative at 2.36 and 3.54 deg/s.
+>
+> **Where the work is.** V2 replaces the interface: two decoupled axes
+> (`task_state_v2`), asymmetric rate limits with no absolute ratchet, baseline
+> recovery moved to the **architecture** level (forced rejection is bitwise Pure
+> MPC), and a metric cap on the per-decision reference step. Suite 285 passed, 3
+> xfailed. Coupling direction and the three core references are in
+> `docs/V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md`.
+>
+> Read, in order: `docs/ADAPTIVE_ROUND1_CLOSEOUT_20260921.md`,
+> `docs/ROUND1_EXTERNAL_REVIEW_20260922.md`,
+> `docs/V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md`. The
+> `Current state -- 2026-09-16` and `-- 2026-09-12` blocks below are prior
+> context.
 
-With the correction, attitude bias is harmless through at least 5 deg in the
-diagnostic frontier; delay and low update rate are compensated by a classical
-model-prediction step. Sampled target phase and +-30% inertia mismatch do not
-break short-horizon MPC either. The learned convex terminal cost is actively
-harmful because its radial gradient cuts across the curved corridor, while a
-fixed terminal cost at horizon 10 already preserves the long-horizon quality.
+---
 
-Therefore there is currently **no measured gap that justifies a hybrid on the
-warm `single_phase` task**. Hybrid training is stopped. A later upper-level
-pivot keeps the user's SAC-MPC paper objective and explicitly rules out both a
-non-coupled Route-B paper and a fifth niche probe on the same warm task. The
-next strategic decision is to restore one real MPC-hard feature as a separate
-single-factor task: (A) discrete thrusters/control allocation, preferred, or
-(B) unmodelled target dynamics. The user must choose A or B first; then a cheap
-no-training probe must show both that Pure MPC genuinely fails or MIQP misses
-real time and that an ideal controller can still solve the task. Only after
-that gate may hybrid design or training resume. See
-`HANDOFF_upper_v2_pivot.md`, `HANDOFF.md`, and `docs/PROBE_RESULTS.md`.
+## Current state -- 2026-09-16
 
-## Historical research line (hybrid work is paused)
+Two load-bearing assumptions have now been **measured false**, and the research
+question has moved accordingly. This is the live direction; the 2026-09-12 block
+below is prior context.
 
-The original target was a three-way comparison: Pure SAC, Pure MPC and an
-architecture-uniform hierarchical SAC-MPC hybrid. If a hybrid is ever
-reconsidered, it must still use one architecture across the whole mission;
-switching architecture mid-episode would confound the method with a phase
-switch. The four negative probes mean this is no longer an active build plan.
+- **T12 (learned scheduling vs fixed MPC, full truth).** `arrival_condition` is
+  learnable (`radial_local` is not: 0/48 x3), but three arrival seeds average
+  **26/48** against Pure MPC's **32/48**, slower and more fuel. Pre-registered
+  branch 2: the interface makes coupling learnable, but a learned layer that
+  unconditionally rewrites the reference does not beat the fixed setpoint. See
+  `docs/T12_S10_*`.
+- **Non-cooperative probe 2 (Pure MPC on EKF estimate vs truth, same 48 seeds).**
+  **31/48 vs 32/48** (delta 1 -> pre-registered "basically level, stop"). The
+  chaser goes blind ~40-60% of the tumble period (observability windows are real,
+  measured over a full rotation), but the EKF coasts through them well enough
+  that estimation does **not** degrade the fixed MPC. Non-cooperative observation
+  is a real operational condition, not a source of a completion gap. See
+  `docs/PROBE2_NONCOOP_RESULT_20260916.md`.
 
-**The common benchmark is the `single_phase` task**, cleared for that
-use by `eval/validate_single_phase_semantics.py` (20/20 scripted completion, all
-five margins positive, one control law for the whole mission). The Waypoint was
-diagnostic scaffolding, not a task element: it postponed the terminal
-constraints until 8 m, which understates the problem (see *Co-rotation*). It
-keeps its place as the instrument that localised the co-rotation failure, and
-`full_mission` remains a valid secondary task -- Pure SAC reaching the Waypoint
-there is what certifies the baseline implementation is competent. Phase-I is a
-SAC *training* curriculum, not a headline result. Training may be staged;
-evaluation may not.
+The direction is no longer "find a factor that makes MPC fail" or "prove RL
+beats MPC". It is the **coupling mechanism itself**, motivated by the one positive
+T12 finding: the learned policy *rescues* states Pure MPC fails (262401: +6) but
+*destroys* states it succeeds (-4). The question is whether a **Bidirectional
+Baseline-Anchored Task-Level SAC-MPC** turns that measured complementarity into a
+stable net gain without breaking the strong baseline:
 
-**The entropy temperature was the driver of critic overestimation, and
-pinning it fixed the critic.** `auto_0.005` never converged: alpha rose
-monotonically in every run ever measured, and calibration error was monotone
-in alpha across two observation schemas and two update-to-data ratios.
-Raising `gradient_steps` to 4 only made alpha diverge faster (0.0041 -> 0.109
-by 125k, tripping the abort threshold, calibration error 45.7), so that factor was
-reverted. The likely cause is that `target_entropy = -6.0` is unreachable for
-a 6-dimensional tanh-squashed Gaussian whose scale already saturates, so the
-tuner raises alpha without bound and the entropy bonus, entering every
-bootstrap over a 333-step effective horizon, inflates the soft targets.
+- **Baseline-anchored task residual.** SAC outputs a low-dim residual on the
+  nominal arrival action (fixed setpoint); **residual 0 recovers Pure MPC
+  bitwise**. It learns *whether/how much to deviate*, not the whole task.
+- **Critic-advantage deployment gate.** The SAC critic (trained on full-episode
+  return, so it carries the long horizon the short MPC cannot) judges whether
+  deviating is worth it: `A_task = Q(s,a_cand) - Q(s,a_nom)`. This resolves the
+  circularity of asking a short-horizon MPC to arbitrate long-horizon value.
+  Caveat to watch: `Q(s,a_nom)` is off the policy's own action distribution, so
+  the advantage can be noisy (this repo's critic-calibration history); the
+  residual anchor + MPC feasibility gate keep it safe when the advantage is wrong.
+- **MPC proposal certificate (bottom-up).** For the proposed task intent the MPC
+  returns a compact (2-4 dim) predicted feasibility/safety certificate, fed into
+  the next decision's observation -- a two-way negotiation, not raw telemetry
+  (T7 showed telemetry-in-observation does not help).
+- **Fallback.** Deviate only when the critic advantage clears a margin AND the
+  MPC certificate says locally feasible; else nominal.
 
-| alpha | calibration error | run |
-|---|---|---|
-| 0.005 fixed | **-0.46** | fixed-alpha 100k |
-| 0.005 fixed | **+0.94** | fixed-alpha 200k |
-| 0.0037 | 4.9 | v3 200k |
-| 0.0146 | 18.4 | v3 final |
-| 0.0149 | 21.5 | v2 400k |
-| 0.0203 | 32.2 | v2 final |
-| 0.0605 | 45.7 | UTD 4 at 100k |
+**Honest ceiling:** the per-episode baseline-preserving upper bound from T12 is
+~**38/48 (+6)**. This is a mechanism paper with a modest, real gain, not a
+blowout; the arbitration pattern itself is known (南航/AC4MPC) -- concede it,
+claim the combination + task-level opportunity + `Lambda>1` non-cooperative
+regime. Gate: does the full method, 3 seeds, beat Pure MPC on completion while
+retaining most of its successes at acceptable fuel? See
+`docs/BIDIRECTIONAL_SACMPC_EXECUTION.md`.
 
-**With `ent_coef = 0.005` fixed and training stopped at 200k, Pure SAC
-acquires the Waypoint.** Three training seeds, each evaluated deterministically on
-the independent 20290000 block:
+## Direction discipline (2026-09-18, current)
 
-| seed | Waypoint 100k | error 100k | Waypoint 200k | error 200k | hard return 200k |
-|---|---|---|---|---|---|
-| 260815 | 6/20 | -0.46 | 1/20 | +0.94 | -4.20 |
-| 260816 | 7/20 | -2.51 | **17/20** | -0.60 | -0.85 |
-| 260817 | 11/20 | -3.50 | **20/20** | -3.56 | **+3.01** |
+**Mainline (frozen): the adaptive sync-entry decision task + ordinary strong MPC +
+baseline-anchored SAC-MPC coupling.** `precapture_adaptive_capture_environment_config()`.
+The paper problem: during pre-capture of a fast-tumbling non-cooperative target,
+how the chaser autonomously trades off *continuous synchronisation / co-rotation*
+against *staging then opportunistic entry*, while a strong constrained MPC does
+the short-horizon 6-DoF tracking, constraint satisfaction and execution. **RL
+decides how to do the task; MPC decides how to fly the current intent safely.**
+That long-horizon, state-dependent resource decision is the principled reason RL
+belongs here -- hand rules are brittle, the short-horizon MPC cannot see the
+trade-off -- and the generalisation it buys is RL's real advantage.
 
-Seed 260817 matches the scripted Waypoint-PD reference (20/20) and comes within
-0.65 of its discounted return (+3.01 against +3.66). The periodic evaluations
-on the disjoint 20288000 block agree (0.8 and 1.0 at 200k), so this is not an
-artefact of the evaluation seeds. Every calibration error is now negative --
-the critic *under*-estimates, which is the benign direction.
+Locked calls (2026-09-18):
+- **Opportunity is a continuous cost structure, not a legality gate.** No phase
+  gate, no favourability legality, no new hard far-range constraint. Co-rotating
+  while the port is misaligned costs more fuel/actuator/margin; that is all. **Pure
+  MPC always keeps a legal path (co-rotate the whole way and complete) and stays a
+  genuine strong baseline -- never shape the task so it must lose.** Far-range
+  "don't loop around from 20 m" is handled by sane initialisation + loose
+  reference shaping; real safety stays with keep-out / FOV / speed / terminal.
+- **Thesis framing.** Nominal regime: the coupling must **retain** Pure MPC's
+  completion and safety (baseline retention), not beat it on fuel. The learning
+  layer's value is shown across regimes: the **same** policy changes its
+  sync-vs-enter behaviour as tumble rate and initial phase/position vary, keeping
+  a better overall completion / fuel / time / margin trade-off. Do not claim "RL
+  wins, MPC loses".
+- **Decision-margin calibration = one restricted measurement, never again a
+  direction life/death gate.** 3 tumble rates (slow / 2.36 deg/s nominal / faster
+  but realistic ~3.5 deg/s), a small seed set, two extreme *reasonable* strategies
+  only (`--control desired_pose` = early co-rotate vs `--control timed_entry` =
+  stage-then-enter), identical MPC/constraints/execution, `--tumble-scale` set.
+  Read only completion / equivalent-dv / time / margin. It answers one question:
+  *does the task contain two strategies with genuinely different cost structures*
+  (ideally a crossover -- early sync cheaper when slow, delayed sync's fuel
+  advantage emerging as tumble speeds up, paid in time). A clear trade-off ->
+  stop and implement. A weak one -> **tune near-field distance / initial range /
+  realistic tumble range to build the physical decision space, then continue the
+  same mainline.** Never a window-angle sweep, a gate, ten commit-times, or a
+  direction change on an ugly result.
+- **Action space.** V1 reuses the 2D `arrival_condition`, named *capture progress
+  / reference blend* (it is the geometric interpolation from inertial hold to the
+  body-fixed terminal reference -- not literally "sync level"). An explicit
+  `sync_level` dynamic reference generator is a V2 *method* optimisation if
+  training shows staging and partial co-rotation are inseparable, not a task
+  failure.
+- **Keep the architecture analysable** for later recursive-feasibility / tracking-
+  stability work: RL is a bounded reference generator on a slow (2 s) decision
+  timescale, MPC is the fast tracking subsystem, the residual is bounded and a
+  baseline/fallback reference exists. Do not build a black box; do not front-load
+  the stability proofs or the final figure experiments -- get the base loop
+  running first, then research the coupling mechanism (MPC feasibility / slack /
+  value feedback into the high-level update) systematically.
 
-The spread is the honest headline: 1/20, 17/20, 20/20. Pure SAC solves this
-task on most seeds and fails on some, which is a characterised weak baseline,
-not a solved problem. Report the distribution, never the best seed.
+The 2026-09-17 opportunity-task block below (an outer hard approach corridor) is
+**superseded**: that corridor made Pure MPC violate a new hard constraint, which
+is the manufactured-gap story we are avoiding. Its code stays off by default.
 
-**Read survival together with the Waypoint rate, never alone.** In
-`phase1_pretrain` a Waypoint success terminates the episode, so once the Waypoint rate
-is high a *short* episode is a fast success. Seed 260817 survives 26.6 s at
-200k because it reaches the Waypoint in about that time, close to Waypoint-PD's 24.1 s.
-Survival alone only separates dying from not dying.
+## Direction discipline (adopted 2026-09-17)
 
-**Replay eviction is not the cause of the late decay.** Doubling
-`buffer_size` to 600k, so nothing is evicted at all within a 500k run, changed
-nothing: calibration error at 500k went 23.661 -> 23.536 and `critic_q1` 3.181
--> 2.801. The two runs are bitwise identical through 300k (same seed, and the
-buffers only differ once more than 300k transitions exist), which is the
-control this comparison needed. The factor is reverted.
+**Mainline (frozen): the opportunity task + ordinary strong MPC + baseline-anchored
+SAC-MPC coupling.** The task is `precapture_opportunity_environment_config()`: an
+outer inertial approach corridor (fixed at reset, does not co-rotate) plus the
+inner rotating capture corridor, so the capture geometry sweeps in and out of the
+approach corridor -- a real "when to close" decision produced by geometry, not a
+phase threshold. A fixed-commit MPC cannot hold the corridor while chasing the
+rotating pose (2-episode smoke: 0/2 legal, hundreds-to-thousands of
+outer-approach violation steps, one timeout), so there is genuine headroom for a
+learned staging/timing layer to win on **legal (zero-violation) completion**.
 
-The decay begins before eviction could matter -- calibration error is +0.94 at
-200k and 14.159 at 300k, while the 100k-200k data would not leave a 300k
-buffer until 400k. The behaviour collapses first and the critic follows: the
-true soft return falls from -0.4 to -13.3 between 200k and 300k, and only
-afterwards does `actor_action_std` slide monotonically (0.67 at 300k -> 0.37
-at 500k) with saturation reaching 0.34-0.64. The remaining explanation is the
-actor/critic feedback loop: with alpha pinned at 0.005 the entropy term is
-negligible against a Q that has grown to order 1, so the actor turns greedy,
-narrows the data distribution, and the critic extrapolates.
+**Discipline shift (user call, 2026-09-17): the MPC is no longer required to be a
+maximally-strong frozen baseline.** An ordinary MPC lower layer is acceptable;
+the priority is that the coupling shows a clear advantage. The one honesty line
+that stays: the outer corridor and every task constraint apply to **both** arms
+(same ordinary MPC executor; the only difference is learned reference vs fixed
+reference), so the comparison isolates the value of learned scheduling and is not
+a blind-MPC manufactured gap. By construction the coupling can fall back to the
+MPC (residual 0 = MPC bitwise; critic-advantage gate only deviates when it helps),
+so "coupling worse than MPC" should not happen.
 
-Current state: **200k is the training length; 500k is past the cliff.** The
-three-seed replication above is the Pure SAC Phase-I result. The late decay is
-a documented limitation of longer training, not something to keep chasing.
+**Build first, judge on the formal loop.** A small-scale probe result is no
+longer grounds to veto the direction. Do not keep overturning the plan; get the
+complete trainable/comparable/iterable loop running (3-seed train, aligned rows),
+then iterate the mechanism (reward, action scaling, gate) on formal results.
 
-## Where this stands
+**Superseded framing below.** The 2026-09-16 "Bidirectional Baseline-Anchored"
+block and the "Pure MPC frozen / no manufactured gap" non-negotiable are kept for
+history; the opportunity-task mainline and the MPC-relaxation above take
+precedence. A small-scale probe result is no longer grounds to veto the direction.
+The timing-value A/B is the case in point: its scripted hold->commit heuristic
+came back negative (B 17/35 vs A 26/35, and it did not even raise entry-phase
+favourability), but a fixed heuristic failing does not falsify the *learned*
+residual method, which is what the paper proposes. Probes inform; they do not
+close the direction. Priority order: **form a complete trainable, comparable,
+iterable method closed loop first** (train the residual policy from zero, run the
+aligned Pure MPC / direct-takeover / proposed rows on one seed block, iterate on
+the mechanism), and judge on that formal multi-seed loop -- not on a partial
+probe.
 
-Pure SAC on `single_phase` is **closed**: a real weak baseline whose honest
-three-seed result on the aligned 262000 block is completion 3/1/0 and
-no-violation 20/10/0 -- it mostly fails to complete, and on some seeds is not
-even feasible (260862 violates on every episode). Do not keep tuning it; the
-distribution is the finding. See *Pure SAC on `single_phase`: three seeds*.
+## Research execution discipline (adopted 2026-09-16)
 
-**Pure MPC's original evidence was terminal-only and does not transfer.**
-`constrained_mpc_nominal_config()` fixes the reference at the desired pose and
-its evidence (`logs/phase2_mpc_v2_clarabel_5seeds.json`, 5/5, zero QP fallback)
-was measured in `terminal_phase_environment_config()`: a 2-10 m shell, 100 s, the
-*old* S1 task, no Waypoint. None of that transfers to the benchmark. What does
-transfer is the cost, and the honest composition of it is the 1.7x below, not the
-3.2x this row first reported. Pure MPC now runs on the benchmark itself -- see
-the next paragraph -- so this is history, kept because the terminal-only numbers
-are still the record for that shell.
+The bottleneck was never rigor; it was **dev-phase over-gating**. Separate three
+things and only the first two apply now:
 
-The hybrid does not exist. Four subsequent probes found no defensible gap for
-it, so implementation and training are paused; see the current-decision block
-at the top of this file.
+> development validation  !=  paper formal validation  !=  flight certification
 
-`eval.evaluate_policy.evaluate_model` needs nothing but an object with
-`.predict(obs, deterministic) -> (action, state)`, which a test pins. That is
-the shared measurement path for all three methods; do not fork it.
+- **No probe proliferation.** Once a method version's design logic holds, run
+  `implement -> smoke -> formal train (>=3 seeds) -> formal evaluate`, not
+  `probe -> probe -> oracle -> grid -> seed archaeology -> maybe implement`.
+  Performance questions are answered in formal training/eval, not in a stack of
+  pre-training probes.
+- **Smoke is a correctness check, not a direction gate.** Smoke verifies: runs,
+  shapes/interfaces, no NaN, solver sane, fallback fires, residual 0 recovers
+  nominal. Its success *rate* or a few-seed score never decides the direction.
+- **Training noise is expected.** One seed failing does not kill a method; one
+  seed passing does not prove it. Conclusions need >=3 training seeds judged as a
+  distribution.
+- **Do not switch the research question on a single probe/seed/metric.** After a
+  version fails, first check implementation, convergence, and whether the
+  coupling did what it should -- only consistent multi-seed formal negatives
+  reopen the direction.
+- **Method-first, then luxury.** Before a positive main result, do not sink time
+  into large real-time profiling, hardware, perception stress grids, many
+  ablations, or robustness sweeps.
+- **Every new module must name its main claim** ("delete it -- does the paper
+  still stand?"). If not, it is not added.
 
-**Pure MPC now runs on the benchmark, one command, with the fair reference.**
-`experiments/evaluate_mpc.py --task single_phase` puts the Pure MPC row on the
-same task the SAC and scripted rows use (10-14 m, constrained from step one) and
-**defaults to the corridor-guidance reference for that task** -- a fixed setpoint
-is a myopic regulator on a 95 s approach, so the resolver picks the shared
-guidance path unless `--reference-source` overrides it. `terminal` still defaults
-to `fixed`, so the terminal-only evidence is reproducible. Every episode emits
-the shared `main_table` block; `eval/main_table.py` assembles the three rows and
-prints an alignment line so a reader can confirm they share task, seed block and
-episode count before trusting the comparison.
+**Unchanged non-negotiables (scientific integrity, never relaxed):** truth
+RK45 geometry is the only arbiter of safety/violation (never observation or QP
+"solved"); Pure MPC stays frozen (no Q/R, horizon, corridor, terminal, or
+tolerance edits except a named code bug or a genuine input-semantics change) and
+is re-run once clean at the end for the final number; **no manufactured gap** (no
+artificial obstacles, unmotivated noise, shortened horizon, throttled thrust,
+deliberately wrong model, or rule change that only hurts nominal); reward never
+encodes the answer (wait/enter timing, per-seed success times); no cherry-picking
+seeds or checkpoints; comparisons use a pre-fixed evaluation seed block and the
+final model; **any number entering a decision or the paper must point at an
+artifact** (JSON/CSV/manifest/commit/script) or be marked exploratory.
 
-The 20-episode baseline, seed block 262000, one seed block, aligned 20/20 with
-the scripted row (measured on the user's workstation, not the sandbox):
+## Prior state -- 2026-09-12
 
-| method | completed | time s | force N*s | worst margin | compute mean | compute p95 | budget mean/p95 |
-|---|---|---|---|---|---|---|---|
-| Scripted | 20/20 | 95.25 | 168.1 | +0.047 | 0.09 ms | -- | 0.00x |
-| Pure MPC (corridor) | 20/20 | 89.31 | 160.0 | +0.044 | 99.2 ms | 206 ms | **0.99x / 2.06x** |
+### The task
 
-Both complete every episode, so completion rate does not separate them. On the
-three quality columns **Pure MPC is slightly ahead** -- faster (89.3 vs 95.3 s),
-less impulse (160 vs 168 N*s), higher return (4.35 vs 4.12) -- because the
-optimiser flies the shared corridor reference closer to the edge. The one column
-that separates them is compute, and the honest reading of it is not the mean:
+| | |
+|---|---|
+| Target tumble | 0.041231 rad/s (2.362 deg/s), period 152.4 s |
+| Start | 15-20 m, 300 s cap, 30 m distance failure |
+| Entry plane | 6 m from target centre (`entry_port_axial_distance_m = 4.5`), disc radius 3.151 m |
+| Legal entry | radial < 3.151 m **and** target-frame speed <= 0.35 m/s **and** closing speed <= 0.20 m/s |
+| Completion | position < 0.25 m, attitude < 10 deg, speed < 0.05 m/s, omega < 0.02 rad/s, held 1 s, terminal region latched |
 
-- **The mean, 0.99x, is an artefact of the machine.** Compute is wall-clock, so
-  the absolute ms is not comparable across machines (the sandbox measured
-  176 ms / 1.76x for the same run). Never report Pure MPC as "within budget" off
-  the mean.
-- **The p95 is 2.06x and the max is 7.7x (773 ms).** That is the once-a-second
-  exact-linearisation refresh step. Real-time control is bounded by the worst
-  case, not the mean, so Pure MPC cannot guarantee a step inside the 100 ms
-  period on this platform -- the refresh step always overruns.
-- **The structural part is machine-independent:** the QP's 0.51x, and the
-  refresh lump, which exists *because* the target tumbles fast enough that the
-  linearisation goes stale within a horizon (`Lambda > 1`). That is the compute
-  claim that survives review; state it with p95/max and the QP fraction, and
-  note that a spacecraft processor is one to two orders slower than this
-  workstation, so 89 ms on the ground is not 89 ms in flight.
+An illegal crossing is **counted only**: it does not latch, does not end the
+episode and carries no reward penalty. Re-entry stays available.
 
-Zero QP fallback, zero predicted-safe truth violations, all five margins
-positive over the twenty episodes. The SAC row comes from a trained checkpoint
-through the same `main_table` path.
+`Lambda = omega * r / v_max > 1` over most of the range, so station-keeping is
+inadmissible and the chaser must co-rotate continuously. That is the physical
+reason this is not translational rendezvous, and the regime the reference
+papers do not occupy.
 
-**Settle the main-table metrics before running MPC, not after.** Completion
-rate alone does not separate successful controllers because the scripted and
-Pure MPC rows already reach 20/20. The quality columns are completion time,
-force impulse, worst constraint margin, and per-step compute. **All four are
-now on the shared path, in conventions
-`eval/metrics.py` pins**, so a row is never assembled from a private
-convention. That module is imported by the learned rows
-(`eval/evaluate_policy.py`), the Pure MPC row (`experiments/evaluate_mpc.py`)
-and the scripted reference row (`eval/validate_single_phase_semantics.py`); every
-one of them now emits a `main_table` block, and `digest_run` prints it. Three
-conventions it fixes, each because the alternative was producing a number that
-could not be compared:
+### The main table
 
-- **Compute is the controller, not the simulator.** `controller_time_s` covers
-  only the call that produces an action, `environment_step_time_s` covers the
-  RK45 truth propagation. The old `full_control_cycle_runtime_s` timed them
-  together and so over-reported the controller by about 8.6x -- measured on
-  CPU, `predict` is 1.09 ms against `env.step` at 8.32 ms -- while the MPC side
-  has always timed `controller.command` alone. It is retained as the sum so
-  historical evaluation files still parse; **it is not the compute column.**
-  `per_step_compute_s.controller_mean_over_budget` is the headline: > 1 means
-  the controller cannot run at the 0.1 s control period whatever the simulator
-  costs.
-- **Completion time and discounted return are recorded per episode**, as
-  `steps`, `survival_s` and `discounted_return` -- the names the scripted
-  validators already used, on one `gamma` shared from `train.configs.PURE_SAC`.
-  For a completed episode `survival_s` *is* the completion time; for one that
-  hit the 200 s cap it is not, which is why `completion_time_s` is `None`
-  rather than zero when nothing completed. A zero there reads as "instant".
-- **Effort and time are read over completed episodes.** Force impulse is a time
-  integral, so an episode that dies at 10 s scores a smaller one; ranking rows
-  by the raw mean rewards dying early. `completed_only` is the table figure,
-  `all_episodes` sits beside it. The worst margin is the opposite: it spans
-  *every* episode, because grazing a boundary on the episodes a method loses
-  does not earn it a clean margin column.
+| row | status |
+|---|---|
+| Pure SAC | closed, weak baseline (historical, on the old task) |
+| **Pure MPC** | **done -- h35: 9/12, 88.5 s, 167.2 N s, p95 0.77x** (`docs/PURE_MPC_ROW_VERIFIED.md`) |
+| **SAC-MPC coupled** | trained, **evaluation in flight** |
 
-Three tests in `tests/test_train_eval_config.py` pin this, including that the
-two timers stay separate; re-merging them is the failure mode that cost this
-round.
+### The coupling interface (T6, frozen)
 
-The later compute probes tested whether MPC call rate created such a gap.
-Short-horizon local and sparse-refresh MPC kept completion and safety across
-three sampled-phase blocks, so no learned call-rate layer is currently
-justified.
+`env/hybrid_env.py`, `waypoint_parametrization="arrival_condition"`. The upper
+layer emits a **2D** action every 2 s (20 control steps); the interface to the
+MPC is the unchanged 3D waypoint through `reference_source="external_local"`.
 
-### Compute was half artefact. The honest number is 1.7x, not 3.2x
+- `a[0]` blends from an **inertially frozen hold** to the **desired pose**.
+  Direction by slerp, radius by lerp -- not a chord between the two points.
+- `a[1]` scales the hold radius about the radius it was frozen at.
+- Optional 3D **execution feedback** appended to the observation: fallback
+  fraction, peak slack read only from steps that solved, mean actuator usage.
 
-The 0.322 s per step was measured against a constraint linearisation that
-finite-differenced the margins ten times per horizon index, fifty indices per
-control step. Profiled, that was **74% of `MPCController.command` against the
-QP's 9%**, and two thirds of it was inside `env.task.compute_task_metrics`: a
-margin reads three of its twenty fields yet paid for an `se3_log`, an `so3_log`
-and the SVD in `project_to_so3` on every one of those five hundred calls.
+**`a = (+1, *)` is the fixed-setpoint Pure MPC controller, bitwise.** Twelve
+seeds, 300 control steps each, `max |delta wrench| = 0`. A test pins the
+mapping; the equivalence is the capability floor and it is measured, not
+asserted. See `docs/T6_COUPLING_INTERFACE.md`.
 
-Both halves are fixed in `controllers/mpc/constraints.py`. The margin functions
-compute only what a margin is a function of -- values bitwise unchanged, pinned
-against the task module by a test -- and the Jacobian is now analytic. Every
-margin is a function of the relative position `p`, the target-frame velocity
-`R v` and the chaser-frame line of sight `R^T (p_port - p)`, each of which
-differentiates in closed form against the exponential coordinates; only
-`d(J_l(phi) rho)/d(phi)` needed deriving. A test holds it to central
-differences over random states (agreement 1.2e-9, which is the difference's own
-floor).
+**Waiting must be inertial.** The approach axis is body-fixed, so holding a
+fixed *target-frame* point co-rotates with it and the entry geometry never
+changes -- there is no window to wait for, only fuel to spend. This has been
+got wrong once and is now pinned by a test.
 
-Re-measured with `python -B -m experiments.profile_mpc_step`, horizon 50,
-CLARABEL, exact linearisation refreshed every 10 control steps:
+### What T7 established
 
-| | mean | p95 | budget |
+Training four runs from zero, 60,000 decisions each:
+
+| | last 100 episodes | first success | timeout fraction, Q1 -> Q4 |
 |---|---|---|---|
-| full command, all steps | **175.5 ms** | 405.4 ms | **1.75x** |
-| full command, no refresh due | 149.7 ms | 161.9 ms | 1.50x |
-| full command, refresh step | 407.4 ms | 424.6 ms | 4.07x |
-| of which QP solve | 51.4 ms | 54.5 ms | 0.51x |
-| of which constraint linearisation | 35.5 ms | 40.1 ms | 0.35x |
+| V2 / 262200 (no feedback) | **75%** | 5,942 | 24% -> **4%** |
+| V3 / 262300 (feedback) | 55% | 13,062 | 28% -> **7%** |
+| V2 / 262201 | **0** | -- | 31% -> **69%** |
+| V3 / 262301 | **0** | -- | 39% -> **67%** |
 
-So: **compute is still over budget, so it is not purely an artefact -- but 3.2x
-was, and the composition is now entirely different.** The constraint term went
-from ~295 ms to 35.5 ms; what remains is the QP, the fifty-step nominal
-rollout, and the refresh lump. Report 1.7x with this composition, not 3.2x, and
-state the implementation (Python, CVXPY, CLARABEL, one core) beside it. The
-p95 is a real property, not noise: it is the refresh step, once a second.
+1. **The interface is what made the coupling learnable, as a single factor.**
+   The manifests differ in the parametrisation and nothing else -- same 31D
+   observation, horizon, decision period, discount, learning rate, batch size,
+   entropy coefficient, tau, learning-starts and network. At the common budget
+   of 25,697 decisions the 4D `radial_local` batch completed **0 of 1308**
+   episodes over three seeds; the 2D one reached **55 of 285** on its best
+   seed. The earlier observation factor (target phase + remaining time)
+   changed nothing on the old parametrisation, so information was not the
+   binding constraint and expression was.
+   See `docs/INTERFACE_SINGLE_FACTOR.md`.
+2. **Two seeds learned to run the clock out instead of finishing.** Their
+   return improves monotonically while their timeout fraction climbs, their
+   illegal-entry rate matches the learning seeds, and their reference radius
+   parks at ~7 m instead of closing to ~4.7 m. This is the hover pathology
+   this repository already documented, in a new action space. The split is
+   settled inside the first fifth of training, which points at exploration.
+3. **The feedback ablation does not support the reverse channel.** V2 leads on
+   first success, on every quartile and on final return. One learning seed per
+   arm is below the three-seed rule, so this is *unsupported with the point
+   estimate against it*, not a measured cost.
 
-For the original horizon-50 exact configuration, the QP's own 0.51x is the
-formulation cost that survives profiling. Later horizon-10 probes reduced the
-ordinary-step QP cost and showed that exact-refresh tails, not an absent learned
-layer, are the remaining issue. Local MPC puts p95 inside budget without losing
-safety on the measured phase blocks; max/cold-start tails remain reportable
-limitations.
+See `docs/T7_RESULTS_AND_VERDICT.md`. Next round is `docs/T8_EXECUTION_ORDER.md`.
 
-## What each reference is for
+### 262006: solvable offline, and closed as a case-level limitation
 
-`References/` is part of the method, but each paper has one job:
+The offline feasibility certificate completes it in 217.5 s with **zero truth
+violations** and 0.693 rad of field-of-view margin, so it is not at a
+reachability boundary. But four families of upper-level position decision
+(commit time, hold radius, approach rate, lateral offset) fail across ~90
+scanned cells, all dying on field of view.
 
-| paper | use it for | do not |
-|---|---|---|
-| `哈工大.pdf` | the SE(3) modelling this work builds on | claim modelling as a contribution against it |
-| `北航.pdf` | constraint handling (approach cone, FOV, saturation); its 0.0173 rad/s target and absent speed cap are what put our regime outside it | |
-| `南航.pdf` | its Limitation 1 -- an LTI prediction model assuming a *moderate* tumbling rate -- is this work's motivation | claim the layered architecture as novel: 南航 is **already** upper-layer-proposes / lower-layer-filters-for-safety, with deadlock detection on top. What is ours is that the upper layer is *learned* and that the regime is `Lambda > 1`. Concede the pattern, claim the two differences |
-| `北航编队.pdf` | the RL-supplies-a-schedule-to-MPC interface pattern | its impulsive model, which is not comparable |
-| `上海交大.pdf` | the three-way comparison table format (hybrid / pure MPC / pure RL, one row for per-step solve time) | **its method: adapting MPC cost weights online is explicitly ruled out** |
-| `引入死区迟滞...pdf` | nothing -- it is the user's own prior paper | cite it |
+That suggested a pointing failure a position channel could not address, and
+**the probe falsified it**: all three attitude reference modes fail, and
+`aimed` fails *sooner* (34.9 -> 10.7 s at h20, 29.7 -> 8.5 s at h35). So the
+attitude reference is **struck from the candidate factor queue**, and 262006 is
+written as a case-level limitation with no proposed fix: *under the four
+families of position decision and the three attitude modes tested it was not
+rescued, while a zero-violation admissible path exists.*
 
-## How the work is run
+Two things that probe did establish. On 262005 `aimed` does remove field of
+view as the failure mode (96.0 s to the 299.9 s cap at h20), but trades it for
+a timeout and for being pushed out to 29.96 m against the 30 m limit --
+pointing authority is borrowed from translation, which is expensive where
+co-rotation already needs the full three-axis authority. And `frozen` and
+`swept` are numerically identical under a fixed setpoint in all four matched
+pairs, because that reference sightline does not sweep; the repository's "best
+of three" reads as best of two distinct behaviours.
+See `docs/ATTITUDE_REFERENCE_PROBE.md`.
 
-Long training happens on the user's machine, not here. This session does code
-review, `pytest`, short smoke runs (<= 5k steps) and diagnostic probes. Training
-is currently stopped. Repository changes are made on an explicit branch and
-committed once per auditable stage. Run the suite as `python -B -m pytest -q`;
-the 2026-09-01 repository state is **146 passed**, not the stale 147 recorded
-in the superseded handoff. The checked-in `.venv` launcher points to a missing
-Python 3.12.6; use the verified fallback in `docs/REPRODUCIBILITY.md` rather
-than rebuilding or modifying code merely for that launcher symptom.
+---
 
-## Co-rotation: why this task is not translational rendezvous
+## Rules
 
-The Waypoint and the desired pose are **body-fixed on a target tumbling at 0.0412
-rad/s**, and `total_speed_m_s` is the relative speed in that rotating frame. An
-inertially frozen chaser therefore appears to move at `omega * r`:
+- **Strictly one interpretable factor per experiment**, in its own commit with
+  a manifest.
+- **Task parameters are frozen**: geometry, constraints, time limit, reward.
+- **>= 3 training seeds** before any conclusion is reported upward. n=2 with
+  one dead seed is a noise floor of about +-37 points; nothing is measurable
+  on it.
+- **Every training run starts from zero.** No resuming, no checkpoint warm
+  start, no staged hand-off.
+- **Compute is serial single process only.** Parallel timings are never a
+  real-time claim. Training may be parallel; evaluation may not.
+- **Violations are judged on RK45 truth and real geometry**, never on the
+  MPC's predicted margins.
+- **Do not tune against the outcome**: no swapping seeds, no picking
+  checkpoints, no dropping failed seeds. Report the distribution.
+- **Any number that enters a decision or the paper must point at an artifact
+  in the repository.** If it cannot, mark it unreproduced and do not cite it.
+  This rule exists because a set of figures circulated for days before anyone
+  noticed the scripts that produced them had never existed.
 
-| r | apparent speed | margin to the 0.35 m/s limit | co-rotation force |
-|---|---|---|---|
-| 12 m | 0.494 m/s | **negative** | 2.16 N |
-| 10 m | 0.412 m/s | **negative** | 1.80 N |
-| 8 m (Waypoint) | 0.330 m/s | +0.020 | 1.44 N |
-| 3 m (desired) | 0.124 m/s | +0.226 | 0.54 N |
+---
 
-Write `Lambda = omega * r / v_max`. **`Lambda > 1` means station-keeping is
-inadmissible and the chaser must co-rotate continuously.** The task runs from
-`Lambda = 1.41` at 12 m to 0.35 at 3 m, crossing 1 near the Waypoint. A zero-thrust
-chaser breaches the speed limit after 19.2 s on average (14.6-23.6 over 12
-seeds), always on `total_speed`, against a ~95 s mission.
+## Traps
 
-So the total-speed limit is not a manoeuvring cap, it is a **sustained-thrust
-condition whose required thrust scales with range**. This is the physical
-motivation for the benchmark, and it is the regime the reference papers do not
-occupy: `References/北航.pdf` has the same corridor and FOV geometry but a
-target at 0.0173 rad/s and *no* speed constraint (`Lambda` undefined; 0.74 if
-ours were applied at their 15 m anchor), and `References/南航.pdf` names
-"tumbling rate is moderate relative to the prediction horizon" as the standing
-assumption of its LTI prediction model, and lists successive re-linearisation
-as future work.
+1. **The raw per-key margins in `info` are not gated.** Corridor and terminal
+   margins exist at every step whether or not the chaser is in the terminal
+   region, so their running minimum is hugely negative on episodes that never
+   violated anything, and the keys mix metres, radians and m/s. The comparable
+   column is `minimum_truth_normalized_margin`, from
+   `normalized_precapture_truth_margins`, which gates inactive rows positive
+   and divides each active row by its own limit. Both the horizon rows and
+   `experiments/evaluate_hybrid_policy.py` emit it.
+2. **`predicted_minimum_margin` is not free and is not a truth margin.** It
+   needs a full horizon rollout and only exists under
+   `runtime_diagnostics=True`, which training disables. It is the optimiser's
+   own forecast, not a geometry judgement.
+3. **`maximum_slack` can be stale on a fallback step.** The solver variable may
+   still hold the previous successful solve. Read it only from steps that
+   solved, or pair it with the fallback flag.
+4. **The wrapper is transparent only when `horizon_steps ==
+   external_reference_hold_steps`.** Both are 20 in the coupling. Changing the
+   horizon alone silently changes how the reference sequence is built.
+5. **`target_entropy` is inert while `ent_coef` is a fixed number.** It is
+   -3.0, sized for an older higher-dimensional action; the action is now 2D. It
+   matters only if automatic temperature is ever re-enabled, and the history of
+   that is in *Historical research line*.
+6. **Loading a checkpoint against the wrong observation used to be silent.**
+   The V3 runs are 34D (phase/time + feedback), V2 is 31D. The evaluation and
+   replay paths now check and refuse; match the run's manifest rather than
+   guessing flags.
+7. **The `max` column of any compute measurement is step zero.** At every
+   horizon the worst single step is the first one; the runner-up is 69-129 ms.
+   Report it as a cold start a flight system pays once, or the reader will read
+   it as a recurring tail.
+8. **What separates h35 from h50 is not p95.** 0.77x against 1.14x reads as a
+   near miss; the honest discriminator is steps over the control period, 2/300
+   against 269/300.
+9. The repository has no `conftest.py` and is not installed as a package, so
+   run the suite as `python -B -m pytest -q` from the repository root.
 
-**Do not claim we already implement that.** An earlier version of this file
-did, and it is false as configured. Under `constrained_mpc_nominal_config()`
-(`linearization_source="exact"`, `exact_linearization_refresh_steps=10`),
-`controller.command` assigns the one cached exact Jacobian to *every* index of
-the 50-step horizon and refreshes it only every 10 control steps. That is a
-single LTI model held constant across a 5 s window and rebuilt once a second --
-slower than the per-sampling-period relinearisation 南航 actually performs, and
-squarely inside the failure condition its Limitation 1 describes (the target
-turns 0.206 rad = 11.8 deg within one horizon). The `"local"` path does
-re-linearise along the horizon every 5 indices, but against
-`LocalRelativePredictionModel`, not the RK45 truth. **Re-linearising along the
-horizon against the truth is not implemented on either path.**
-
-**That cost is now measured, and it settles the question.** One exact
-linearisation point -- 36 central-difference pairs of RK45 truth propagation --
-costs **258 ms**, 2.6x the control period, which is why the refresh step's p95
-is 407 ms against 150 ms on ordinary steps (`experiments/profile_mpc_step.py`
-prints both). Re-linearising against the truth at every one of the 50 horizon
-indices is 50 of those: **about 13 s per control step, 130x the budget.** It is
-not implementable at this tumbling rate and horizon, so do not build it.
-
-State the weaker, true claim instead: an exact one-step Jacobian, refreshed
-every 10 control steps and held across the horizon. And note what the 13 s
-means, because it is the sharpest single number this work has for why the
-regime is hard -- the successive re-linearisation 南航 lists as future work is
-not merely unimplemented, it is two orders of magnitude outside a real-time
-budget once the target tumbles at 0.0412 rad/s. That is an argument for the
-hybrid, not an embarrassment: the learned layer is what buys the right to call
-the optimiser less often.
+---
 
 ## Trusted entry points
 
 | Purpose | Entry |
 |---|---|
-| Environment | `env.phase2_env.phase2_environment_config("single_phase" \| "phase1_pretrain" \| "full_mission")` |
-| Task | `env.phase2_env.phase2_s1v2_mission_config()` |
-| SAC config | `train.configs.PURE_SAC` (single instance, pinned by tests) |
-| Train | `python -B -m train.train` |
-| Evaluate | `python -B -m eval.evaluate_policy` |
-| Phase-I reachability | `python -B -m eval.validate_phase1_semantics` |
-| single-phase reachability | `python -B -m eval.validate_single_phase_semantics` |
-| Full-mission reachability | `python -B -m eval.validate_phase2_semantics` |
-| Why episodes ended | `python -B -m eval.inspect_failures --run logs/<run>` |
-| Critic calibration | `python -B -m eval.diagnose_value_calibration` |
-| One-screen run digest | `python -B -m eval.digest_run --run logs/<run>` |
-| Main-table conventions | `eval.metrics.main_table_metrics` -- the one definition of the four differentiating columns; every row imports it |
-| MPC per-step cost | `python -B -m experiments.profile_mpc_step` |
-| Pure MPC row (fair) | `python -B -m experiments.evaluate_mpc --task single_phase --episodes 20 --seed 262000 --output OUT.json` -- single_phase defaults to the corridor reference |
-| Three-way main table | `python -B -m eval.main_table --row "LABEL=eval.json" ...` -- reads each path's `main_table` block |
+| Task config | `env.task.PrecaptureTaskConfig` |
+| Environment | `env.phase2_env.precapture_planning_environment_config()` |
+| Coupling env | `env.hybrid_env.PrecaptureHybridEnv` |
+| Lower layer | `controllers.mpc.config.precapture_mpc_config()` |
+| Train the coupling | `python -B -m train.train_hybrid --parametrization arrival_condition` |
+| Evaluate a coupled policy | `python -B -m experiments.evaluate_hybrid_policy` |
+| Per-decision diagnosis | `python -B -m experiments.replay_hybrid_policy` |
+| Scripted upper layers | `python -B -m experiments.evaluate_hybrid_scripted` |
+| Serial per-step cost | `python -B -m experiments.profile_precapture_mpc --no-diagnostics` |
+| Offline feasibility certificate | `python -B -m experiments.evaluate_precapture_oracle` |
+| Main-table conventions | `eval.metrics.main_table_metrics` |
+| Assemble the table | `python -B -m eval.main_table --row "LABEL=eval.json" ...` |
 
-## Rules
+## Where the evidence lives
 
-- **Strictly one interpretable factor per experiment**, recorded in the
-  manifest and in its own commit. Never mix a task-parameter change with a
-  hyperparameter change.
-- **S1-v2 task parameters are frozen.** Changing them invalidates the
-  comparability of eleven prior single-factor rounds. Change one only on
-  measured evidence of a definitional defect, never on judgement alone.
-- **Do not judge short experiments by Waypoint rate** -- it lags and its variance
-  is large. Use critic calibration error and survival time.
-- **Every training run starts from zero.** Fresh actor, critic and replay, no
-  initialising from a checkpoint, no resuming a mid-run checkpoint, and no
-  staged hand-off from `phase1_pretrain` into `full_mission`. This is a
-  standing decision, not a temporary diagnostic measure: it is what keeps the
-  data behind every reported number clean and each run independently
-  reproducible from its manifest alone.
-- The waypoint that blocked Phase-II entry is cleared -- Phase-I now works and the
-  full mission is reachable -- so `full_mission` runs are in scope. What is
-  still out of scope is initialising them from a Phase-I model.
-- **`n=1` training seeds are not conclusive.** Independent re-evaluation on a
-  fresh seed block flipped 8 of 9 comparable published numbers. Any conclusion
-  reported upward needs >= 3 training seeds.
-- Report results through `eval/digest_run.py`, not by shipping log files.
-- `References/` holds the papers this work is measured against and the failure
-  modes it must avoid. Read them before designing a new comparison; they are
-  part of the method, not clutter.
-- `models/` is deliberately untracked. Checkpoints are reproducible from a
-  manifest plus its seed, so they stay on the machine that trained them.
+| Document | What it holds |
+|---|---|
+| `docs/PURE_MPC_ROW_VERIFIED.md` | the four horizon rows and the compute table, recomputed from artifacts |
+| `docs/T6_COUPLING_INTERFACE.md` | the frozen interface, the bitwise floor, the disconnected feasible set |
+| `docs/T7_RESULTS_AND_VERDICT.md` | the four training runs and what they do and do not establish |
+| `docs/T8_EXECUTION_ORDER.md` | the round in flight |
+| `docs/P0_HORIZON_PERSISTENT_FAILURES.md` | the horizon sweep |
+| `docs/D0_HYBRID_INFEASIBILITY_DIAGNOSIS_20260909.md` | lower-layer infeasibility |
+| `docs/INTERFACE_SINGLE_FACTOR.md` | the headline claim verified as a single factor |
+| `docs/ATTITUDE_REFERENCE_PROBE.md` | the pointing hypothesis, falsified |
 
-## Reference numbers (measured, seed block 262000 unless noted)
+**Void, do not cite**: the return audit (+14.11 / -24.0) and the action-space
+audit (a0 = -0.76 to -0.81). Their scripts have never existed in this
+repository and the figures have never been reproduced.
 
-| Policy | Waypoint | Survival | Discounted return |
-|---|---|---|---|
-| Zero action | 0/20 | 53.3 s | -8.71 |
-| Uniform random | 0/20 | 53.5 s | -- |
-| Station-keeping (2.50 N) | 0/20 | 200 s, never dies | -1.51 |
-| Waypoint-PD cruise 0.15 | 20/20 | 24.1 s | +3.66 |
-| Scripted full mission | 20/20 waypoint, 20/20 completion | 95.2 s | +5.21 |
+---
 
-Single-phase `single_phase` task (seed block 262000, its own reward scale -- these
-numbers are **not** comparable with the two-phase rows above, which carry the
-+5 Waypoint event):
+## What each reference is for
 
-| Policy | Completion | Survival | Discounted return |
-|---|---|---|---|
-| Zero action | 0/20, terminal violation | 16.9 s | -9.08 |
-| Hover (co-rotate, never close) | 0/6, never dies | 200 s | +3.03 |
-| Scripted single law | **20/20** | 95.3 s | **+4.13** |
+| paper | use it for | do not |
+|---|---|---|
+| `哈工大.pdf` | the SE(3) modelling this builds on | claim modelling as a contribution |
+| `北航.pdf` | constraint handling (cone, FOV, saturation); its 0.0173 rad/s target and absent speed cap are what put our regime outside it | |
+| `南航.pdf` | its Limitation 1 (an LTI prediction model assuming *moderate* tumbling) is the motivation | claim the layered architecture as novel -- 南航 is already upper-proposes / lower-filters with deadlock detection. Ours is that the upper layer is *learned* and the regime is `Lambda > 1` |
+| `北航编队.pdf` | the RL-supplies-a-schedule-to-MPC interface pattern | its impulsive model |
+| `上海交大.pdf` | the three-way comparison table format | **its method: adapting MPC cost weights online is ruled out** |
+| `AC4MPC` | critic as terminal cost + parallel double solve for a "no worse than" bound | both halves are closed to us -- learned terminal cost measured harmful, and a double solve is 1.5x the budget. **The infeasibility is itself a publishable contrast** |
+| `ecc26_rollout.pdf` | *learning supplies a good nominal, optimisation improves in its neighbourhood* | |
+| `引入死区迟滞...pdf` | nothing -- the user's own prior paper | cite it |
 
-Scripted worst margins over 20 seeds: total speed +0.140, closing speed +0.047,
-FOV +0.325, corridor lateral +1.19, axial +1.71; peak total speed 0.210 against
-the 0.35 limit. Thrust mean 1.76 N, p95 6.29 N, peak 8.66 N (= the full
-three-axis authority), saturated on 1.2% of steps. **The binding resource early
-in the task is actuation, not constraint margin** -- if the task ever has to be
-degraded, move the initial range or the terminal tolerances, never
-`total_speed_limit_m_s`, which is what puts the task in the `Lambda > 1` regime
-that makes it worth posing.
+---
 
-**Attribute a calibration error before acting on it.** `calibration_error` is
-`Q - soft`, and the soft return carries `alpha * entropy` accumulated *per
-step*, so it grows with survival: a policy living 110 s collects about +5 of
-entropy bonus, one dying at 16 s collects a few tenths. `digest_run` and the
-diagnostic CLI print `hard`, `soft` and `entropy_contribution` side by side for
-exactly this reason. A critic that tracks the hard return but lags the soft one
-is failing to anticipate the bonus for surviving longer, which is what chasing
-an improving policy from below looks like; that is a different finding from a
-critic that misjudges task quality.
+## How the work is run
 
-Reachable discounted return spans only about 16, so a calibration error of
-several units means the critic carries no information about policy quality.
-That was true of every `auto_0.005` model (4.9 to 45.7); it is no longer true
-at fixed alpha, where the error is under one unit through 200k.
+Long training happens on the user's machine (`D:\py\DRL2`), not in the
+sandbox. This session does code review, `pytest`, short smoke runs and
+diagnostic probes. Repository changes go on an explicit branch, one auditable
+stage per commit. The sandbox has no numeric stack by default; build a venv
+and install `numpy scipy cvxpy gymnasium stable-baselines3 pytest`.
 
-Target body rate 0.0412 rad/s puts the body-fixed Waypoint on a 0.33 m/s circle,
-so co-rotation needs a *sustained* 1.44 N at the Waypoint and 2.16 N at 12 m, plus
-about 1.31 N of Coriolis. Phase-I is therefore attitude-orbit coupled tracking,
-not translational rendezvous. This motivates the benchmark but, after the four
-negative probes, does not by itself justify a hybrid.
+Training artifacts (model ZIPs, checkpoints, TensorBoard events and evaluation
+JSON) are ignored by default. Publish evidence only by explicitly force-adding
+the individual file with `git add -f`, and record its path plus SHA-256 in the
+supporting document. Never commit an entire artifact directory.
 
-## The single_phase reward, and the one thing it does not fix
+---
 
-`single_phase` uses **one shaping form for the whole mission**: the bounded,
-discount-consistent potential that Phase-I always used, with its velocity term
-measured against `active_desired_velocity`, which now returns a corridor-aware
-guidance law whenever the terminal constraints are live instead of zero. The
-unbounded potential and its per-step state penalty are gone. Observation schema
-`phase2_mission_v4_phase_guidance_error_24d` records the change: the velocity
-channel is a tracking error against the *active* law in every phase, where v3
-degraded it into a raw speed once the constraints went live.
+## Historical research line
 
-This is a guidance reference, not a control law -- the chaser still has to find
-the thrust, including the sustained co-rotation. It is the same relationship
-Phase-I always had with `phase1_desired_velocity`.
+The original target was a three-way comparison on the `single_phase` task with
+a Waypoint and a 24D mission schema. That line is closed. Three lessons from it
+still bind:
 
-**What it does not fix is the horizon.** Potential shaping is policy-invariant
-by construction, so the choice between completing and hovering rests entirely on
-the discounted completion bonus, and at `gamma = 0.997` the effective horizon is
-333 steps against a 953-step mission -- 2.9 horizons, `gamma^953 = 0.057`, so the
-+20 is worth **+1.14** at reset. Hovering therefore captures 73% of the scripted
-return risk-free (+3.03 against +4.13).
+**The entropy temperature drove critic overestimation.** `auto` never
+converged -- alpha rose monotonically in every run measured, and calibration
+error was monotone in alpha across two observation schemas. `ent_coef` has
+been a fixed 0.005 ever since.
 
-Do not patch this pre-emptively. Pure SAC's measured failure is that it cannot
-hold co-rotation for more than ~35 s, so it cannot yet reach the hover policy at
-all; the +1.11 gap is the last increment, not the first obstacle. Run the
-baseline first. If a seed plateaus on `time_failure` with no violations and near
-200 s survival, it has reached hover and the horizon is then the binding factor
--- raising `gamma` or `final_success_reward` becomes the next single factor.
+**Hovering is a real attractor.** On the old task a policy that co-rotated and
+never closed captured 73% of the scripted return risk-free, because the
+discounted completion bonus was worth little at reset. The pre-registered
+reading was: *a seed that plateaus on `time_failure` with no violations has
+reached hover, and the horizon or the completion bonus is then the binding
+factor.* The T7 dead seeds are this, in the new action space.
 
-## Pure SAC on `single_phase`: three seeds on the aligned block
+**Independent re-evaluation flips published numbers.** A fresh seed block once
+flipped 8 of 9 comparable figures. Single-seed, single-block results are not
+conclusions.
 
-The three `..._fix_seed26086{0,1,2}` checkpoints (400k, after the guidance law
-got its axial restoring term), re-evaluated deterministically on the **same
-262000 block, 20 episodes** the scripted and Pure MPC rows use, through
-`evaluate_policy --assume-canonical` (their pre-rename manifests no longer load,
-but the 24d observation, action and network are unchanged):
-
-| seed | completion | no-violation | note |
-|---|---|---|---|
-| 260860 | **3/20** | 20/20 | best; clean but rarely completes |
-| 260861 | 1/20 | 10/20 | violates on half its episodes |
-| 260862 | 0/20 | **0/20** | violates on *every* episode |
-
-Two things this settles:
-
-- **The block flips the number.** 260860 was recorded at 7/20 on its old
-  evaluation block; on the aligned 262000 block it is 3/20. This is exactly the
-  "independent re-evaluation flipped 8 of 9 published numbers" rule -- the
-  aligned three-seed distribution is the honest figure, single-seed/single-block
-  is not.
-- **Pure SAC does not even guarantee feasibility.** 260860 never violates a
-  constraint, 260862 violates on all twenty episodes. Same algorithm, same
-  training, only the seed changed, and the behaviour goes from a clean co-rotating
-  hover to hitting a boundary every episode. Constraint satisfaction is a seed
-  lottery, not a property. Read the three-way table's Pure SAC row with this in
-  mind: whichever seed fills it, its worst-margin cell describes that seed alone,
-  and 260862's is negative.
-
-So the honest Pure SAC headline on `single_phase` is completion 3/1/0 over three
-seeds and no-violation 20/10/0 -- a real weak baseline that mostly fails to
-complete and, on some seeds, is not even safe. It establishes the value of a
-constrained MPC safety layer: Pure MPC holds every constraint on all 20 episodes
-with zero predicted-safe truth violations, which SAC cannot promise. The probes
-did not establish that a learned upper layer adds anything to that controller.
-
-**This is a real weak baseline, not a straw man**, and Pure SAC is closed here.
-Note what it does *not* beat: the scripted controller is 20/20 on the same
-guidance law with a hand-tuned PD. Completion rate therefore does not by itself
-distinguish successful classical controllers. **The differentiating metrics are
-completion time, force impulse, constraint margin and per-step compute.**
-
-## Pure SAC on `single_phase`, before the overshoot fix (three seeds, 260850-260852, 400k)
-
-Completion is 0/20 on every seed at every checkpoint, but the reason moved
-twice, and each move needed a different metric to see:
-
-| checkpoint | closest approach (260850) | worst corridor_axial | what ended it |
-|---|---|---|---|
-| 100k | 9.38 m | +4.63 | FOV 16/20, total speed 4/20 |
-| 250k | 3.44 m | +4.36 | **no violation 19/20**, ran to the 200 s cap |
-| 350k | 0.61 m | +1.74 | FOV 11/20, corridor 4/20 |
-| 400k | **0.07 m** | **+0.29** | corridor lateral 13/20 |
-
-**Do not judge this task by `constraint_success`.** It rewards not trying: the
-250k checkpoint scores 19/20 clean by hovering 3.44 m short. Closest approach
-is the metric that tracks progress, and by it 400k is the best checkpoint, not
-250k.
-
-At 400k the chaser reaches 0.07 m from the desired pose -- inside the 0.25 m
-completion tolerance -- and then keeps going. `corridor_axial` is the distance
-ahead of the port and the corridor radius is that distance times
-`tan(35 deg)`, so at the 0.29 m it reaches the cone is only 0.21 m wide and
-squeezes it out. It overshoots the desired pose by 1.2 m, straight at the port.
-Every other margin is grazed but barely negative (FOV -0.024, total speed
--0.002, closing -0.001): a policy flying on every boundary at once.
-
-The critic is not the problem. Q rises monotonically to 2.0-2.3 on all three
-seeds, alpha stays pinned, no abort fires, and at 250k the calibration errors
-are -2.89 / +2.78 / +4.83 with entropy contributions of 3.96 / 1.94 / 2.96 --
-the good seed under-estimates a long-surviving policy, which is the benign
-direction and mostly the entropy bonus it has not yet learned to expect.
-
-## Pure SAC on `full_mission` (three seeds, 260830-260832)
-
-Training length is **150k**; the run collapses by 200k. Judged as the rules
-require, on calibration error rather than Waypoint rate:
-
-Measured under observation schema v3, before the guidance-law rebuild, so these
-numbers are a record of the two-phase baseline rather than a live comparison.
-
-| seed | Waypoint @150k | calibration @150k | Waypoint @200k | calibration @200k |
-|---|---|---|---|---|
-| 260830 | **20/20** | **0.002** | 1/20 | 6.636 |
-| 260831 | 18/20 | 2.165 | 1/20 | 9.524 |
-| 260832 | 0/20 | -- | 0/20 | -- |
-
-0.002 is the best calibration ever measured here. The collapse is behavioural,
-not critical: Q barely moves (+0.458 -> +0.580) while the true soft return falls
-(+0.456 -> -6.056). Same signature as the Phase-I late decay, arriving earlier.
-alpha stayed pinned at 0.005 throughout and no abort threshold fired.
-
-**Completion is 0/20 on every seed at every checkpoint.** Pure SAC clears the
-Waypoint and then loses co-rotation: corridor survival is ~35 s against the 71 s the
-terminal leg needs, and of 61 Waypoint arrivals, 41 died on `total_speed`, 15 on
-FOV, 4 on the corridor and 1 on closing speed. **None died on the transition
-step**, so the Waypoint acceptance set is admissible and its tolerances need no
-change. The scripted controller holds the same leg with 0.66 N sustained.
-
-## Traps
-
-1. `env.task.Phase2MissionConfig` defaults to the **old** S1 task. S1-v2 only
-   exists via `phase2_s1v2_mission_config()`. Always pass the config explicitly.
-2. `eval/evaluate_policy.py::main` compares a manifest against the current
-   canonical config and raises on any difference, so pre-v3 schema models
-   cannot be loaded through the CLI. Call the library functions with the
-   manifest's own config instead (`diagnose_value_calibration.py` shows how).
-3. `train/train.py` writes `translational_observation_frame`,
-   `translational_velocity_observation` and `mission_task_version` as string
-   literals. Fix those before ever changing the observation schema. The v3 -> v4
-   bump left all three still accurate, but `tests/test_train_eval_config.py`
-   pins the schema name and is the tripwire that catches a silent change.
-4. `logs/phase2_mission_s1_semanticfix_validation/` predates the current reward
-   implementation and cannot support any current claim. Its replacement is
-   `logs/phase2_mission_s1v2_validation/`.
-5. `terminal_constraint_failure` is evaluated on the Waypoint transition step
-   itself, so an inadmissible arrival ends the episode immediately. Phase-I's
-   0.30 m/s Waypoint speed tolerance does not by itself guarantee admissibility
-   against the 0.28 m/s closing-speed limit that applies there.
-6. The repository has no `conftest.py` and is not installed as a package, so
-   run the suite as `python -B -m pytest -q` from the repository root. A bare
-   `pytest` can resolve to a different interpreter and fails collection on all
-   thirteen files at once.
-7. A `single_phase` manifest still carries fourteen Waypoint and Phase-I fields
-   (`waypoint_position_target_m`, `waypoint_reward`, `premature_entry_distance_m`,
-   `phase1_cruise_speed_m_s`, ...) because `Phase2MissionConfig` is shared with
-   the two-phase modes. **None of them do anything in `single_phase`** -- every one
-   is keyed off mission phase 0, which that mode never enters. Do not read task
-   semantics off them. For the same reason observation dimension 24, the mission
-   phase flag, is constant 1 there.
-8. Reward weights and the guidance constants are constructor defaults, not
-   config fields, so `asdict(config)` misses them. `train.py` records them under
-   the manifest's `reward_settings` -- read the numbers there, not from the
-   environment block.
-9. The nominal benchmark intentionally keeps one deterministic target-tumble
-   realisation, and that remains a paper limitation. A separate, single-factor
-   `single_phase_phase_sampled` probe has now sampled initial attitude and
-   angular-velocity direction at fixed magnitude. Across three 20-episode seed
-   blocks, scripted, exact-r10, local and refresh100 MPC all completed 20/20
-   with positive truth margins. Thus phase sampling has been tested and did not
-   expose a hybrid gap. Do not fold it into frozen S1-v2 or claim that the
-   nominal benchmark itself now generalises across tumble; the probe is a
-   secondary task. See `docs/PROBE_RESULTS.md`.
-10. `constrained_mpc_nominal_config()` fixes `reference_state` at the desired
-    pose with a 50-step (5 s) horizon -- a myopic regulator with no path plan on
-    a ~95 s task from 10-14 m, while the scripted 20/20 comes from a
-    corridor-aware guidance law. **`corridor_tracking_mpc_config()` is the fair
-    Pure MPC configuration**: it tracks the same `env.task.corridor_guidance_velocity`
-    the reward, the observation and the scripted controller use, rolled forward
-    from the current position into a per-stage reference trajectory, so the
-    comparison is on how each method flies a shared reference rather than on
-    whether it has one. The fixed-setpoint config is kept as the record for the
-    terminal-only evidence measured before the trajectory existed; the default
-    stays `"fixed"` so that evidence is bitwise reproducible, and
-    `experiments/evaluate_mpc.py --reference-source corridor_guidance` selects
-    the fair row. The guidance law now lives on the task, not in the reward, for
-    exactly this reason -- a fourth private copy is how the reward and the
-    scripted validator drifted apart once (see *The single_phase reward*).
+Pure SAC on the old task, three seeds on the aligned block: completion 3/1/0
+and no-violation 20/10/0 -- it mostly fails to complete and on some seeds is
+not even feasible. That is a characterised weak baseline, and it is what
+establishes the value of a constrained MPC layer underneath.

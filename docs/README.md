@@ -1,13 +1,35 @@
 # 文档入口
 
-当前文档只保留五个入口，避免历史文件名冒充现行状态：
+## 当前必须阅读
 
-1. 仓库根 `CLAUDE.md`：唯一权威；
-2. 仓库根 `HANDOFF_upper_v2_pivot.md`：最新上层战略转向和 A/B 决策闸门；
-3. 仓库根 `HANDOFF.md`：当前暂停状态和执行闸门；
-4. `PROBE_RESULTS.md`：四个 hybrid 缺口探针；
-5. `EVIDENCE_INDEX.md`：日志、模型与论文证据；
-6. `REPRODUCIBILITY.md`：解释器、依赖和回归方式；
-7. `HISTORY.md`：被后续结果取代的历史演进摘要。
+1. `../CLAUDE.md`：冻结的 adaptive sync-entry 主线和科学边界；
+2. `INDEX.md`：全部文档的 LIVE / EVIDENCE / CLOSED 权威地图；
+3. `ADAPTIVE_ROUND1_CLOSEOUT_20260921.md`：第一轮收尾与 R5 根因终判；
+4. `ROUND1_EXTERNAL_REVIEW_20260922.md`：外部审查件；
+5. `V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md`：当前耦合方向；
+6. `V2_INTERFACE_IMPLEMENTATION_20260922.md`、`V2_RATE_LIMIT_DECISION_20260922.md`：V2 实现与 `0.40 m` 裁决；
+7. `V2_TRAINING_ORDER_20260923.md`：V2 训练步骤与活性门；训练启动仍需用户明确同意；
+8. `ADAPTIVE_MAINLINE_RUNSHEET.md`、`PURE_MPC_ROW_VERIFIED.md`：运行框架与冻结基线；
+9. `EVIDENCE_INDEX.md`、`REPRODUCIBILITY.md`：证据和复现索引。
 
-原 `docs/history/` 的逐轮报告、旧总览、旧实验索引和旧清理清单已整合进上述文件。原文仍存在于 Git 历史，但不得直接支持当前主张。
+## 2026-09-21/22 新增证据（13 份）
+
+1. `ADAPTIVE_ROUND1_CLOSEOUT_20260921.md`；
+2. `COUPLING_DEFECT_DIAGNOSIS_LOG_20260921.md`；
+3. `COUPLING_DEFECT_DIAGNOSIS_ORDER_20260921.md`；
+4. `DECK_CLEARING_ORDER_20260922.md`；
+5. `ROUND1_EXTERNAL_REVIEW_20260922.md`；
+6. `V2_EXECUTION_ORDER_20260922.md`；
+7. `V2_EXECUTION_SIGNAL_AUDIT_20260922.md`；
+8. `V2_FIX_ORDER_RATE_LIMIT_20260922.md`；
+9. `V2_INTERFACE_IMPLEMENTATION_20260922.md`；
+10. `V2_RATE_LIMIT_DECISION_20260922.md`；
+11. `V2_RATE_LIMIT_SWEEP_STOP_20260922.md`；
+12. `V2_REVIEW_RATE_LIMIT_20260922.md`；
+13. `V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md`。
+
+## 历史材料
+
+`T*`、`A1/A2/A3/G0`、非合作探针、timing probe、旧 `MAINLINE/OPPORTUNITY` runsheet 和 9 月 16 日以前的阶段报告只记录研究演进。它们可以解释为什么当前设计如此选择，但不是现行执行单，也不得用于恢复相位硬门、外层硬走廊或旧训练配置。
+
+交接文件统一放在 `handoffs/`；根目录不再放新增 handoff。当前事实发生变化时，优先更新 LIVE 入口和 `INDEX.md`，而不是继续新增并列说明文件。

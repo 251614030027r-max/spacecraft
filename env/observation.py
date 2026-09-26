@@ -4,7 +4,13 @@ import numpy as np
 
 from dynamics.lie import inverse_transform, make_transform, se3_log
 from dynamics.relative import RelativeState
-from env.task import Phase2TaskConfig, compute_task_metrics, orthogonal_plane_basis
+from env.task import (
+    Phase2TaskConfig,
+    PrecaptureMetrics,
+    PrecaptureTaskConfig,
+    compute_task_metrics,
+    orthogonal_plane_basis,
+)
 
 
 PHASE2_OBSERVATION_SCHEMA = "phase2_v2_1_23d"
@@ -18,6 +24,9 @@ PHASE2_MISSION_BODY_TRANSLATION_OBSERVATION_SCHEMA = (
 PHASE2_MISSION_OBSERVATION_SCHEMA = (
     "phase2_mission_v4_phase_guidance_error_24d"
 )
+PHASE2_PERCEPTION_OBSERVATION_SCHEMA = "phase2_perception_v1_29d"
+PRECAPTURE_PLANNING_FULL_STATE_SCHEMA = "precapture_planning_full_state_v1_24d"
+PRECAPTURE_PLANNING_ESTIMATED_SCHEMA = "precapture_planning_estimated_v1_29d"
 
 
 def _softsign(raw: np.ndarray, limit: float) -> np.ndarray:
@@ -253,4 +262,209 @@ def build_phase2_mission_observation(
     )
     if observation.shape != (24,) or not np.all(np.isfinite(observation)):
         raise RuntimeError("invalid Phase-2 mission observation")
+    return observation.astype(np.float32)
+
+
+def build_phase2_perception_observation(
+    relative: RelativeState,
+    *,
+    covariance: np.ndarray,
+    initial_block_stds: np.ndarray,
+    visible_feature_fraction: float,
+    task: Phase2TaskConfig,
+    active_reference_position_m: np.ndarray,
+    mission_phase: int,
+    attitude_scale_rad: float,
+    distance_scale_m: float,
+    angular_velocity_scale_rad_s: float,
+    velocity_scale_m_s: float,
+    softsign_limit: float = 10.0,
+    target_angular_velocity_rad_s: np.ndarray | None = None,
+    target_angular_velocity_scale_rad_s: float = 0.05,
+) -> np.ndarray:
+    """A1 29D observation: estimated 24D core plus uncertainty and visibility."""
+
+    covariance_value = np.asarray(covariance, dtype=np.float64)
+    block_initial = np.asarray(initial_block_stds, dtype=np.float64)
+    if (
+        covariance_value.shape != (12, 12)
+        or not np.all(np.isfinite(covariance_value))
+        or block_initial.shape != (4,)
+        or np.min(block_initial) <= 0.0
+        or not 0.0 <= visible_feature_fraction <= 1.0
+    ):
+        raise ValueError("perception covariance, scales, or visibility are invalid")
+    core = build_phase2_mission_observation(
+        relative,
+        task=task,
+        active_reference_position_m=active_reference_position_m,
+        mission_phase=mission_phase,
+        attitude_scale_rad=attitude_scale_rad,
+        distance_scale_m=distance_scale_m,
+        angular_velocity_scale_rad_s=angular_velocity_scale_rad_s,
+        velocity_scale_m_s=velocity_scale_m_s,
+        softsign_limit=softsign_limit,
+        target_angular_velocity_rad_s=target_angular_velocity_rad_s,
+        target_angular_velocity_scale_rad_s=(
+            target_angular_velocity_scale_rad_s
+        ),
+        translational_observation_frame="chaser_body",
+        translational_velocity_observation="actual",
+    )
+    diagonal = np.maximum(np.diag(covariance_value), 0.0)
+    block_rms = np.array(
+        [
+            np.sqrt(np.mean(diagonal[0:3])),
+            np.sqrt(np.mean(diagonal[3:6])),
+            np.sqrt(np.mean(diagonal[6:9])),
+            np.sqrt(np.mean(diagonal[9:12])),
+        ],
+        dtype=np.float64,
+    )
+    log_ratio = np.log(np.maximum(block_rms, 1.0e-12) / block_initial)
+    uncertainty = log_ratio / (1.0 + np.abs(log_ratio))
+    observation = np.concatenate(
+        (core, uncertainty, np.array([visible_feature_fraction]))
+    )
+    if observation.shape != (29,) or not np.all(np.isfinite(observation)):
+        raise RuntimeError("invalid Phase-2 perception observation")
+    return observation.astype(np.float32)
+
+
+def build_precapture_full_state_observation(
+    relative: RelativeState,
+    *,
+    metrics: PrecaptureMetrics,
+    task: PrecaptureTaskConfig,
+    target_angular_velocity_rad_s: np.ndarray,
+    attitude_scale_rad: float,
+    distance_scale_m: float,
+    angular_velocity_scale_rad_s: float,
+    velocity_scale_m_s: float,
+    target_angular_velocity_scale_rad_s: float = 0.05,
+    softsign_limit: float = 10.0,
+) -> np.ndarray:
+    """Diagnostic full-state observation for task/MPC feasibility work only."""
+
+    target_omega = np.asarray(target_angular_velocity_rad_s, dtype=np.float64)
+    if target_omega.shape != (3,) or not np.all(np.isfinite(target_omega)):
+        raise ValueError("target angular velocity must be a finite three-vector")
+    scales = (
+        attitude_scale_rad,
+        distance_scale_m,
+        angular_velocity_scale_rad_s,
+        velocity_scale_m_s,
+        target_angular_velocity_scale_rad_s,
+        softsign_limit,
+    )
+    if min(scales) <= 0.0:
+        raise ValueError("precapture observation scales must be positive")
+    position_error = metrics.position_target_m - task.desired_position
+    core = np.concatenate(
+        (
+            metrics.desired_error_coordinates[:3] / attitude_scale_rad,
+            position_error / distance_scale_m,
+            metrics.position_rate_target_m_s / velocity_scale_m_s,
+            relative.omega / angular_velocity_scale_rad_s,
+            target_omega / target_angular_velocity_scale_rad_s,
+        )
+    )
+    corridor_scale = max(
+        abs(metrics.port_axial_distance_m) * np.tan(task.corridor_half_angle_rad),
+        0.25,
+    )
+    margins = np.array(
+        [
+            metrics.keepout_margin_m / task.keepout_radius_m,
+            metrics.fov_margin_rad / task.fov_half_angle_rad,
+            metrics.outer_inertial_speed_margin_m_s
+            / task.outer_inertial_speed_limit_m_s,
+            metrics.target_frame_speed_margin_m_s
+            / metrics.target_frame_speed_limit_m_s,
+            metrics.corridor_lateral_margin_m / corridor_scale,
+            metrics.closing_speed_margin_m_s / task.closing_speed_max_m_s,
+        ],
+        dtype=np.float64,
+    )
+    context = np.array(
+        [
+            metrics.target_center_distance_m / distance_scale_m,
+            float(metrics.terminal_region_active),
+            float(metrics.transition_speed_active),
+        ],
+        dtype=np.float64,
+    )
+    observation = np.concatenate(
+        (_softsign(core, softsign_limit), _softsign(margins, softsign_limit), context)
+    )
+    if observation.shape != (24,) or not np.all(np.isfinite(observation)):
+        raise RuntimeError("invalid precapture full-state observation")
+    return observation.astype(np.float32)
+
+
+def build_precapture_estimated_observation(
+    relative: RelativeState,
+    *,
+    metrics: PrecaptureMetrics,
+    task: PrecaptureTaskConfig,
+    target_angular_velocity_rad_s: np.ndarray,
+    covariance: np.ndarray,
+    initial_block_stds: np.ndarray,
+    visible_feature_fraction: float,
+    attitude_scale_rad: float,
+    distance_scale_m: float,
+    angular_velocity_scale_rad_s: float,
+    velocity_scale_m_s: float,
+    target_angular_velocity_scale_rad_s: float = 0.05,
+    softsign_limit: float = 10.0,
+) -> np.ndarray:
+    """Non-cooperative precapture observation.
+
+    The 24D full-state core is built from the EKF-estimated relative state (and
+    the target pose reconstructed from the known chaser), then extended with the
+    four A1 covariance summaries and the visible-feature fraction, giving 29D.
+    Only the observation source changes: truth still drives dynamics, reward,
+    termination, geometry and evaluation. ``perception=None`` reproduces the 24D
+    full-state path bitwise.
+    """
+
+    covariance_value = np.asarray(covariance, dtype=np.float64)
+    block_initial = np.asarray(initial_block_stds, dtype=np.float64)
+    if (
+        covariance_value.shape != (12, 12)
+        or not np.all(np.isfinite(covariance_value))
+        or block_initial.shape != (4,)
+        or np.min(block_initial) <= 0.0
+        or not 0.0 <= visible_feature_fraction <= 1.0
+    ):
+        raise ValueError("perception covariance, scales, or visibility are invalid")
+    core = build_precapture_full_state_observation(
+        relative,
+        metrics=metrics,
+        task=task,
+        target_angular_velocity_rad_s=target_angular_velocity_rad_s,
+        attitude_scale_rad=attitude_scale_rad,
+        distance_scale_m=distance_scale_m,
+        angular_velocity_scale_rad_s=angular_velocity_scale_rad_s,
+        velocity_scale_m_s=velocity_scale_m_s,
+        target_angular_velocity_scale_rad_s=target_angular_velocity_scale_rad_s,
+        softsign_limit=softsign_limit,
+    )
+    diagonal = np.maximum(np.diag(covariance_value), 0.0)
+    block_rms = np.array(
+        [
+            np.sqrt(np.mean(diagonal[0:3])),
+            np.sqrt(np.mean(diagonal[3:6])),
+            np.sqrt(np.mean(diagonal[6:9])),
+            np.sqrt(np.mean(diagonal[9:12])),
+        ],
+        dtype=np.float64,
+    )
+    log_ratio = np.log(np.maximum(block_rms, 1.0e-12) / block_initial)
+    uncertainty = log_ratio / (1.0 + np.abs(log_ratio))
+    observation = np.concatenate(
+        (core.astype(np.float64), uncertainty, np.array([visible_feature_fraction]))
+    )
+    if observation.shape != (29,) or not np.all(np.isfinite(observation)):
+        raise RuntimeError("invalid precapture estimated observation")
     return observation.astype(np.float32)

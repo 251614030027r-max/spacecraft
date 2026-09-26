@@ -7,12 +7,14 @@ from numpy.random import Generator
 
 from dynamics.constants import EARTH
 from dynamics.lie import make_transform, so3_exp, so3_log
-from dynamics.relative import RelativeState, reconstruct_chaser_state
+from dynamics.relative import RelativeState, reconstruct_chaser_state, relative_state
 from dynamics.types import SpacecraftParameters, SpacecraftState
 from env.task import (
     Phase2MissionConfig,
     Phase2TaskConfig,
+    PrecaptureTaskConfig,
     compute_mission_metrics,
+    compute_precapture_metrics,
     compute_task_metrics,
     orthogonal_plane_basis,
 )
@@ -132,6 +134,14 @@ def sample_target_parameters(
     perturbed = 0.5 * (perturbed + perturbed.T)
     mass = nominal.mass * (1.0 + float(rng.uniform(-mismatch, mismatch)))
     return SpacecraftParameters(mass, perturbed)
+
+
+def fixed_prediction_target_parameters(
+    *, mismatch: float, seed: int
+) -> SpacecraftParameters:
+    """One deterministic estimated target model shared by MPC and EKF."""
+
+    return sample_target_parameters(mismatch=mismatch, seed=seed)
 
 
 def chaser_parameters() -> SpacecraftParameters:
@@ -410,3 +420,124 @@ def sample_phase2_mission_chaser_state(
     if metrics.total_speed_m_s > speed_limit + 1.0e-12:
         raise RuntimeError("mission sampler exceeded its speed envelope")
     return reconstruct_chaser_state(target, relative)
+
+
+def sample_precapture_planning_chaser_state(
+    rng: Generator,
+    target: SpacecraftState,
+    *,
+    task: PrecaptureTaskConfig = PrecaptureTaskConfig(),
+    initial_range_min_m: float = 15.0,
+    initial_range_max_m: float = 20.0,
+    initial_inertial_relative_speed_max_m_s: float = 0.10,
+    pointing_error_max_rad: float = float(np.deg2rad(5.0)),
+    chaser_angular_velocity_component_limit_rad_s: float = 0.005,
+) -> SpacecraftState:
+    """Sample a visible, non-co-rotating state outside the terminal corridor."""
+
+    if not 0.0 < initial_range_min_m < initial_range_max_m:
+        raise ValueError("precapture initial range bounds are invalid")
+    if initial_range_min_m <= (
+        task.keepout_radius_m + task.entry_port_axial_distance_m
+    ):
+        raise ValueError("precapture initial range must start outside the entry section")
+    if min(
+        initial_inertial_relative_speed_max_m_s,
+        pointing_error_max_rad,
+        chaser_angular_velocity_component_limit_rad_s,
+    ) <= 0.0:
+        raise ValueError("precapture sampling scales must be positive")
+    if initial_inertial_relative_speed_max_m_s > task.outer_inertial_speed_limit_m_s:
+        raise ValueError("initial inertial speed exceeds the outer safety limit")
+    if pointing_error_max_rad >= task.fov_half_angle_rad:
+        raise ValueError("pointing error must lie inside the FOV")
+
+    axis = task.approach_axis
+    plane_1, plane_2 = orthogonal_plane_basis(axis)
+    target_inertial_velocity = target.rotation @ target.velocity
+    for _ in range(1024):
+        radius = rng.uniform(initial_range_min_m**3, initial_range_max_m**3) ** (
+            1.0 / 3.0
+        )
+        maximum_polar = np.arccos(
+            np.clip(
+                (
+                    float(axis @ task.port_position)
+                    + task.entry_port_axial_distance_m
+                    + 0.05
+                )
+                / radius,
+                -1.0,
+                1.0,
+            )
+        )
+        minimum_polar = task.corridor_half_angle_rad + float(np.deg2rad(5.0))
+        if maximum_polar <= minimum_polar:
+            continue
+        cosine = rng.uniform(np.cos(maximum_polar), np.cos(minimum_polar))
+        sine = np.sqrt(max(1.0 - cosine * cosine, 0.0))
+        azimuth = rng.uniform(-np.pi, np.pi)
+        direction = (
+            cosine * axis
+            + sine * (np.cos(azimuth) * plane_1 + np.sin(azimuth) * plane_2)
+        )
+        position_target = radius * direction
+
+        los_target = task.port_position - position_target
+        camera_x_target = los_target / np.linalg.norm(los_target)
+        reference = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        if abs(float(reference @ camera_x_target)) > 0.9:
+            reference = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+        camera_y_target = np.cross(reference, camera_x_target)
+        camera_y_target /= np.linalg.norm(camera_y_target)
+        camera_z_target = np.cross(camera_x_target, camera_y_target)
+        pointing_axis = np.array(
+            [0.0, *rng.normal(size=2)], dtype=np.float64
+        )
+        pointing_axis /= np.linalg.norm(pointing_axis)
+        pointing_error = so3_exp(
+            pointing_axis * rng.uniform(0.0, pointing_error_max_rad)
+        )
+        roll = so3_exp(np.array([rng.uniform(-np.pi, np.pi), 0.0, 0.0]))
+        relative_rotation = (
+            np.column_stack((camera_x_target, camera_y_target, camera_z_target))
+            @ pointing_error
+            @ roll
+        )
+        chaser_rotation = target.rotation @ relative_rotation
+
+        velocity_direction = rng.normal(size=3)
+        velocity_direction /= np.linalg.norm(velocity_direction)
+        inertial_relative_speed = (
+            initial_inertial_relative_speed_max_m_s * rng.random() ** (1.0 / 3.0)
+        )
+        chaser_inertial_velocity = (
+            target_inertial_velocity
+            + inertial_relative_speed * velocity_direction
+        )
+        chaser = SpacecraftState(
+            rotation=chaser_rotation,
+            position=target.position + target.rotation @ position_target,
+            omega=rng.uniform(
+                -chaser_angular_velocity_component_limit_rad_s,
+                chaser_angular_velocity_component_limit_rad_s,
+                size=3,
+            ),
+            velocity=chaser_rotation.T @ chaser_inertial_velocity,
+        )
+        relative = RelativeState(
+            make_transform(relative_rotation, position_target),
+            relative_state(target, chaser).twist,
+        )
+        metrics = compute_precapture_metrics(target, chaser, relative, task)
+        if (
+            initial_range_min_m <= metrics.target_center_distance_m <= initial_range_max_m
+            and metrics.port_axial_distance_m > task.entry_port_axial_distance_m
+            and metrics.corridor_lateral_margin_m < 0.0
+            and metrics.keepout_margin_m > 0.0
+            and metrics.fov_margin_rad >= 0.0
+            and metrics.outer_inertial_speed_margin_m_s >= 0.0
+            and metrics.active_constraints_satisfied
+        ):
+            return chaser
+    raise RuntimeError("failed to sample a feasible precapture-planning state")

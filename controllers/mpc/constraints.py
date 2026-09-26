@@ -38,7 +38,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from dynamics.lie import _SMALL_ANGLE, hat3, left_jacobian_so3, so3_exp
-from env.task import Phase2TaskConfig
+from env.task import Phase2TaskConfig, PrecaptureTaskConfig
 
 
 FloatArray = NDArray[np.float64]
@@ -68,7 +68,9 @@ class _CorridorGeometry:
 
 @lru_cache(maxsize=16)
 def _corridor_geometry(
-    task: Phase2TaskConfig, corridor_facets: int, distance_scale_m: float
+    task: Phase2TaskConfig | PrecaptureTaskConfig,
+    corridor_facets: int,
+    distance_scale_m: float,
 ) -> _CorridorGeometry:
     axis = task.approach_axis
     reference = np.array([1.0, 0.0, 0.0])
@@ -107,7 +109,9 @@ def _pose(x: FloatArray) -> tuple[FloatArray, FloatArray, FloatArray]:
 
 
 def _fov_angle(
-    rotation: FloatArray, position: FloatArray, task: Phase2TaskConfig
+    rotation: FloatArray,
+    position: FloatArray,
+    task: Phase2TaskConfig | PrecaptureTaskConfig,
 ) -> tuple[float, FloatArray, float]:
     """Return ``(angle, chaser-frame line of sight, its norm)``.
 
@@ -203,6 +207,194 @@ def normalized_constraint_margins(
             ],
         )
     )
+
+
+_INACTIVE_MARGIN = 1.0e3
+
+
+def entry_plane_radius_m(task: PrecaptureTaskConfig) -> float:
+    """Distance from the target centre to the entry plane.
+
+    ``||port_position|| + entry_port_axial_distance_m``. Both are frozen task
+    parameters, so this introduces no tunable constant.
+    """
+
+    return float(
+        np.linalg.norm(task.port_position) + task.entry_port_axial_distance_m
+    )
+
+
+def _predicted_terminal_active(
+    position: FloatArray,
+    task: PrecaptureTaskConfig,
+    *,
+    terminal_latched: bool,
+) -> bool:
+    """Activate MPC terminal rows at predicted entry, without changing truth latch.
+
+    Two conditions, each with one job:
+
+    1. **Inside the legal-entry cylinder** -- past the entry plane
+       (``0 <= port axial < entry_port_axial_distance_m``) and within the
+       entry disc's radius of the approach axis. The truth latch arms only on
+       a crossing inside that disc, and a latched trajectory that honours the
+       corridor stays inside the cone, which lies inside this cylinder. A
+       predicted state outside it cannot be a legitimately latched state, so
+       the task never scores the corridor there; imposing it only asks the QP
+       for something it cannot give.
+    2. **Within the entry radius of the target centre** -- the anticipation
+       zone the baseline MPC was validated with (docs/TERMINAL_GATE_DEFECT.md).
+
+    History, each step measured. The axial half-space alone reached 16 m out
+    (fixed by condition 2). Condition 2 alone still covered the back
+    hemisphere (v3c 262422: a 108-step zero-wrench burst at port axial
+    -4.4 m) and the ring beside the disc (262422 20k: a 5-step burst 65 deg
+    off axis at 5.4 m); condition 1 removes both at once. A path-based gate
+    (rows armed at the first predicted legal crossing) was also tried and
+    rejected: it anticipates at the disc rim, outside condition 2, and so
+    changed every Pure MPC episode -- a redesign of the frozen baseline, not a
+    bug fix. Condition 1 leaves every completed Pure MPC episode of the 48
+    evaluation seeds bitwise identical; it changes the course of 7 of the 12
+    failures, all of them after an illegal (outside-disc) entry that the old
+    gate then held in the corridor unlatched, and one of them (262034) now
+    backs out and re-enters legally: 36 -> 37/48, zero violations
+    (eval/adp/v3d_gate_pure_mpc_count.json, docs/V3D_REVIEW_20260926.md).
+    """
+
+    if terminal_latched:
+        return True
+    port_displacement = np.asarray(position, dtype=np.float64) - task.port_position
+    port_axial_distance = float(task.approach_axis @ port_displacement)
+    if not 0.0 <= port_axial_distance < task.entry_port_axial_distance_m:
+        return False
+    lateral = port_displacement - port_axial_distance * task.approach_axis
+    if float(np.linalg.norm(lateral)) > task.entry_disc_radius_m:
+        return False
+    point = np.asarray(position, dtype=np.float64)
+    return bool(float(np.linalg.norm(point)) <= entry_plane_radius_m(task))
+
+
+def normalized_precapture_truth_margins(
+    state: ArrayLike,
+    task: PrecaptureTaskConfig,
+    *,
+    target_angular_velocity_rad_s: ArrayLike,
+    terminal_latched: bool,
+) -> FloatArray:
+    """Seven exact margins with fixed ordering; inactive rows are large positive."""
+
+    x = _state(state)
+    target_omega = np.asarray(target_angular_velocity_rad_s, dtype=np.float64)
+    if target_omega.shape != (3,) or not np.all(np.isfinite(target_omega)):
+        raise ValueError("target angular velocity must be finite and shape=(3,)")
+    rotation, position, _ = _pose(x)
+    range_m = float(np.linalg.norm(position))
+    terminal = bool(terminal_latched)
+    position_rate = rotation @ x[9:]
+    target_frame_speed = float(np.linalg.norm(position_rate))
+    inertial_relative_velocity_target = position_rate + np.cross(target_omega, position)
+    inertial_speed = float(np.linalg.norm(inertial_relative_velocity_target))
+    angle, _, _ = _fov_angle(rotation, position, task)
+    margins = np.full(7, _INACTIVE_MARGIN, dtype=np.float64)
+    margins[0] = (range_m - task.keepout_radius_m) / task.keepout_radius_m
+    margins[1] = (task.fov_half_angle_rad - angle) / task.fov_half_angle_rad
+    axis = task.approach_axis
+    if terminal:
+        displacement = position - task.port_position
+        axial = float(axis @ displacement)
+        lateral = displacement - axial * axis
+        margins[4] = min(
+            axial,
+            axial * np.tan(task.corridor_half_angle_rad)
+            - float(np.linalg.norm(lateral)),
+        ) / 3.0
+        margins[5] = (
+            task.terminal_total_speed_limit_m_s - target_frame_speed
+        ) / task.terminal_total_speed_limit_m_s
+        axial_remaining = float(axis @ (position - task.desired_position))
+        closing_speed = float(-axis @ position_rate)
+        margins[6] = (
+            task.closing_speed_limit(axial_remaining) - closing_speed
+        ) / task.closing_speed_max_m_s
+    else:
+        margins[2] = (
+            task.outer_inertial_speed_limit_m_s - inertial_speed
+        ) / task.outer_inertial_speed_limit_m_s
+        radial_direction = position / max(range_m, _DEGENERATE)
+        radial_closing_speed = float(
+            -radial_direction @ inertial_relative_velocity_target
+        )
+        margins[3] = (
+            task.outer_radial_closing_speed_limit(range_m)
+            - radial_closing_speed
+        ) / task.outer_inertial_speed_limit_m_s
+    return margins
+
+
+def normalized_precapture_constraint_margins(
+    state: ArrayLike,
+    task: PrecaptureTaskConfig,
+    *,
+    target_angular_velocity_rad_s: ArrayLike,
+    terminal_latched: bool,
+    corridor_facets: int,
+    distance_scale_m: float = 3.0,
+) -> FloatArray:
+    """Fixed-row precapture margins for DPP-compatible MPC constraints."""
+
+    x = _state(state)
+    target_omega = np.asarray(target_angular_velocity_rad_s, dtype=np.float64)
+    if target_omega.shape != (3,) or not np.all(np.isfinite(target_omega)):
+        raise ValueError("target angular velocity must be finite and shape=(3,)")
+    if corridor_facets < 4 or distance_scale_m <= 0.0:
+        raise ValueError("invalid constraint geometry settings")
+    geometry = _corridor_geometry(task, corridor_facets, distance_scale_m)
+    rotation, position, _ = _pose(x)
+    range_m = float(np.linalg.norm(position))
+    terminal = _predicted_terminal_active(
+        position, task, terminal_latched=terminal_latched
+    )
+    position_rate = rotation @ x[9:]
+    speed = float(np.linalg.norm(position_rate))
+    count = corridor_facets + 7
+    margins = np.full(count, _INACTIVE_MARGIN, dtype=np.float64)
+    margins[0] = (range_m - task.keepout_radius_m) / task.keepout_radius_m
+    angle, _, _ = _fov_angle(rotation, position, task)
+    margins[1] = (task.fov_half_angle_rad - angle) / task.fov_half_angle_rad
+    if terminal:
+        displacement = position - task.port_position
+        axial = float(geometry.axis @ displacement)
+        lateral = displacement - axial * geometry.axis
+        polygon_radius = (
+            axial
+            * np.tan(task.corridor_half_angle_rad)
+            * np.cos(np.pi / corridor_facets)
+        )
+        margins[4] = axial / distance_scale_m
+        margins[5 : 5 + corridor_facets] = (
+            polygon_radius - geometry.directions @ lateral
+        ) / distance_scale_m
+        margins[corridor_facets + 5] = (
+            task.terminal_total_speed_limit_m_s - speed
+        ) / task.terminal_total_speed_limit_m_s
+        axial_remaining = float(geometry.axis @ (position - task.desired_position))
+        margins[corridor_facets + 6] = (
+            task.closing_speed_limit(axial_remaining)
+            - float(-geometry.axis @ position_rate)
+        ) / task.closing_speed_max_m_s
+    else:
+        inertial_velocity = position_rate + np.cross(target_omega, position)
+        margins[2] = (
+            task.outer_inertial_speed_limit_m_s
+            - float(np.linalg.norm(inertial_velocity))
+        ) / task.outer_inertial_speed_limit_m_s
+        radial_direction = position / max(range_m, _DEGENERATE)
+        radial_closing_speed = float(-radial_direction @ inertial_velocity)
+        margins[3] = (
+            task.outer_radial_closing_speed_limit(range_m)
+            - radial_closing_speed
+        ) / task.outer_inertial_speed_limit_m_s
+    return margins
 
 
 def _position_rotation_gradient(phi: FloatArray, rho: FloatArray) -> FloatArray:
@@ -333,4 +525,150 @@ def linearize_constraint_margins(
     nominal = normalized_constraint_margins(
         x, task, corridor_facets=corridor_facets, distance_scale_m=distance_scale_m
     )
+    return jacobian, jacobian @ x - nominal
+
+
+def linearize_precapture_constraint_margins(
+    state: ArrayLike,
+    task: PrecaptureTaskConfig,
+    *,
+    target_angular_velocity_rad_s: ArrayLike,
+    terminal_latched: bool,
+    corridor_facets: int,
+    distance_scale_m: float = 3.0,
+) -> tuple[FloatArray, FloatArray]:
+    """Analytic fixed-row linearization for the two-region task."""
+
+    x = _state(state)
+    target_omega = np.asarray(target_angular_velocity_rad_s, dtype=np.float64)
+    if target_omega.shape != (3,) or not np.all(np.isfinite(target_omega)):
+        raise ValueError("target angular velocity must be finite and shape=(3,)")
+    if corridor_facets < 4 or distance_scale_m <= 0.0:
+        raise ValueError("invalid constraint geometry settings")
+    geometry = _corridor_geometry(task, corridor_facets, distance_scale_m)
+    phi, rho, velocity = x[:3], x[3:6], x[9:]
+    rotation, position, left_jacobian = _pose(x)
+    right_jacobian = left_jacobian.T
+    range_m = float(np.linalg.norm(position))
+    terminal = _predicted_terminal_active(
+        position, task, terminal_latched=terminal_latched
+    )
+    count = corridor_facets + 7
+    position_gradient = np.zeros((count, 3), dtype=np.float64)
+    rate_gradient = np.zeros((count, 3), dtype=np.float64)
+    rotation_gradient = np.zeros((count, 3), dtype=np.float64)
+    position_rate = rotation @ velocity
+    speed = float(np.linalg.norm(position_rate))
+
+    if range_m > _DEGENERATE:
+        position_gradient[0] = (
+            position / range_m / task.keepout_radius_m
+        )
+
+    angle, line_of_sight, line_of_sight_norm = _fov_angle(rotation, position, task)
+    sine = float(np.sin(angle))
+    if line_of_sight_norm > _DEGENERATE and abs(sine) > _DEGENERATE:
+        unit = line_of_sight / line_of_sight_norm
+        boresight = task.camera_boresight
+        perpendicular = boresight - float(boresight @ unit) * unit
+        gradient = perpendicular / (
+            line_of_sight_norm * sine * task.fov_half_angle_rad
+        )
+        position_gradient[1] = -gradient @ rotation.T
+        rotation_gradient[1] = gradient @ hat3(line_of_sight)
+
+    if terminal:
+        position_gradient[4 : 5 + corridor_facets] = geometry.position_gradient
+        if speed > _DEGENERATE:
+            rate_gradient[corridor_facets + 5] = (
+                -position_rate
+                / speed
+                / task.terminal_total_speed_limit_m_s
+            )
+        closing_index = corridor_facets + 6
+        rate_gradient[closing_index] = (
+            geometry.axis / task.closing_speed_max_m_s
+        )
+        axial_remaining = float(
+            geometry.axis @ (position - task.desired_position)
+        )
+        if (
+            axial_remaining > 0.0
+            and task.closing_speed_min_m_s
+            + task.closing_speed_slope_per_s * axial_remaining
+            < task.closing_speed_max_m_s
+        ):
+            position_gradient[closing_index] = (
+                task.closing_speed_slope_per_s
+                / task.closing_speed_max_m_s
+            ) * geometry.axis
+    else:
+        inertial_velocity = position_rate + np.cross(target_omega, position)
+        inertial_speed = float(np.linalg.norm(inertial_velocity))
+        if inertial_speed > _DEGENERATE:
+            inertial_gradient = (
+                -inertial_velocity
+                / inertial_speed
+                / task.outer_inertial_speed_limit_m_s
+            )
+            position_gradient[2] = inertial_gradient @ hat3(target_omega)
+            rate_gradient[2] = inertial_gradient
+        if range_m > _DEGENERATE:
+            radial_direction = position / range_m
+            radial_limit = task.outer_radial_closing_speed_limit(range_m)
+            projection = np.eye(3) - np.outer(radial_direction, radial_direction)
+            scale = task.outer_inertial_speed_limit_m_s
+            position_gradient[3] = (
+                task.outer_radial_brake_accel_m_s2
+                / max(radial_limit, _DEGENERATE)
+                * radial_direction
+                + projection @ inertial_velocity / range_m
+                + radial_direction @ hat3(target_omega)
+            ) / scale
+            rate_gradient[3] = radial_direction / scale
+
+    jacobian = np.zeros((count, 12), dtype=np.float64)
+    jacobian[:, :3] = (
+        position_gradient @ _position_rotation_gradient(phi, rho)
+        + rotation_gradient @ right_jacobian
+        - rate_gradient @ (rotation @ hat3(velocity) @ right_jacobian)
+    )
+    jacobian[:, 3:6] = position_gradient @ left_jacobian
+    jacobian[:, 9:] = rate_gradient @ rotation
+    # Reuse the geometry already computed for the Jacobian. Calling
+    # normalized_precapture_constraint_margins here repeated the pose, FOV,
+    # region-gate, rate and speed calculations for every horizon stage.
+    nominal = np.full(count, _INACTIVE_MARGIN, dtype=np.float64)
+    nominal[0] = (range_m - task.keepout_radius_m) / task.keepout_radius_m
+    nominal[1] = (task.fov_half_angle_rad - angle) / task.fov_half_angle_rad
+    if terminal:
+        displacement = position - task.port_position
+        axial = float(geometry.axis @ displacement)
+        lateral = displacement - axial * geometry.axis
+        polygon_radius = (
+            axial
+            * np.tan(task.corridor_half_angle_rad)
+            * np.cos(np.pi / corridor_facets)
+        )
+        nominal[4] = axial / distance_scale_m
+        nominal[5 : 5 + corridor_facets] = (
+            polygon_radius - geometry.directions @ lateral
+        ) / distance_scale_m
+        nominal[corridor_facets + 5] = (
+            task.terminal_total_speed_limit_m_s - speed
+        ) / task.terminal_total_speed_limit_m_s
+        nominal[corridor_facets + 6] = (
+            task.closing_speed_limit(axial_remaining)
+            - float(-geometry.axis @ position_rate)
+        ) / task.closing_speed_max_m_s
+    else:
+        nominal[2] = (
+            task.outer_inertial_speed_limit_m_s - inertial_speed
+        ) / task.outer_inertial_speed_limit_m_s
+        radial_direction = position / max(range_m, _DEGENERATE)
+        radial_closing_speed = float(-radial_direction @ inertial_velocity)
+        nominal[3] = (
+            task.outer_radial_closing_speed_limit(range_m)
+            - radial_closing_speed
+        ) / task.outer_inertial_speed_limit_m_s
     return jacobian, jacobian @ x - nominal
