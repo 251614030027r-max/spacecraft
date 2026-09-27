@@ -140,3 +140,16 @@ Pure MPC 预期 37/48。
 - 不改奖励、MPC、任务、超参、限速、近场下限、仲裁 z；
 - 不按中途结果调任何东西，不挑 checkpoint；
 - 工作树不干净时不开跑。
+
+## B7. 补充：v3d 在 50k 停止（2026-09-28，看到任何 50k 结果之前决定）
+
+- 三个 v3d 运行在 50k 附近手动停止。**统一使用 `checkpoints/sac_mpc_50000_steps.zip`**，不用 `interrupted_model.zip`（三个种子停下时的步数不同），也不用其他 checkpoint；
+- 停止前先确认三个运行目录里都已经有 `sac_mpc_50000_steps.zip`，再逐个 Ctrl+C；然后跑一次健康检查（记录停止时状态）；
+- B0 的 learned-only 评估改为：
+```powershell
+python -B -m experiments.evaluate_hybrid_policy --episodes 48 --seed 262000 --horizon 35 --parametrization task_state_v3 --phase-time-observation --execution-feedback --adaptive-task --model logs/v3d_262420/checkpoints/sac_mpc_50000_steps.zip --output eval/v3d/learned_only_50k_262420.json
+```
+  （262421、262422 同理），仍在 `b05e389` 上、拉取新代码之前完成；
+- **消融对比要同预算**：v3e 训练完成后，除 B3 的 60k learned-only 外，另用 v3e 自己的 `sac_mpc_50000_steps.zip` 各跑一次 learned-only（输出 `eval/v3e/<seed>/learned_only_50k.json`）。
+  "旧参考实现 vs 修复后参考实现"只在 50k 对 50k 上比较；v3e 的主结果仍用 60k `final_model.zip`；
+- 各 v3d 目录加侧车 `STOPPED_AT_50K.md`：写明"消融用途，按预先决定统一使用 50k checkpoint"。
