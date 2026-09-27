@@ -1021,7 +1021,7 @@ def main() -> None:
                     target_state=control_target,
                     time_seconds=env.env.time_seconds,
                     terminal_latched=bool(info["terminal_region_active"]),
-                    external_reference=waypoint,
+                    **env.controller_reference(waypoint),
                 )
                 if control_wrenches is not None:
                     control_wrenches.append([float(v) for v in wrench])

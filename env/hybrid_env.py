@@ -458,6 +458,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._v2_episode_accepted_decisions = 0
         self._v3_applied_direction: FloatArray | None = None
         self._v3_applied_radius_m: float | None = None
+        self._v3_commit_time_s: float | None = None
+        self._v3_commit_max_angle_rad: float | None = None
+        self._v3_commit_commitment: float | None = None
         self._v3_direction_commit_count = 0
         self._last_v3_direction_lag_rad = 0.0
         self._v3_direction_lags_rad: list[float] = []
@@ -711,9 +714,27 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             self.environment_config.precapture_task.desired_position,
             dtype=np.float64,
         )
-        desired_direction = desired / np.linalg.norm(desired)
         hold_direction = rotation.T @ self._hold_inertial
         weight = float(np.clip(commitment, 0.0, 1.0))
+        goal = self._v3_goal_direction(hold_direction, weight)
+        progress = float(np.clip(progress_m, 0.0, self.v2_progress_max_m))
+        radius = float(
+            np.clip(
+                self._hold_radius_m - progress,
+                self._v3_radius_floor_m(weight),
+                self.hybrid_config.maximum_waypoint_radius_m,
+            )
+        )
+        return radius, goal
+
+    def _v3_goal_direction(self, hold_direction: FloatArray, weight: float) -> FloatArray:
+        """Memoryless target direction: slerp from the hold toward the pose direction."""
+
+        desired = np.asarray(
+            self.environment_config.precapture_task.desired_position,
+            dtype=np.float64,
+        )
+        desired_direction = desired / np.linalg.norm(desired)
         cosine = float(np.clip(hold_direction @ desired_direction, -1.0, 1.0))
         if cosine < -1.0 + 1.0e-10:
             axis = self._fallback_blend_axis(hold_direction)
@@ -724,16 +745,66 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             )
         else:
             goal = _slerp(hold_direction, desired_direction, weight)
-        goal = goal / np.linalg.norm(goal)
-        progress = float(np.clip(progress_m, 0.0, self.v2_progress_max_m))
-        radius = float(
-            np.clip(
-                self._hold_radius_m - progress,
-                self._v3_radius_floor_m(weight),
-                self.hybrid_config.maximum_waypoint_radius_m,
+        return goal / np.linalg.norm(goal)
+
+    def v3_reference_path(self) -> FloatArray | None:
+        """Target-frame reference over the MPC horizon for the learned branch.
+
+        The per-decision rule defines the reference only at decision
+        boundaries; between them the committed direction ``u`` keeps slewing
+        toward the goal direction, which itself turns as the target turns
+        under the inertial hold. This evaluates the same rule continuously
+        over the horizon -- the hold direction propagated with the current
+        target rate (the constant-rate prediction the MPC already uses), the
+        goal from ``_v3_goal_direction``, and ``u`` stepped toward it with the
+        committed slew budget prorated in time -- at the committed radius.
+        At the next boundary it meets the next committed reference whenever
+        the task state is held, so the path is continuous. Returns ``None``
+        off the learned branch: the Pure MPC setpoint is fixed.
+        """
+
+        if (
+            self.hybrid_config.waypoint_parametrization != "task_state_v3"
+            or self._hybrid_branch != "learned"
+            or self._v3_applied_direction is None
+        ):
+            return None
+        from dynamics.lie import so3_exp
+
+        assert self.env.target_state is not None
+        assert self._hold_inertial is not None
+        assert self._v3_commit_time_s is not None
+        assert self._v3_commit_max_angle_rad is not None
+        assert self._v3_commit_commitment is not None
+        assert self._v3_applied_radius_m is not None
+        dt = self.environment_config.dt_s
+        decision_period_s = self.hybrid_config.decision_period_steps * dt
+        rotation = np.asarray(self.env.target_state.rotation, dtype=np.float64)
+        omega = np.asarray(self.env.target_state.omega, dtype=np.float64)
+        elapsed_s = float(self.env.time_seconds) - self._v3_commit_time_s
+        steps = self.mpc_config.horizon_steps
+        path = np.zeros((3, steps + 1), dtype=np.float64)
+        for index in range(steps + 1):
+            offset = index * dt
+            predicted = rotation @ so3_exp(offset * omega)
+            goal = self._v3_goal_direction(
+                predicted.T @ self._hold_inertial, self._v3_commit_commitment
             )
-        )
-        return radius, goal
+            direction = self._direction_step(
+                self._v3_applied_direction,
+                goal,
+                self._v3_commit_max_angle_rad * (elapsed_s + offset) / decision_period_s,
+            )
+            path[:, index] = self._v3_applied_radius_m * direction
+        return path
+
+    def controller_reference(self, waypoint: FloatArray) -> dict[str, Any]:
+        """The reference arguments for one control step (env loop and evaluator)."""
+
+        return {
+            "external_reference": waypoint,
+            "external_reference_path": self.v3_reference_path(),
+        }
 
     def _preview_v3_reference(
         self, progress_m: float, commitment: float
@@ -793,6 +864,16 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
             + natural_angle * radius
             + 1.0e-6
         )
+        # What the within-decision reference path needs: when this direction
+        # was committed, the slew budget it was committed with, and the task
+        # state it tracks (see ``v3_reference_path``).
+        previous_radius = self._v3_applied_radius_m
+        radial_change = 0.0 if previous_radius is None else abs(radius - previous_radius)
+        self._v3_commit_time_s = float(self.env.time_seconds)
+        self._v3_commit_max_angle_rad = natural_angle + max(
+            0.0, self.hybrid_config.v2_reference_step_max_m - radial_change
+        ) / radius
+        self._v3_commit_commitment = float(np.clip(commitment, 0.0, 1.0))
         self._v3_applied_direction = direction.copy()
         self._v3_applied_radius_m = radius
         self._last_v3_direction_lag_rad = lag
@@ -1389,6 +1470,9 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
         self._v2_episode_accepted_decisions = 0
         self._v3_applied_direction = None
         self._v3_applied_radius_m = None
+        self._v3_commit_time_s = None
+        self._v3_commit_max_angle_rad = None
+        self._v3_commit_commitment = None
         self._v3_direction_commit_count = 0
         self._last_v3_direction_lag_rad = 0.0
         self._v3_direction_lags_rad = []
@@ -1510,7 +1594,7 @@ class PrecaptureHybridEnv(gym.Env[np.ndarray, np.ndarray]):
                 target_state=self.env.target_state,
                 time_seconds=self.env.time_seconds,
                 terminal_latched=bool(info["terminal_region_active"]),
-                external_reference=waypoint,
+                **self.controller_reference(waypoint),
             )
             zero_fallbacks += int(diagnostics.used_zero_fallback)
             # Solver failures can leave a prior slack value behind. Never

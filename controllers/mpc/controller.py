@@ -420,6 +420,7 @@ class MPCController:
         *,
         target_state: SpacecraftState | None = None,
         external_reference: ArrayLike | None = None,
+        external_reference_path: ArrayLike | None = None,
         terminal_latched: bool | None = None,
     ) -> FloatArray:
         """Return the ``(12, horizon+1)`` reference the objective tracks.
@@ -461,6 +462,18 @@ class MPCController:
                 self._held_external_reference = waypoint.copy()
             waypoint = self._held_external_reference
             waypoint_velocity = self._held_external_velocity
+            # The held waypoint is where the reference is at the refresh step;
+            # between refreshes it moves on at the held velocity. Anchoring
+            # "now" at the refresh value instead froze the reference in the
+            # target frame for the whole decision and snapped it forward at
+            # the next one: an inertially fixed hold became a 2 s sawtooth
+            # that co-rotates and jumps back (~0.6 m at 7.5 m), and the MPC
+            # spent fuel chasing it. A constant waypoint has zero held
+            # velocity, so the fixed-setpoint (Pure MPC) reference is
+            # unchanged bitwise.
+            elapsed_s = (
+                self._control_step % self.config.external_reference_hold_steps
+            ) * self.config.dt_s
             # The state is (se3_log(T_rel), twist), so the reference has to be
             # written in those coordinates too: rows 3:6 are the *exponential*
             # translation rho = J_l(phi)^-1 p, not the position, and rows 9:12
@@ -473,7 +486,20 @@ class MPCController:
             # optimiser off any waypoint it was given. This follows the same
             # convention as _endpoint_plan.
             positions = np.zeros((3, n + 1), dtype=np.float64)
-            for index in range(n + 1):
+            if external_reference_path is not None:
+                # The caller knows how its reference moves over the horizon
+                # (e.g. a V3 learned reference that is partly inertially
+                # fixed, i.e. a circle in the target frame). A straight-line
+                # extrapolation of that motion is a chord, and tracking a
+                # chord in the rotating frame costs omega^2 r of thrust the
+                # task never asked for.
+                if self.config.external_reference_frame != "target":
+                    raise ValueError("a reference path is only defined in the target frame")
+                path = np.asarray(external_reference_path, dtype=np.float64)
+                if path.shape != (3, n + 1) or not np.all(np.isfinite(path)):
+                    raise ValueError("external_reference_path must be finite and shape=(3, horizon+1)")
+                positions[:, :] = path
+            for index in range(n + 1 if external_reference_path is None else 0):
                 offset = index * self.config.dt_s
                 if self.config.external_reference_frame == "target":
                     # The waypoint is already a target-body-frame point, so it
@@ -483,12 +509,12 @@ class MPCController:
                     # below turns it into a circular reference the optimiser
                     # then tracks with a standing lag -- 1.3 m at the 3 m
                     # desired pose, against a 0.25 m completion tolerance.
-                    positions[:, index] = waypoint + offset * waypoint_velocity
+                    positions[:, index] = waypoint + (elapsed_s + offset) * waypoint_velocity
                     continue
                 target_rotation = target_state.rotation @ so3_exp(
                     offset * target_state.omega
                 )
-                inertial_position = waypoint + offset * waypoint_velocity
+                inertial_position = waypoint + (elapsed_s + offset) * waypoint_velocity
                 positions[:, index] = target_rotation.T @ inertial_position
             position_rates = np.zeros((3, n + 1), dtype=np.float64)
             position_rates[:, :-1] = np.diff(positions, axis=1) / self.config.dt_s
@@ -630,6 +656,7 @@ class MPCController:
         target_state: SpacecraftState,
         time_seconds: float,
         external_reference: ArrayLike | None = None,
+        external_reference_path: ArrayLike | None = None,
         terminal_latched: bool | None = None,
     ) -> tuple[FloatArray, MPCStepDiagnostics]:
         state = np.asarray(relative_vector, dtype=np.float64)
@@ -643,6 +670,7 @@ class MPCController:
             time_seconds,
             target_state=target_state,
             external_reference=external_reference,
+            external_reference_path=external_reference_path,
             terminal_latched=terminal_latched,
         )
         self._reference.value = reference_trajectory
