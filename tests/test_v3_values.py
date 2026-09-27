@@ -82,3 +82,22 @@ def test_ensemble_fits_a_known_function_ignores_masked_inputs_and_round_trips(tm
     loaded = ValueEnsemble.load(tmp_path / "v.pt")
     np.testing.assert_allclose(loaded.head_values(x[:5]), model.head_values(x[:5]), rtol=0, atol=1e-6)
     assert len(model.meta["heads"]) == 3
+
+
+def test_task_utility_is_the_undiscounted_unshaped_sum() -> None:
+    from experiments.v3_fit_values import returns_to_go
+    from train.v3_values import task_utility_to_go
+
+    np.testing.assert_allclose(task_utility_to_go([-0.1, -0.1, 20.0]), [19.8, 19.9, 20.0])
+    data = {
+        "episode": np.array([0, 0, 0]),
+        "decision": np.array([0, 1, 2]),
+        "reward": np.array([1.0, 1.0, 20.0]),  # shaped, used only by --target discounted
+        "task_reward": np.array([-0.1, -0.1, 20.0]),
+    }
+    episodes = [{"index": 0}]
+    np.testing.assert_allclose(returns_to_go(data, episodes, "task"), [19.8, 19.9, 20.0])
+    np.testing.assert_allclose(
+        returns_to_go(data, episodes, "discounted"),
+        [1.0 + 0.99 * 1.0 + 0.99**2 * 20.0, 1.0 + 0.99 * 20.0, 20.0],
+    )

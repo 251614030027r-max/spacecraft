@@ -1,8 +1,18 @@
 """V3 fixed-policy values and the one-way arbiter (M3 / M4).
 
-Two values, each a 5-head ensemble fitted by supervised regression on complete
-discounted decision-level returns (the simulator is deterministic and every
+Two values, each a 5-head ensemble fitted by supervised regression on the
+complete *task utility* to go (the simulator is deterministic and every
 trajectory is complete, so no TD is needed):
+
+    U_t = sum_{j >= t} r^task_j      (undiscounted, to the end of the episode)
+
+where r^task is the environment's reward without potential shaping: completion
++20 / hard failure -20, and the time, actuator and safety-warning rates. The
+discount and the shaping are training devices for SAC; as a judgement of
+"which continuation is better for the mission" they distort it -- discounting
+ranks a late success below a near-goal timeout (seen in P1), and undiscounted
+shaping would pay for dawdling far from the goal. Fixed on 2026-09-27 before
+any v3e value data existed.
 
     V_L(s) ~ return of "the learned policy continues from s to the end"
     V_B(s) ~ return of "Pure MPC takes over at s and flies to the end"
@@ -50,6 +60,12 @@ def discounted_returns(rewards: Sequence[float], gamma: float = DECISION_GAMMA) 
         running = float(rewards[index]) + gamma * running
         out[index] = running
     return out
+
+
+def task_utility_to_go(task_rewards: Sequence[float]) -> np.ndarray:
+    """U_t = undiscounted sum of the unshaped task reward from t to the end."""
+
+    return discounted_returns(task_rewards, gamma=1.0)
 
 
 def baseline_mask(slices: dict[str, slice], dimension: int) -> np.ndarray:

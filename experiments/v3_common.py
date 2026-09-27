@@ -90,6 +90,7 @@ def run_episode(
     observation, _ = env.reset(seed=int(seed))
     observations: list[np.ndarray] = []
     rewards: list[float] = []
+    task_rewards: list[float] = []
     branches: list[str] = []
     zero = np.zeros(env.action_space.shape, dtype=np.float64)
     info: dict[str, Any] = {}
@@ -107,11 +108,16 @@ def run_episode(
             np.asarray(action, dtype=np.float64), branch=branch
         )
         rewards.append(float(reward))
+        # The task's own objective for this decision: the reward without the
+        # potential shaping (a training device). The value heads are fitted on
+        # its undiscounted sum; see train/v3_values.py.
+        task_rewards.append(float(info["hybrid_integrated_reward_without_shaping"]))
         decision += 1
     return {
         "seed": int(seed),
         "observations": np.stack(observations),
         "rewards": np.asarray(rewards, dtype=np.float64),
+        "task_rewards": np.asarray(task_rewards, dtype=np.float64),
         "branches": branches,
         "completed": bool(info.get("completed", False)),
         "terminated": bool(terminated),

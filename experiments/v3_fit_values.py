@@ -1,6 +1,7 @@
 """M3: fit V_L and V_B for one run from its M2 files.
 
-    G_t = sum_{j>=t} 0.99^(j-t) r_j   (decision level, to the end of the episode)
+    U_t = sum_{j>=t} r^task_j   (undiscounted unshaped task reward, to the end;
+                                  --target discounted restores the old 0.99 return)
 
     V_L  <- every state of the learned_full episodes
     V_B  <- every state of the baseline_full episodes
@@ -57,12 +58,14 @@ def load_data(paths: list[Path]) -> tuple[dict[str, np.ndarray], list[dict], dic
     return {k: np.concatenate(v) for k, v in columns.items()}, episodes, slices
 
 
-def returns_to_go(data: dict[str, np.ndarray], episodes: list[dict]) -> np.ndarray:
-    out = np.zeros(data["reward"].size, dtype=np.float64)
+def returns_to_go(data: dict[str, np.ndarray], episodes: list[dict], target: str = "task") -> np.ndarray:
+    key = "task_reward" if target == "task" else "reward"
+    gamma = 1.0 if target == "task" else DECISION_GAMMA
+    out = np.zeros(data[key].size, dtype=np.float64)
     for episode in episodes:
         index = np.flatnonzero(data["episode"] == episode["index"])
         order = index[np.argsort(data["decision"][index])]
-        out[order] = discounted_returns(data["reward"][order], DECISION_GAMMA)
+        out[order] = discounted_returns(data[key][order], gamma)
     return out
 
 
@@ -102,6 +105,7 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--holdout", default="270040-270047")
     parser.add_argument("--fit-seed", type=int, default=20260926)
+    parser.add_argument("--target", choices=("task", "discounted"), default="task")
     args = parser.parse_args()
     if args.output_dir.exists() and any(args.output_dir.iterdir()):
         raise FileExistsError(args.output_dir)
@@ -112,14 +116,14 @@ def main() -> None:
     data, episodes, slices_list = load_data(args.data)
     dimension = int(data["observation"].shape[1])
     slices = {name: slice(a, b) for name, (a, b) in slices_list.items()}
-    returns = returns_to_go(data, episodes)
+    returns = returns_to_go(data, episodes, args.target)
     seed_of = {e["index"]: e["seed"] for e in episodes}
     state_seed = np.array([seed_of[int(i)] for i in data["episode"]])
     holdout = np.isin(state_seed, parse_seed_range(args.holdout))
 
     report: dict = {
         "data": [str(p) for p in args.data],
-        "gamma": DECISION_GAMMA,
+        "target": args.target,
         "holdout_seeds": args.holdout,
         "episodes": len(episodes),
         "states": int(returns.size),
@@ -136,7 +140,7 @@ def main() -> None:
             input_mask=masks[which],
             seed=args.fit_seed + offset,
         )
-        model.meta.update({"value": which, "gamma": DECISION_GAMMA, "observation_slices": slices_list})
+        model.meta.update({"value": which, "target": args.target, "observation_slices": slices_list})
         sha = model.save(args.output_dir / f"values_{which}.pt")
         report[f"V_{which}"] = {
             "file": str(args.output_dir / f"values_{which}.pt"),

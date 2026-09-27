@@ -62,6 +62,7 @@ def main() -> None:
     columns: dict[str, list] = {
         "observation": [],
         "reward": [],
+        "task_reward": [],
         "learned_branch": [],
         "episode": [],
         "decision": [],
@@ -81,6 +82,7 @@ def main() -> None:
                 n = len(result["rewards"])
                 columns["observation"].append(result["observations"])
                 columns["reward"].append(result["rewards"])
+                columns["task_reward"].append(result["task_rewards"])
                 columns["learned_branch"].append(
                     np.array([b == "learned" for b in result["branches"]], dtype=bool)
                 )
@@ -99,6 +101,7 @@ def main() -> None:
                         "failure": result["failure"],
                         "qp_zero_fallbacks": result["qp_zero_fallbacks"],
                         "undiscounted_return": float(result["rewards"].sum()),
+                        "task_utility": float(result["task_rewards"].sum()),
                     }
                 )
             print(

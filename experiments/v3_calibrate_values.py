@@ -47,7 +47,7 @@ from experiments.v3_common import (
     parse_seed_range,
     run_episode,
 )
-from train.v3_values import DECISION_GAMMA, ValueEnsemble, discounted_returns, one_way_rule, sha256_file
+from train.v3_values import ValueEnsemble, one_way_rule, sha256_file, task_utility_to_go
 
 AGREEMENT_GATE = 0.80
 TIE_TOLERANCE = 1.0
@@ -125,14 +125,16 @@ def main() -> None:
     try:
         for seed in parse_seed_range(args.seeds):
             learned = run_episode(env, policy, seed, always("learned"))
-            g_learned = discounted_returns(learned["rewards"], DECISION_GAMMA)
+            if value_l.meta.get("target", "task") != "task":
+                raise ValueError("calibration compares task utilities; refit the values with --target task")
+            g_learned = task_utility_to_go(learned["task_rewards"])
             for k in checkpoints:
                 if k >= len(learned["rewards"]):
                     continue
                 handback = run_episode(env, policy, seed, learned_then_baseline(k))
                 if not np.array_equal(handback["observations"][k], learned["observations"][k]):
                     raise RuntimeError("the handback prefix diverged from the learned episode")
-                g_handback = discounted_returns(handback["rewards"], DECISION_GAMMA)
+                g_handback = task_utility_to_go(handback["task_rewards"])
                 observation = learned["observations"][k]
                 mu_l, sd_l = value_l.mean_std(observation)
                 mu_b, sd_b = value_b.mean_std(observation)

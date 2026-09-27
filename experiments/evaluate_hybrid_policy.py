@@ -471,9 +471,13 @@ def parse_args() -> argparse.Namespace:
             "timed_entry",
             "staged_residual",
             "noisy_commit",
+            "v3_nominal",
         ],
         help=(
-            "Run without a model. 'desired_pose' is the fixed-setpoint lower "
+            "Run without a model. 'v3_nominal' (task_state_v3 only) is the "
+            "smooth nominal on the V3 interface: the learned branch advanced at "
+            "full rate every decision, no waiting and no learning -- it isolates "
+            "what the reference realization alone does. 'desired_pose' is the fixed-setpoint lower "
             "layer delivered through the wrapper (the immediate-entry A arm and "
             "the row the coupled policy has to beat). 'timed_entry' is the "
             "scripted timing oracle B arm (hold at the inertial staging point, "
@@ -619,6 +623,8 @@ def main() -> None:
     control_source_estimated = args.control_source == "estimated"
     if control_source_estimated and not args.perception:
         raise ValueError("--control-source estimated requires --perception")
+    if args.control == "v3_nominal" and args.parametrization != "task_state_v3":
+        raise ValueError("--control v3_nominal requires --parametrization task_state_v3")
     if args.control == "timed_entry" and args.parametrization != "arrival_condition":
         raise ValueError(
             "--control timed_entry requires --parametrization arrival_condition "
@@ -878,6 +884,10 @@ def main() -> None:
                     if args.parametrization == "task_state_v3"
                     else env.action_for_waypoint(desired)
                 )
+                inference_s = perf_counter() - started
+            elif args.control == "v3_nominal":
+                started = perf_counter()
+                action = np.ones(env.action_space.shape, dtype=np.float64)
                 inference_s = perf_counter() - started
             elif args.control == "timed_entry":
                 assert timing is not None
