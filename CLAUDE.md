@@ -10,6 +10,16 @@ SAC-MPC coupling.** Everything about `single_phase`, the Waypoint, the A1/A2/A3
 perception line and the 24D mission schemas is history; it is kept under
 *Historical research line* because the lessons transfer, not because it is live.
 
+> **Live status -- 2026-09-27.** v3e is the main run
+> (`docs/V3E_PLAN_AND_EXECUTION_ORDER_20260927.md`); v3d is kept as the
+> old-reference-realization ablation (learned-only rows only). Pre-v3e probes:
+> the smooth nominal rescues 8/10 Pure MPC failures but is not uniformly better
+> -- success and fuel flip with target phase for both controllers, so the task
+> holds a real state-dependent decision and stays unchanged; the near-field
+> floor is kept as the MPC-feasible reference envelope. v3e changes only the
+> reference realization (MPC gets the reference's true path) and the value
+> target (undiscounted unshaped task utility).
+>
 > **Live status -- 2026-09-26.** V3 (policy-level value arbitration: SAC task
 > policy + fitted V_L / V_B + initial choice and one-way handback) is the
 > method. v3b and v3c were stopped by the preregistered QP health gate; the
