@@ -44,6 +44,14 @@ def main() -> None:
     parser.add_argument("--model-name", default="final_model.zip")
     parser.add_argument("--seeds", default="270000-270047")
     parser.add_argument("--probes", type=int, default=2)
+    parser.add_argument(
+        "--learned-only",
+        action="store_true",
+        help=(
+            "collect only learned_full episodes (V_L data); no baseline_full, "
+            "no probes. Used to add independent learned-policy outcomes."
+        ),
+    )
     parser.add_argument("--probe-seed", type=int, default=20260926)
     parser.add_argument("--output", type=Path, required=True, help="path stem; writes .npz and .json")
     parser.add_argument("--allow-incomplete-run", action="store_true", help="smoke tests only")
@@ -74,8 +82,12 @@ def main() -> None:
             learned = run_episode(env, policy, seed, always("learned"))
             rng = np.random.default_rng([args.probe_seed, seed])
             ks = [int(k) for k in rng.integers(0, len(learned["rewards"]), size=args.probes)]
-            plan = [("baseline_full", None, always("baseline")), ("learned_full", None, None)]
-            plan += [("probe", k, learned_then_baseline(k)) for k in ks]
+            if args.learned_only:
+                ks = []
+                plan = [("learned_full", None, None)]
+            else:
+                plan = [("baseline_full", None, always("baseline")), ("learned_full", None, None)]
+                plan += [("probe", k, learned_then_baseline(k)) for k in ks]
             for kind, k, schedule in plan:
                 result = learned if kind == "learned_full" else run_episode(env, policy, seed, schedule)
                 index = len(episodes)
@@ -131,7 +143,8 @@ def main() -> None:
                 "model_name": args.model_name,
                 "code_commit": manifest.get("code_commit"),
                 "seeds": args.seeds,
-                "probes": args.probes,
+                "probes": 0 if args.learned_only else args.probes,
+                "learned_only": bool(args.learned_only),
                 "probe_seed": args.probe_seed,
                 "observation_slices": slices,
                 "kinds": KINDS,

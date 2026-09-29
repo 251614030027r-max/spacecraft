@@ -101,3 +101,14 @@ def test_task_utility_is_the_undiscounted_unshaped_sum() -> None:
         returns_to_go(data, episodes, "discounted"),
         [1.0 + 0.99 * 1.0 + 0.99**2 * 20.0, 1.0 + 0.99 * 20.0, 20.0],
     )
+
+
+def test_collector_learned_only_flag_exists() -> None:
+    import subprocess
+    import sys
+
+    out = subprocess.run(
+        [sys.executable, "-B", "-m", "experiments.v3_collect_value_data", "--help"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert "--learned-only" in out
