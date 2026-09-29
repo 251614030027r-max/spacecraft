@@ -88,7 +88,8 @@ python -B -m experiments.v3_readout --pure-mpc eval/v3e/pure_mpc.json --model 26
 
 1. 262420 第一轮 M5 完整结果（`arbitrated.json`）与它的第一轮判读；
 2. 三个模型的 `values_r2/m3_report.json`、`m6_r2.json`、`arbitrated_r2.json`（若有）、`readout_r2.json`，及全部 SHA-256；
-3. M2 补采的 `.json` 元数据（`.npz`、`.pt` 只报路径与 SHA-256）。
+3. M2 补采的 `.json` 元数据（`.npz`、`.pt` 只报路径与 SHA-256）；
+4. **补充诊断（第一轮与第二轮仲裁行都要）**：每个"有真值违规"或"丢失 Pure 成功"的回合，列出种子、开局选的分支、是否交回及交回决策序号、失败时所在分支、失败类型，以及开局时的 μ_L、σ_L、μ_B、σ_B（都在 `arbitrated*.json` 的 `branch`、`handback_decision`、`arbiter_values_muL_sdL_muB_sdB` 字段里）。
 
 ## 6. 如果第二轮 V_L 仍然不达标
 
