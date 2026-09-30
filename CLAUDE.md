@@ -20,6 +20,13 @@ perception line and the 24D mission schemas is history; it is kept under
 > two no-training measurements (Q1 learned vs nominal on 240 fresh openings,
 > Q2 predictability of Pure-vs-nominal success from the initial state).
 >
+> **Current window handoff: `docs/handoffs/WINDOW_HANDOFF_20260930.md`**, with
+> the opening prompt and working discipline in
+> `docs/handoffs/NEXT_WINDOW_PROMPT_20260930.md`. The user's mainline (north
+> star, section 20 there) governs; the closure of the arbitration line and
+> Q1/Q2 above are the previous upper window's proposals, **not yet agreed** --
+> the next step is to be discussed with the user first.
+>
 > **Live status -- 2026-09-27.** v3e is the main run
 > (`docs/V3E_PLAN_AND_EXECUTION_ORDER_20260927.md`); v3d is kept as the
 > old-reference-realization ablation (learned-only rows only). Pre-v3e probes:
@@ -52,8 +59,9 @@ perception line and the 24D mission schemas is history; it is kept under
 > against the Q1-Q7 table -- the user's stated order is evaluation first, design
 > second.
 >
-> **Window handoff: `docs/handoffs/WINDOW_HANDOFF_20260924.md`**, with the
-> opening prompt in `docs/handoffs/NEXT_WINDOW_PROMPT_20260924.md`. It carries
+> **Window handoff (2026-09-24, archived):
+> `docs/handoffs/archive_202609/WINDOW_HANDOFF_20260924.md`**, with the opening
+> prompt in `docs/handoffs/archive_202609/NEXT_WINDOW_PROMPT_20260924.md`. It carries
 > the coupling-design discussion in full (the three core references, the
 > novelty hazard to concede, the four calls still open) and the upper window's
 > own measurement errors. Read it before acting.
