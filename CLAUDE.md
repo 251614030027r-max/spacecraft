@@ -10,7 +10,28 @@ SAC-MPC coupling.** Everything about `single_phase`, the Waypoint, the A1/A2/A3
 perception line and the 24D mission schemas is history; it is kept under
 *Historical research line* because the lessons transfer, not because it is live.
 
-> **Live status -- 2026-09-30.** Value round 2 does not hold (only 262420
+> **Live status -- 2026-09-30 (plan frozen by the user).** The coordination
+> question is redefined from "which continuation is better" (V_L vs V_B) to
+> **"continue learned (keeping the option to hand off later) vs hand off to
+> Pure MPC now"** -- one-way handoff, an optimal-stopping-type decision;
+> handoff at k=0 is Pure MPC, never handing off is learned-only. Order, one
+> factor per stage: **A** tools + preregistration -> **B** handoff-window
+> diagnosis on the frozen 60k policies (no training) -> **C** "continue vs
+> hand off now" value, dev-validated on frozen policies -> **D** the single
+> retrain (interface: a reference-step bound derived from MPC feasibility,
+> fixed setpoint expressible, near-field floor kept; reward only if still
+> needed) -> **E** everything frozen, fresh formal block. Stop/go points: B
+> (windows repeat on >= 2 policy seeds and are non-degenerate) and C. The
+> handback asymmetry ("uncertain -> stay learned") is a named defect: any new
+> rule must lean toward handing off when uncertain. Stage A is delivered for
+> review: `experiments/v3_handoff_scan.py` (exact snapshot handoffs, verified
+> against the prefix path on every scanned episode), `train/mainline.py`
+> (canonical config, pinned to the manifests), and
+> `docs/STAGE_B_HANDOFF_WINDOW_PREREGISTRATION_20260930.md` (definitions,
+> frozen gate, lower-window run order). The Q1/Q2 proposal below is
+> superseded.
+>
+> **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
 > `docs/V3E_STATE_REVIEW_20260930.md`: the V3 interface (0.40 m reference-step
 > cap + near-field floor) makes the learned layer's fastest option the smooth

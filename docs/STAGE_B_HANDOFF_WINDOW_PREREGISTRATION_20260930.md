@@ -1,0 +1,204 @@
+# 阶段 B 预注册：学习策略失败轨迹上的"可接住交接时段"（含下层执行单）
+
+*2026-09-30，上层窗口。状态：**待用户审阅**。审阅通过后，由用户把第 9 节转给下层。*
+*本文件与工具代码在同一次提交中入库，时间早于任何阶段 B 数据。判据以本文件和 `experiments/v3_handoff_readout.py` 中的常数为准，事后不改。*
+
+---
+
+## 1. 这一步只回答一个问题
+
+> **学习策略失败的回合里，是否经常存在"在这段时间内交给 Pure MPC，就能干净完成"的交接时段，而且这个时段不是只有一个决策宽的偶然点？**
+
+如果存在，说明"什么时候交接"是一个真实的控制变量，阶段 C（估计"继续学习 vs 现在交接"的价值）才有意义。如果几乎不存在，就停止价值层设计，回到策略和接口层重新判断，不硬造交接估计器。
+
+这一步**不是**：
+- 不训练，不改 SAC、奖励、任务、Pure MPC 和接口；
+- 不产生论文性能数字。262000 和 270000 两个块已经被多轮设计看过，这里只做机制诊断；论文数字全部来自阶段 E 的全新块；
+- "Pure 和学习策略都失败、中途交接后成功"只作亮点报告，**不是门槛**。
+
+## 2. 输入（全部冻结）
+
+| 项目 | 内容 |
+|---|---|
+| 策略 | 三个 60k 模型 `logs/v3e_262420`、`logs/v3e_262421`、`logs/v3e_262422` 的 `final_model.zip`，训练提交 `a03632a` |
+| 训练 manifest | 已入库 `eval/v3e/manifests/`：262420 `87ab95cc0ec59ad7089520b862f9435e7dbeb45080660a69fb18af527ae42078`、262421 `b5f3241306de3a8cec248915efed6007a295a6b74bf9cad2e96d793adc8f96cc`、262422 `93761019db7c93535e66d869e2f7f4e9ca0698450784ec89e2cad42bf5ab0785`（取自第二轮证据包 `96aa157c…f960`） |
+| 开局块 | 262000–262047 与 270000–270047，每个模型共 96 个开局 |
+| 对照记录（只用于精确性核对） | 262000 块：正式 learned-only 行 `eval/v3e/<模型>/learned_only.json`、Pure MPC 行 `eval/v3e/pure_mpc.json`；270000 块：`eval/v3e/<模型>/m2_a..d.json` 中的 `learned_full` 与 `baseline_full` |
+| 环境 | 主线配置 `train/mainline.py`，已由测试钉住：与三份 manifest 逐字段一致，与正式评估器的 Pure MPC 行、全速推进行逐位一致 |
+
+**失败的定义**：学习策略单独跑到底，结果不是"干净完成"。干净完成 = 完成，且全回合真值违规步数为 0。按已有数据，这两个块上三个模型大约共有 55 个失败回合（262000 块 6/15/10，270000 块 4/9/11）。以扫描时重跑的结果为准。
+
+## 3. 工具与精确性
+
+工具是 `experiments/v3_handoff_scan.py`，它复用 M2/M6/M5 的交接语义：`step_with_branch(..., branch="baseline")`，单向切换，切换时 `controller.reset()`。
+
+**交接时刻 k 的定义**：学习策略执行前 k 个决策，从第 k 个决策起交给 Pure MPC，一直跑到回合结束。k = 0 就是 Pure MPC 从开局起飞。
+
+**省算方法**：从开局重放前缀，每个回合的代价是 O(N²) 个决策。这里改为在每个决策边界把整个环境**在内存里复制一份**（`copy.deepcopy`），MPC 换成同配置的第二个控制器并重置，再从副本起交接。这不是新的状态序列化系统，也不写盘。它的精确性不靠相信，而是**每个扫描回合都现场核对**：
+1. 同一开局，学习策略跑两遍，两遍必须逐位相同（任务奖励序列、存活时间、结局）；
+2. 每个扫描回合抽 3 个 k（第一个、中间、最后一个），沿原来的路径从开局重放，与快照交接的结果逐位比较（任务奖励序列、存活时间、完成与否、失败类型）。
+
+任何一项不一致，工具立即报错，该开局不写结果。沙箱测试已钉住：
+- 快照交接等于从头重放；
+- k = 0 等于独立环境里的 Pure MPC；
+- 故意让控制器不重置时，核对会报错（`tests/test_v3_handoff_scan.py`）。
+
+**扫描密度**：失败回合的**每一个决策都扫**（步长 1），不做先稀后密。
+
+**读数前的精确性核对**（`experiments/v3_handoff_readout.py` 自动执行，任一不过，判定为 FIDELITY_FAIL，不做任何机制判读）：
+- F1：扫描时重跑的学习策略结果与正式记录一致。262000 块比较完成与否、决策数、存活时间；270000 块比较完成与否、决策数、失败类型；
+- F2：每个失败回合 k = 0 的结果与 Pure MPC 正式记录一致（字段同上）；
+- F3：96 个开局齐全；所有文件来自同一代码提交、同一模型文件，工作树干净；每个扫描回合都有前缀核对记录。
+
+## 4. 定义
+
+对每条学习策略失败轨迹：
+
+| 量 | 定义 |
+|---|---|
+| K_rescue | 所有交接后干净完成的决策 k 的集合 |
+| 连续段 | K_rescue 里决策号连续的最大一段 |
+| W | 最长连续段的长度，单位是决策（1 个决策 = 2 s） |
+| 可救 | K_rescue 非空 |
+| 非退化 | W ≥ 2，即至少连续两个决策（4 s）都能接住 |
+| 内部窗口 | 某个连续段起点 ≥ 1（不只是"开局就交"） |
+| 新能力（亮点，非门槛） | k = 0（Pure 从开局起飞）不干净完成，学习策略也失败，但某个 k ≥ 1 交接后干净完成 |
+
+只记最早和最晚的可救时刻是不够的：可救的 k 可能断成几段，中间夹着不可救的点。所以宽度一律用最长连续段 W。
+
+## 5. 判定（冻结）
+
+**每个模型**（两个块合并）通过，需要同时满足：
+1. 非退化的失败轨迹至少 2 条；
+2. 非退化轨迹不少于"只有单点窗口"的可救轨迹。即现象不能主要由一个决策宽的偶然点构成。
+
+**总判定**：
+- **FIDELITY_FAIL**：第 3 节任一核对不过。修工具后重跑，不做判读；
+- **PROCEED**：至少 2 个模型通过。进入 B2，再进入阶段 C 的设计；
+- **STOP**：通过的模型少于 2 个。不做交接价值估计器，回到策略和接口层，与用户讨论。
+
+不设比例门槛：三个模型的失败数差别很大（例如 262000 块上 6 对 15），同一个比例对它们含义不同。门槛只看跨模型重复和窗口是否非退化。
+
+**不论判定如何都完整报告**：
+- 每个模型的失败数、可救数、可救比例、非退化数、单点数、内部窗口数、新能力数，以及 W 的完整分布；
+- 每条失败轨迹的 K_rescue 连续段（起止决策、宽度，按秒换算）、学习策略的失败类型、Pure 从开局起飞的结局；
+- **给阶段 C 的样本账**：原始关键状态数（Σ|K_rescue|）与独立窗口数（连续段总数）分开报告。阶段 C 的门槛按**独立窗口数**来定，并且在阶段 C 做任何拟合之前预注册；绝不按原始状态数。第一轮的教训：几千个状态里只有几十个独立结局。
+
+## 6. B2：成功轨迹的账（只在 PROCEED 时执行；不设门槛）
+
+阶段 C 要估计的是"继续学习比现在交接好多少"，两个方向的样本都需要：
+- B1 给出"交接更好"的状态（失败轨迹上的 K_rescue）；
+- B2 给出"继续更好"的状态：学习策略干净完成，但在某个 k 交接就失败。
+
+B2 扫描学习策略干净完成的回合，步长 5 个决策，同样带前缀核对。只报告：
+- 有"交接反而失败"时刻的轨迹数、这类状态的原始数和独立段数；
+- 效率线索：是否存在某个 k ≥ 1 的干净交接比学习策略自己跑完更快；如果有，报告最大节省时间和对应的 Δv 变化（中位数）。这对应"协调太晚"这个效率来源（09-30 另一窗口方案第 8.1 节），只作描述。
+
+B2 不影响 B1 的判定。
+
+## 7. 计算量估计
+
+依据：第一轮 M2 并行采集实测约 1.9 s/决策（每进程单线程）。
+
+| | 决策数 | 6 个计算槽的墙钟 |
+|---|---|---|
+| B1（失败回合全扫） | 约 30–55 万 | **约 26–48 小时** |
+| B2（成功回合，步长 5） | 约 34–61 万 | 约 30–54 小时 |
+
+区间下限假设交接后约 50 个决策内结束，上限假设每次交接都跑到 300 s 时限。三个模型的计算量不均衡：B1 中 262421 最重，约 72–131 个槽时。分配建议见第 9 节。
+
+## 8. 证据分级
+
+- 本阶段所有数字都是**机制诊断**，只用于决定是否进入阶段 C，以及给阶段 C 的样本账，不进论文性能表；
+- 进入决策的数字都指向下层交付包中的 `readout_b1.json` 与逐开局 JSON，并登记 SHA-256。
+
+---
+
+## 9. 下层执行单
+
+### 9.0 前提
+
+- 仓库迁移已完成（`D:\py\DRL2`，`status=completed`）；
+- 三个模型目录 `logs/v3e_26242X` 与第 2 节的对照 JSON 位于原处；
+- 所有命令在 `D:\py\DRL2` 下用 PowerShell 执行，解释器为 `D:/py/DRL2/.venv/Scripts/python.exe`（下文写作 `python`）。
+
+### 9.1 同步与核对（不通过就停）
+
+```powershell
+git pull --ff-only origin claude/sac-mpc-coupling-design-ns7g6i
+git rev-parse HEAD                      # 记入 REPORT.md，全部扫描必须在这一个提交上运行
+git status --porcelain --untracked-files=no   # 必须为空
+# 环境、控制器、动力学相对第二轮执行提交没有任何改动（应无输出）：
+git diff c84ed74 HEAD --stat -- env controllers dynamics train/train_hybrid.py train/v3_values.py experiments/v3_common.py
+$env:OMP_NUM_THREADS=1; $env:MKL_NUM_THREADS=1; $env:OPENBLAS_NUM_THREADS=1
+python -B -m pytest -q tests/test_v3_handoff_scan.py tests/test_v3_handoff_readout.py tests/test_v3_mainline.py tests/test_controller_reset_determinism.py tests/test_evaluator_observation_parity.py
+```
+
+### 9.2 先跑一个短回合做实机核对（约 1–2 小时）
+
+262420 在 262006 上第 26 个决策就失败了（视场），Pure MPC 在这个开局上也失败，是最短的一条失败轨迹。输出直接写入正式目录，之后会被复用，不会重算。
+
+```powershell
+python -B -m experiments.v3_handoff_scan --run-dir logs/v3e_262420 --seeds 262006 --scan failures --output-dir eval/v3e/stage_b/262420
+```
+
+检查 `eval/v3e/stage_b/262420/seed_262006.json`：
+- `learned_full.decisions` = 26；
+- `verified_prefix_ks` = `[0, 13, 25]`；
+- `handoffs[0]` 的 `completed` 为 false，`survival_s` 与 `eval/v3e/pure_mpc.json` 中 262006 的记录相同。
+
+不符就停，报上层。
+
+### 9.3 B1 正式扫描（6 个进程）
+
+每个进程都用同一份种子列表。已经存在或已被其他进程认领的开局会自动跳过，所以同一个模型开几个进程，就能自动分担工作。建议分配：262420 开 1 个，262421 开 3 个，262422 开 2 个。
+
+```powershell
+$seeds = "262000-262047,270000-270047"
+# 每条命令单独开一个进程，并把输出重定向到各自的日志文件
+python -u -B -m experiments.v3_handoff_scan --run-dir logs/v3e_262420 --seeds $seeds --scan failures --output-dir eval/v3e/stage_b/262420
+python -u -B -m experiments.v3_handoff_scan --run-dir logs/v3e_262421 --seeds $seeds --scan failures --output-dir eval/v3e/stage_b/262421   # 同一命令开 3 个
+python -u -B -m experiments.v3_handoff_scan --run-dir logs/v3e_262422 --seeds $seeds --scan failures --output-dir eval/v3e/stage_b/262422   # 同一命令开 2 个
+```
+
+**停止条件**：
+- 任一进程报 `RuntimeError`（两遍学习策略不同，或快照交接与重放不一致）：停下所有进程，报上层，附上开局号与报错。**不得**关掉核对（`--verify-prefix ""`）重跑；
+- 进程异常退出（非上述错误）：确认没有扫描进程在运行后，删除该目录下残留的 `*.lock`，用同样的命令续跑。已写出的开局不会重算。
+
+### 9.4 B1 判读
+
+```powershell
+$F = "eval/v3e"
+python -B -m experiments.v3_handoff_readout `
+  --scan 262420=$F/stage_b/262420 --scan 262421=$F/stage_b/262421 --scan 262422=$F/stage_b/262422 `
+  --formal-learned 262420=$F/262420/learned_only.json --formal-learned 262421=$F/262421/learned_only.json --formal-learned 262422=$F/262422/learned_only.json `
+  --formal-pure $F/pure_mpc.json `
+  --m2 262420=$F/262420/m2_a.json,$F/262420/m2_b.json,$F/262420/m2_c.json,$F/262420/m2_d.json `
+  --m2 262421=$F/262421/m2_a.json,$F/262421/m2_b.json,$F/262421/m2_c.json,$F/262421/m2_d.json `
+  --m2 262422=$F/262422/m2_a.json,$F/262422/m2_b.json,$F/262422/m2_c.json,$F/262422/m2_d.json `
+  --seeds 262000-262047,270000-270047 --output $F/stage_b/readout_b1.json
+```
+
+屏幕会打印 `verdict`。**下层不解释判定，只交付。**
+- `FIDELITY_FAIL`：交付 `fidelity_problems` 列表，停下；
+- `STOP`：交付，停下；
+- `PROCEED`：交付 B1 后，按 9.5 执行 B2（除非用户另有指示）。
+
+### 9.5 B2（仅当 B1 为 PROCEED）
+
+```powershell
+python -u -B -m experiments.v3_handoff_scan --run-dir logs/v3e_26242X --seeds $seeds --scan successes --stride 5 --output-dir eval/v3e/stage_b2/26242X
+```
+
+每个模型 2 个进程，停止条件同 9.3。完成后在 9.4 的命令里加上 `--b2 262420=$F/stage_b2/262420 --b2 262421=... --b2 262422=...`，输出改为 `$F/stage_b/readout_b1b2.json`（判读脚本拒绝覆盖已有文件）。
+
+### 9.6 交付清单
+
+zip 包，内含：
+- `REPORT.md`：提交号、各进程起止时间、异常与处理、打印出的 verdict；
+- `readout_b1.json`（以及 `readout_b1b2.json`）；
+- `eval/v3e/stage_b*/**/seed_*.json` 全部逐开局文件；
+- 命令日志；
+- `JSON_SHA256.txt`、`ALL_FILES_SHA256.txt`。
+
+模型文件只报路径和 SHA-256，不打包。并行耗时不作为实时性结论。
