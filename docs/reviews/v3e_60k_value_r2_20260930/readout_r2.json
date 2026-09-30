@@ -1,0 +1,159 @@
+{
+ "pure_mpc": {
+  "file": "eval\\v3e\\pure_mpc.json",
+  "completed": 37,
+  "episodes_with_truth_violation": 0
+ },
+ "models": {
+  "262420": {
+   "learned_only": {
+    "completed": 42,
+    "zero_violation_completed": 42,
+    "retained": 34,
+    "rescued": 8,
+    "destroyed": 3,
+    "both_failed": 3,
+    "rescued_seeds": [
+     262001,
+     262005,
+     262011,
+     262022,
+     262025,
+     262029,
+     262038,
+     262039
+    ],
+    "destroyed_seeds": [
+     262004,
+     262015,
+     262034
+    ],
+    "episodes_with_truth_violation": 2,
+    "mean_learned_branch_share": 1.0,
+    "episodes_started_on_learned": 48,
+    "handbacks": 0,
+    "mean_completion_time_s": 186.23809523809524,
+    "mean_equivalent_delta_v_m_s": 4.112948474924685,
+    "common_success_candidate_minus_pure": {
+     "survival_s": {
+      "count": 34,
+      "mean": 90.4,
+      "p50": 85.80000000000001,
+      "p95": 153.47499999999997,
+      "min": 43.3,
+      "max": 190.50000000000003
+     },
+     "force_impulse_n_s": {
+      "count": 34,
+      "mean": 118.66124423802333,
+      "p50": 91.01095267945524,
+      "p95": 424.3610548900873,
+      "min": -110.98853071438091,
+      "max": 554.7133643302517
+     },
+     "equivalent_delta_v_m_s": {
+      "count": 34,
+      "mean": 1.1194457003587106,
+      "p50": 0.858593893202408,
+      "p95": 4.003406178208371,
+      "min": -1.0470616105130275,
+      "max": 5.233144946511808
+     },
+     "minimum_truth_normalized_margin": {
+      "count": 34,
+      "mean": 0.02288593557968437,
+      "p50": 0.0032875515923992214,
+      "p95": 0.08400273813637954,
+      "min": -0.014221280806240393,
+      "max": 0.11331725359995462
+     }
+    },
+    "solver": {
+     "qp_infeasible_steps_total": 35,
+     "zero_fallback_steps_total": 35,
+     "max_consecutive_zero_wrench_steps": 34,
+     "maximum_successful_slack": 0.7846997873988546
+    }
+   },
+   "arbitrated": {
+    "completed": 40,
+    "zero_violation_completed": 40,
+    "retained": 35,
+    "rescued": 5,
+    "destroyed": 2,
+    "both_failed": 6,
+    "rescued_seeds": [
+     262001,
+     262005,
+     262022,
+     262035,
+     262038
+    ],
+    "destroyed_seeds": [
+     262015,
+     262045
+    ],
+    "episodes_with_truth_violation": 1,
+    "mean_learned_branch_share": 0.670786170101475,
+    "episodes_started_on_learned": 34,
+    "handbacks": 3,
+    "mean_completion_time_s": 162.2875,
+    "mean_equivalent_delta_v_m_s": 3.6297949729273626,
+    "common_success_candidate_minus_pure": {
+     "survival_s": {
+      "count": 35,
+      "mean": 65.44285714285715,
+      "p50": 64.4,
+      "p95": 147.54,
+      "min": 0.0,
+      "max": 190.50000000000003
+     },
+     "force_impulse_n_s": {
+      "count": 35,
+      "mean": 75.64190148743558,
+      "p50": 30.10762818144815,
+      "p95": 373.54134430757995,
+      "min": -110.98853071438091,
+      "max": 475.78754448716467
+     },
+     "equivalent_delta_v_m_s": {
+      "count": 35,
+      "mean": 0.7136028442210903,
+      "p50": 0.28403422812686907,
+      "p95": 3.5239749462979244,
+      "min": -1.0470616105130275,
+      "max": 4.48856174044495
+     },
+     "minimum_truth_normalized_margin": {
+      "count": 35,
+      "mean": 0.01710276198565119,
+      "p50": 9.423356891163914e-05,
+      "p95": 0.08348152504999495,
+      "min": -0.00020425769200194122,
+      "max": 0.11331725359995462
+     }
+    },
+    "solver": {
+     "qp_infeasible_steps_total": 35,
+     "zero_fallback_steps_total": 35,
+     "max_consecutive_zero_wrench_steps": 34,
+     "maximum_successful_slack": 0.7846997873988546
+    }
+   },
+   "judgement": {
+    "layer1_checks": {
+     "completed_at_least_pure_mpc": true,
+     "destroyed_at_most_2": true,
+     "violations_not_above_pure_mpc": false,
+     "learned_share_at_least_5pct": true
+    },
+    "layer1_baseline_protection": false,
+    "layer2_net_improvement": true,
+    "coupling_inactive": false
+   }
+  }
+ },
+ "models_passing_both_layers": 0,
+ "models_passing_layer1_only": 0,
+ "verdict": "does not hold"
+}
