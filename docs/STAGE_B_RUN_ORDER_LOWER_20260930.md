@@ -156,27 +156,62 @@ $F = "eval/v3e"
 |---|---|---|
 | `FIDELITY_FAIL` | 工具或数据的精确性核对没过 | 交付 B1 包（第 7 节），附 `fidelity_problems` 全文，停下 |
 | `STOP` | 不到 2 个模型有稳定、非退化的交接时段 | 交付 B1 包，停下 |
-| `PROCEED` | 至少 2 个模型有 | 交付 B1 包，然后**直接开始第 6 步 B2** |
+| `PROCEED` | 至少 2 个模型有 | 交付 B1 包，然后按第 6 步执行 B2-lite |
 
 判读只看 `readout_b1.json`。不要人工挑案例，也不要用其他统计方式补充结论。
 
-## 6. B2（只有 B1 为 `PROCEED` 才执行；约 30–54 小时）
+## 6. B2-lite（只有 B1 为 `PROCEED` 才执行；约 8–14 小时）
 
-B2 扫描学习策略**干净完成**的回合，每 5 个决策试一次交接。它不决定是否进入阶段 C，只补阶段 C 需要的另一边数据："此时继续学习更好"的状态，以及"是否早就可以交给 MPC、而且更快更省油"。
+> 修订（2026-09-30，B1 结果出来之前提交）：原来的全量 B2（两个块、步长 5、约 30–54 小时）作废，改为 B2-lite。依据是预注册第 6 节。
 
-与第 4 步相同的启动方式，每个模型开 2 个进程，参数改为：
+B2-lite 只扫 262000–262047 块上学习策略**干净完成**的回合（三个模型共约 113 条），每 10 个决策试一次交接。它不决定是否进入阶段 C，只补另一边的数据："此时继续学习更好"的状态，以及"是否更早交给 MPC 反而更快更省"。
 
+### 6.1 先交付 B1，再拉代码
+
+B1 包交付之后（第 7 节），而且所有 B1 扫描进程都已结束，才执行：
+
+```powershell
+git pull --ff-only origin claude/sac-mpc-coupling-design-ns7g6i
+git rev-parse HEAD                               # 抄进 B2 的 REPORT.md
+git status --porcelain --untracked-files=no      # 必须没有输出
+# 扫描工具与物理系统相对 B1 的提交 a714c61 没有任何改动（必须没有输出）：
+git diff a714c61 HEAD --stat -- env controllers dynamics train experiments/v3_common.py experiments/v3_handoff_scan.py experiments/evaluate_hybrid_policy.py
+# 应该只列出文档、判读脚本和它的测试：
+git diff a714c61 HEAD --stat
+& $py -B -m pytest -q tests/test_v3_handoff_readout.py tests/test_v3_handoff_scan.py
 ```
-"--scan","successes","--stride","5","--output-dir","eval/v3e/stage_b2/<模型>"
+
+任何一项不符就停，报上层。
+
+### 6.2 扫描（6 个进程，每个模型 2 个）
+
+```powershell
+$env:OMP_NUM_THREADS=1; $env:MKL_NUM_THREADS=1; $env:OPENBLAS_NUM_THREADS=1
+foreach ($m in "262420","262421","262422") {
+  for ($i = 1; $i -le 2; $i++) {
+    Start-Process -FilePath $py -WorkingDirectory "D:\py\DRL2" -WindowStyle Hidden -PassThru `
+      -ArgumentList "-u","-B","-m","experiments.v3_handoff_scan","--run-dir","logs/v3e_$m","--seeds","262000-262047","--scan","successes","--stride","10","--verify-prefix","middle","--output-dir","eval/v3e/stage_b2/$m" `
+      -RedirectStandardOutput "eval/v3e/stage_b_logs/b2_${m}_$i.out.log" `
+      -RedirectStandardError  "eval/v3e/stage_b_logs/b2_${m}_$i.err.log"
+    Start-Sleep -Seconds 20
+  }
+}
 ```
 
-日志文件名改为 `b2_<模型>_<i>.*.log`。停止条件同第 4 步。三个模型都到 96/96 后，重新运行第 5 步的判读命令，在末尾加上：
+每个模型做完是 **48/48**。查看进度和停止条件同第 4 步，把目录换成 `stage_b2`、分母换成 48。
+
+### 6.3 判读
+
+三个模型都到 48/48 后，重新运行第 5 步的判读命令，在末尾加上下面三项，并把输出改为 `$F/stage_b/readout_b1b2.json`（判读脚本拒绝覆盖已有文件）：
 
 ```
 --b2 262420=$F/stage_b2/262420 --b2 262421=$F/stage_b2/262421 --b2 262422=$F/stage_b2/262422
 ```
 
-输出改为 `$F/stage_b/readout_b1b2.json`（判读脚本拒绝覆盖已有文件）。B2 不改变 B1 的判定。
+屏幕会打印以下几项，逐项核对：
+- `verdict` 必须与 `readout_b1.json` 相同（B2 不改变 B1 的判定）；
+- `b2_valid` 必须为 `true`。B2 的核对包括：每个模型 48 个开局齐全、同一提交、工作树干净、步长 10、每回合有前缀核对、学习策略结果与 B1 同一开局逐位相同；
+- `b2_valid` 为 `false` 时，交付时附上 `readout_b1b2.json` 中 `b2.fidelity_problems` 的全文，停下，不做任何补跑。
 
 ## 7. 交付
 
@@ -192,4 +227,4 @@ B2 扫描学习策略**干净完成**的回合，每 5 个决策试一次交接�
 
 模型文件只报路径和 SHA-256，不打包。并行耗时不作为实时性结论。
 
-B1 交付后如果还要跑 B2，B2 完成后另交一个包，分支和 release 名里用 `b2`。
+B2-lite 完成后另交一个包（内容同上，加 `readout_b1b2.json` 与 `stage_b2` 逐开局文件），分支和 release 名里用 `b2`。

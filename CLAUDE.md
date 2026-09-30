@@ -29,7 +29,12 @@ perception line and the 24D mission schemas is history; it is kept under
 > (canonical config, pinned to the manifests), and
 > `docs/STAGE_B_HANDOFF_WINDOW_PREREGISTRATION_20260930.md` (definitions,
 > frozen gate, lower-window run order). The Q1/Q2 proposal below is
-> superseded.
+> superseded. B1 is running at `a714c61` (lower-window order
+> `docs/STAGE_B_RUN_ORDER_LOWER_20260930.md`). Amendment committed before any
+> B1 result: B2 is cut to **B2-lite** (262000 block, stride 10, one prefix
+> check, own completeness/commit/B1-agreement checks); stage C is one
+> definition + one fit, with its stop rule preregistered from B1's
+> independent-window count before any fitting; D stays the single retrain.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in

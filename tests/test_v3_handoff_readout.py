@@ -117,3 +117,37 @@ def test_fidelity_catches_mismatches_and_missing_seeds() -> None:
     assert any("Pure MPC" in p for p in fidelity_checks(scans, learned_ref, pure_ref, {}, [262001]))
     scan["code_dirty"] = True
     assert any("dirty" in p for p in fidelity_checks(scans, learned_ref, {}, {}, [262001]))
+
+
+def test_b2_fidelity_checks_completeness_commit_stride_and_b1_agreement() -> None:
+    from experiments.v3_handoff_readout import B2_STRIDE, b2_fidelity_checks
+
+    def learned(completed):
+        return {"completed": completed, "decisions": 40, "survival_s": 80.0,
+                "task_rewards": [1.0, 2.0], "zero_violation": True, "failure": []}
+
+    b1 = {"m": {
+        1: {"scanned": False, "model_sha256": "x", "learned_full": learned(True)},
+        2: {"scanned": True, "model_sha256": "x", "learned_full": learned(False)},
+    }}
+
+    def b2_scan(scanned, **over):
+        scan = {"scan": "successes", "stride": B2_STRIDE, "max_decisions": None, "code_commit": "c",
+                "code_dirty": False, "model_sha256": "x", "scanned": scanned,
+                "verified_prefix_ks": [20] if scanned else [], "learned_full": learned(scanned)}
+        scan.update(over)
+        return scan
+
+    good = {"m": {1: b2_scan(True), 2: b2_scan(False)}}
+    assert b2_fidelity_checks(good, b1, [1, 2]) == []
+    assert any("missing seeds [3]" in p for p in b2_fidelity_checks(good, b1, [1, 2, 3]))
+    bad = {"m": {1: b2_scan(True, stride=5), 2: b2_scan(False)}}
+    assert any("stride" in p for p in b2_fidelity_checks(bad, b1, [1, 2]))
+    bad = {"m": {1: b2_scan(True, verified_prefix_ks=[]), 2: b2_scan(False)}}
+    assert any("prefix verification" in p for p in b2_fidelity_checks(bad, b1, [1, 2]))
+    bad = {"m": {1: b2_scan(True, code_commit="d"), 2: b2_scan(False)}}
+    assert any("code commits" in p for p in b2_fidelity_checks(bad, b1, [1, 2]))
+    drifted = b2_scan(True)
+    drifted["learned_full"] = dict(drifted["learned_full"], survival_s=80.1)
+    assert any("survival_s differs from B1" in p
+               for p in b2_fidelity_checks({"m": {1: drifted, 2: b2_scan(False)}}, b1, [1, 2]))

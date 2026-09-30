@@ -175,6 +175,55 @@ def b2_summary(trajectories: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+#: B2-lite (amendment of 2026-09-30, committed before any B1 result): one block,
+#: learned clean successes only, a handoff every B2_STRIDE decisions.
+B2_SEEDS = "262000-262047"
+B2_STRIDE = 10
+
+
+def b2_fidelity_checks(
+    b2_scans: dict[str, dict[int, dict[str, Any]]],
+    b1_scans: dict[str, dict[int, dict[str, Any]]],
+    expected_seeds: list[int],
+) -> list[str]:
+    """B2 files: complete, one clean commit, the B1 model, stride, verified, and
+    the learned episode bitwise equal to the B1 rerun of the same seed."""
+
+    problems: list[str] = []
+    for model, by_seed in b2_scans.items():
+        missing = sorted(set(expected_seeds) - set(by_seed))
+        if missing:
+            problems.append(f"B2 {model}: missing seeds {missing}")
+        extra = sorted(set(by_seed) - set(expected_seeds))
+        if extra:
+            problems.append(f"B2 {model}: seeds outside the B2 block {extra}")
+        commits = {scan.get("code_commit") for scan in by_seed.values()}
+        if len(commits) != 1 or None in commits:
+            problems.append(f"B2 {model}: scans come from {len(commits)} code commits ({commits})")
+        if any(scan.get("code_dirty") for scan in by_seed.values()):
+            problems.append(f"B2 {model}: a scan ran on a dirty checkout")
+        b1 = b1_scans.get(model, {})
+        b1_models = {scan.get("model_sha256") for scan in b1.values()}
+        for seed, scan in sorted(by_seed.items()):
+            if scan.get("scan") != "successes" or scan.get("stride") != B2_STRIDE:
+                problems.append(f"B2 {model}/{seed}: not a successes scan at stride {B2_STRIDE}")
+            if scan.get("max_decisions") is not None:
+                problems.append(f"B2 {model}/{seed}: truncated scan")
+            if scan.get("model_sha256") not in b1_models:
+                problems.append(f"B2 {model}/{seed}: model file differs from B1")
+            if scan["scanned"] and not scan["verified_prefix_ks"]:
+                problems.append(f"B2 {model}/{seed}: no prefix verification recorded")
+            if seed not in b1:
+                problems.append(f"B2 {model}/{seed}: no B1 rerun of this seed to check against")
+                continue
+            for key in ("completed", "decisions", "survival_s", "task_rewards"):
+                if scan["learned_full"][key] != b1[seed]["learned_full"][key]:
+                    problems.append(f"B2 {model}/{seed}: learned {key} differs from B1")
+            if scan["scanned"] != (not b1[seed]["scanned"]):
+                problems.append(f"B2 {model}/{seed}: success/failure split differs from B1")
+    return problems
+
+
 # -- fidelity -------------------------------------------------------------------
 
 
@@ -275,7 +324,7 @@ def main() -> None:
     parser.add_argument("--formal-learned", action="append", default=[], help="MODEL=learned_only.json")
     parser.add_argument("--formal-pure", required=True, help="Pure MPC formal row JSON")
     parser.add_argument("--m2", action="append", default=[], help="MODEL=m2_a.json,m2_b.json,...")
-    parser.add_argument("--b2", action="append", default=[], help="MODEL=DIR (B2 successes scan)")
+    parser.add_argument("--b2", action="append", default=[], help=f"MODEL=DIR (B2-lite: {B2_SEEDS}, stride {B2_STRIDE})")
     parser.add_argument("--seeds", default="262000-262047,270000-270047")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -299,9 +348,18 @@ def main() -> None:
         ]
         gates[model] = model_gate(trajectories[model])
     b2: dict[str, Any] = {}
-    for model, directory in _pairs(args.b2).items():
-        rows = [success_trajectory(s) for s in _load_scans(Path(directory)).values() if s["scanned"]]
+    b2_scans = {model: _load_scans(Path(d)) for model, d in _pairs(args.b2).items()}
+    b2_problems = (
+        b2_fidelity_checks(b2_scans, scans, parse_seed_range(B2_SEEDS)) if b2_scans else []
+    )
+    for model, by_seed in b2_scans.items():
+        rows = [success_trajectory(s) for s in by_seed.values() if s["scanned"]]
         b2[model] = {"summary": b2_summary(rows), "trajectories": rows}
+    if b2_scans:
+        # B2 has no gate and never changes the B1 verdict; its accounting is
+        # only usable when its own checks pass.
+        b2["fidelity_problems"] = b2_problems
+        b2["valid"] = not b2_problems
 
     result = {
         "preregistration": "docs/STAGE_B_HANDOFF_WINDOW_PREREGISTRATION_20260930.md",
@@ -321,6 +379,8 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=1))
     print(json.dumps({"verdict": result["verdict"], "fidelity_problems": len(problems),
+                      "b2_valid": b2.get("valid") if b2_scans else None,
+                      "b2_fidelity_problems": len(b2_problems),
                       "gates": {m: {k: g[k] for k in ("failures", "rescuable", "non_degenerate", "needle_only", "passes")}
                                 for m, g in gates.items()}}, indent=1))
 
