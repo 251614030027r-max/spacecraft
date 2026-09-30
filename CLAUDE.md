@@ -10,6 +10,16 @@ SAC-MPC coupling.** Everything about `single_phase`, the Waypoint, the A1/A2/A3
 perception line and the 24D mission schemas is history; it is kept under
 *Historical research line* because the lessons transfer, not because it is live.
 
+> **Live status -- 2026-09-30.** Value round 2 does not hold (only 262420
+> passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
+> `docs/V3E_STATE_REVIEW_20260930.md`: the V3 interface (0.40 m reference-step
+> cap + near-field floor) makes the learned layer's fastest option the smooth
+> nominal (~2x Pure MPC time), within it learning ~= the scripted nominal
+> (mean 37.7 vs 40 on 262000), and Pure MPC U nominal already reaches 46/48.
+> The V3 arbitration line is closed pending the user's call; the next step is
+> two no-training measurements (Q1 learned vs nominal on 240 fresh openings,
+> Q2 predictability of Pure-vs-nominal success from the initial state).
+>
 > **Live status -- 2026-09-27.** v3e is the main run
 > (`docs/V3E_PLAN_AND_EXECUTION_ORDER_20260927.md`); v3d is kept as the
 > old-reference-realization ablation (learned-only rows only). Pre-v3e probes:
