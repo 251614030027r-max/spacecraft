@@ -173,10 +173,10 @@ python -B -m experiments.v3_handoff_readout `
   --scan 262420=$F/stage_b/262420 --scan 262421=$F/stage_b/262421 --scan 262422=$F/stage_b/262422 `
   --formal-learned 262420=$F/262420/learned_only.json --formal-learned 262421=$F/262421/learned_only.json --formal-learned 262422=$F/262422/learned_only.json `
   --formal-pure $F/pure_mpc.json `
-  --m2 262420=$F/262420/m2_a.json,$F/262420/m2_b.json,$F/262420/m2_c.json,$F/262420/m2_d.json `
-  --m2 262421=$F/262421/m2_a.json,$F/262421/m2_b.json,$F/262421/m2_c.json,$F/262421/m2_d.json `
-  --m2 262422=$F/262422/m2_a.json,$F/262422/m2_b.json,$F/262422/m2_c.json,$F/262422/m2_d.json `
-  --seeds 262000-262047,270000-270047 --output $F/stage_b/readout_b1.json
+  --m2 "262420=$F/262420/m2_a.json,$F/262420/m2_b.json,$F/262420/m2_c.json,$F/262420/m2_d.json" `
+  --m2 "262421=$F/262421/m2_a.json,$F/262421/m2_b.json,$F/262421/m2_c.json,$F/262421/m2_d.json" `
+  --m2 "262422=$F/262422/m2_a.json,$F/262422/m2_b.json,$F/262422/m2_c.json,$F/262422/m2_d.json" `
+  --seeds "262000-262047,270000-270047" --output $F/stage_b/readout_b1.json
 ```
 
 屏幕会打印 `verdict`。**下层不解释判定，只交付。**
