@@ -146,7 +146,7 @@ Select-String -Path eval/v3e/stage_b_logs/*.err.log -Pattern "Traceback|RuntimeE
    ```
 2. 三个模型都到 48/48 后，**停掉全部扫描进程**：
    ```powershell
-   Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -like "*experiments.v3_handoff_scan*" } | ForEach-Object { Stop-Process -Id $_.ProcessId }
+   Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -like "*experiments.v3_handoff_scan*" -and $_.CommandLine -like "*--scan failures*" } | ForEach-Object { Stop-Process -Id $_.ProcessId }
    ```
    确认没有扫描进程还在运行后，删除残留的 `eval/v3e/stage_b/*/*.lock` 和 `*.json.tmp`。
 3. **270000 块已经写出的 `seed_270*.json` 原样保留，不删、不读、不补跑。** 交付时一起打包，REPORT.md 中注明"修订 2：未用于判定"。
@@ -160,6 +160,49 @@ Select-String -Path eval/v3e/stage_b_logs/*.err.log -Pattern "Traceback|RuntimeE
    & $py -B -m pytest -q tests/test_v3_handoff_readout.py
    ```
 5. 按第 5 节判读，但 **`--seeds` 改为 `"262000-262047"`**。判读脚本会把 270000 块的文件列入 `ignored_out_of_block_files`，不读取。
+
+## 4B. 腾出空转槽位，提前跑 B2-lite（2026-10-01）
+
+各进程按种子顺序认领，262000 块最先做完。某个模型的 262000 块到 48/48 后，它的进程就只在算 270000 块，而按修订 2，那部分已不用于判定。把这些槽位换成 B2-lite，可以省掉 B2-lite 的等待时间。
+
+**规则**（预注册第 6 节已同步）：
+- 提前启动的 B2-lite **在 B1 判定出来之前不读**：不看它的结果文件，也不看日志里的 `clean handoffs` 数字，只看文件个数；
+- B1 判 `PROCEED`：B2-lite 照常跑完、判读；
+- B1 判 `STOP` 或 `FIDELITY_FAIL`：停掉 B2-lite，已写出的文件原样封存、不读。
+
+**操作**（**不拉代码**，就在当前的 `a714c61` 上运行；B2-lite 需要的 `--stride`、`--verify-prefix` 参数在这个提交上已经有）：
+
+> 如果这些进程由你的监督进程管理：先改监督进程的配置，或者用它自己的停止机制，确保被停掉的 B1 进程**不会被自动重启**。下面的 `Stop-Process` 命令只适用于没有监督进程会重新拉起的情况。
+
+1. 查各模型 262000 块的进度和正在算的开局：
+   ```powershell
+   foreach ($m in "262420","262421","262422") {
+     "{0}: 262000 block {1}/48 done; in progress: {2}" -f $m,
+       (Get-ChildItem eval/v3e/stage_b/$m -Filter "seed_262*.json").Count,
+       ((Get-ChildItem eval/v3e/stage_b/$m -Filter "seed_*.lock" | ForEach-Object { $_.BaseName }) -join ", ")
+   }
+   ```
+2. 某个模型的 262000 块到 **48/48**（且该模型没有 `seed_262*.lock`）后，停掉这个模型的全部 B1 进程：
+   ```powershell
+   $m = "262420"   # 换成到 48/48 的模型
+   Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -like "*experiments.v3_handoff_scan*" -and $_.CommandLine -like "*v3e_$m*" -and $_.CommandLine -like "*--scan failures*" } | ForEach-Object { Stop-Process -Id $_.ProcessId }
+   ```
+   确认这些进程都已退出后，删除该模型目录下残留的 `seed_270*.lock` 和 `*.json.tmp`。`seed_270*.json` 保留不动。
+3. 用腾出的槽位为**这个模型**启动 B2-lite（同一时刻的扫描进程总数不超过 6；每个模型最多 2 个 B2-lite 进程）：
+   ```powershell
+   Start-Process -FilePath $py -WorkingDirectory "D:\py\DRL2" -WindowStyle Hidden -PassThru `
+     -ArgumentList "-u","-B","-m","experiments.v3_handoff_scan","--run-dir","logs/v3e_$m","--seeds","262000-262047","--scan","successes","--stride","10","--verify-prefix","middle","--output-dir","eval/v3e/stage_b2/$m" `
+     -RedirectStandardOutput "eval/v3e/stage_b_logs/b2_${m}_1.out.log" `
+     -RedirectStandardError  "eval/v3e/stage_b_logs/b2_${m}_1.err.log"
+   ```
+   第二个进程把日志名中的 `_1` 换成 `_2`。
+4. 262421 的 262000 块还在跑，它的 B1 进程不要动，直到它也到 48/48。到了之后，按第 2、3 步处理。
+5. 三个模型的 262000 块都到 48/48 后，按 4A 第 2 步起执行（停掉剩余的 B1 进程、清理、拉代码、判读）。**4A 的停进程命令只停 `--scan failures` 的进程，不要停 B2-lite**：
+   ```powershell
+   Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -like "*experiments.v3_handoff_scan*" -and $_.CommandLine -like "*--scan failures*" } | ForEach-Object { Stop-Process -Id $_.ProcessId }
+   ```
+6. 4A 第 4 步拉代码时，B2-lite 进程可以继续运行：每个进程在启动时就记下了提交号，运行中的代码也不会被替换。之后第 6 节 6.1 的拉取与核对已做过，可以跳过；6.2 不再重复启动。
+7. 所有 B2-lite 进程都必须在拉代码**之前**启动，这样它们的结果文件记录的都是同一个提交 `a714c61`，B2 的核对要求提交一致。拉代码之后，如果某个 B2-lite 进程异常退出、需要重启，**先报上层，不要直接重启**。
 
 ## 5. B1 判读（修订 2 后：三个模型的 262000 块都到 48/48 并完成 4A 之后）
 
