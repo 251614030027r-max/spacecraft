@@ -285,6 +285,18 @@ def fidelity_checks(
     return problems
 
 
+def restrict_to_block(
+    scans: dict[str, dict[int, dict[str, Any]]], expected: list[int]
+) -> tuple[dict[str, dict[int, dict[str, Any]]], dict[str, list[int]]]:
+    """Read only the declared block. Files for other seeds (e.g. a block whose
+    scan was stopped part-way) are ignored and listed, never read."""
+
+    wanted = set(expected)
+    kept = {m: {s: v for s, v in d.items() if s in wanted} for m, d in scans.items()}
+    ignored = {m: sorted(set(d) - wanted) for m, d in scans.items()}
+    return kept, ignored
+
+
 # -- CLI ------------------------------------------------------------------------------
 
 
@@ -336,6 +348,7 @@ def main() -> None:
     m2 = {model: _m2(p) for model, p in _pairs(args.m2).items()}
     formal_pure = _records(args.formal_pure)
     expected = parse_seed_range(args.seeds)
+    scans, ignored = restrict_to_block(scans, expected)
     problems = fidelity_checks(scans, formal_learned, formal_pure, m2, expected)
 
     trajectories: dict[str, list[dict[str, Any]]] = {}
@@ -370,6 +383,7 @@ def main() -> None:
             "decision_period_s": DECISION_PERIOD_S,
         },
         "seeds": args.seeds,
+        "ignored_out_of_block_files": ignored,
         "fidelity_problems": problems,
         "verdict": verdict(not problems, gates),
         "gates": gates,

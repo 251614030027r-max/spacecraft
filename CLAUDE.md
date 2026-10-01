@@ -35,6 +35,10 @@ perception line and the 24D mission schemas is history; it is kept under
 > check, own completeness/commit/B1-agreement checks); stage C is one
 > definition + one fit, with its stop rule preregistered from B1's
 > independent-window count before any fitting; D stays the single retrain.
+> Amendment 2 (2026-10-01, before anyone computed or looked at a window,
+> compute-only reason): the B1 verdict is read on the **262000 block alone**
+> (whole-block cut, not a time cut); 270000 files already written are kept
+> but not read in stage B; the readout reads only the declared `--seeds`.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in

@@ -136,7 +136,32 @@ Select-String -Path eval/v3e/stage_b_logs/*.err.log -Pattern "Traceback|RuntimeE
 - **进程因别的原因退出**（断电、内存、手动中断）：先确认没有任何扫描进程在运行，再删掉 `eval/v3e/stage_b/*/` 下残留的 `*.lock`，然后用第 4 步同样的命令重新启动。已写出的开局不会重算。在 REPORT.md 里记下中断时间和原因；
 - 不要在扫描期间 `git pull` 或改动工作树（每个结果文件都记录提交号，判读会检查全部一致、且工作树干净）。
 
-## 5. B1 判读（三个模型都到 96/96 后）
+## 4A. 提前收口（修订 2，2026-10-01）：B1 只判 262000 块
+
+依据：预注册顶部"修订 2"。只因为计算成本；规则与结果无关，是整块收口，不是按时间截断。
+
+1. **等 262000 块做完**，不要提前停。下面三行都要到 48：
+   ```powershell
+   foreach ($m in "262420","262421","262422") { "{0}: {1}/48 (262000 block)" -f $m, (Get-ChildItem eval/v3e/stage_b/$m -Filter "seed_262*.json").Count }
+   ```
+2. 三个模型都到 48/48 后，**停掉全部扫描进程**：
+   ```powershell
+   Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -like "*experiments.v3_handoff_scan*" } | ForEach-Object { Stop-Process -Id $_.ProcessId }
+   ```
+   确认没有扫描进程还在运行后，删除残留的 `eval/v3e/stage_b/*/*.lock` 和 `*.json.tmp`。
+3. **270000 块已经写出的 `seed_270*.json` 原样保留，不删、不读、不补跑。** 交付时一起打包，REPORT.md 中注明"修订 2：未用于判定"。
+4. 拉取修订：
+   ```powershell
+   git pull --ff-only origin claude/sac-mpc-coupling-design-ns7g6i
+   git rev-parse HEAD
+   git status --porcelain --untracked-files=no      # 必须没有输出
+   # 扫描工具与物理系统相对 a714c61 没有改动（必须没有输出）：
+   git diff a714c61 HEAD --stat -- env controllers dynamics train experiments/v3_common.py experiments/v3_handoff_scan.py experiments/evaluate_hybrid_policy.py
+   & $py -B -m pytest -q tests/test_v3_handoff_readout.py
+   ```
+5. 按第 5 节判读，但 **`--seeds` 改为 `"262000-262047"`**。判读脚本会把 270000 块的文件列入 `ignored_out_of_block_files`，不读取。
+
+## 5. B1 判读（修订 2 后：三个模型的 262000 块都到 48/48 并完成 4A 之后）
 
 ```powershell
 $F = "eval/v3e"
@@ -147,7 +172,7 @@ $F = "eval/v3e"
   --m2 "262420=$F/262420/m2_a.json,$F/262420/m2_b.json,$F/262420/m2_c.json,$F/262420/m2_d.json" `
   --m2 "262421=$F/262421/m2_a.json,$F/262421/m2_b.json,$F/262421/m2_c.json,$F/262421/m2_d.json" `
   --m2 "262422=$F/262422/m2_a.json,$F/262422/m2_b.json,$F/262422/m2_c.json,$F/262422/m2_d.json" `
-  --seeds "262000-262047,270000-270047" --output $F/stage_b/readout_b1.json
+  --seeds "262000-262047" --output $F/stage_b/readout_b1.json
 ```
 
 屏幕会打印 `verdict`，只有三种。**下层不解释判定，照下表办：**

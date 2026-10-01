@@ -151,3 +151,12 @@ def test_b2_fidelity_checks_completeness_commit_stride_and_b1_agreement() -> Non
     drifted["learned_full"] = dict(drifted["learned_full"], survival_s=80.1)
     assert any("survival_s differs from B1" in p
                for p in b2_fidelity_checks({"m": {1: drifted, 2: b2_scan(False)}}, b1, [1, 2]))
+
+
+def test_readout_reads_only_the_declared_block() -> None:
+    from experiments.v3_handoff_readout import restrict_to_block
+
+    scans = {"m": {262001: {"a": 1}, 270005: {"a": 2}}}
+    kept, ignored = restrict_to_block(scans, [262000, 262001])
+    assert kept == {"m": {262001: {"a": 1}}}
+    assert ignored == {"m": [270005]}
