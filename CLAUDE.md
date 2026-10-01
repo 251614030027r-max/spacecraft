@@ -48,6 +48,17 @@ perception line and the 24D mission schemas is history; it is kept under
 > learned successes have a handoff time that would fail (C must discriminate);
 > 113/113 have an earlier clean handoff that is faster (median ~60 s saved,
 > Delta-v lower in ~3/4). Oracle learned->MPC is 48/48 per model vs Pure 37/48.
+> **Stage C (approved 2026-10-02, preregistered before any C data):** estimate
+> p_M(s) = P(Pure MPC taking over from s completes cleanly) from the
+> policy-independent 31D state (core + target attitude + remaining time),
+> pooled over the three policies, trajectory-weighted, folds by initial seed;
+> tau = smallest grid value with out-of-fold weighted precision >= 0.95; rule:
+> hand off at the first p >= tau, otherwise stay learned (supersedes the
+> 09-30 "lean to hand off" note). Closed loop on fresh block 266000-266047;
+> verdict A (go to E) / B (go to D) / C_STOP. Tool `experiments/v3_stage_c.py`,
+> `docs/STAGE_C_PREREGISTRATION_20261002.md`, lower order
+> `docs/STAGE_C_RUN_ORDER_LOWER_20261002.md` (on A: E training seeds
+> 262430-262432 start immediately; E eval block 267000-267047).
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
