@@ -228,6 +228,12 @@ $F = "eval/v3e"
 
 判读只看 `readout_b1.json`。不要人工挑案例，也不要用其他统计方式补充结论。
 
+> **2026-10-01 更新（B1 已判 PROCEED，B2-lite 尚未启动）**：4B 节"在旧提交上提前启动"的安排已经用不上了。B2-lite 的核对只要求**所有 B2 文件来自同一个提交**，并且扫描工具与 B1 相同；并不要求必须是 `a714c61`。现在按下面执行：
+> 1. 拉取一次最新代码，然后核对扫描工具和物理系统相对 `a714c61` 没有改动（必须没有输出）：
+>    `git diff a714c61 HEAD --stat -- env controllers dynamics train experiments/v3_common.py experiments/v3_handoff_scan.py experiments/evaluate_hybrid_policy.py`
+> 2. 在这个提交上，用 6.2 的命令一次启动 6 个进程，每个模型 2 个；
+> 3. **B2-lite 跑完之前不再拉代码**。如果有进程异常退出，就在同一提交上用同样的命令续跑。
+
 ## 6. B2-lite（只有 B1 为 `PROCEED` 才执行；约 8–14 小时）
 
 > 修订（2026-09-30，B1 结果出来之前提交）：原来的全量 B2（两个块、步长 5、约 30–54 小时）作废，改为 B2-lite。依据是预注册第 6 节。

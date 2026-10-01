@@ -39,6 +39,11 @@ perception line and the 24D mission schemas is history; it is kept under
 > compute-only reason): the B1 verdict is read on the **262000 block alone**
 > (whole-block cut, not a time cut); 270000 files already written are kept
 > but not read in stage B; the readout reads only the declared `--seeds`.
+> **B1 verdict (2026-10-01): PROCEED**, recomputed independently, identical
+> (`docs/STAGE_B1_RESULT_20261001.md`, `eval/v3e/stage_b/readout_b1.json`):
+> 31/31 learned failures rescuable, 30 non-degenerate, all three models pass;
+> 15 are Pure-fails + learned-fails + mid-episode handoff succeeds. Next:
+> B2-lite (all processes on one commit), then the stage C preregistration.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
