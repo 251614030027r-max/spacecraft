@@ -44,6 +44,10 @@ perception line and the 24D mission schemas is history; it is kept under
 > 31/31 learned failures rescuable, 30 non-degenerate, all three models pass;
 > 15 are Pure-fails + learned-fails + mid-episode handoff succeeds. Next:
 > B2-lite (all processes on one commit), then the stage C preregistration.
+> **B2-lite valid (2026-10-02)** (`eval/v3e/stage_b/readout_b1b2.json`): 46/113
+> learned successes have a handoff time that would fail (C must discriminate);
+> 113/113 have an earlier clean handoff that is faster (median ~60 s saved,
+> Delta-v lower in ~3/4). Oracle learned->MPC is 48/48 per model vs Pure 37/48.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
