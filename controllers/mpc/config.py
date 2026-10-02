@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from dynamics.lie import se3_log
-from env.task import Phase2TaskConfig
+from env.task import Phase2TaskConfig, PrecaptureTaskConfig
 
 from .terminal_value import ConvexQuadraticTerminalValue
 
@@ -47,15 +47,22 @@ class MPCConfig:
     solver_max_iter: int = 10_000
     solver_eps_abs: float = 1.0e-4
     solver_eps_rel: float = 1.0e-4
+    # What to command when the QP does not solve. ``zero`` is the historical
+    # behaviour and stays the default so every measured number reproduces.
+    # ``shift`` instead commands the previous solution advanced one step, i.e.
+    # it keeps flying the last feasible plan.  The distinction matters here
+    # because zero wrench is not a neutral action on a co-rotating approach:
+    # angular momentum is conserved, so it freezes whatever rate the last
+    # feasible solve was part-way through establishing.
+    infeasible_fallback: str = "zero"
     reference_state: np.ndarray = field(
         default_factory=lambda: np.zeros(12, dtype=np.float64)
     )
     task: Phase2TaskConfig | None = None
-    # "fixed" holds the reference at reference_state for the whole horizon -- a
-    # myopic regulator. "corridor_guidance" rolls env.task.corridor_guidance_velocity
-    # forward from the current relative position, giving the QP the same path
-    # plan the reward and the scripted controller use, so the comparison is not
-    # decided by one method having a reference and the other not.
+    precapture_task: PrecaptureTaskConfig | None = None
+    # A2 adds two endpoint-only, guidance-free references. ``receding_plan``
+    # regenerates a minimum-jerk current-to-terminal path each command;
+    # ``episode_plan`` creates it once and lets MPC track that explicit plan.
     reference_source: str = "fixed"
     # Fraction of the total-speed limit the corridor-guidance reference aims for
     # (the coefficient inside env.task.corridor_guidance_velocity, default 0.6).
@@ -64,6 +71,9 @@ class MPCConfig:
     # 0.4x). It changes only the MPC's own reference, not the task or reward, so
     # it stays a clean single factor. Applies only under corridor_guidance.
     corridor_speed_fraction: float = 0.6
+    planning_speed_m_s: float = 0.18
+    planning_angular_speed_rad_s: float = 0.02
+    planning_min_duration_s: float = 10.0
     # "fixed_quadratic" keeps the historical terminal penalty
     # terminal_weight * ||S^-1 (x - r)||^2 -- a diagonal cost on the deviation
     # from the terminal reference, bitwise unchanged. "learned_convex" replaces
@@ -72,9 +82,19 @@ class MPCConfig:
     terminal_cost_source: str = "fixed_quadratic"
     terminal_value: ConvexQuadraticTerminalValue | None = None
     corridor_facets: int = 8
+    precapture_attitude_reference: str = "frozen"
+    external_reference_frame: str = "inertial"
     constraint_slack_weight: float = 1.0e4
     constraint_slack_limit: float = 2.0
     constraint_tightening: float = 0.02
+    # Deployment path omits post-solve rollout/cost diagnostics; actions and
+    # in-QP safety constraints are identical, while evaluation scores truth
+    # margins externally.
+    runtime_diagnostics: bool = True
+    # external_local is a target-centred, inertially oriented 3D waypoint. One
+    # command is held for a high-level period; the lower layer estimates its
+    # inertial motion from consecutive accepted waypoints for horizon preview.
+    external_reference_hold_steps: int = 20
 
     def __post_init__(self) -> None:
         state_scales = np.asarray(self.state_scales, dtype=np.float64)
@@ -94,14 +114,27 @@ class MPCConfig:
             self.linearization_stride,
             self.drift_refresh_steps,
             self.exact_linearization_refresh_steps,
+            self.external_reference_hold_steps,
         ) <= 0:
             raise ValueError("MPC integer settings must be positive")
-        if self.linearization_source not in {"exact", "local"}:
-            raise ValueError("linearization_source must be 'exact' or 'local'")
-        if self.reference_source not in {"fixed", "corridor_guidance"}:
-            raise ValueError("reference_source must be 'fixed' or 'corridor_guidance'")
+        if self.infeasible_fallback not in {"zero", "shift"}:
+            raise ValueError("infeasible_fallback must be zero or shift")
+        if self.linearization_source not in {"exact", "local", "analytic_local"}:
+            raise ValueError(
+                "linearization_source must be exact, local or analytic_local"
+            )
+        if self.reference_source not in {
+            "fixed", "corridor_guidance", "receding_plan", "episode_plan",
+            "online_endpoint",
+            "external_local",
+        }:
+            raise ValueError("unsupported reference_source")
         if self.reference_source == "corridor_guidance" and self.task is None:
             raise ValueError("corridor_guidance reference requires a task")
+        if self.task is not None and self.precapture_task is not None:
+            raise ValueError("legacy and precapture MPC tasks are mutually exclusive")
+        if self.reference_source == "external_local" and self.precapture_task is None:
+            raise ValueError("external_local reference requires a precapture task")
         if self.terminal_cost_source not in {"fixed_quadratic", "learned_convex"}:
             raise ValueError(
                 "terminal_cost_source must be 'fixed_quadratic' or 'learned_convex'"
@@ -116,6 +149,20 @@ class MPCConfig:
             raise ValueError("corridor_facets must be at least four")
         if not 0.0 < self.corridor_speed_fraction <= 1.0:
             raise ValueError("corridor_speed_fraction must be in (0, 1]")
+        if min(
+            self.planning_speed_m_s,
+            self.planning_angular_speed_rad_s,
+            self.planning_min_duration_s,
+        ) <= 0.0:
+            raise ValueError("planning settings must be positive")
+        if self.external_reference_frame not in {"inertial", "target"}:
+            raise ValueError("external reference frame must be inertial or target")
+        if self.precapture_attitude_reference not in {
+            "frozen",
+            "swept",
+            "aimed",
+        }:
+            raise ValueError("unknown precapture attitude reference mode")
         if min(self.constraint_slack_weight, self.constraint_slack_limit) <= 0.0:
             raise ValueError("constraint slack settings must be positive")
         if self.constraint_tightening < 0.0:
@@ -155,6 +202,83 @@ def corridor_tracking_mpc_config(**changes: object) -> MPCConfig:
     return constrained_mpc_nominal_config(
         reference_source="corridor_guidance", **changes
     )
+
+
+def terminal_short_mpc_config(**changes: object) -> MPCConfig:
+    """Strong short-horizon endpoint regulator for the A2 lower bound."""
+
+    values: dict[str, object] = {"reference_source": "fixed", "horizon_steps": 10}
+    values.update(changes)
+    return constrained_mpc_nominal_config(**values)
+
+
+def receding_plan_mpc_config(**changes: object) -> MPCConfig:
+    """Long-horizon MPC with its own current-to-terminal minimum-jerk plan."""
+
+    values: dict[str, object] = {
+        "reference_source": "receding_plan",
+        "horizon_steps": 50,
+    }
+    values.update(changes)
+    return constrained_mpc_nominal_config(**values)
+
+
+def planning_tracking_mpc_config(**changes: object) -> MPCConfig:
+    """Explicit episode-level minimum-jerk plan plus constrained MPC tracking."""
+
+    values: dict[str, object] = {
+        "reference_source": "episode_plan",
+        "horizon_steps": 20,
+    }
+    values.update(changes)
+    return constrained_mpc_nominal_config(**values)
+
+
+def online_endpoint_mpc_config(
+    *, horizon_steps: int = 10, exact: bool = False, **changes: object
+) -> MPCConfig:
+    """Deployable receding endpoint plan with a bounded short MPC horizon."""
+
+    values: dict[str, object] = {
+        "reference_source": "online_endpoint",
+        "horizon_steps": horizon_steps,
+        "linearization_source": "exact" if exact else "analytic_local",
+        "runtime_diagnostics": False,
+    }
+    values.update(changes)
+    return constrained_mpc_nominal_config(**values)
+
+
+def precapture_mpc_config(
+    *,
+    horizon_steps: int = 20,
+    reference_source: str = "fixed",
+    **changes: object,
+) -> MPCConfig:
+    """Matched MPC used by both pure and future hybrid precapture rows."""
+
+    task = PrecaptureTaskConfig()
+    reference = np.concatenate((se3_log(task.desired_transform), np.zeros(6)))
+    values: dict[str, object] = {
+        "task": None,
+        "precapture_task": task,
+        "reference_state": reference,
+        "reference_source": reference_source,
+        "horizon_steps": horizon_steps,
+        "solver": "CLARABEL",
+        "linearization_source": "analytic_local",
+        "state_scales": np.array(
+            [
+                *([np.deg2rad(75.0)] * 3),
+                *([20.0] * 3),
+                *([0.05] * 3),
+                *([1.10] * 3),
+            ],
+            dtype=np.float64,
+        ),
+    }
+    values.update(changes)
+    return MPCConfig(**values)
 
 
 def learned_terminal_mpc_config(

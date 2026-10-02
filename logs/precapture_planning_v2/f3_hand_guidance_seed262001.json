@@ -1,0 +1,2620 @@
+{
+  "schema_version": 2,
+  "evaluated_at_utc": "2026-09-05T14:00:21.669385+00:00",
+  "algorithm": "mpc_only",
+  "control_state_source": "oracle",
+  "controller_model_source": "nominal",
+  "external_guidance": "hand_guidance",
+  "observation_error": {
+    "bias_rad": 0.0,
+    "delay_steps": 0,
+    "update_every": 1,
+    "filter": "hold"
+  },
+  "corridor_speed_fraction": 0.6,
+  "episodes": 1,
+  "base_seed": 262001,
+  "environment": {
+    "dt_s": 0.1,
+    "max_time_s": 300.0,
+    "max_distance_m": 30.0,
+    "shell_inner_m": 2.0,
+    "shell_outer_m": 10.0,
+    "max_relative_attitude_rad": 1.3089969389957472,
+    "inertial_velocity_component_limit_m_s": 0.125,
+    "relative_angular_velocity_component_limit_rad_s": 0.03,
+    "target_tumble_scale": 0.5,
+    "curriculum_enabled": false,
+    "curriculum_start_step": 300000,
+    "curriculum_end_step": 1300000,
+    "curriculum_rehearsal_end_step": 1400000,
+    "curriculum_rotation_fraction": 0.45,
+    "curriculum_frontier_width": 0.2,
+    "curriculum_rehearsal_probability": 0.2,
+    "curriculum_final_probability": 0.75,
+    "target_tumble_increment": 0.05,
+    "initial_shell_inner_m": 1.0,
+    "initial_shell_outer_m": 3.0,
+    "initial_max_relative_attitude_rad": 0.5235987755982988,
+    "initial_inertial_velocity_component_limit_m_s": 0.05,
+    "initial_target_tumble_scale": 0.25,
+    "observation_attitude_scale_rad": 1.0471975511965976,
+    "observation_distance_scale_m": 20.0,
+    "observation_angular_velocity_scale_rad_s": 0.05,
+    "observation_velocity_scale_m_s": 1.1,
+    "observation_softsign_limit": 10.0,
+    "max_force_per_axis_n": 5.0,
+    "max_torque_per_axis_nm": 0.6,
+    "storage_characteristic_length_m": 0.4482671036630004,
+    "storage_time_constant_s": 30.0,
+    "barrier_epsilon": 1e-06,
+    "success_thresholds": {
+      "attitude_rad": 0.2617993877991494,
+      "angular_velocity_rad_s": 0.03,
+      "position_m": 0.5,
+      "translational_velocity_m_s": 0.1
+    },
+    "completion_required_steps": 5,
+    "include_j2": true,
+    "solver_rtol": 1e-07,
+    "solver_atol": 1e-09,
+    "cache_target_trajectory": true,
+    "phase2_enabled": true,
+    "phase2_mission_enabled": false,
+    "precapture_planning_enabled": true,
+    "phase2_training_mode": "full_mission",
+    "phase2_guidance_free": false,
+    "phase2_prediction_model_mismatch": 0.0,
+    "phase2_prediction_model_seed": 0,
+    "phase2_mission": {
+      "waypoint_position_target_m": [
+        -8.0,
+        0.0,
+        0.0
+      ],
+      "waypoint_semantics": "legacy_regulation",
+      "waypoint_position_tolerance_m": 1.0,
+      "waypoint_attitude_tolerance_rad": 0.5235987755982988,
+      "waypoint_speed_tolerance_m_s": 0.2,
+      "waypoint_angular_velocity_tolerance_rad_s": 0.03,
+      "waypoint_fov_tolerance_rad": 0.7853981633974483,
+      "initial_distance_min_m": 12.0,
+      "initial_distance_max_m": 18.0,
+      "initial_direction_half_angle_rad": 0.3490658503988659,
+      "initial_attitude_limit_rad": 0.7853981633974483,
+      "initial_speed_limit_m_s": 0.2,
+      "initial_angular_velocity_component_limit_rad_s": 0.02,
+      "phase1_speed_limit_m_s": 0.5,
+      "phase1_soft_speed_m_s": 0.25,
+      "phase1_cruise_speed_m_s": 0.18,
+      "phase1_catastrophic_speed_limit_m_s": 1.0,
+      "premature_entry_distance_m": 6.0,
+      "waypoint_reward": 5.0,
+      "final_success_reward": 20.0,
+      "terminal_constraint_failure_penalty": -10.0,
+      "phase1_failure_penalty": -15.0,
+      "catastrophic_failure_penalty": -15.0
+    },
+    "precapture_task": {
+      "port_position_target_m": [
+        -1.5,
+        0.0,
+        0.0
+      ],
+      "desired_position_target_m": [
+        -3.0,
+        0.0,
+        0.0
+      ],
+      "approach_axis_target": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "camera_boresight_chaser": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "keepout_radius_m": 2.0,
+      "entry_port_axial_distance_m": 4.5,
+      "entry_disc_radius_m": 3.1509339219436936,
+      "outer_inertial_speed_limit_m_s": 2.0,
+      "outer_radial_brake_accel_m_s2": 0.02,
+      "corridor_half_angle_rad": 0.6108652381980153,
+      "fov_half_angle_rad": 0.8726646259971648,
+      "terminal_total_speed_limit_m_s": 0.35,
+      "closing_speed_min_m_s": 0.08,
+      "closing_speed_slope_per_s": 0.04,
+      "closing_speed_max_m_s": 0.3,
+      "completion_position_m": 0.25,
+      "completion_attitude_rad": 0.17453292519943295,
+      "completion_speed_m_s": 0.05,
+      "completion_angular_velocity_rad_s": 0.02,
+      "completion_hold_s": 1.0,
+      "constraint_tolerance": 1e-09
+    },
+    "precapture_reward": {
+      "discount_factor": 0.999,
+      "potential_weight": 0.05,
+      "time_weight": 0.01,
+      "force_weight": 0.002,
+      "torque_weight": 0.002,
+      "safety_weight": 1.0,
+      "success_reward": 20.0,
+      "failure_penalty": -20.0
+    },
+    "precapture_initial_range_min_m": 15.0,
+    "precapture_initial_range_max_m": 20.0,
+    "precapture_initial_inertial_speed_max_m_s": 0.1,
+    "precapture_initial_pointing_error_max_rad": 0.08726646259971647,
+    "precapture_initial_chaser_omega_component_limit_rad_s": 0.005,
+    "precapture_fov_violation_terminates": true,
+    "phase1_curriculum_enabled": false,
+    "phase1_curriculum_start_step": 5000,
+    "phase1_curriculum_end_step": 150000,
+    "phase1_curriculum_adaptive": false,
+    "phase1_curriculum_window_episodes": 20,
+    "phase1_curriculum_difficulty_step": 0.005,
+    "phase1_curriculum_promote_rate": 0.8,
+    "phase1_curriculum_demote_rate": 0.5,
+    "phase1_curriculum_easy_full_probability": 0.0,
+    "phase1_curriculum_full_probability": 0.1,
+    "phase1_curriculum_easy_distance_min_m": 9.02,
+    "phase1_curriculum_easy_distance_max_m": 9.05,
+    "phase1_curriculum_easy_direction_half_angle_rad": 0.00034906585039886593,
+    "phase1_curriculum_easy_attitude_limit_rad": 0.03490658503988659,
+    "phase1_curriculum_easy_speed_limit_m_s": 0.03,
+    "phase1_curriculum_easy_angular_velocity_limit_rad_s": 0.001,
+    "phase2_task": {
+      "port_position_target_m": [
+        -1.5,
+        0.0,
+        0.0
+      ],
+      "desired_position_target_m": [
+        -3.0,
+        0.0,
+        0.0
+      ],
+      "approach_axis_target": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "camera_boresight_chaser": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "corridor_half_angle_rad": 0.6108652381980153,
+      "fov_half_angle_rad": 0.8726646259971648,
+      "total_speed_limit_m_s": 0.35,
+      "closing_speed_min_m_s": 0.08,
+      "closing_speed_slope_per_s": 0.04,
+      "closing_speed_max_m_s": 0.3,
+      "completion_position_m": 0.25,
+      "completion_attitude_rad": 0.17453292519943295,
+      "completion_speed_m_s": 0.05,
+      "completion_angular_velocity_rad_s": 0.02,
+      "completion_hold_s": 1.0,
+      "constraint_tolerance": 1e-09
+    },
+    "phase2_target_phase_sampling": true,
+    "phase2_target_model_mismatch": 0.0,
+    "phase2_observation_bias_rad": 0.0,
+    "phase2_observation_delay_steps": 0,
+    "phase2_observation_update_every": 1,
+    "phase2_target_tumble_scale": 0.2,
+    "phase2_axial_remaining_min_m": 3.0,
+    "phase2_axial_remaining_max_m": 7.0,
+    "phase2_max_relative_attitude_rad": 1.0471975511965976,
+    "phase2_near_boundary_probability": 0.25,
+    "phase2_initial_total_speed_limit_m_s": 0.35,
+    "phase2_initial_relative_angular_velocity_limit_rad_s": 0.03,
+    "phase2_maximum_interior_radial_fraction": 0.75,
+    "phase2_minimum_fov_margin_rad": 0.0,
+    "phase2_warmup_steps": 0,
+    "phase2_warmup_task": {
+      "port_position_target_m": [
+        -1.5,
+        0.0,
+        0.0
+      ],
+      "desired_position_target_m": [
+        -3.0,
+        0.0,
+        0.0
+      ],
+      "approach_axis_target": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "camera_boresight_chaser": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "corridor_half_angle_rad": 0.7853981633974483,
+      "fov_half_angle_rad": 1.0471975511965976,
+      "total_speed_limit_m_s": 0.35,
+      "closing_speed_min_m_s": 0.08,
+      "closing_speed_slope_per_s": 0.04,
+      "closing_speed_max_m_s": 0.3,
+      "completion_position_m": 0.25,
+      "completion_attitude_rad": 0.17453292519943295,
+      "completion_speed_m_s": 0.05,
+      "completion_angular_velocity_rad_s": 0.02,
+      "completion_hold_s": 1.0,
+      "constraint_tolerance": 1e-09
+    },
+    "phase2_warmup_tumble_scale": 0.18,
+    "phase2_warmup_axial_remaining_min_m": 2.0,
+    "phase2_warmup_axial_remaining_max_m": 4.0,
+    "phase2_warmup_max_relative_attitude_rad": 0.6108652381980153,
+    "phase2_warmup_near_boundary_probability": 0.0,
+    "phase2_warmup_initial_total_speed_limit_m_s": 0.15,
+    "phase2_warmup_initial_relative_angular_velocity_limit_rad_s": 0.018,
+    "phase2_warmup_maximum_interior_radial_fraction": 0.65,
+    "phase2_warmup_minimum_fov_margin_rad": 0.08726646259971647,
+    "phase2_observation_schema": "precapture_planning_full_state_v1_24d",
+    "phase2_observation_target_angular_velocity_scale_rad_s": 0.05,
+    "phase2_distance_failure_penalty": -20.0,
+    "perception": null
+  },
+  "prediction_target_parameters": {
+    "mass": 225.0,
+    "inertia": [
+      [
+        42.7,
+        -0.4,
+        -0.6
+      ],
+      [
+        -0.4,
+        40.3,
+        -0.5
+      ],
+      [
+        -0.6,
+        -0.5,
+        37.9
+      ]
+    ]
+  },
+  "mpc_config": {
+    "dt_s": 0.1,
+    "horizon_steps": 20,
+    "outer_iterations": 1,
+    "linearization_stride": 5,
+    "state_scales": [
+      1.3089969389957472,
+      1.3089969389957472,
+      1.3089969389957472,
+      20.0,
+      20.0,
+      20.0,
+      0.05,
+      0.05,
+      0.05,
+      1.1,
+      1.1,
+      1.1
+    ],
+    "input_scales": [
+      0.6,
+      0.6,
+      0.6,
+      5.0,
+      5.0,
+      5.0
+    ],
+    "state_weight": 1.0,
+    "input_weight": 0.01,
+    "terminal_weight": 1000.0,
+    "difference_relative_step": 0.0001,
+    "drift_refresh_steps": 10,
+    "linearization_source": "analytic_local",
+    "exact_linearization_refresh_steps": 10,
+    "solver": "CLARABEL",
+    "solver_max_iter": 10000,
+    "solver_eps_abs": 0.0001,
+    "solver_eps_rel": 0.0001,
+    "reference_state": [
+      0.0,
+      0.0,
+      0.0,
+      -3.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "task": null,
+    "precapture_task": {
+      "port_position_target_m": [
+        -1.5,
+        0.0,
+        0.0
+      ],
+      "desired_position_target_m": [
+        -3.0,
+        0.0,
+        0.0
+      ],
+      "approach_axis_target": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "camera_boresight_chaser": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "keepout_radius_m": 2.0,
+      "entry_port_axial_distance_m": 4.5,
+      "entry_disc_radius_m": 3.1509339219436936,
+      "outer_inertial_speed_limit_m_s": 2.0,
+      "outer_radial_brake_accel_m_s2": 0.02,
+      "corridor_half_angle_rad": 0.6108652381980153,
+      "fov_half_angle_rad": 0.7853981633974483,
+      "terminal_total_speed_limit_m_s": 0.35,
+      "closing_speed_min_m_s": 0.08,
+      "closing_speed_slope_per_s": 0.04,
+      "closing_speed_max_m_s": 0.3,
+      "completion_position_m": 0.25,
+      "completion_attitude_rad": 0.17453292519943295,
+      "completion_speed_m_s": 0.05,
+      "completion_angular_velocity_rad_s": 0.02,
+      "completion_hold_s": 1.0,
+      "constraint_tolerance": 1e-09
+    },
+    "reference_source": "external_local",
+    "corridor_speed_fraction": 0.6,
+    "planning_speed_m_s": 0.18,
+    "planning_angular_speed_rad_s": 0.02,
+    "planning_min_duration_s": 10.0,
+    "terminal_cost_source": "fixed_quadratic",
+    "terminal_value": null,
+    "corridor_facets": 8,
+    "constraint_slack_weight": 10000.0,
+    "constraint_slack_limit": 2.0,
+    "constraint_tightening": 0.02,
+    "runtime_diagnostics": true,
+    "external_reference_hold_steps": 20
+  },
+  "gamma": 0.999,
+  "main_table": {
+    "episodes": 1,
+    "completed_episodes": 0,
+    "completion_rate": 0.0,
+    "completion_time_s": null,
+    "survival_s": {
+      "count": 1,
+      "mean": 30.6,
+      "median": 30.6,
+      "std": 0.0,
+      "p95": 30.6,
+      "min": 30.6,
+      "max": 30.6
+    },
+    "force_impulse_n_s": {
+      "completed_only": null,
+      "all_episodes": {
+        "count": 1,
+        "mean": 4.055495913168071,
+        "median": 4.055495913168071,
+        "std": 0.0,
+        "p95": 4.055495913168071,
+        "min": 4.055495913168071,
+        "max": 4.055495913168071
+      }
+    },
+    "torque_impulse_nm_s": {
+      "completed_only": null,
+      "all_episodes": {
+        "count": 1,
+        "mean": 0.7650646139153683,
+        "median": 0.7650646139153683,
+        "std": 0.0,
+        "p95": 0.7650646139153683,
+        "min": 0.7650646139153683,
+        "max": 0.7650646139153683
+      }
+    },
+    "worst_constraint_margin": {
+      "fov_margin_rad": -0.001268797979109837,
+      "keepout_margin_m": 14.729840549211804,
+      "outer_inertial_speed_margin_m_s": 1.9611678355722784,
+      "outer_radial_margin_m_s": 0.7452597728901699
+    },
+    "per_step_compute_s": {
+      "control_period_s": 0.1,
+      "controller": {
+        "count": 306,
+        "mean": 0.04607773921566001,
+        "median": 0.04333950000000186,
+        "std": 0.014897486362947318,
+        "p95": 0.054328199999872595,
+        "min": 0.04038089999994554,
+        "max": 0.28509219999978086
+      },
+      "environment_step": {
+        "count": 306,
+        "mean": 0.0046021300654056,
+        "median": 0.004429749999872001,
+        "std": 0.0006648937949607451,
+        "p95": 0.0056370000002061715,
+        "min": 0.004164999998465646,
+        "max": 0.009626099999877624
+      },
+      "controller_mean_over_budget": 0.4607773921566001,
+      "controller_p95_over_budget": 0.543281999998726
+    },
+    "equivalent_delta_v_m_s": {
+      "completed_only": null,
+      "all_episodes": {
+        "count": 1,
+        "mean": 0.03825939540724595,
+        "median": 0.03825939540724595,
+        "std": 0.0,
+        "p95": 0.03825939540724595,
+        "min": 0.03825939540724595,
+        "max": 0.03825939540724595
+      }
+    },
+    "minimum_normalized_margin": {
+      "count": 1,
+      "mean": -0.001453935385154433,
+      "median": -0.001453935385154433,
+      "std": 0.0,
+      "p95": -0.001453935385154433,
+      "min": -0.001453935385154433,
+      "max": -0.001453935385154433
+    },
+    "constraint_violation_rate": 1.0,
+    "discounted_return": {
+      "completed_only": null,
+      "all_episodes": {
+        "count": 1,
+        "mean": -23.12383812038366,
+        "median": -23.12383812038366,
+        "std": 0.0,
+        "p95": -23.12383812038366,
+        "min": -23.12383812038366,
+        "max": -23.12383812038366
+      }
+    }
+  },
+  "rates": {
+    "completed": 0.0,
+    "joint_success": 0.0,
+    "attitude_success": 0.0,
+    "position_success": 0.0,
+    "distance_failure": 0.0,
+    "time_failure": 0.0,
+    "illegal_terminal_entry": 1.0,
+    "constraint_success": 0.0,
+    "truth_geometry_zero_violation_completion": 0.0
+  },
+  "qp": {
+    "fallback_count": 297,
+    "fallback_rate": 0.9705882352941176,
+    "solve_time_s": {
+      "count": 306,
+      "mean": 0.013269619934636151,
+      "median": 0.012076249999154243,
+      "std": 0.01316519700260489,
+      "p95": 0.017251699999178527,
+      "min": 0.010302500000761938,
+      "max": 0.24035909999838623
+    },
+    "command_time_s": {
+      "count": 306,
+      "mean": 0.04607773921566001,
+      "median": 0.04333950000000186,
+      "std": 0.014897486362947318,
+      "p95": 0.054328199999872595,
+      "min": 0.04038089999994554,
+      "max": 0.28509219999978086
+    },
+    "predicted_safe_truth_violation_count": 0,
+    "compared_constraint_steps": 305
+  },
+  "truth_geometry": {
+    "zero_violation_completion_rate": 0.0,
+    "violation_episode_counts": {
+      "keepout_violation_steps": 0,
+      "fov_violation_steps": 1,
+      "outer_speed_violation_steps": 0,
+      "outer_radial_violation_steps": 0,
+      "corridor_violation_steps": 0,
+      "total_speed_violation_steps": 0,
+      "closing_speed_violation_steps": 0
+    },
+    "failure_mode_episode_counts": {
+      "distance_failure": 0,
+      "illegal_terminal_entry": 1,
+      "timeout": 0,
+      "corridor": 0,
+      "speed": 0
+    }
+  },
+  "perception": null,
+  "controller_compute": {
+    "command_time_s": {
+      "count": 306,
+      "mean": 0.04607773921566001,
+      "median": 0.04333950000000186,
+      "std": 0.014897486362947318,
+      "p95": 0.054328199999872595,
+      "min": 0.04038089999994554,
+      "max": 0.28509219999978086
+    },
+    "qp_solve_time_s": {
+      "count": 306,
+      "mean": 0.013269619934636151,
+      "median": 0.012076249999154243,
+      "std": 0.01316519700260489,
+      "p95": 0.017251699999178527,
+      "min": 0.010302500000761938,
+      "max": 0.24035909999838623
+    },
+    "model_linearization_time_s": {
+      "count": 306,
+      "mean": 0.0011837287582333897,
+      "median": 0.0011294999994788668,
+      "std": 0.00019757498296784617,
+      "p95": 0.0014542000008077594,
+      "min": 0.0010669000002963003,
+      "max": 0.0025444999992032535
+    },
+    "rollout_time_s": {
+      "count": 306,
+      "mean": 0.009547103594830368,
+      "median": 0.00912279999920429,
+      "std": 0.0013305462205581264,
+      "p95": 0.01251589999992575,
+      "min": 0.008633000001282198,
+      "max": 0.019287400000393973
+    },
+    "exact_refresh_time_s": {
+      "count": 306,
+      "mean": 0.0,
+      "median": 0.0,
+      "std": 0.0,
+      "p95": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "over_control_period_rate": 0.0032679738562091504,
+    "command_time_samples_s": [
+      0.28509219999978086,
+      0.048380899999756366,
+      0.0488788000002387,
+      0.047418199999810895,
+      0.047132499999861466,
+      0.047125400000368245,
+      0.04781179999918095,
+      0.04681719999825873,
+      0.04901330000029702,
+      0.051793099999486,
+      0.055988000000070315,
+      0.05131509999955597,
+      0.04983940000056464,
+      0.05013940000026196,
+      0.04982139999992796,
+      0.053607099998771446,
+      0.05066850000002887,
+      0.049760300000343705,
+      0.05007089999890013,
+      0.04808529999900202,
+      0.054794800000308896,
+      0.04706199999964156,
+      0.0485196999998152,
+      0.04593930000010005,
+      0.04672449999998207,
+      0.04785930000070948,
+      0.046586299999034964,
+      0.04677269999956479,
+      0.04453200000170909,
+      0.044817200001489255,
+      0.053970299999491544,
+      0.047081699998670956,
+      0.054328199999872595,
+      0.05992979999973613,
+      0.06591180000032182,
+      0.08002729999861913,
+      0.07632080000075803,
+      0.044838600000730366,
+      0.04428360000019893,
+      0.04497749999973166,
+      0.04974740000034217,
+      0.043244899999990594,
+      0.04493059999913385,
+      0.04440500000055181,
+      0.04262639999979001,
+      0.04340339999907883,
+      0.04350039999917499,
+      0.04486249999899883,
+      0.04506249999940337,
+      0.04283120000036433,
+      0.04948030000014114,
+      0.04250779999892984,
+      0.0433565000003,
+      0.04516980000153126,
+      0.044217199998456636,
+      0.04347529999904509,
+      0.04805310000119789,
+      0.04327990000092541,
+      0.045376499998383224,
+      0.04352839999955904,
+      0.05013610000059998,
+      0.04311720000077912,
+      0.04350300000078278,
+      0.04365239999970072,
+      0.0465991999990365,
+      0.04438930000105756,
+      0.04543620000004012,
+      0.05055660000107309,
+      0.05113809999966179,
+      0.04354880000028061,
+      0.05122819999996864,
+      0.06060000000070431,
+      0.06919989999914833,
+      0.06123400000069523,
+      0.04444759999933012,
+      0.043716300000596675,
+      0.04606469999998808,
+      0.04390670000066166,
+      0.04289890000109153,
+      0.04499799999939569,
+      0.05093739999938407,
+      0.05084519999945769,
+      0.04431750000003376,
+      0.04693570000017644,
+      0.04360559999986435,
+      0.044328899999527493,
+      0.04511569999885978,
+      0.04429399999935413,
+      0.04344659999878786,
+      0.04280060000019148,
+      0.05045980000068084,
+      0.044478600000729784,
+      0.04560210000090592,
+      0.046948400000474066,
+      0.04496130000006815,
+      0.043249199999991106,
+      0.045792599999913364,
+      0.04366939999999886,
+      0.04343619999963266,
+      0.043530200000532204,
+      0.04964790000121866,
+      0.042482400000153575,
+      0.04402269999991404,
+      0.04239860000052431,
+      0.04228279999915685,
+      0.04217219999918598,
+      0.043496099999174476,
+      0.04301040000063949,
+      0.042168199999650824,
+      0.04202350000014121,
+      0.04881279999972321,
+      0.0439105000004929,
+      0.04285410000011325,
+      0.045422099999996135,
+      0.04315680000036082,
+      0.04329130000041914,
+      0.04352709999875515,
+      0.04538980000143056,
+      0.04453339999963646,
+      0.04832360000000335,
+      0.07832880000023579,
+      0.04818100000011327,
+      0.04332249999970372,
+      0.05892450000101235,
+      0.04249639999943611,
+      0.04206420000082289,
+      0.08012000000053376,
+      0.04622150000068359,
+      0.04211899999972957,
+      0.04281470000023546,
+      0.05150020000110089,
+      0.04412150000098336,
+      0.04241059999912977,
+      0.04430309999952442,
+      0.04224960000101419,
+      0.0434317999988707,
+      0.041541500000676024,
+      0.04656980000072508,
+      0.042819099999178434,
+      0.04179839999960677,
+      0.0497587999998359,
+      0.04261249999944994,
+      0.042523300000539166,
+      0.0420696000001044,
+      0.04068139999981213,
+      0.04130739999891375,
+      0.04131990000132646,
+      0.04050959999949555,
+      0.04038089999994554,
+      0.040994400000272435,
+      0.048156299999391194,
+      0.04063670000141428,
+      0.041548299999703886,
+      0.041272300000855466,
+      0.041061900001295726,
+      0.041415499999857275,
+      0.04133889999866369,
+      0.041677100000015344,
+      0.04120859999966342,
+      0.041556000000127824,
+      0.04883780000091065,
+      0.04136160000052769,
+      0.0412015000001702,
+      0.04146460000083607,
+      0.04130219999933615,
+      0.04102650000095309,
+      0.04100250000010419,
+      0.043167399999219924,
+      0.04184650000024703,
+      0.0412544999999227,
+      0.048995699999068165,
+      0.04209390000141866,
+      0.04243019999921671,
+      0.041677100000015344,
+      0.04326299999956973,
+      0.04240589999972144,
+      0.04561029999968014,
+      0.04272639999908279,
+      0.05260449999877892,
+      0.05231670000102895,
+      0.0485011000000668,
+      0.04211080000095535,
+      0.04182310000032885,
+      0.0454251999999542,
+      0.0424258999992162,
+      0.04143440000007104,
+      0.04681239999990794,
+      0.04409729999861156,
+      0.04818940000041039,
+      0.04204140000001644,
+      0.050780999999915366,
+      0.06344459999854735,
+      0.04300460000013118,
+      0.04315330000099493,
+      0.043617100000119535,
+      0.04228209999928367,
+      0.04238410000107251,
+      0.043984899999486515,
+      0.04301889999987907,
+      0.042617900000550435,
+      0.04906019999907585,
+      0.042872199999692384,
+      0.04469040000003588,
+      0.04455229999985022,
+      0.04279339999993681,
+      0.04489579999972193,
+      0.043200999998589396,
+      0.05321830000139016,
+      0.04389100000116741,
+      0.04387510000015027,
+      0.053425400001287926,
+      0.042341999998825486,
+      0.044628800000282354,
+      0.04257270000016433,
+      0.042968899999323185,
+      0.04859759999999369,
+      0.0433115000014368,
+      0.04487410000001546,
+      0.04340299999967101,
+      0.04290030000083789,
+      0.04982259999997041,
+      0.04367369999999937,
+      0.04300070000135747,
+      0.042542999999568565,
+      0.04289000000062515,
+      0.04267700000127661,
+      0.041551199999958044,
+      0.043241700001090067,
+      0.04331590000037977,
+      0.04319269999905373,
+      0.04727219999949739,
+      0.04093289999946137,
+      0.042729400000098394,
+      0.042869300001257216,
+      0.04173889999947278,
+      0.04257040000084089,
+      0.04247079999913694,
+      0.041168600000673905,
+      0.04108970000015688,
+      0.04173370000171417,
+      0.04812609999862616,
+      0.04186850000041886,
+      0.04206919999887759,
+      0.040813399999024114,
+      0.040740700000242214,
+      0.04103750000103901,
+      0.04048990000046615,
+      0.04258789999948931,
+      0.04196099999899161,
+      0.04170679999879212,
+      0.04755459999978484,
+      0.04050199999983306,
+      0.041035799999008304,
+      0.04355709999981627,
+      0.04181189999872004,
+      0.041621000000304775,
+      0.06077329999970971,
+      0.0426828999989084,
+      0.04143829999884474,
+      0.040970100000777165,
+      0.047919200000251294,
+      0.04085540000050969,
+      0.040677599999980885,
+      0.04093789999933506,
+      0.04064260000086506,
+      0.041127399999822956,
+      0.04121130000021367,
+      0.04094919999988633,
+      0.04055770000013581,
+      0.04191029999856255,
+      0.04857310000079451,
+      0.041306600000098115,
+      0.04089949999979581,
+      0.04118949999974575,
+      0.041107800001555006,
+      0.041642700000011246,
+      0.0413618000002316,
+      0.041579900000215275,
+      0.0413633000007394,
+      0.04170499999963795,
+      0.05090869999912684,
+      0.04323529999965103,
+      0.04209970000010799,
+      0.04132179999942309,
+      0.041216800000256626,
+      0.04061819999878935,
+      0.041023599998879945,
+      0.04155449999962002,
+      0.041838799999823095,
+      0.05210520000036922,
+      0.054306600000927574,
+      0.04435379999995348,
+      0.04131039999992936,
+      0.04153790000054869,
+      0.04182389999914449,
+      0.042487400000027264,
+      0.041180899999744724,
+      0.04062010000052396,
+      0.04205299999921408,
+      0.04092300000047544,
+      0.051480299998729606,
+      0.0406712999993033,
+      0.041091299999607145,
+      0.04086029999962193,
+      0.040564099999755854,
+      0.04092339999988326
+    ]
+  },
+  "acceptance": {
+    "checks": {
+      "development_seed_set": false,
+      "completed_rate_at_least_0p80": false,
+      "constraint_success_rate_at_least_0p80": false,
+      "qp_fallback_rate_at_most_0p02": false,
+      "no_predicted_safe_truth_violation": true
+    },
+    "passed": false
+  },
+  "episode_records": [
+    {
+      "episode": 0,
+      "seed": 262001,
+      "completed": false,
+      "joint_success": false,
+      "attitude_success": false,
+      "position_success": false,
+      "distance_failure": false,
+      "time_failure": false,
+      "illegal_terminal_entry_count": 1,
+      "illegal_terminal_entries": [
+        {
+          "time_s": 2.8000000000000003,
+          "off_axis_angle_rad": 1.291017706122193,
+          "axial_velocity_m_s": -0.43538083796363547,
+          "closing_speed_m_s": 0.43538083796363547,
+          "target_frame_total_speed_m_s": 0.6609055329564404,
+          "radial_distance_m": 15.6622709641896
+        }
+      ],
+      "guidance_plan": {
+        "policy": "frozen_online_nominal_coast_match_cross",
+        "fixed_reposition_radius_m": 16.787024073775076,
+        "match_duration_s": 40.0,
+        "selected_match_start_s": 117.5,
+        "selected_match_end_s": 157.5,
+        "closed_loop_descent_allowance_s": 80.0,
+        "terminal_waypoint_switch_s": 157.5,
+        "window_alignment_angle_rad": 0.46173119721495837,
+        "window_required_omega_rad_s": 0.0039296272103400715,
+        "window_omega_limit_rad_s": 0.03710592418858103,
+        "window_feasibility_margin": 0.7,
+        "rejected_window_count": 0,
+        "window_rule": "first_feasible_local_minimum_of_axis_to_chaser_direction",
+        "planning_fov_half_angle_rad": 0.7853981633974483
+      },
+      "truth_geometry_zero_violation_completed": false,
+      "steps": 306,
+      "time_seconds": 30.6,
+      "survival_s": 30.6,
+      "discounted_return": -23.12383812038366,
+      "first_violation": {
+        "time_s": 30.6,
+        "type": "fov_margin_rad",
+        "margin": -0.001268797979109837
+      },
+      "minimum_margins": {
+        "keepout_margin_m": 14.729840549211804,
+        "fov_margin_rad": -0.001268797979109837,
+        "outer_inertial_speed_margin_m_s": 1.9611678355722784,
+        "outer_radial_margin_m_s": 0.7452597728901699
+      },
+      "minimum_position_error_m": 15.736073478284977,
+      "attitude_error_rad": 1.6753050875564635,
+      "angular_velocity_error_rad_s": 0.01653105859024252,
+      "position_error_m": 17.892007985119815,
+      "translational_velocity_error_m_s": 0.6468815742641666,
+      "force_impulse_n_s": 4.055495913168071,
+      "torque_impulse_nm_s": 0.7650646139153683,
+      "equivalent_delta_v_m_s": 0.03825939540724595,
+      "minimum_normalized_margin": -0.001453935385154433,
+      "constraint_violated": true,
+      "saturation_fraction_per_axis": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "qp_fallback_count": 297,
+      "solve_time_s": {
+        "count": 306,
+        "mean": 0.013269619934636151,
+        "median": 0.012076249999154243,
+        "std": 0.01316519700260489,
+        "p95": 0.017251699999178527,
+        "min": 0.010302500000761938,
+        "max": 0.24035909999838623
+      },
+      "model_linearization_time_s": {
+        "count": 306,
+        "mean": 0.0011837287582333897,
+        "median": 0.0011294999994788668,
+        "std": 0.00019757498296784617,
+        "p95": 0.0014542000008077594,
+        "min": 0.0010669000002963003,
+        "max": 0.0025444999992032535
+      },
+      "rollout_time_s": {
+        "count": 306,
+        "mean": 0.009547103594830368,
+        "median": 0.00912279999920429,
+        "std": 0.0013305462205581264,
+        "p95": 0.01251589999992575,
+        "min": 0.008633000001282198,
+        "max": 0.019287400000393973
+      },
+      "exact_refresh_time_s": {
+        "count": 306,
+        "mean": 0.0,
+        "median": 0.0,
+        "std": 0.0,
+        "p95": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "command_time_s": {
+        "count": 306,
+        "mean": 0.04607773921566001,
+        "median": 0.04333950000000186,
+        "std": 0.014897486362947318,
+        "p95": 0.054328199999872595,
+        "min": 0.04038089999994554,
+        "max": 0.28509219999978086
+      },
+      "controller_time_s": {
+        "count": 306,
+        "mean": 0.04607773921566001,
+        "median": 0.04333950000000186,
+        "std": 0.014897486362947318,
+        "p95": 0.054328199999872595,
+        "min": 0.04038089999994554,
+        "max": 0.28509219999978086
+      },
+      "environment_step_time_s": {
+        "count": 306,
+        "mean": 0.0046021300654056,
+        "median": 0.004429749999872001,
+        "std": 0.0006648937949607451,
+        "p95": 0.0056370000002061715,
+        "min": 0.004164999998465646,
+        "max": 0.009626099999877624
+      },
+      "longest_no_measurement_streak_s": null,
+      "constraint_success": false,
+      "corridor_violation_steps": 0,
+      "fov_violation_steps": 1,
+      "total_speed_violation_steps": 0,
+      "closing_speed_violation_steps": 0,
+      "keepout_violation_steps": 0,
+      "outer_speed_violation_steps": 0,
+      "outer_radial_violation_steps": 0
+    }
+  ],
+  "representative_trajectories": [
+    {
+      "episode": 0,
+      "seed": 262001,
+      "samples": [
+        {
+          "time_seconds": 0.0,
+          "state": [
+            -0.4241251239883597,
+            0.6105728249812785,
+            0.9583919423644578,
+            -14.932647634046965,
+            -7.737363099980899,
+            5.637630121045202,
+            0.011831038657464463,
+            -0.01875867169489497,
+            0.039125966523472736,
+            0.026897308104707918,
+            -0.6080089280549146,
+            -0.2770864583662842
+          ],
+          "truth_position_m": [
+            -7.196694789920002,
+            -10.576382768223993,
+            10.869769495911896
+          ],
+          "inertial_relative_position_m": [
+            -13.750332949563282,
+            9.05407113936725,
+            3.2796824286712956
+          ],
+          "observed_position_m": [
+            -7.196694789920002,
+            -10.576382768223993,
+            10.869769495911896
+          ],
+          "control": [
+            -0.5999978975371604,
+            0.5999988348549533,
+            -0.599999232277476,
+            -2.56445197515362,
+            0.11395192925799716,
+            -4.999604817327743
+          ],
+          "predicted_cost": 7.070022732324544,
+          "solver_status": "optimal",
+          "range_m": 16.787024073775076,
+          "terminal_region_active": false,
+          "corridor_margin_m": -11.177270008730504,
+          "fov_margin_rad": 0.7876102927861631,
+          "target_frame_speed_m_s": 0.6687116173566426,
+          "relative_omega_error_rad_s": 0.04497446493141615,
+          "force_norm_n": 5.620093175784339,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 1.0,
+          "state": [
+            -0.41130380213549134,
+            0.6142612284023571,
+            0.9834302362327036,
+            -14.819164128619448,
+            -8.139007498362044,
+            5.488696479150781,
+            0.0014367267053146462,
+            0.002688278696640189,
+            0.016365168597144524,
+            0.014119567932539212,
+            -0.5877092868435625,
+            -0.3036231390224202
+          ],
+          "truth_position_m": [
+            -6.760681596584618,
+            -11.038887747330591,
+            10.670323320664465
+          ],
+          "inertial_relative_position_m": [
+            -13.747013564581477,
+            9.042650328461258,
+            3.266458511671608
+          ],
+          "observed_position_m": [
+            -6.760681596584618,
+            -11.038887747330591,
+            10.670323320664465
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 118.27493116789465,
+          "solver_status": "infeasible",
+          "range_m": 16.775567296401018,
+          "terminal_region_active": false,
+          "corridor_margin_m": -11.669373559251852,
+          "fov_margin_rad": 0.7798194534417574,
+          "target_frame_speed_m_s": 0.6616559367152981,
+          "relative_omega_error_rad_s": 0.016646614346152763,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 2.0,
+          "state": [
+            -0.407032101383514,
+            0.6215105307305957,
+            0.9981965925476611,
+            -14.680635628995773,
+            -8.623595828980914,
+            5.259342779712246,
+            0.001188459893819386,
+            0.002667043521179243,
+            0.016424298824554005,
+            0.03143075692014463,
+            -0.5848749631757926,
+            -0.30686399504065776
+          ],
+          "truth_position_m": [
+            -6.332480596844107,
+            -11.49197476147674,
+            10.449397360906005
+          ],
+          "inertial_relative_position_m": [
+            -13.749936433412723,
+            9.034322782175698,
+            3.267408694746574
+          ],
+          "observed_position_m": [
+            -6.332480596844107,
+            -11.49197476147674,
+            10.449397360906005
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 122.54557029103977,
+          "solver_status": "infeasible",
+          "range_m": 16.77366088944017,
+          "terminal_region_active": false,
+          "corridor_margin_m": -12.148658705934608,
+          "fov_margin_rad": 0.7600114719614091,
+          "target_frame_speed_m_s": 0.6612353034153354,
+          "relative_omega_error_rad_s": 0.01668182094201132,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 3.0,
+          "state": [
+            -0.4029192357090707,
+            0.6286258779566735,
+            1.0131027175404155,
+            -14.529722665310107,
+            -9.098514493922096,
+            5.019767343508139,
+            0.0009400027798128607,
+            0.002640350886446232,
+            0.016477765399003978,
+            0.048736528359313525,
+            -0.581684753330137,
+            -0.30972562354872935
+          ],
+          "truth_position_m": [
+            -5.898533744271845,
+            -11.928451252169907,
+            10.20842534583062
+          ],
+          "inertial_relative_position_m": [
+            -13.75289301151253,
+            9.025984073601728,
+            3.2683547797144494
+          ],
+          "observed_position_m": [
+            -5.898533744271845,
+            -11.928451252169907,
+            10.20842534583062
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 128.72001935666947,
+          "solver_status": "infeasible",
+          "range_m": 16.77177979968448,
+          "terminal_region_active": false,
+          "corridor_margin_m": -12.62042871319875,
+          "fov_margin_rad": 0.7370659550847989,
+          "target_frame_speed_m_s": 0.6608043305971213,
+          "relative_omega_error_rad_s": 0.016714419241308565,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 4.0,
+          "state": [
+            -0.39896307846649565,
+            0.6355986818959333,
+            1.0281454033470079,
+            -14.366544837945991,
+            -9.563203659578187,
+            4.770165082107771,
+            0.0006915658209627092,
+            0.002608233369463142,
+            0.016525528375836915,
+            0.0660231315969213,
+            -0.5781417928817234,
+            -0.31220632770964585
+          ],
+          "truth_position_m": [
+            -5.459634250961244,
+            -12.347660422790796,
+            9.94776496104896
+          ],
+          "inertial_relative_position_m": [
+            -13.75588327394464,
+            9.017634173506908,
+            3.2692967221571263
+          ],
+          "observed_position_m": [
+            -5.459634250961244,
+            -12.347660422790796,
+            9.94776496104896
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 136.79054576870135,
+          "solver_status": "infeasible",
+          "range_m": 16.76992402460717,
+          "terminal_region_active": false,
+          "corridor_margin_m": -13.083749887710152,
+          "fov_margin_rad": 0.712371346468166,
+          "target_frame_speed_m_s": 0.6603633678849098,
+          "relative_omega_error_rad_s": 0.01674437913733728,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 5.0,
+          "state": [
+            -0.39516131023171286,
+            0.6424204572030704,
+            1.043321272518228,
+            -14.191233191679599,
+            -10.017107489138024,
+            4.510741578619001,
+            0.0004433594634370413,
+            0.002570727372324156,
+            0.016567552874691145,
+            0.08327687480777968,
+            -0.5742494256215309,
+            -0.3143047096755254
+          ],
+          "truth_position_m": [
+            -5.016584949567914,
+            -12.74897572118789,
+            9.66780508402735
+          ],
+          "inertial_relative_position_m": [
+            -13.758907191180468,
+            9.00927305327181,
+            3.270234486162696
+          ],
+          "observed_position_m": [
+            -5.016584949567914,
+            -12.74897572118789,
+            9.66780508402735
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 146.7499729723358,
+          "solver_status": "infeasible",
+          "range_m": 16.768093560044765,
+          "terminal_region_active": false,
+          "corridor_margin_m": -13.537749368130328,
+          "fov_margin_rad": 0.686663557908944,
+          "target_frame_speed_m_s": 0.6599127906235982,
+          "relative_omega_error_rad_s": 0.01677167299622559,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 6.0,
+          "state": [
+            -0.3915114193310417,
+            0.6490828301788193,
+            1.058626778784295,
+            -14.003930329894303,
+            -10.459674599886796,
+            4.241713237971026,
+            0.00019559398553079498,
+            0.0025278730904961765,
+            0.016603809093208518,
+            0.10048413137883472,
+            -0.5700112005451672,
+            -0.3160196684229959
+          ],
+          "truth_position_m": [
+            -4.570196812972426,
+            -13.131801784038544,
+            9.368965242989361
+          ],
+          "inertial_relative_position_m": [
+            -13.76196473489253,
+            9.000900682805112,
+            3.271168027291892
+          ],
+          "observed_position_m": [
+            -4.570196812972426,
+            -13.131801784038544,
+            9.368965242989361
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 158.5918229332137,
+          "solver_status": "infeasible",
+          "range_m": 16.76628840050546,
+          "terminal_region_active": false,
+          "corridor_margin_m": -13.981614566952695,
+          "fov_margin_rad": 0.6603458787032128,
+          "target_frame_speed_m_s": 0.6594530007787379,
+          "relative_omega_error_rad_s": 0.016796275651838544,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 7.0,
+          "state": [
+            -0.38801070250042385,
+            0.6555775476930223,
+            1.0740582079468264,
+            -13.80479054433414,
+            -10.89035853955233,
+            3.963307403838409,
+            -5.1520657773225856e-05,
+            0.002479714479586923,
+            0.016634272317851626,
+            0.11763134616012394,
+            -0.565430868570644,
+            -0.31735039748764393
+          ],
+          "truth_position_m": [
+            -4.1212874804623425,
+            -13.49557533627376,
+            9.051695002242923
+          ],
+          "inertial_relative_position_m": [
+            -13.765055872579993,
+            8.992517033871346,
+            3.2720973071671473
+          ],
+          "observed_position_m": [
+            -4.1212874804623425,
+            -13.49557533627376,
+            9.051695002242923
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 172.3104474537651,
+          "solver_status": "infeasible",
+          "range_m": 16.764508539390164,
+          "terminal_region_active": false,
+          "corridor_margin_m": -14.414592779264717,
+          "fov_margin_rad": 0.6336511778716414,
+          "target_frame_speed_m_s": 0.6589844273710581,
+          "relative_omega_error_rad_s": 0.016818164401113913,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 8.0,
+          "state": [
+            -0.38465626568305455,
+            0.6618964862228336,
+            1.0896116789074295,
+            -13.59397994066257,
+            -11.308618292902826,
+            3.675762507202739,
+            -0.0002977749893329166,
+            0.002426299220584474,
+            0.016658922931886113,
+            0.13470504112592607,
+            -0.5605123800378351,
+            -0.3182963830004155
+          ],
+          "truth_position_m": [
+            -3.67067975923419,
+            -13.839766026940197,
+            8.716473329812288
+          ],
+          "inertial_relative_position_m": [
+            -13.768180582784565,
+            8.984122075177211,
+            3.273022282658043
+          ],
+          "observed_position_m": [
+            -3.67067975923419,
+            -13.839766026940197,
+            8.716473329812288
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 187.90116390968336,
+          "solver_status": "infeasible",
+          "range_m": 16.76275397673749,
+          "terminal_region_active": false,
+          "corridor_margin_m": -14.835990977656348,
+          "fov_margin_rad": 0.6067210433552579,
+          "target_frame_speed_m_s": 0.6585075274524682,
+          "relative_omega_error_rad_s": 0.016837318999846803,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 9.0,
+          "state": [
+            -0.38144502497374305,
+            0.6680316610038668,
+            1.1052831448425797,
+            -13.371676550043146,
+            -11.71391881340456,
+            3.379328167338401,
+            -0.0005429601634912226,
+            0.002367678683568169,
+            0.01667774642057692,
+            0.15169182164299855,
+            -0.5552598810534164,
+            -0.31885740132383944
+          ],
+          "truth_position_m": [
+            -3.2192001175135374,
+            -14.163877212908119,
+            8.363807873800397
+          ],
+          "inertial_relative_position_m": [
+            -13.771338833453466,
+            8.97571578031505,
+            3.2739429155076616
+          ],
+          "observed_position_m": [
+            -3.2192001175135374,
+            -14.163877212908119,
+            8.363807873800397
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 205.3603744359499,
+          "solver_status": "infeasible",
+          "range_m": 16.761024707600146,
+          "terminal_region_active": false,
+          "corridor_margin_m": -15.245175725826874,
+          "fov_margin_rad": 0.5796455667735451,
+          "target_frame_speed_m_s": 0.6580227858059456,
+          "relative_omega_error_rad_s": 0.0168537216589342,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 10.0,
+          "state": [
+            -0.3783737077186759,
+            0.6739752352910835,
+            1.12106839453478,
+            -13.138070450768375,
+            -12.105731580452499,
+            3.0742653290261264,
+            -0.0007868681188654934,
+            0.002303907889885992,
+            0.01669073337363988,
+            0.1685783816797084,
+            -0.5496777110406299,
+            -0.3190335171757397
+          ],
+          "truth_position_m": [
+            -2.767677172785625,
+            -14.467446676455438,
+            7.994234235025942
+          ],
+          "inertial_relative_position_m": [
+            -13.774530596366656,
+            8.967298120346761,
+            3.274859163977166
+          ],
+          "observed_position_m": [
+            -2.767677172785625,
+            -14.467446676455438,
+            7.994234235025942
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 224.6856836044072,
+          "solver_status": "infeasible",
+          "range_m": 16.759320728278368,
+          "terminal_region_active": false,
+          "corridor_margin_m": -15.641573223865723,
+          "fov_margin_rad": 0.5524843130663231,
+          "target_frame_speed_m_s": 0.6575307155305664,
+          "relative_omega_error_rad_s": 0.016867357041086842,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 11.0,
+          "state": [
+            -0.37543885377957165,
+            0.6797195297251608,
+            1.1369630538702664,
+            -12.893363879547072,
+            -12.483535182826682,
+            2.7608463648032693,
+            -0.0010292917303119896,
+            0.0022350454727883586,
+            0.016697879484983077,
+            0.1853515093380338,
+            -0.5437703996790333,
+            -0.31882508155104006
+          ],
+          "truth_position_m": [
+            -2.316940178629011,
+            -14.750047286972404,
+            7.608315167017281
+          ],
+          "inertial_relative_position_m": [
+            -13.777755838704216,
+            8.958869064675422,
+            3.2757709887881847
+          ],
+          "observed_position_m": [
+            -2.316940178629011,
+            -14.750047286972404,
+            7.608315167017281
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 245.87600901538883,
+          "solver_status": "infeasible",
+          "range_m": 16.757642031023714,
+          "terminal_region_active": false,
+          "corridor_margin_m": -16.0246694292432,
+          "fov_margin_rad": 0.5252779241476745,
+          "target_frame_speed_m_s": 0.65703185783264,
+          "relative_omega_error_rad_s": 0.016878212258012965,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 12.0,
+          "state": [
+            -0.3726368169714577,
+            0.6852570317989508,
+            1.1529625875137566,
+            -12.63777134809192,
+            -12.846815946190489,
+            2.4393551933747393,
+            -0.0012700249600967372,
+            0.00216115363650507,
+            0.016699185549764968,
+            0.2019980921631941,
+            -0.5375426649126211,
+            -0.3182327302647536
+          ],
+          "truth_position_m": [
+            -1.8678175047971308,
+            -15.011287612374872,
+            7.206639759242535
+          ],
+          "inertial_relative_position_m": [
+            -13.781014541763197,
+            8.950428584464445,
+            3.2766783464774694
+          ],
+          "observed_position_m": [
+            -1.8678175047971308,
+            -15.011287612374872,
+            7.206639759242535
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 268.93167911600085,
+          "solver_status": "infeasible",
+          "range_m": 16.755988619957975,
+          "terminal_region_active": false,
+          "corridor_margin_m": -16.39401026844044,
+          "fov_margin_rad": 0.49805483910151804,
+          "target_frame_speed_m_s": 0.6565267827367687,
+          "relative_omega_error_rad_s": 0.016886276868076245,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 13.0,
+          "state": [
+            -0.3699637666835138,
+            0.6905804054174866,
+            1.169062300770938,
+            -12.371519723931499,
+            -13.195068560289984,
+            2.1100873437329026,
+            -0.0015088630083033155,
+            0.0020822981137480524,
+            0.016694657458789165,
+            0.2185051225769712,
+            -0.5309994090002306,
+            -0.31725738153545535
+          ],
+          "truth_position_m": [
+            -1.4211351228877902,
+            -15.250812445767224,
+            6.789822526276112
+          ],
+          "inertial_relative_position_m": [
+            -13.784306666399523,
+            8.94197665180854,
+            3.277581199141319
+          ],
+          "observed_position_m": [
+            -1.4211351228877902,
+            -15.250812445767224,
+            6.789822526276112
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 293.8545303310386,
+          "solver_status": "infeasible",
+          "range_m": 16.754360484118763,
+          "terminal_region_active": false,
+          "corridor_margin_m": -16.749201839974898,
+          "fov_margin_rad": 0.47083534693525586,
+          "target_frame_speed_m_s": 0.6560160875235489,
+          "relative_omega_error_rad_s": 0.0168915428744283,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 14.0,
+          "state": [
+            -0.36741568969264055,
+            0.6956825005437596,
+            1.1852573416495422,
+            -12.094848345479143,
+            -13.527796768574904,
+            1.7733500682256838,
+            -0.0017456024625084766,
+            0.001998548121618267,
+            0.016684306190248206,
+            0.23485970268529854,
+            -0.52414571739385,
+            -0.3159002350876108
+          ],
+          "truth_position_m": [
+            -0.9777150965528563,
+            -15.468303298577666,
+            6.3585025276988745
+          ],
+          "inertial_relative_position_m": [
+            -13.78763219356969,
+            8.933513237821703,
+            3.2784795052087863
+          ],
+          "observed_position_m": [
+            -0.9777150965528563,
+            -15.468303298577666,
+            6.3585025276988745
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 320.6479873201496,
+          "solver_status": "infeasible",
+          "range_m": 16.752757627971853,
+          "terminal_region_active": false,
+          "corridor_margin_m": -17.0899106873571,
+          "fov_margin_rad": 0.4436341239549296,
+          "target_frame_speed_m_s": 0.6555003978154003,
+          "relative_omega_error_rad_s": 0.016894004723614058,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 15.0,
+          "state": [
+            -0.3649883921795066,
+            0.7005563629212184,
+            1.2015427031299426,
+            -11.808009077297132,
+            -13.844514052792375,
+            1.4294623794626276,
+            -0.001980041446753903,
+            0.0019099763158921881,
+            0.016668147798821458,
+            0.25104904965382957,
+            -0.516986854841889,
+            -0.3141627698987577
+          ],
+          "truth_position_m": [
+            -0.5383740747347474,
+            -15.663478799629956,
+            5.9133423725143075
+          ],
+          "inertial_relative_position_m": [
+            -13.790991084750155,
+            8.92503831445501,
+            3.279373225363126
+          ],
+          "observed_position_m": [
+            -0.5383740747347474,
+            -15.663478799629956,
+            5.9133423725143075
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 349.31713722521954,
+          "solver_status": "infeasible",
+          "range_m": 16.75118004098149,
+          "terminal_region_active": false,
+          "corridor_margin_m": -17.4158639983605,
+          "fov_margin_rad": 0.41646187103249366,
+          "target_frame_speed_m_s": 0.6549803656613373,
+          "relative_omega_error_rad_s": 0.016893659304647084,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 16.0,
+          "state": [
+            -0.3626775019568929,
+            0.7051952438626647,
+            1.2179132256562617,
+            -11.511266405174178,
+            -14.14474437963288,
+            1.0787551292737556,
+            -0.002211979769841244,
+            0.001816658743661232,
+            0.016646203402125703,
+            0.26706050043526375,
+            -0.5095282642426753,
+            -0.3120467434700913
+          ],
+          "truth_position_m": [
+            -0.10392180120106786,
+            -15.836095064412802,
+            5.455027257092297
+          ],
+          "inertial_relative_position_m": [
+            -13.794383321306134,
+            8.916551851260397,
+            3.280262317888654
+          ],
+          "observed_position_m": [
+            -0.10392180120106786,
+            -15.836095064412802,
+            5.455027257092297
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 379.86879800898566,
+          "solver_status": "infeasible",
+          "range_m": 16.74962772737067,
+          "terminal_region_active": false,
+          "corridor_margin_m": -17.726849815510814,
+          "fov_margin_rad": 0.3893264047692393,
+          "target_frame_speed_m_s": 0.6544566701204719,
+          "relative_omega_error_rad_s": 0.016890505948551366,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 17.0,
+          "state": [
+            -0.36047847092021995,
+            0.7095926100938168,
+            1.2343635998589537,
+            -11.204897469202688,
+            -14.42802294561253,
+            0.7215710170521082,
+            -0.0024412190729742288,
+            0.001718674794292229,
+            0.016618499164509064,
+            0.2828815171055794,
+            -0.501775563113597,
+            -0.3095541899529053
+          ],
+          "truth_position_m": [
+            0.3248403699253686,
+            -15.985945970285684,
+            4.984263899736106
+          ],
+          "inertial_relative_position_m": [
+            -13.797808871727796,
+            8.90805381924559,
+            3.2811467424869956
+          ],
+          "observed_position_m": [
+            0.3248403699253686,
+            -15.985945970285684,
+            4.984263899736106
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 412.3115697739722,
+          "solver_status": "infeasible",
+          "range_m": 16.7481006819591,
+          "terminal_region_active": false,
+          "corridor_margin_m": -18.022717122932285,
+          "fov_margin_rad": 0.36223339990768433,
+          "target_frame_speed_m_s": 0.6539300153497475,
+          "relative_omega_error_rad_s": 0.016884546428363928,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 18.0,
+          "state": [
+            -0.3583865777300431,
+            0.7137421536384895,
+            1.2508883695197552,
+            -10.88919211038803,
+            -14.693896967700685,
+            0.35826460762837986,
+            -0.0026675629767687996,
+            0.001616107148677895,
+            0.01658506627817304,
+            0.29849969187262104,
+            -0.4937345414740548,
+            -0.3066874190926683
+          ],
+          "truth_position_m": [
+            0.7471209389041178,
+            -16.11286338698119,
+            4.501779477111995
+          ],
+          "inertial_relative_position_m": [
+            -13.801267701383807,
+            8.899544192494744,
+            3.282026460281479
+          ],
+          "observed_position_m": [
+            0.7471209389041178,
+            -16.11286338698119,
+            4.501779477111995
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 446.655880926518,
+          "solver_status": "infeasible",
+          "range_m": 16.746598899042596,
+          "terminal_region_active": false,
+          "corridor_margin_m": -18.303375855788644,
+          "fov_margin_rad": 0.33518690905320725,
+          "target_frame_speed_m_s": 0.6534011298753369,
+          "relative_omega_error_rad_s": 0.016875784959593076,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 19.0,
+          "state": [
+            -0.35639693073625894,
+            0.7176378017308663,
+            1.267481934789755,
+            -10.564452905739111,
+            -14.941926503518111,
+            -0.010797660874627614,
+            -0.0028908172276476303,
+            0.0015090417267408472,
+            0.016545940941599897,
+            0.3139027519339379,
+            -0.48541116027543296,
+            -0.3034490155214371
+          ],
+          "truth_position_m": [
+            1.1621397079538838,
+            -16.21671734470874,
+            4.0083205392584205
+          ],
+          "inertial_relative_position_m": [
+            -13.80475979278348,
+            8.891022941534002,
+            3.282901430303079
+          ],
+          "observed_position_m": [
+            1.1621397079538838,
+            -16.21671734470874,
+            4.0083205392584205
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 482.9140198673131,
+          "solver_status": "infeasible",
+          "range_m": 16.745122384874392,
+          "terminal_region_active": false,
+          "corridor_margin_m": -18.56879677195154,
+          "fov_margin_rad": 0.3081897342938388,
+          "target_frame_speed_m_s": 0.652870766088183,
+          "relative_omega_error_rad_s": 0.01686422820112504,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 20.0,
+          "state": [
+            -0.35450447115353084,
+            0.7212737267389641,
+            1.284138555671101,
+            -10.230995146457559,
+            -15.171685269322094,
+            -0.38523753312944903,
+            -0.0031107898436315727,
+            0.0013975676331565122,
+            0.0165011643352578,
+            0.32907856472957064,
+            -0.4768115476249193,
+            -0.29984183702617884
+          ],
+          "truth_position_m": [
+            1.5691292095871177,
+            -16.297416110523045,
+            3.5046518417075276
+          ],
+          "inertial_relative_position_m": [
+            -13.808285108704155,
+            8.88249003634211,
+            3.2837716118088567
+          ],
+          "observed_position_m": [
+            1.5691292095871177,
+            -16.297416110523045,
+            3.5046518417075276
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 521.1001537698746,
+          "solver_status": "infeasible",
+          "range_m": 16.74367112934017,
+          "terminal_region_active": false,
+          "corridor_margin_m": -18.819011103879017,
+          "fov_margin_rad": 0.2812436954985623,
+          "target_frame_speed_m_s": 0.6523396975075013,
+          "relative_omega_error_rad_s": 0.016849885256572876,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 21.0,
+          "state": [
+            -0.3527039764972746,
+            0.7246443560818757,
+            1.300852355772614,
+            -9.889146843852485,
+            -15.382761524293608,
+            -0.7646649790406962,
+            -0.003327291259534632,
+            0.0012817771012549016,
+            0.016450782594547925,
+            0.3440151432288303,
+            -0.46794199769913547,
+            -0.29586901429684076
+          ],
+          "truth_position_m": [
+            1.9673361105378717,
+            -16.35490624420345,
+            2.9915552008897066
+          ],
+          "inertial_relative_position_m": [
+            -13.811843625181044,
+            8.873945448986449,
+            3.284636964786218
+          ],
+          "observed_position_m": [
+            1.9673361105378717,
+            -16.35490624420345,
+            2.9915552008897066
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 561.2303461228213,
+          "solver_status": "infeasible",
+          "range_m": 16.742245134643127,
+          "terminal_region_active": false,
+          "corridor_margin_m": -19.05411004605178,
+          "fov_margin_rad": 0.25434983100189335,
+          "target_frame_speed_m_s": 0.6518087185688716,
+          "relative_omega_error_rad_s": 0.01683276767605844,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 22.0,
+          "state": [
+            -0.3509900642891836,
+            0.7277443821219722,
+            1.3176173263491655,
+            -9.539248674373807,
+            -15.574758942137985,
+            -1.1486782913288411,
+            -0.0035401344715646566,
+            0.0011617654350641222,
+            0.01639484677995418,
+            0.35870065113294913,
+            -0.4588089675892526,
+            -0.29153394969034707
+          ],
+          "truth_position_m": [
+            2.3560225900728256,
+            -16.38917255308479,
+            2.4698282815515995
+          ],
+          "inertial_relative_position_m": [
+            -13.815435310663215,
+            8.865389153389069,
+            3.2854974502995504
+          ],
+          "observed_position_m": [
+            2.3560225900728256,
+            -16.38917255308479,
+            2.4698282815515995
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 603.3225428751741,
+          "solver_status": "infeasible",
+          "range_m": 16.740844398060492,
+          "terminal_region_active": false,
+          "corridor_margin_m": -19.274243931800488,
+          "fov_margin_rad": 0.2275085473360342,
+          "target_frame_speed_m_s": 0.6512786421229944,
+          "relative_omega_error_rad_s": 0.01681288945841981,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 23.0,
+          "state": [
+            -0.3493571960408919,
+            0.7305687720117146,
+            1.334427330634278,
+            -9.181653920512417,
+            -15.747297519102839,
+            -1.5368641894279635,
+            -0.00374913518132366,
+            0.0010376309494548736,
+            0.0163334128443493,
+            0.3731234081154753,
+            -0.4494190753121572,
+            -0.2868403166139615
+          ],
+          "truth_position_m": [
+            2.7344676898792386,
+            -16.400237997993827,
+            1.9402833860367537
+          ],
+          "inertial_relative_position_m": [
+            -13.81906013536223,
+            8.85682111788437,
+            3.2863530268375514
+          ],
+          "observed_position_m": [
+            2.7344676898792386,
+            -16.400237997993827,
+            1.9402833860367537
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 647.3965745059409,
+          "solver_status": "infeasible",
+          "range_m": 16.739468914991427,
+          "terminal_region_active": false,
+          "corridor_margin_m": -19.479621118366087,
+          "fov_margin_rad": 0.2007197349243668,
+          "target_frame_speed_m_s": 0.6507502978665008,
+          "relative_omega_error_rad_s": 0.0167902670538339,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 24.0,
+          "state": [
+            -0.3477996815239515,
+            0.733112777473341,
+            1.3512761084748444,
+            -8.816728380592847,
+            -15.900014507735584,
+            -1.9287979789295977,
+            -0.003954111939198006,
+            0.0009094749083465199,
+            0.016266541597406887,
+            0.3872718957173902,
+            -0.43977909733513343,
+            -0.28179205886499403
+          ],
+          "truth_position_m": [
+            3.101968634990044,
+            -16.388163545168936,
+            1.4037461951375008
+          ],
+          "inertial_relative_position_m": [
+            -13.822718071295354,
+            8.848241318053928,
+            3.287203655844493
+          ],
+          "observed_position_m": [
+            3.101968634990044,
+            -16.388163545168936,
+            1.4037461951375008
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 693.4741062608906,
+          "solver_status": "infeasible",
+          "range_m": 16.738118686878437,
+          "terminal_region_active": false,
+          "corridor_margin_m": -19.670506515665146,
+          "fov_margin_rad": 0.17398285677807412,
+          "target_frame_speed_m_s": 0.6502245305314298,
+          "relative_omega_error_rad_s": 0.01676491936684423,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 25.0,
+          "state": [
+            -0.3463116833337162,
+            0.7353719444881732,
+            1.3681572812762683,
+            -8.444850252831614,
+            -16.03256535582806,
+            -2.324043715816993,
+            -0.004154886287118777,
+            0.0007774014609344022,
+            0.01619429866706351,
+            0.401134762564368,
+            -0.4298959664636186,
+            -0.2763933900941993
+          ],
+          "truth_position_m": [
+            3.4578421199694276,
+            -16.353047939948738,
+            0.8610545126721263
+          ],
+          "inertial_relative_position_m": [
+            -13.82640909885251,
+            8.839649721004804,
+            3.2880492952201115
+          ],
+          "observed_position_m": [
+            3.4578421199694276,
+            -16.353047939948738,
+            0.8610545126721263
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 741.5786161168336,
+          "solver_status": "infeasible",
+          "range_m": 16.7367937170382,
+          "terminal_region_active": false,
+          "corridor_margin_m": -19.847219686977947,
+          "fov_margin_rad": 0.14729701969246423,
+          "target_frame_speed_m_s": 0.6497021977852813,
+          "relative_omega_error_rad_s": 0.016736867759781268,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 26.0,
+          "state": [
+            -0.34488722175411024,
+            0.7373421228709212,
+            1.385064357265607,
+            -8.066409971684681,
+            -16.144624653423786,
+            -2.72215444891069,
+            -0.004351282900667328,
+            0.0006415175758994335,
+            0.01611675445797224,
+            0.41470083054545626,
+            -0.4197767684038638,
+            -0.27064879266708886
+          ],
+          "truth_position_m": [
+            3.8014255575835705,
+            -16.29502741713077,
+            0.3130569439381361
+          ],
+          "inertial_relative_position_m": [
+            -13.830133182631899,
+            8.83104630142532,
+            3.288889906607862
+          ],
+          "observed_position_m": [
+            3.8014255575835705,
+            -16.29502741713077,
+            0.3130569439381361
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 791.7353313107158,
+          "solver_status": "infeasible",
+          "range_m": 16.735494000627558,
+          "terminal_region_active": false,
+          "corridor_margin_m": -20.010132473381656,
+          "fov_margin_rad": 0.1206610287348725,
+          "target_frame_speed_m_s": 0.6491841673353065,
+          "relative_omega_error_rad_s": 0.016706136056563046,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 27.0,
+          "state": [
+            -0.34352017992957806,
+            0.7390194757029451,
+            1.4019907370795337,
+            -7.68181004203911,
+            -16.235887115620955,
+            -3.12267245200418,
+            -0.004543129730491679,
+            0.0005019329735606974,
+            0.016033984106883028,
+            0.42795910058581654,
+            -0.4094287401773897,
+            -0.2645630175638871
+          ],
+          "truth_position_m": [
+            4.132078295573592,
+            -16.214275368489325,
+            -0.2393883913755417
+          ],
+          "inertial_relative_position_m": [
+            -13.833890296532646,
+            8.822431030991314,
+            3.289725449756685
+          ],
+          "observed_position_m": [
+            4.132078295573592,
+            -16.214275368489325,
+            -0.2393883913755417
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 843.9711607696396,
+          "solver_status": "infeasible",
+          "range_m": 16.73421953865418,
+          "terminal_region_active": false,
+          "corridor_margin_m": -20.159666121777978,
+          "fov_margin_rad": 0.09407343373982935,
+          "target_frame_speed_m_s": 0.6486713153207679,
+          "relative_omega_error_rad_s": 0.01667275054685946,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 28.0,
+          "state": [
+            -0.34220430934967966,
+            0.7404004885971092,
+            1.4189297196830157,
+            -7.291464815685146,
+            -16.30606854688948,
+            -3.5251295277521604,
+            -0.00473025814299234,
+            0.00035876005593419094,
+            0.01594606743488454,
+            0.4408987587570721,
+            -0.3988592668403612,
+            -0.2581410834154667
+          ],
+          "truth_position_m": [
+            4.449182786047459,
+            -16.111001927405596,
+            -0.795415201690048
+          ],
+          "inertial_relative_position_m": [
+            -13.837680406031453,
+            8.813803881258798,
+            3.290555885385931
+          ],
+          "observed_position_m": [
+            4.449182786047459,
+            -16.111001927405596,
+            -0.795415201690048
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 898.3146136885689,
+          "solver_status": "infeasible",
+          "range_m": 16.73297032542661,
+          "terminal_region_active": false,
+          "corridor_margin_m": -20.296287805237828,
+          "fov_margin_rad": 0.06753256552279263,
+          "target_frame_speed_m_s": 0.6481645232229762,
+          "relative_omega_error_rad_s": 0.01663673999060406,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 29.0,
+          "state": [
+            -0.34093323565096056,
+            0.7414819787655583,
+            1.4358745086236464,
+            -6.895800250609297,
+            -16.35490684025845,
+            -3.929047333015205,
+            -0.004912503060226651,
+            0.000212113834661163,
+            0.01585308889643726,
+            0.4535091828037139,
+            -0.38807587936804566,
+            -0.2513882761777495
+          ],
+          "truth_position_m": [
+            4.752145723439753,
+            -15.985453518107533,
+            -1.3541503576561809
+          ],
+          "inertial_relative_position_m": [
+            -13.84150348561473,
+            8.805164824266535,
+            3.2913811725077053
+          ],
+          "observed_position_m": [
+            4.752145723439753,
+            -15.985453518107533,
+            -1.3541503576561809
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 954.7957026738512,
+          "solver_status": "infeasible",
+          "range_m": 16.731746362753757,
+          "terminal_region_active": false,
+          "corridor_margin_m": -20.420506549420757,
+          "fov_margin_rad": 0.041036566865678914,
+          "target_frame_speed_m_s": 0.6476646759197191,
+          "relative_omega_error_rad_s": 0.016598135622832258,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        },
+        {
+          "time_seconds": 30.0,
+          "state": [
+            -0.33970046473974475,
+            0.7422611038605429,
+            1.4528182186255054,
+            -6.495253622288565,
+            -16.38216295200286,
+            -4.333937760111432,
+            -0.005089703098972936,
+            6.21118567721117e-05,
+            0.015755137525126337,
+            0.46577994853345217,
+            -0.3770862515215754,
+            -0.24431014824222075
+          ],
+          "truth_position_m": [
+            5.040399127174169,
+            -15.837912325747311,
+            -1.9147152556106448
+          ],
+          "inertial_relative_position_m": [
+            -13.84535950801189,
+            8.796513831659018,
+            3.2922012715933824
+          ],
+          "observed_position_m": [
+            5.040399127174169,
+            -15.837912325747311,
+            -1.9147152556106448
+          ],
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "predicted_cost": 1013.4458341055802,
+          "solver_status": "infeasible",
+          "range_m": 16.7305476512081,
+          "terminal_region_active": false,
+          "corridor_margin_m": -20.532868461537774,
+          "fov_margin_rad": 0.014583417658005415,
+          "target_frame_speed_m_s": 0.647172658628711,
+          "relative_omega_error_rad_s": 0.016556971158822813,
+          "force_norm_n": 0.0,
+          "guidance_final_stage_latched": false
+        }
+      ]
+    }
+  ]
+}

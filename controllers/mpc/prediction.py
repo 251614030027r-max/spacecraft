@@ -132,3 +132,28 @@ class LocalRelativePredictionModel:
         midpoint_twist = x[6:] + 0.5 * self.dt_s * acceleration
         next_transform = se3_exp(x[:6]) @ se3_exp(self.dt_s * midpoint_twist)
         return np.concatenate((se3_log(next_transform, project=True), next_twist))
+
+    def analytic_kinematic_linearization(
+        self, relative_vector: ArrayLike, wrench_vector: ArrayLike
+    ) -> tuple[FloatArray, FloatArray, FloatArray]:
+        """Cheap on-board affine model, exact at the current state/control.
+
+        The Jacobian is the first-order constant-acceleration SE(3) kinematic
+        model. The affine residual is chosen from the nonlinear local predictor,
+        so the approximation interpolates that model at the operating point
+        without 36 finite-difference predictions per refresh.
+        """
+
+        x = _vector(relative_vector, 12, "relative_vector")
+        u = _vector(wrench_vector, 6, "wrench_vector")
+        inverse_inertia = np.linalg.inv(
+            self.chaser_parameters.generalized_inertia
+        )
+        a = np.eye(12, dtype=np.float64)
+        a[:6, 6:] = self.dt_s * np.eye(6)
+        b = np.zeros((12, 6), dtype=np.float64)
+        b[:6] = 0.5 * self.dt_s**2 * inverse_inertia
+        b[6:] = self.dt_s * inverse_inertia
+        nominal = self.predict(x, u)
+        c = nominal - a @ x - b @ u
+        return a, b, c

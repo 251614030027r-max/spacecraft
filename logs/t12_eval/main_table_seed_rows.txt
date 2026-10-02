@@ -1,0 +1,28 @@
+
+Three-way main table -- completion rate does not separate the methods;
+these four columns do. Compute is the controller only (the RK45 truth
+step is excluded); force impulse and time are over completed episodes;
+the worst margin spans every episode.
+
+method          completed   time s  force N*s  worst margin  mean ms   p95 ms  budget p95  budget max  return
+--------------  ---------  -------  ---------  ------------  -------  -------  ----------  ----------  ------
+Pure MPC            32/48   78.825    187.721            --       --       --          --          --      --
+arrival 262400      16/48  111.825    294.101       -21.206  110.914  147.939       1.48x      10.14x      --
+arrival 262401      34/48   99.165    273.776       -14.892  122.660  150.754       1.51x       9.49x      --
+arrival 262402      28/48  153.500    432.192       -14.892  113.420  147.334       1.47x       9.33x      --
+radial 262500        0/48       --         --       -37.681  108.231  145.528       1.46x       9.94x      --
+radial 262501        0/48       --         --       -31.370  107.438  147.617       1.48x       9.71x      --
+radial 262502        0/48       --         --       -29.487  112.027  149.997       1.50x       9.98x      --
+
+worst margin is the single tightest of the five task margins over all episodes. compute is the controller only; budget is controller time / control period (>1 = over budget). Real-time is bounded by the worst case, so budget p95 and budget max are the headline -- an in-budget mean can still hide an over-budget refresh step (mean ms shown for reference).
+
+alignment (confirm the rows are one comparison):
+  Pure MPC               episodes=48  seed=262000  start=--  reference=desired_pose
+  arrival 262400         episodes=48  seed=None  start=--
+  arrival 262401         episodes=48  seed=None  start=--
+  arrival 262402         episodes=48  seed=None  start=--
+  radial 262500          episodes=48  seed=None  start=--
+  radial 262501          episodes=48  seed=None  start=--
+  radial 262502          episodes=48  seed=None  start=--
+
+rows written to D:\py\DRL2\logs\t12_eval\main_table_seed_rows.json

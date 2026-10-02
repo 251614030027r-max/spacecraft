@@ -62,7 +62,7 @@ def _provenance(path: Path) -> dict[str, Any]:
             f"{mission['initial_distance_min_m']:.0f}-"
             f"{mission['initial_distance_max_m']:.0f} m"
         )
-    seed = payload.get("base_seed", payload.get("seed"))
+    seed = payload.get("base_seed", payload.get("seed", payload.get("seed_block")))
     reference = payload.get("mpc_config", {}).get("reference_source")
     return {
         "episodes": payload.get("episodes", payload.get("reachability", {}).get("episodes")),
@@ -88,6 +88,7 @@ def _row(label: str, table: dict[str, Any]) -> dict[str, str]:
     max_over = (max_s / period) if (max_s is not None and period) else None
     force = table["force_impulse_n_s"]["completed_only"]
     returns = table.get("discounted_return", {}).get("completed_only")
+    worst_truth = table.get("worst_truth_normalized_margin")
     worst = table["worst_constraint_margin"]
 
     def budget(value: float | None) -> str:
@@ -99,9 +100,9 @@ def _row(label: str, table: dict[str, Any]) -> dict[str, str]:
         "time_s": _cell(table["completion_time_s"], "mean"),
         "force_ns": _cell(force, "mean"),
         "worst_margin": (
-            "--"
-            if not worst
-            else f"{min(worst.values()):+.3f}"
+            f"{float(worst_truth):+.3f}"
+            if worst_truth is not None
+            else ("--" if not worst else f"{min(worst.values()):+.3f}")
         ),
         "compute_ms": _cell(controller, "mean", 1e3),
         "p95_ms": _cell(controller, "p95", 1e3),

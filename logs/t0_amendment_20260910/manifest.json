@@ -1,0 +1,28 @@
+{
+  "stage": "T0",
+  "baseline": "3e5694c",
+  "status": "completed",
+  "scope": "Profiler CLI and historical compute clarification only; no MPC changes",
+  "diagnostics_equivalence": {
+    "seed": 262000,
+    "horizon": 20,
+    "steps": 300,
+    "components": 6,
+    "bitwise_equal": true,
+    "maximum_absolute_difference": 0.0,
+    "artifacts": [
+      "diagnostics_on.json",
+      "diagnostics_off.json"
+    ]
+  },
+  "pytest": "205 passed in 113.44s (0:01:53)",
+  "pytest_artifact": "pytest.txt",
+  "unreproduced_claims_not_for_citation": [
+    "h30/h35 prior rows",
+    "h35 p95 0.82x",
+    "h50 diagnostics-off 1.18x",
+    "return audit figures",
+    "action audit figures"
+  ],
+  "next_stage": "T1: fixed 12 seeds x h30/h35 plus serial compute measurement"
+}

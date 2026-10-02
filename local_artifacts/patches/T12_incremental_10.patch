@@ -1,0 +1,288 @@
+From 9c646afd6b5371f55ccf141e340eced69e17bd81 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 13 Sep 2026 01:42:06 +0000
+Subject: [PATCH 10/10] docs: window handoff, and the h35 timing profile behind
+ the open compute question
+
+Carries what only lived in the conversation: how the two windows and the user
+relay work, the user's standing requirements in their own words, which claims
+were retracted and why, and the two method lessons this round paid for -- run
+every command before handing it down, and check a gate criterion for being a
+tautology before shipping it.
+
+Also lands the serial single-process h35 profile it cites: mean 81.4 ms, p95
+88.6 ms at 0.89x of the control period, 7 of 300 steps over budget, 300 of 300
+optimal, worst step index 0 at 490 ms. PURE_MPC_ROW_VERIFIED records 77.44 ms
+and 0.77x with 2 of 300 over, measured on another machine. Absolute
+milliseconds do not transfer between machines and the ratio is the reportable
+figure, so that row probably wants a 0.77x-0.89x range rather than a single
+value -- left open rather than edited, since it changes a verified document and
+is the user's call.
+---
+ docs/WINDOW_HANDOFF_20260913.md               | 198 ++++++++++++++++++
+ .../profile_h35_sandbox_20260913.json         |  47 +++++
+ 2 files changed, 245 insertions(+)
+ create mode 100644 docs/WINDOW_HANDOFF_20260913.md
+ create mode 100644 logs/compute_h35/profile_h35_sandbox_20260913.json
+
+diff --git a/docs/WINDOW_HANDOFF_20260913.md b/docs/WINDOW_HANDOFF_20260913.md
+new file mode 100644
+index 0000000..0d2925e
+--- /dev/null
++++ b/docs/WINDOW_HANDOFF_20260913.md
+@@ -0,0 +1,198 @@
++# 窗口交接:上层研究窗口 → 下一个上层窗口
++
++写于 2026-09-13。**读完这一份 + 仓库最新提交,就能接上。**
++
++---
++
++## 1. 谁在干什么
++
++- **你(上层窗口)**:研究策略伙伴。在沙箱 `/home/user/spacecraft` 里做代码审查、
++  跑 `pytest`、跑短诊断与脚本实验、**写执行单、裁决闸门**。不跑长训练。
++- **下层窗口**:在用户机器 `D:\py\DRL2` 上执行。跑训练、大批评估,遇到闸门就停机报告。
++- **用户**:在两个窗口之间转交文件。**你和下层不直接通信。**
++
++**交付方式:补丁。** 沙箱对 `251614030027r-max/spacecraft` 只有读权限,
++`git push` 一直返回 403(本会话试过九次)。所以每轮:本地提交 →
++`git format-patch --stdout <远端头>..HEAD` → 交给用户 → 下层 `git am -3` 落地并推送。
++下层推送后,把本地变基到远端(`git rebase origin/<branch>`),git 会自动跳过已应用的提交。
++
++---
++
++## 2. 用户的核心诉求(原话,别稀释)
++
++这些比任何技术细节都重要,是这条线一路上最容易被违反的东西。
++
++1. **"讨论阶段都是以论文角度来看,而不是具体工程实现"**
++   —— 判断一件事要不要做,先问"它进得了论文吗",不是"它工程上是否完美"。
++2. **"全是黑话,我都不知道耦合在哪" / "用我能听懂的话讲"**
++   —— 不要术语堆砌。讲清楚机制,用普通话。
++3. **"不要磕死角走弯路,加快推进速度" / "没有那么多时间裕度"**
++   —— 速度是硬约束。一轮训练 45–60 小时,**真正稀缺的是轮次,不是 CPU**。
++4. **"本窗口不要频繁输出进度记录日志,有效结果再最终说明"**
++   —— 不报流水账。有结论才说话。
++5. **"底层花太多功夫最后都无法体现在论文上"**
++   —— 下层 MPC 已冻结。只修"会制造虚假失败、影响公平性或任务语义"的问题,
++   修完立刻停手。
++6. **"燃料是最终判据。"** 完成率提升必须和燃料代价并排写。
++7. **"不要再出现这种不严谨问题"**(我曾未核实就断言分支落后)
++   —— 任何数字必须指向仓库产物;没测过的就标"推断"。
++8. 用户明确点过我一个毛病:**"是否又出现了给自己立论推翻的惯用性"**。
++   见第 6 节,那是本会话最重要的方法论教训。
++
++---
++
++## 3. 现在在跑什么
++
++**T12 训练轮,六个运行并行,预计 45–60 小时**(2026-09-13 启动)。
++
++```
++arrival_condition ×3 seeds (262400/401/402)  ← 本文接口，带提交棘轮
++radial_local      ×3 seeds (262500/501/502)  ← 普通航点对照
++全部: --steps 60000 --horizon 35 --no-execution-feedback，从零
++```
++
++执行单是 `docs/T12_EXECUTION_ORDER.md`。**训练期间不动代码。**
++
++**约 30000 决策时(20–25 小时)看一次学习曲线**(checkpoint 每 5000 步):
++三个 `arrival_condition` 种子都已首次成功且完成率在升 → 可考虑 40000 早停省一天;
++有种子全程零成功 → **照报,不重启、不改参数、不换种子**。
++
++训练完 → 按 manifest 里的 `evaluation_flags` 在 48 种子上评估 → 三行主表。
++
++---
++
++## 4. 主线立论:现在成立的是什么
++
++**一句话:** 在一个语义正确、不再人为制造失败的固定 MPC 之外,**仍然存在依赖状态的
++任务级决策余量**,而且**没有任何常数能拿到它**。
++
++48 种子、h35、脚本化上层、无训练(`docs/T11_GATE_B_RULING.md`):
++
++| | 完成/48 | 成功均时 | 成功均燃料 |
++|---|---:|---:|---:|
++| **Pure MPC(固定设定点)** | **32** | 78.8 s | **187.7 N·s** |
++| 最好的非零常数 T=20 | 32 | 98.6 s | 277.0 N·s |
++| 其余常数 T=40…120 | 18–25 | 更差 | 更差 |
++| **逐状态 oracle** | **40** | 91.0 s | **230.9 N·s** |
++
++- 最好的常数 32/48,逐状态 40/48,**差 8 个种子(+25%)**。
++- 逐状态在 32 个基线完成的种子上**一律选 T=0**,所以那 32 个上它逐位就是固定设定点;
++  燃料 187.7 → 230.9 N·s **完全来自新增的 8 个完成**,不是从已有成绩上扣的。
++- **262011 的可行提交集是断开的**({40} 与 {95,100,110},中间 50/60/80 全败),
++  两台机器、两个独立网格交叉验证。**阈值型规则表示不了它。**
++
++**必须一起带的两条:**
++
++1. **逐状态 40/48 是 oracle,不是控制器。** T 是知道结果后按种子挑的,是性能上界,
++   **永远不能作为主表的一行**。
++2. **到今天为止,唯一测过的"学习 vs 基线"对比是负的**(旧下层上 7/12 对 8/12、
++   配对燃料贵 40%)。T12 是**第一次**在干净下层上做这个对比。**没出结果前不许
++   只讲"接口让它可学"。**
++
++---
++
++## 5. 已经撤回的(别再用)
++
++| 撤回的说法 | 为什么 |
++|---|---|
++| "固定设定点让 QP 无解,所以需要上层" | **门控缺陷**造成的假象。修正后 QP 每步都解得出来,同样的种子照样失败。见 `docs/TERMINAL_GATE_DEFECT.md` |
++| "学习上层的贡献是保住下层可行性" | 同上。修正后对照组在 262005 上 0 步不可行,照样失败 |
++| "2 s 时域看不到 152 s 周期,所以 MPC 结构上不可能等待" | **过强**,滚动时域靠重规划可以无限期保持。正确说法:QP 的目标函数里没有任何一项给"现在等、以后赚"记分,而参考是外生常值——**它不是做不到等,是没有理由选择等**。而且这只证明"要某种上层",**不证明"要学习的上层"** |
++| "死种子学会了用负动作长期等待" | 回放证伪,死种子比活种子更少用负动作 |
++| "姿态参考是 262006 的症结" | 探针证伪,`aimed` 死得更早 |
++
++**真正的病因**(已实验证实,`docs/T11_INTERFACE_CALIBRATION.md`):接口的
++`∂r_ref/∂a0 ≈ −6.5 m/单位动作`,而一个 2 s 决策窗的平动权限只有 **0.094 m**。
++注入死种子的动作统计 `a0 ~ N(0.80, 0.09)`,**8/8 完成变 0/8**、燃料涨 10 倍;
++加上**提交棘轮** `b_k = max(b_{k−1}, b_k_cmd)` 后 **7/8 恢复**。棘轮零可调常数,
++`a=(+1,·)` 的逐位 Pure MPC 地板完好(12 种子,字段与燃料差异全为 0)。
++
++---
++
++## 6. 本会话最重要的方法论教训
++
++**用户点过我"给自己立论推翻的惯用性"。分清两件事:**
++
++- **便宜地杀死自己的假设 = 工作正常。** 本会话四次推翻(负动作等待、姿态参考、
++  §3g 无解论、时间尺度论证),每一次都是在花训练之前用几十分钟的诊断杀掉的。
++- **毛病在于:提假设比验假设快,而且用叙事的口气讲还没验的东西。**
++  规矩:凡没测过的,文档里标 **【推】**,嘴上说"这是推断"。
++
++**两条硬规矩,都是被现实教出来的:**
++
++1. **交给下层的每条命令,自己先实跑一遍。**
++   T12 这一轮因此抓出四个会让整轮白跑的坑:`--horizon` 默认 20(全线基线在 h35)、
++   `--parametrization` 默认 `radial_local`、`--phase-time-observation` 默认关
++   (**导致评估直接拒绝加载**)、以及我自己按 24+1 推算错的观测维数(**实测 32 维**)。
++   现在 manifest 会写出一行可复制的 `evaluation_flags`。
++2. **闸门判据写完要自检是不是恒真。**
++   我把闸门 B 写成"任何常数追平基线就停",而**基线本身就是常数 T=0**——恒真。
++   下层严格执行并停机,白等一轮。正确写法是**最好的常数对逐状态**。
++   工具已修(`experiments/summarize_headroom.py`)。
++
++**还有一条提速授权**(`docs/T11_EXECUTION_ORDER.md` §1):
++**结果型评估可以并行**,依据是沙箱并行 3–5 进程的结果与下层串行结果在共同 12 个种子上
++**逐条一致**。但**耗时数字仍须串行单进程单独跑**。
++
++---
++
++## 7. 冻结清单(别碰)
++
++- **下层 MPC**:`infeasible_fallback`、`constraint_slack_limit`、姿态参考、走廊面数、
++  权重、门控。唯一例外是"新发现的明确代码错误",不是"某个种子表现不好"。
++- **任务参数**:几何、约束、时限、奖励、**目标自旋率 `omega_T`**。
++- **T6 接口**:棘轮校准后已冻结。`--no-monotone-commit` 只是日后的消融臂。
++- **不得复用 T7/T8 的任何 checkpoint**(旧缺陷下层上训的,作废)。
++- **不得对结果调参**:不换种子、不挑 checkpoint、不丢失败种子、不加第四轮。
++
++---
++
++## 8. 未决事项
++
++1. **`PURE_MPC_ROW_VERIFIED` 的实时余量表述**(等用户拍板)。
++   该文档记 h35 p95 **77.44 ms / 0.77×、超预算 2/300**;沙箱在另一台机器上实测
++   **88.6 ms / 0.89×、超预算 7/300**(`logs/compute_h35/`,串行单进程、无诊断、
++   300 步、300/300 optimal)。绝对毫秒不跨机器可比,**比值才是可报的**,
++   两者都在 1.0× 内但 0.89× 离边界近得多。建议改成
++   **"0.77×–0.89×(两台机器)"而不是单值**——但这会改动一份已验证文档,**没动**。
++2. **Pure SAC 行**:用户定为**本轮不做**,等耦合线干净后再补。
++   `train/train.py` 只接 `phase2_environment_config`,跑不了 `precapture_planning`,
++   要补入口(约半天)。
++3. **求解性能**:每步 81.4 ms 里九成是那一次 QP。一个 ~400 变量的凸 QP 在编译型栈里
++   通常 1–10 ms,我们贵在 Python + CVXPY 每次调用的规范化。**这一轮绝不能动**
++   (扰动数值、打断逐位复现),但**是这一轮之后最值钱的一项工程**:换直接调 CLARABEL,
++   后面每轮实验成本降一个量级。
++4. **`git push` 403**:组织管理员装 Claude GitHub App,或用户重连 GitHub 连接器。
++   在那之前只能走补丁。
++
++---
++
++## 9. 文档索引(按重要性)
++
++| 文档 | 内容 |
++|---|---|
++| `docs/T12_EXECUTION_ORDER.md` | **在跑的这一轮**:训练命令、评估开关、主表 |
++| `docs/T11_GATE_B_RULING.md` | 闸门 B 通过,以及我那条判据错在哪 |
++| `docs/T11_INTERFACE_CALIBRATION.md` | 提交棘轮,以及不训练就证实接口机制的那组实验 |
++| `docs/T10_GATE_A_RULING.md` | 残留不可行的机制裁决(1/156 局,自清,写进局限) |
++| `docs/TERMINAL_GATE_DEFECT.md` | 门控缺陷:三层测量 + 12 种子两时域 |
++| `docs/T7_T9_REVIEW_20260912.md` | **给第三方审查的全程说明**,含撤回清单与"请优先攻击这几条" |
++| `docs/PURE_MPC_ROW_VERIFIED.md` | Pure MPC 行(注意 §8 第 1 条的未决表述) |
++| `CLAUDE.md` | 仓库全局规矩、陷阱清单、参考文献各自的用途 |
++
++**产物**:`logs/terminal_gate/`、`logs/t10_headroom/`、`logs/t10_gate_a/`、
++`logs/t11_gate_b/`、`logs/t11_interface/`、`logs/compute_h35/`。
++
++---
++
++## 10. 接手后第一件事
++
++**什么都别做,先等。** 训练要跑 45–60 小时,中途动代码只会制造不可比。
++
++等下层带着六个运行的结果回来,那时你要做的是:
++1. 核对 manifest 与 `evaluation_flags`,确认两臂维数正确(32 / 31);
++2. 按分布报三行主表,**不报最好种子**;
++3. 把"逐状态 40/48 是 oracle 上界"和"燃料代价"两条并排写进去;
++4. 如果 `arrival_condition` 三种子的分布**没有**明显超过 Pure MPC 的 32/48,
++   **不要找理由**——按另一个窗口收敛文档的止损线,承认收益不足,回上层重新设计方法。
++   用户要的是"学习层带来稳定正贡献"的证据,不是"传统控制一定有不可修复缺陷"的论证。
+diff --git a/logs/compute_h35/profile_h35_sandbox_20260913.json b/logs/compute_h35/profile_h35_sandbox_20260913.json
+new file mode 100644
+index 0000000..840c3bf
+--- /dev/null
++++ b/logs/compute_h35/profile_h35_sandbox_20260913.json
+@@ -0,0 +1,47 @@
++{
++ "horizon": 35,
++ "seed": 262000,
++ "steps": 300,
++ "serial_single_process": true,
++ "runtime_diagnostics": false,
++ "control_period_ms": 100.0,
++ "controller_ms": {
++  "mean": 81.43131336333293,
++  "p50": 78.3028829999779,
++  "p95": 88.59736709997608,
++  "max": 490.448683000011
++ },
++ "controller_over_budget": {
++  "mean": 0.8143131336333294,
++  "p95": 0.8859736709997609,
++  "max": 4.90448683000011
++ },
++ "environment_step_ms_mean": 4.86013651666705,
++ "worst_steps": [
++  {
++   "index": 0,
++   "ms": 490.448683000011
++  },
++  {
++   "index": 229,
++   "ms": 127.43002100000922
++  },
++  {
++   "index": 190,
++   "ms": 105.72810799999388
++  },
++  {
++   "index": 165,
++   "ms": 104.20084200001156
++  },
++  {
++   "index": 288,
++   "ms": 103.91426199998932
++  }
++ ],
++ "steps_over_budget": 7,
++ "fraction_over_budget": 0.023333333333333334,
++ "status_counts": {
++  "optimal": 300
++ }
++}
+\ No newline at end of file
+-- 
+2.43.0
+

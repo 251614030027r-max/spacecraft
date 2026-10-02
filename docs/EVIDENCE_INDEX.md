@@ -4,7 +4,47 @@
 
 日志是正式审计证据；模型只是可复核策略快照。失败日志保留并不等于失败结论仍然有效，必须结合生成它的代码版本和 `CLAUDE.md` 判断。`models/` 被 `.gitignore` 排除，不能依靠 Git 恢复，因此本次整理不删除任何模型。
 
+## 当前 adaptive sync-entry 主线（2026-09-19）
+
+- 执行单：`docs/ADAPTIVE_MAINLINE_RUNSHEET.md`；
+- 奖励修复：`docs/REWARD_UNITS_FIX_20260919.md`；
+- 训练前审计：`docs/TRAINING_PREFLIGHT_AUDIT_20260919.md`；
+- 第一轮错误奖励运行的最小原始证据：`local_artifacts/reward_units_bug_20260919/`（三份 manifest + 三份 Monitor CSV）；
+- 有效重训产物将写入本机 `logs/adp_rf_262410/411/412/`，未完成前不得形成论文结论。
+
+旧 `adp_262410/411/412` 的 checkpoint、模型和 TensorBoard 已删除：其 critic 学到“悬停优于合法完成”的反向目标，不能用于恢复训练或部署门。旧校准重复目录 `eval/cal/` 已删除；当前小样本校准保留于本机 `eval/cal2/`。
+
+### 2026-09-21/22 第一轮收尾与 V2（13 份）
+
+1. `docs/ADAPTIVE_ROUND1_CLOSEOUT_20260921.md`：第一轮收尾、R5 根因终判与模型哈希；
+2. `docs/COUPLING_DEFECT_DIAGNOSIS_LOG_20260921.md`：D0–D4 诊断日志与复现实物；
+3. `docs/COUPLING_DEFECT_DIAGNOSIS_ORDER_20260921.md`：缺陷诊断预登记执行单；
+4. `docs/DECK_CLEARING_ORDER_20260922.md`：进入耦合设计前的零机时收尾边界；
+5. `docs/ROUND1_EXTERNAL_REVIEW_20260922.md`：第一轮外部审查件；
+6. `docs/V2_EXECUTION_ORDER_20260922.md`：V2 实现预登记执行单；
+7. `docs/V2_EXECUTION_SIGNAL_AUDIT_20260922.md`：离线执行信号审计；
+8. `docs/V2_FIX_ORDER_RATE_LIMIT_20260922.md`：米单位限速缺陷修复单；
+9. `docs/V2_INTERFACE_IMPLEMENTATION_20260922.md`：V2 实现、测试与架构地板；
+10. `docs/V2_RATE_LIMIT_DECISION_20260922.md`：`0.40 m` 上界最终裁决；
+11. `docs/V2_RATE_LIMIT_SWEEP_STOP_20260922.md`：四档扫描、探针纠偏与停止记录；
+12. `docs/V2_REVIEW_RATE_LIMIT_20260922.md`：米位移无界缺陷复核；
+13. `docs/V3_LITERATURE_AND_COUPLING_DIRECTION_20260922.md`：当前耦合方向与核心文献。
+
+文档状态与新窗口阅读顺序以 `docs/INDEX.md` 为权威地图；上述文件只提供证据或当前裁决，不自动授权训练。
+
 ## 当前正式基线证据
+
+### 非合作探针 2（2026-09-16）
+
+正式配对结果见 `docs/PROBE2_NONCOOP_RESULT_20260916.md`：同一感知环境、同一 48 种子下，EKF 估计控制 Pure MPC 为 31/48，真值控制为 32/48，`ΔC=1`，命中预签的“基本持平”停止分支。原始 A/B JSON 仅保留于本机 `logs/precap_noncoop/`，不推入公开仓库。
+
+### T12 / S10（2026-09-15）
+
+正式结论见 `docs/T12_S10_FORMAL_EVALUATION_REPORT_20260915.md`，预登记规则见 `docs/T12_S10_EVAL_EXECUTION_ORDER.md`。可随 Git 审查的精简机器证据位于 `eval/results/t12_s10_20260915/`，包括六组逐局 JSON、训练 manifest、最终汇总和审计主表；本机完整训练、首轮评估与补字段复评仍分别保留于 `logs/t12_train/`、`logs/t12_eval/` 和 `logs/t12_eval_v2/`。该结果属于 full-state `perception=None`，并行运行产生的 compute 数字不构成实时性证据。
+
+预登记结论为分叉 2：`arrival_condition` 三训练种子完成 16/48、34/48、28/48，Pure MPC 为 32/48，`radial_local` 三种子均为 0/48；不得以单个最好种子或事后 oracle 替代三种子分布。
+
+### 较早基线
 
 | 主张 | 日志/模型 |
 |---|---|

@@ -4,6 +4,12 @@
 *.h5
 *.onnx
 *.mat
+# 训练产物：默认不进版本库，发布证据时用显式 force-add
+*.zip
+events.out.tfevents.*
+**/tensorboard/
+**/checkpoints/
+*.json.partial
 __pycache__/
 *.pyc
 .venv/
@@ -13,3 +19,11 @@ data/
 models/
 .pytest_cache/
 scratchpad/
+logs/g0_perception_closed_loop/
+logs/a2_guidance_free/
+logs/a3_deployable_planning/
+logs/adp_*/
+logs/adp_rf_*/
+eval/cal/
+eval/cal2/
+eval/adp/

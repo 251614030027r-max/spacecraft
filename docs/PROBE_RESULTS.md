@@ -50,4 +50,4 @@
 
 ## 统一结论
 
-四个探针没有在当前温室版 `single_phase` 中找到“学习层不可替代、经典 MPC 又无法解决”的缺口。这一工程结论不变，但上层最新战略明确：用户目标仍是 SAC–MPC 耦合论文，不推进无耦合路线 B，也不回温室任务继续制造第五个小众探针。下一步应把被任务抽象掉的真实 MPC-hard 难点作为新副任务单独放回，候选为真实离散推力器/控制分配或未建模目标动力学；先用脚本与 Pure MPC 做无训练最小缺口验证，证实 MPC 短板和任务可行性后，才允许重新设计 hybrid。详见根 `HANDOFF_upper_v2_pivot.md`。
+四个探针没有在温室版 `single_phase` 中找到“学习层不可替代、经典 MPC 又无法解决”的缺口。这一历史结论不变，但它已被后续 precapture-planning 主线取代；当时的转向原文归档在 `docs/handoffs/archive_202609/HANDOFF_upper_v2_pivot.md`，不得作为当前执行授权。旧裁决归档在 `docs/handoffs/archive_202609/HANDOFF_UPPER_RULING_20260908.md`。

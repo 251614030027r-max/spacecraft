@@ -1,0 +1,185 @@
+{
+  "stage": "T5",
+  "status": "completed",
+  "parent_commit": "c042c34ec89c24f6e4807452d496b1aa022fffcc",
+  "selection": "One success and one failure per seed/horizon when available, ordered by start time then policy/radius/angle; no selection by feedback values. Missing successful strata remain missing.",
+  "workers": 4,
+  "runtime_diagnostics": false,
+  "cache_target_trajectory": false,
+  "timing_not_reportable": true,
+  "slack_audit": "MPC reads self._slack.value after solver exception without clearing it; may be stale or zero. New info excludes every fallback step, and reports null if no valid solve.",
+  "analysis_preregistered": {
+    "episode_level_auc_separation": 0.75,
+    "trend_bins_before_end_s": [
+      [
+        -15,
+        -10
+      ],
+      [
+        -10,
+        -5
+      ],
+      [
+        -5,
+        -2
+      ]
+    ],
+    "trend_gate": ">= half of failures show strictly increasing three-bin values, and a higher fraction than successes",
+    "alarm_thresholds": {
+      "fallback_fraction": 0.5,
+      "slack_max": 1.0,
+      "force_peak": 0.95,
+      "torque_peak": 0.95
+    },
+    "alarm_sustain_decisions": 2,
+    "alarm_ignore_first_s": 10,
+    "minimum_lead_s": 2,
+    "alarm_gate": "TPR >= 0.5, FPR <= 0.5, median lead >= 2 s; descriptive on the selected cases only"
+  },
+  "selected": [
+    {
+      "artifact": "case_0_s262005_h20_success.json",
+      "source": "logs\\p1_a_20260910\\commit_s262005_h20_t60.json",
+      "seed": 262005,
+      "horizon": 20,
+      "completed": true,
+      "command": [
+        "--seed",
+        "262005",
+        "--horizon",
+        "20",
+        "--policy",
+        "commit_at",
+        "--parametrization",
+        "absolute",
+        "--commit-time-s",
+        "60.0",
+        "--record-feedback",
+        "--no-diagnostics",
+        "--no-target-cache"
+      ]
+    },
+    {
+      "artifact": "case_1_s262005_h20_failure.json",
+      "source": "logs\\p1_a_20260910\\commit_s262005_h20_t0.json",
+      "seed": 262005,
+      "horizon": 20,
+      "completed": false,
+      "command": [
+        "--seed",
+        "262005",
+        "--horizon",
+        "20",
+        "--policy",
+        "commit_at",
+        "--parametrization",
+        "absolute",
+        "--commit-time-s",
+        "0.0",
+        "--record-feedback",
+        "--no-diagnostics",
+        "--no-target-cache"
+      ]
+    },
+    {
+      "artifact": "case_2_s262005_h35_success.json",
+      "source": "logs\\p1_a_20260910\\hold_s262005_h35_t30_r12.json",
+      "seed": 262005,
+      "horizon": 35,
+      "completed": true,
+      "command": [
+        "--seed",
+        "262005",
+        "--horizon",
+        "35",
+        "--policy",
+        "hold_radius",
+        "--parametrization",
+        "absolute",
+        "--commit-time-s",
+        "30.0",
+        "--record-feedback",
+        "--no-diagnostics",
+        "--no-target-cache",
+        "--hold-radius-m",
+        "12.0"
+      ]
+    },
+    {
+      "artifact": "case_3_s262005_h35_failure.json",
+      "source": "logs\\p1_a_20260910\\commit_s262005_h35_t0.json",
+      "seed": 262005,
+      "horizon": 35,
+      "completed": false,
+      "command": [
+        "--seed",
+        "262005",
+        "--horizon",
+        "35",
+        "--policy",
+        "commit_at",
+        "--parametrization",
+        "absolute",
+        "--commit-time-s",
+        "0.0",
+        "--record-feedback",
+        "--no-diagnostics",
+        "--no-target-cache"
+      ]
+    },
+    {
+      "artifact": "case_4_s262006_h20_failure.json",
+      "source": "logs\\p1_a_20260910\\commit_s262006_h20_t0.json",
+      "seed": 262006,
+      "horizon": 20,
+      "completed": false,
+      "command": [
+        "--seed",
+        "262006",
+        "--horizon",
+        "20",
+        "--policy",
+        "commit_at",
+        "--parametrization",
+        "absolute",
+        "--commit-time-s",
+        "0.0",
+        "--record-feedback",
+        "--no-diagnostics",
+        "--no-target-cache"
+      ]
+    },
+    {
+      "artifact": "case_5_s262006_h35_failure.json",
+      "source": "logs\\p1_a_20260910\\commit_s262006_h35_t0.json",
+      "seed": 262006,
+      "horizon": 35,
+      "completed": false,
+      "command": [
+        "--seed",
+        "262006",
+        "--horizon",
+        "35",
+        "--policy",
+        "commit_at",
+        "--parametrization",
+        "absolute",
+        "--commit-time-s",
+        "0.0",
+        "--record-feedback",
+        "--no-diagnostics",
+        "--no-target-cache"
+      ]
+    }
+  ],
+  "signals": {
+    "distribution": true,
+    "time_trend": false,
+    "early_warning": true
+  },
+  "next_stage": "stop_for_T6_authorization",
+  "recording_tests": "2 passed in 2.15s",
+  "final_regression": "211 passed in 121.49s (0:02:01)",
+  "completed_at_utc": "2026-09-10T15:08:44.126844+00:00",
+  "frozen_code_audit": "No diff from 3e5694c in controllers/, dynamics/, task/reward/config files or train/"
+}
