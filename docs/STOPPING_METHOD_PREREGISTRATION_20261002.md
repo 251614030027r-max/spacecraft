@@ -45,6 +45,15 @@
 
 **(3) 后段标签的真实性核验（开发 run 之前，上层在沙盒中完成）。** 在 280000–280003 四个开局上，交接前分别有 0 个和 10 个学习决策（随机任务动作），在交接后第 2、8、16 个决策处比较两条路径：MPC 不重置继续飞，与在该处重置 MPC 后接管。通过条件：所有比较点的干净完成结局一致，且折扣回报差 ≤ 0.5（成败相差 40 的奖励单位下）。工具 `experiments/v3_stopping.py labelcheck`，结果见 `eval/stopping/label_check/`。通过则后段状态全部作为 Q_H 标签；不通过则只用交接点的精确标签（预先写定的退路）。
 
+**核验结果（2026-10-02）：通过。** 24 个比较点（其中 18 个干净完成、6 个失败）结局全部一致，折扣回报差最大 9.3e-4，远低于 0.5。因此后段状态全部作为 Q_H 标签，冻结。产物（提交 `c78ac74`，工作树干净）：
+
+| 文件 | SHA-256 |
+|---|---|
+| `eval/stopping/label_check/label_check_280000.json` | `f0165e8e508c422c80e64a35122f95fc31d2fa2181c818ca384ccbe9c8c6ebbd` |
+| `eval/stopping/label_check/label_check_280001.json` | `d362a3a778054e85c1673dfdf207440e1ae798c03c4add80c2ce305c09264f46` |
+| `eval/stopping/label_check/label_check_280002.json` | `b7cebf20b99e9692266ff20642d2cdd553c4635148217536abb8178d15f0609a` |
+| `eval/stopping/label_check/label_check_280003.json` | `4678e905376917a8b58cc34838005c726179e2886cb3e080d219e4083097f13f` |
+
 ## 4. 折扣改为 0.999 的依据
 
 | 路线（按任务奖励） | γ = 0.99 | γ = 0.999 |
