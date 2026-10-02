@@ -157,18 +157,15 @@ def test_handoff_step_is_not_a_continue_transition_and_earns_its_updates(tmp_pat
             "handoff_returns": np.array([40.0, 40.0, 40.0])}
     model._store_transition(model.replay_buffer, np.zeros((1, 2)), obs, np.zeros(1), np.array([True]), [info])
     assert model.replay_buffer.size() == stored
-    assert model.handoff_buffer_size == 3 and model.num_timesteps == 12 and model._pending_gradient_steps == 2
-    # Across the warm-up boundary only the suffix decisions past learning_starts earn updates.
-    model.learning_starts, model._pending_gradient_steps = 13, 0
-    model._store_transition(model.replay_buffer, np.zeros((1, 2)), obs, np.zeros(1), np.array([True]), [info])
-    assert model.num_timesteps == 14 and model._pending_gradient_steps == 1
-    model.learning_starts, model._pending_gradient_steps = 0, 2
+    # The suffix labels Q_H but adds no outer decision and no update.
+    assert model.handoff_buffer_size == 3 and model.num_timesteps == 10
+    assert model.suffix_decisions_total == 3 and model.continue_transitions == 0
     model.set_logger(configure(None, [""]))
     states = th.as_tensor(model.replay_buffer.observations[:8, 0])
     with th.no_grad():
         before = float(th.sigmoid(model.stop.logit(states)).mean())
     model.train(1, batch_size=8)
-    assert model._n_updates == 3 and model._pending_gradient_steps == 0
+    assert model._n_updates == 1
     # Handoff is worth +40 everywhere and the untrained continuation is ~0:
     # the stopping head must move toward handing off.
     for _ in range(40):
@@ -235,7 +232,7 @@ def test_train_and_evaluate_cli(tmp_path: Path) -> None:
                    cwd=REPOSITORY, check=True, capture_output=True)
     run_dir = tmp_path / "r"
     manifest = json.loads((run_dir / "manifest.json").read_text())
-    assert manifest["status"] == "completed" and manifest["actual_simulated_decisions"] >= 6
+    assert manifest["status"] == "completed" and manifest["actual_outer_decisions"] >= 6
     assert manifest["hybrid"]["decision_discount_factor"] == 0.999
     assert (run_dir / "train.monitor.csv").exists()
     out = tmp_path / "eval"
@@ -244,3 +241,15 @@ def test_train_and_evaluate_cli(tmp_path: Path) -> None:
                    cwd=REPOSITORY, check=True, capture_output=True)
     episode = json.loads((out / "seed_263004.json").read_text())
     assert episode["row"] == "stopping" and episode["decisions"] == 2 and episode["model_sha256"]
+
+
+def test_coordination_gain_compares_against_the_same_policy_alone() -> None:
+    from experiments.v3_stopping import coordination_gain
+
+    row = lambda clean, t, k=None: {"clean_completion": clean, "survival_s": t, "equivalent_delta_v_m_s": t / 100, "handoff_k": k}
+    learned = {0: row(True, 200), 1: row(False, 300), 2: row(True, 180)}
+    stopping = {0: row(True, 150, 20), 1: row(True, 140, 5), 2: row(False, 90, 3)}
+    gain = coordination_gain(learned, stopping)
+    assert gain["clean_completions"] == {"learned_only": 2, "stopping": 2}
+    assert gain["rescued_from_learned_only"] == [1] and gain["destroyed_from_learned_only"] == [2]
+    assert gain["shared_clean"] == 1 and gain["median_time_change_s"] == -50

@@ -2,9 +2,10 @@
 
 The task, the interface, the reward terms and Pure MPC are the V3e mainline's;
 the differences are the stopping head, ``Q_H`` on the true MPC suffix return,
-and the decision discount 0.999. ``--steps`` counts **simulated** decisions
-(learned plus Pure MPC suffix), so 60,000 is the same simulation and update
-budget as a V3e run. The legacy ``train.train_hybrid`` is untouched.
+and the decision discount 0.999. ``--steps`` counts **outer decision points**
+(each continue or handoff decision counts one) with one gradient update each,
+as in V3e; the Pure MPC suffix after a handoff only labels ``Q_H`` and its
+simulation cost is reported separately. The legacy ``train.train_hybrid`` is untouched.
 """
 
 from __future__ import annotations
@@ -50,11 +51,11 @@ INFO_KEYWORDS = (
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--steps", type=int, required=True, help="simulated decisions (learned + MPC suffix)")
+    parser.add_argument("--steps", type=int, required=True, help="outer decision points (continue or handoff)")
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--run-name", type=str, required=True)
     parser.add_argument("--log-root", type=Path, default=Path("logs"))
-    parser.add_argument("--checkpoint-freq", type=int, default=5_000, help="simulated decisions")
+    parser.add_argument("--checkpoint-freq", type=int, default=5_000, help="outer decisions")
     parser.add_argument("--device", choices=("cpu", "cuda", "auto"), default="cpu")
     parser.add_argument("--learning-starts", type=int, default=None, help="smoke tests only")
     parser.add_argument("--net-arch", type=str, default=None, help="smoke tests only, e.g. 16,16")
@@ -91,9 +92,10 @@ def main(argv: list[str] | None = None) -> None:
         **_code_provenance(),
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "seed": args.seed,
-        "requested_simulated_decisions": args.steps,
-        "budget_semantics": "simulated decisions = learned decisions + Pure MPC suffix "
-        "decisions; one gradient update per simulated decision after learning_starts",
+        "requested_outer_decisions": args.steps,
+        "budget_semantics": "outer decision points (each continue or handoff decision "
+        "counts one), one gradient update per outer decision after learning_starts; "
+        "Pure MPC suffix decisions label Q_H only and are counted separately",
         "fresh_initialization": True,
         "smoke_overrides": smoke_overrides or None,
         "mainline": MAINLINE_V3E,
@@ -153,8 +155,10 @@ def main(argv: list[str] | None = None) -> None:
         raise
     finally:
         manifest.update(
-            actual_simulated_decisions=int(model.num_timesteps),
+            actual_outer_decisions=int(model.num_timesteps),
+            continue_transitions=int(model.continue_transitions),
             handoff_episodes=int(model.handoff_episodes),
+            suffix_simulated_decisions=int(model.suffix_decisions_total),
             handoff_labels=int(model.handoff_labels),
             gradient_updates=int(model._n_updates),
         )

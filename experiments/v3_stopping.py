@@ -8,13 +8,17 @@ Reading rules: ``docs/STOPPING_METHOD_PREREGISTRATION_20261002.md``.
                            MPC at the first decision with beta(s) >= 0.5;
               ``learned``  the same task policy with the handoff disabled
                            (reported, never gated)
+    labelcheck  Q_H label semantics: at suffix states, Pure MPC continuing
+              (no reset) vs Pure MPC taking over there (reset), same outcome?
     devcheck  the three structural checks of the short development run
-    readout   per-model counts and the preregistered verdict
+    readout   per-model counts, the preregistered verdict, and the
+              coordination gain of handoff over the same policy flying alone
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import json
 import os
@@ -30,7 +34,7 @@ from env.hybrid_env import PrecaptureHybridEnv
 from experiments.v3_common import parse_seed_range
 from experiments.v3_handoff_scan import ImpulseMeter, _outcome
 from experiments.v3_stage_c import _pairs, _scans, _write_json, model_verdict
-from train.stopping import StoppingSAC, stopping_configs
+from train.stopping import STOPPING, StoppingSAC, discounted_returns_to_go, stopping_configs
 from train.train_hybrid import _code_provenance
 from train.train_stopping import METHOD
 from train.v3_values import sha256_file
@@ -48,6 +52,16 @@ DEV_MIN_DISTINCT_K = 3          # D3a: handoffs at k >= 1 occur at >= 3 distinct
 DEV_MIN_GAP_RANGE = 1.0         # D3b: median within-episode range of Q_H - Q_C >= 1 reward unit
 
 MIN_PASSING_MODELS = 2
+
+#: Label check: openings outside every block used so far; handoff after a
+#: prefix of 0 or 10 learned decisions with seeded uniform task actions; the
+#: suffix states compared sit 2, 8 and 16 decisions after the handoff.
+LABEL_CHECK_SEEDS = "280000-280003"
+LABEL_CHECK_PREFIXES = (0, 10)
+LABEL_CHECK_POSITIONS = (2, 8, 16)
+#: Pass: every compared state has the same clean outcome, and the discounted
+#: returns differ by at most this (task reward units; success/failure are +-20).
+LABEL_CHECK_MAX_RETURN_GAP = 0.5
 
 
 def env_for_stopping_run(run_dir: Path, allow_incomplete: bool) -> tuple[dict[str, Any], PrecaptureHybridEnv]:
@@ -155,6 +169,83 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
         env.close()
 
 
+# -- Q_H label semantics -------------------------------------------------------------------
+
+
+def label_check_episode(
+    env: PrecaptureHybridEnv, controller_b: Any, seed: int, prefix: int, positions: tuple[int, ...], gamma: float
+) -> list[dict[str, Any]]:
+    observation, _ = env.reset(seed=int(seed))
+    rng = np.random.default_rng(int(seed))
+    zero = np.zeros(env.action_space.shape, dtype=np.float64)
+    for _ in range(prefix):
+        _, _, terminated, truncated, _ = env.step_with_branch(rng.uniform(-1.0, 1.0, size=zero.shape), branch="learned")
+        if terminated or truncated:
+            return []
+    rewards: list[float] = []
+    snapshots: dict[int, Any] = {}
+    j = 0
+    while True:
+        if j in positions:
+            snapshots[j] = copy.deepcopy(env, memo={id(env.controller): controller_b})
+        _, reward, terminated, truncated, info = env.step_with_branch(zero, branch="baseline")
+        rewards.append(float(reward))
+        j += 1
+        if terminated or truncated:
+            break
+    continued = _outcome(env, info)
+    returns = discounted_returns_to_go(rewards, gamma)
+    rows = []
+    for position, snapshot in sorted(snapshots.items()):
+        controller_b.reset()
+        reset_rewards: list[float] = []
+        while True:
+            _, reward, terminated, truncated, info_b = snapshot.step_with_branch(zero, branch="baseline")
+            reset_rewards.append(float(reward))
+            if terminated or truncated:
+                break
+        reset = _outcome(snapshot, info_b)
+        g_reset = float(discounted_returns_to_go(reset_rewards, gamma)[0])
+        rows.append({
+            "seed": int(seed), "prefix": prefix, "suffix_position": position,
+            "return_continue": float(returns[position]), "return_reset": g_reset,
+            "return_gap": abs(float(returns[position]) - g_reset),
+            "clean_continue": continued["clean_completion"], "clean_reset": reset["clean_completion"],
+            "end_time_continue_s": continued["survival_s"], "end_time_reset_s": reset["survival_s"],
+        })
+    return rows
+
+
+def cmd_labelcheck(args: argparse.Namespace) -> None:
+    if args.output.exists():
+        raise FileExistsError(args.output)
+    torch.set_num_threads(1)
+    environment, hybrid = stopping_configs()
+    env, env_b = PrecaptureHybridEnv(environment, hybrid), PrecaptureHybridEnv(environment, hybrid)
+    rows: list[dict[str, Any]] = []
+    try:
+        for seed in parse_seed_range(args.seeds):
+            for prefix in LABEL_CHECK_PREFIXES:
+                found = label_check_episode(env, env_b.controller, seed, prefix, LABEL_CHECK_POSITIONS, STOPPING.gamma)
+                rows += found
+                print(f"seed {seed} prefix {prefix}: {len(found)} states", flush=True)
+    finally:
+        env.close()
+        env_b.close()
+    same_outcome = all(r["clean_continue"] == r["clean_reset"] for r in rows)
+    max_gap = max((r["return_gap"] for r in rows), default=None)
+    result = {
+        "preregistration": "docs/STOPPING_METHOD_PREREGISTRATION_20261002.md",
+        "seeds": args.seeds, "states": len(rows), "same_clean_outcome": same_outcome,
+        "max_return_gap": max_gap, "max_return_gap_allowed": LABEL_CHECK_MAX_RETURN_GAP,
+        "pass": bool(rows) and same_outcome and max_gap <= LABEL_CHECK_MAX_RETURN_GAP,
+        "rows": rows, **_code_provenance(),
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    _write_json(args.output, result)
+    print(json.dumps({k: result[k] for k in ("states", "same_clean_outcome", "max_return_gap", "pass")}))
+
+
 # -- development checks -----------------------------------------------------------------
 
 
@@ -232,6 +323,28 @@ def final_verdict(models: dict[str, dict[str, Any]], fidelity_ok: bool) -> str:
     return "METHOD_HOLDS" if passing >= MIN_PASSING_MODELS else "METHOD_DOES_NOT_HOLD"
 
 
+def coordination_gain(learned: dict[int, dict], stopping: dict[int, dict]) -> dict[str, Any]:
+    """What the handoff adds over the same task policy flying alone (reported, not gated)."""
+
+    seeds = sorted(learned)
+    clean = lambda rows, s: bool(rows[s]["clean_completion"])
+    shared = [s for s in seeds if clean(learned, s) and clean(stopping, s)]
+
+    def median_delta(key: str) -> float | None:
+        return float(np.median([stopping[s][key] - learned[s][key] for s in shared])) if shared else None
+
+    return {
+        "clean_completions": {"learned_only": sum(clean(learned, s) for s in seeds),
+                              "stopping": sum(clean(stopping, s) for s in seeds)},
+        "rescued_from_learned_only": [s for s in seeds if clean(stopping, s) and not clean(learned, s)],
+        "destroyed_from_learned_only": [s for s in seeds if clean(learned, s) and not clean(stopping, s)],
+        "shared_clean": len(shared),
+        "median_time_change_s": median_delta("survival_s"),
+        "median_delta_v_change_m_s": median_delta("equivalent_delta_v_m_s"),
+        "handoff_k": [stopping[s]["handoff_k"] for s in seeds],
+    }
+
+
 def cmd_readout(args: argparse.Namespace) -> None:
     if args.output.exists():
         raise FileExistsError(args.output)
@@ -277,6 +390,10 @@ def cmd_readout(args: argparse.Namespace) -> None:
         "note": "model_verdict's 'hybrid' is the stopping row; 'learned' is the same policy with handoff disabled",
         "verdict": final_verdict(models, not problems),
         "models": models,
+        "coordination_gain": {} if problems else {
+            m: coordination_gain({s: learned[m][s] for s in expected}, {s: stopping[m][s] for s in expected})
+            for m in stopping
+        },
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     _write_json(args.output, result)
@@ -298,6 +415,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--max-decisions", type=int, default=None, help="tests only")
     p.add_argument("--allow-incomplete-run", action="store_true")
     p.set_defaults(func=cmd_evaluate)
+
+    p = sub.add_parser("labelcheck")
+    p.add_argument("--seeds", default=LABEL_CHECK_SEEDS)
+    p.add_argument("--output", type=Path, required=True)
+    p.set_defaults(func=cmd_labelcheck)
 
     p = sub.add_parser("devcheck")
     p.add_argument("--run-dir", type=Path, required=True)

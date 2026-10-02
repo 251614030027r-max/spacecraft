@@ -36,11 +36,13 @@ Two engineering consequences are handled here rather than left implicit:
   are off-policy (``Q_H`` is a Monte Carlo regression on a fixed controller,
   ``Q_C`` bootstraps through the target ``V``), so the clip changes which data
   is collected, not what is estimated. Deployment uses ``beta`` alone.
-* **Compute and update budget.** A handoff runs the Pure MPC suffix inside one
-  environment step. ``num_timesteps`` counts *simulated* decisions (learned
-  plus suffix) and one gradient update is made per simulated decision, so the
-  training budget and the update count per unit of simulation are the same as
-  V3e's 60k learned decisions.
+* **Budget and update count.** A handoff runs the Pure MPC suffix inside one
+  environment step. ``num_timesteps`` counts **outer decision points** -- each
+  continue or handoff decision counts one -- and one gradient update is made
+  per outer decision, exactly as in V3e. The suffix decisions produce ``Q_H``
+  labels only: they do not count toward the budget and earn no task-policy
+  update (they carry no new continue transition). Their simulation cost is
+  counted separately (``suffix_decisions_total``) and reported.
 
 The suffix also labels every state Pure MPC passes through on the way, with its
 own discounted return to go. Those states are flown by an MPC that has not
@@ -326,7 +328,8 @@ class StoppingSAC(SAC):
         self._handoff_pos = 0
         self._handoff_full = False
         self._handoff_rng = np.random.default_rng(None if self.seed is None else int(self.seed) + 7919)
-        self._pending_gradient_steps = 0
+        self.continue_transitions = 0
+        self.suffix_decisions_total = 0
         self.handoff_episodes = 0
         self.handoff_labels = 0
 
@@ -382,24 +385,20 @@ class StoppingSAC(SAC):
     def _store_transition(self, replay_buffer, buffer_action, new_obs, reward, dones, infos) -> None:
         info = infos[0]
         if not info.get("handoff"):
+            self.continue_transitions += 1
             super()._store_transition(replay_buffer, buffer_action, new_obs, reward, dones, infos)
             return
         # The handoff step is not a continue transition: no task action was
-        # executed. It contributes Q_H labels, and its extra simulated decisions
-        # count toward the budget and earn their gradient updates.
+        # executed. It is one outer decision (already counted by SB3) and
+        # contributes Q_H labels; its suffix adds no budget and no update.
         self.add_handoff_labels(info["handoff_states"], info["handoff_returns"])
         self.handoff_episodes += 1
-        extra = int(info["suffix_decisions"]) - 1
-        self.num_timesteps += extra
-        # Only the suffix decisions past learning_starts earn an update.
-        self._pending_gradient_steps += max(0, min(extra, self.num_timesteps - self.learning_starts))
+        self.suffix_decisions_total += int(info["suffix_decisions"])
         self._last_obs = new_obs
 
     # -- updates --------------------------------------------------------------------
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
-        gradient_steps += self._pending_gradient_steps
-        self._pending_gradient_steps = 0
         self.policy.set_training_mode(True)
         optimizers = [self.actor.optimizer, self.critic.optimizer, self.stop_head_optimizer, self.q_handoff_optimizer]
         self._update_learning_rate(optimizers)
@@ -483,10 +482,11 @@ class StoppingSAC(SAC):
             self.logger.record("stop/q_handoff_minus_v_continue", np.mean(gaps))
         self.logger.record("stop/handoff_episodes", self.handoff_episodes)
         self.logger.record("stop/handoff_labels", self.handoff_labels)
+        self.logger.record("stop/suffix_decisions_total", self.suffix_decisions_total)
 
 
 class SimulatedDecisionCheckpoint(BaseCallback):
-    """Save the model each time the simulated-decision count crosses a multiple."""
+    """Save the model each time the outer-decision count crosses a multiple."""
 
     def __init__(self, every: int, directory: Any, prefix: str = "stopping") -> None:
         super().__init__()
@@ -497,7 +497,7 @@ class SimulatedDecisionCheckpoint(BaseCallback):
 
     def _on_step(self) -> bool:
         while self.model.num_timesteps >= self.next:
-            self.model.save(self.directory / f"{self.prefix}_{self.next}_decisions")
+            self.model.save(self.directory / f"{self.prefix}_{self.next}_outer_decisions")
             self.next += self.every
         return True
 

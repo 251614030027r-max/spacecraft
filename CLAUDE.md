@@ -71,11 +71,14 @@ perception line and the 24D mission schemas is history; it is kept under
 > init logit -5, deploy at beta >= 0.5); Q_H regressed on the realized Pure MPC
 > suffix return (31D policy-independent features); Q_C target r + gamma V(s'),
 > V = beta Q_H + (1-beta) V_C + alpha H(beta); gamma 0.999 everywhere;
-> behaviour handoff clip [0.002, 0.01] in training only; budget in simulated
-> decisions. Not a third continuous action with a hard threshold. Code
+> behaviour handoff clip [0.002, 0.01] in training only; budget in outer
+> decision points (the Pure MPC suffix labels Q_H only, earns no update).
+> Not a third continuous action with a hard threshold. Code
 > `train/stopping.py`, `train/train_stopping.py`, `experiments/v3_stopping.py`.
-> Dev run 262440 x 20k -> three structural checks on 266000 -> freeze -> fresh
-> 262430-262432 x 60k -> formal block 267000-267047.
+> Dev run 262440 x 30k -> three structural checks on 266000 -> freeze -> fresh
+> 262430-262432 x 60k -> formal block 267000-267047; readout must report the
+> coordination gain over the same policy with handoff disabled. Frozen
+> 2026-10-02: no further classifier, safe set, hysteresis, interface rule or reward.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
