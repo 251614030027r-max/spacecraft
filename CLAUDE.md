@@ -59,6 +59,11 @@ perception line and the 24D mission schemas is history; it is kept under
 > `docs/STAGE_C_PREREGISTRATION_20261002.md`, lower order
 > `docs/STAGE_C_RUN_ORDER_LOWER_20261002.md` (on A: E training seeds
 > 262430-262432 start immediately; E eval block 267000-267047).
+> **Stage C verdict (2026-10-02): C_STOP** (reproduced; `docs/STAGE_C_RESULT_20261002.md`):
+> out-of-fold weighted precision tops out at 0.89 (< 0.95), C3 not run, block
+> 266000 still unused. Exploratory: 111/144 first triggers at k=0, where the
+> classifier cannot separate Pure successes (AUC 0.45 on 48 openings, 11
+> negatives); fixed-time handoff gives no gain. Next step is the user's call.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
