@@ -64,6 +64,18 @@ perception line and the 24D mission schemas is history; it is kept under
 > 266000 still unused. Exploratory: 111/144 first triggers at k=0, where the
 > classifier cannot separate Pure successes (AUC 0.45 on 48 openings, 11
 > negatives); fixed-time handoff gives no gain. Next step is the user's call.
+> **Final method (user's call, 2026-10-02): learned stopping option**
+> (`docs/STOPPING_METHOD_PREREGISTRATION_20261002.md`, run order
+> `docs/STOPPING_RUN_ORDER_LOWER_20261002.md`). Unchanged V3e 2D task policy
+> and interface; a Bernoulli stopping head beta(s) (discrete soft actor-critic,
+> init logit -5, deploy at beta >= 0.5); Q_H regressed on the realized Pure MPC
+> suffix return (31D policy-independent features); Q_C target r + gamma V(s'),
+> V = beta Q_H + (1-beta) V_C + alpha H(beta); gamma 0.999 everywhere;
+> behaviour handoff clip [0.002, 0.01] in training only; budget in simulated
+> decisions. Not a third continuous action with a hard threshold. Code
+> `train/stopping.py`, `train/train_stopping.py`, `experiments/v3_stopping.py`.
+> Dev run 262440 x 20k -> three structural checks on 266000 -> freeze -> fresh
+> 262430-262432 x 60k -> formal block 267000-267047.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
