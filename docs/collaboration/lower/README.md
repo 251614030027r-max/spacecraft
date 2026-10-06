@@ -5,3 +5,5 @@
 新交接写入handoffs/<主题>_<日期>.md，并更新本索引和../CURRENT.json。完整原始ZIP在Spacecraft上层交付/最新，模型仅给路径和SHA；公开材料按当轮授权。
 
 最新价值检验：[交接](handoffs/value_check_20261006.md)。
+
+最新最终主线：[下层交接](handoffs/final_mainline_20261006.md)。
