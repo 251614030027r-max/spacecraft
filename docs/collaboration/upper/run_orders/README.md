@@ -1,3 +1,8 @@
-# 新执行单存放位置
+# 执行单存放位置
 
-上层新增<主题>_<日期>.md，使用../TASK_TEMPLATE.md；已执行文件保持固定，修订另建文件并声明替代关系。当前执行单STOPPING_VALUE_RULE_CHECK_20261006.md已由用户直接授权，758c9a8冻结检验运行中。
+上层新增 `<主题>_<日期>.md`，使用 `../TASK_TEMPLATE.md`。已执行的文件保持不变；修订时另建新文件，并在文件中写明替代了哪一份。
+
+| 文件 | 状态 |
+|---|---|
+| `FINAL_MAINLINE_20261006.md` | 已授权待执行（科学提交 e855bb7） |
+| `STOPPING_VALUE_RULE_CHECK_20261006.md` | 已执行，结论 VALUE_RULE_DOES_NOT_HOLD |

@@ -9,3 +9,5 @@
 两方审查均确认方法未过门。上层将头与价值不一致解释为设计缺陷，下层说明确定性Q_C诊断不等于停止训练中的V_C；这些解释保留署名差异，不覆盖正式指标，也不授权执行新方法。需要因果或反事实确认时另列实验。
 
 [价值规则检验完整证据](https://github.com/251614030027r-max/spacecraft/tree/2d8a5818037b6d753f4866969fae372da6cbef84/docs/reviews/stopping_value_check_20261006)，官方VALUE_RULE_DOES_NOT_HOLD，仅开发验证。
+
+|上层价值检验结果|2336a3e|[结果记录](https://github.com/251614030027r-max/spacecraft/blob/2336a3e/docs/STOPPING_VALUE_RULE_RESULT_20261006.md)|确认 VALUE_RULE_DOES_NOT_HOLD；名义工况下交接线收口|
