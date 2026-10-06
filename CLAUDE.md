@@ -79,6 +79,15 @@ perception line and the 24D mission schemas is history; it is kept under
 > 262430-262432 x 60k -> formal block 267000-267047; readout must report the
 > coordination gain over the same policy with handoff disabled. Frozen
 > 2026-10-02: no further classifier, safe set, hysteresis, interface rule or reward.
+> **Formal stopping round (2026-10-06): METHOD_DOES_NOT_HOLD** (Pure 41/48 on
+> 267000; stopping 37/41/36, destroyed 5/3/5; handoff gain over the same policy
+> alone +25/+10/+19, 0 violations). Upper review
+> `docs/STOPPING_FORMAL_REVIEW_20261006.md`: the stopping head disagrees with its
+> own values (59/127 handoffs fired with Q_H < Q_C), Q_H separates takeover
+> outcomes weakly (AUC 0.64), the co-trained policy alone is slow (12/31/17).
+> User-approved no-training check of the value rule (hand off at the first
+> Q_H >= Q_C(s, mu(s))) on fresh block 268000-268047:
+> `docs/STOPPING_VALUE_RULE_CHECK_20261006.md`.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in

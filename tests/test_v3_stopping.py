@@ -253,3 +253,37 @@ def test_coordination_gain_compares_against_the_same_policy_alone() -> None:
     assert gain["clean_completions"] == {"learned_only": 2, "stopping": 2}
     assert gain["rescued_from_learned_only"] == [1] and gain["destroyed_from_learned_only"] == [2]
     assert gain["shared_clean"] == 1 and gain["median_time_change_s"] == -50
+
+
+def test_value_row_follows_the_value_comparison() -> None:
+    env = _env()
+    model = _model(env)
+    meter = ImpulseMeter(env.controller, float(env.environment_config.dt_s))
+    run = lambda row: run_stopping_episode(env, model, 263004, row, meter, max_decisions=2)
+    pure, learned = run("pure"), run("learned")
+    with th.no_grad():
+        model.stop.stop_head[-1].bias.fill_(-50.0)  # the head says continue; the value row ignores it
+        for net in (model.stop.q_handoff_1, model.stop.q_handoff_2):
+            net[-1].bias.fill_(1.0e4)
+    high = run("value")
+    with th.no_grad():
+        for net in (model.stop.q_handoff_1, model.stop.q_handoff_2):
+            net[-1].bias.fill_(-1.0e4)
+    low = run("value")
+    env.close()
+    for key in ("survival_s", "equivalent_delta_v_m_s", "completed"):
+        assert high[key] == pure[key] and low[key] == learned[key]
+    assert high["handoff_k"] == 0 and low["handoff_k"] is None
+
+
+def test_value_gate_verdict() -> None:
+    from experiments.v3_stopping import gate_verdict
+
+    row = lambda clean, k=None: {"clean_completion": clean, "zero_violation": True, "survival_s": 100.0,
+                                 "equivalent_delta_v_m_s": 1.0, "handoff_k": k}
+    pure = {s: row(s < 6) for s in range(8)}
+    better = {s: row(s != 0, k=3) for s in range(8)}
+    v = gate_verdict(pure, better)
+    assert v["passes"] and v["rescued"] == [6, 7] and v["destroyed"] == [0]
+    worse = {s: row(s not in (0, 1, 2), k=0) for s in range(8)}
+    assert not gate_verdict(pure, worse)["passes"]

@@ -8,9 +8,14 @@ Reading rules: ``docs/STOPPING_METHOD_PREREGISTRATION_20261002.md``.
                            MPC at the first decision with beta(s) >= 0.5;
               ``learned``  the same task policy with the handoff disabled
                            (reported, never gated)
+              ``value``    the same frozen models, handoff at the first decision
+                           with Q_H(s) >= Q_C(s, mu(s)) -- the value comparison
+                           itself, bypassing the stopping head (2026-10-06
+                           check, docs/STOPPING_VALUE_RULE_CHECK_20261006.md)
     labelcheck  Q_H label semantics: at suffix states, Pure MPC continuing
               (no reset) vs Pure MPC taking over there (reset), same outcome?
     devcheck  the three structural checks of the short development run
+    readout-value  verdict of the value-rule check on block 268000
     readout   per-model counts, the preregistered verdict, and the
               coordination gain of handoff over the same policy flying alone
 """
@@ -40,6 +45,14 @@ from train.train_stopping import METHOD
 from train.v3_values import sha256_file
 
 DEV_BLOCK = "266000-266047"
+VALUE_CHECK_BLOCK = "268000-268047"
+#: The frozen formal models (final_model.zip SHA-256, from the formal results).
+FROZEN_MODEL_SHA256 = {
+    "262430": "a3f36bde8589853efefc7abb24f13f3b068974badd3e9ad2b104742d272b0b3b",
+    "262431": "4b5b53ee4903e1af0d7534898360a3c0db003eb88b9582d55dbfefed33721b82",
+    "262432": "8b56adbf09d4a9753a040955324f3f75cda487bfcc77695644f16f6fdcccd74b",
+}
+MAX_DESTROY = 2
 FORMAL_BLOCK = "267000-267047"
 
 #: Development-run structural checks (not success rates; nothing is tuned on them).
@@ -112,7 +125,9 @@ def run_stopping_episode(
             values = model.stopping_values(observation)
             for key in trace:
                 trace[key].append(values[key])
-            if row == "stopping" and values["beta"] >= threshold:
+            if (row == "stopping" and values["beta"] >= threshold) or (
+                row == "value" and values["q_handoff"] >= values["q_continue"]
+            ):
                 branch, handoff_k = "baseline", decision
         if branch == "learned":
             action, _ = model.predict(observation, deterministic=True)
@@ -345,6 +360,78 @@ def coordination_gain(learned: dict[int, dict], stopping: dict[int, dict]) -> di
     }
 
 
+def gate_verdict(pure: dict[int, dict], method: dict[int, dict]) -> dict[str, Any]:
+    """The formal per-model gate, against Pure MPC only (no learned row needed)."""
+
+    seeds = sorted(pure)
+    clean = lambda rows, s: bool(rows[s]["clean_completion"])
+    violated = lambda rows, s: not bool(rows[s]["zero_violation"])
+    n_pure, n_method = sum(clean(pure, s) for s in seeds), sum(clean(method, s) for s in seeds)
+    v_pure, v_method = sum(violated(pure, s) for s in seeds), sum(violated(method, s) for s in seeds)
+    destroyed = [s for s in seeds if clean(pure, s) and not clean(method, s)]
+    rescued = [s for s in seeds if not clean(pure, s) and clean(method, s)]
+    shared = [s for s in seeds if clean(pure, s) and clean(method, s)]
+    excess = lambda key: float(np.median([method[s][key] - pure[s][key] for s in shared])) if shared else None
+    ks = [method[s]["handoff_k"] for s in seeds]
+    return {
+        "clean_completions": {"pure": n_pure, "method": n_method},
+        "violation_episodes": {"pure": v_pure, "method": v_method},
+        "rescued": rescued, "destroyed": destroyed,
+        "passes": n_method > n_pure and v_method <= v_pure and len(destroyed) <= MAX_DESTROY,
+        "shared_clean": len(shared),
+        "median_excess_vs_pure": {"time_s": excess("survival_s"), "delta_v_m_s": excess("equivalent_delta_v_m_s")},
+        "handoff": {"k0": sum(k == 0 for k in ks), "never": sum(k is None for k in ks),
+                    "mid": sum(k not in (0, None) for k in ks), "k": ks},
+    }
+
+
+def cmd_readout_value(args: argparse.Namespace) -> None:
+    if args.output.exists():
+        raise FileExistsError(args.output)
+    expected = parse_seed_range(args.seeds)
+    pure = _scans(args.pure)
+    value = {m: _scans(d) for m, d in _pairs(args.value).items()}
+    control = {m: _scans(d) for m, d in _pairs(args.stopping or []).items()}
+    problems = []
+
+    def check(rows: dict[int, dict], name: str, row: str, model: str | None) -> None:
+        missing = sorted(set(expected) - set(rows))
+        if missing:
+            problems.append(f"{name}: missing seeds {missing}")
+        if any(r.get("code_dirty") for r in rows.values()):
+            problems.append(f"{name}: dirty checkout")
+        if any(r.get("row") != row or r.get("max_decisions") is not None for r in rows.values()):
+            problems.append(f"{name}: wrong row or truncated")
+        if model is not None and {r.get("model_sha256") for r in rows.values()} != {FROZEN_MODEL_SHA256[model]}:
+            problems.append(f"{name}: not the frozen formal model")
+
+    check(pure, "pure", "pure", None)
+    if set(value) != set(FROZEN_MODEL_SHA256):
+        problems.append(f"value rows must cover {sorted(FROZEN_MODEL_SHA256)}")
+    for m, rows in value.items():
+        check(rows, f"value {m}", "value", m)
+    for m, rows in control.items():
+        check(rows, f"stopping {m}", "stopping", m)
+    commits = {r.get("code_commit") for rows in [pure, *value.values(), *control.values()] for r in rows.values()}
+    if len(commits) != 1 or None in commits:
+        problems.append(f"{len(commits)} code commits across rows")
+    pick = lambda rows: {s: rows[s] for s in expected}
+    models = {} if problems else {m: gate_verdict(pick(pure), pick(value[m])) for m in value}
+    passing = sum(v["passes"] for v in models.values())
+    result = {
+        "preregistration": "docs/STOPPING_VALUE_RULE_CHECK_20261006.md",
+        "seeds": args.seeds, "problems": problems,
+        "verdict": "FIDELITY_FAIL" if problems else ("VALUE_RULE_HOLDS" if passing >= MIN_PASSING_MODELS else "VALUE_RULE_DOES_NOT_HOLD"),
+        "models": models,
+        "stopping_head_control": {} if problems else {m: gate_verdict(pick(pure), pick(rows)) for m, rows in control.items()},
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    _write_json(args.output, result)
+    print(json.dumps({"verdict": result["verdict"], "problems": problems,
+                      "value": {m: [v["clean_completions"], len(v["rescued"]), len(v["destroyed"]), v["passes"]] for m, v in models.items()},
+                      "stopping_head": {m: [v["clean_completions"], len(v["rescued"]), len(v["destroyed"])] for m, v in result["stopping_head_control"].items()}}, indent=1))
+
+
 def cmd_readout(args: argparse.Namespace) -> None:
     if args.output.exists():
         raise FileExistsError(args.output)
@@ -409,7 +496,7 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("evaluate")
     p.add_argument("--run-dir", type=Path, required=True)
     p.add_argument("--model-name", default="final_model.zip")
-    p.add_argument("--row", choices=("pure", "stopping", "learned"), required=True)
+    p.add_argument("--row", choices=("pure", "stopping", "learned", "value"), required=True)
     p.add_argument("--seeds", required=True)
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--max-decisions", type=int, default=None, help="tests only")
@@ -427,6 +514,14 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--seeds", default=DEV_BLOCK)
     p.add_argument("--output", type=Path, required=True)
     p.set_defaults(func=cmd_devcheck)
+
+    p = sub.add_parser("readout-value")
+    p.add_argument("--pure", required=True)
+    p.add_argument("--value", action="append", required=True, help="MODEL=dir")
+    p.add_argument("--stopping", action="append", default=None, help="MODEL=dir (control, reported)")
+    p.add_argument("--seeds", default=VALUE_CHECK_BLOCK)
+    p.add_argument("--output", type=Path, required=True)
+    p.set_defaults(func=cmd_readout_value)
 
     p = sub.add_parser("readout")
     p.add_argument("--pure", required=True)
