@@ -88,6 +88,13 @@ perception line and the 24D mission schemas is history; it is kept under
 > User-approved no-training check of the value rule (hand off at the first
 > Q_H >= Q_C(s, mu(s))) on fresh block 268000-268047:
 > `docs/STOPPING_VALUE_RULE_CHECK_20261006.md`.
+> **Value-rule check (2026-10-06): VALUE_RULE_DOES_NOT_HOLD** (Pure 39/48 on
+> 268000; value rule 36/38/38, destroyed 5/2/2, rescued 2/1/1 of 9 Pure
+> failures; stopping head 36/36/36). `docs/STOPPING_VALUE_RULE_RESULT_20261006.md`.
+> The handoff/stopping line is closed on the nominal task: large safe gain over
+> the learned policy, no net gain over Pure MPC; the takeover time is not
+> identifiable from state well enough (stage C, formal round, this check agree).
+> Next direction is the user's call.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
