@@ -18,6 +18,13 @@ The method (``docs/STOPPING_METHOD_PREREGISTRATION_20261002.md``):
   maximum ``alpha_stop * logsumexp(Q_H / alpha_stop, V_C / alpha_stop)``,
   i.e. ``V = max{Q_H, V_C}`` up to the entropy temperature.
 
+**Final method (2026-10-06): ``stop_rule="value"``.** The separate stopping
+head was measured to disagree with its own values; the final method has no
+such network: ``beta(s) = sigmoid((Q_H(s) - V_C(s)) / alpha_stop)`` with
+``V_C(s) = min_i Q_C^i(s, mu(s))``, one definition for the Bellman target
+(target critics), the training-time sampling and the deployment. The head
+description below is the 2026-10-02 round (``stop_rule="head"``).
+
 Deployment is the mode of the Bernoulli: hand off at the first learned
 decision with ``beta(s) >= 0.5``. That is the usual deterministic policy of a
 discrete action, not a tuned threshold.
@@ -96,6 +103,15 @@ class StoppingConfig:
     stop_ent_coef: float = 0.005
     #: Deployment: the mode of the Bernoulli.
     deployment_threshold: float = 0.5
+    #: How beta(s) is produced. ``"head"``: a separate stopping-head network
+    #: (the 2026-10-02 formal round; measured to disagree with its own values,
+    #: docs/STOPPING_FORMAL_REVIEW_20261006.md). ``"value"`` (final method,
+    #: 2026-10-06): no separate network, beta(s) = sigmoid((Q_H(s) -
+    #: V_C(s)) / stop_ent_coef) with V_C(s) = min_i Q_C^i(s, mu(s)), the same
+    #: definition in the Bellman target, the training-time sampling and the
+    #: deployment, so deploying beta >= 0.5 is exactly Q_H(s) >= V_C(s).
+    #: The default stays "head" so the 2026-10-02 runs load unchanged.
+    stop_rule: str = "head"
 
     def __post_init__(self) -> None:
         if not 0.0 < self.gamma <= 1.0:
@@ -104,9 +120,16 @@ class StoppingConfig:
             raise ValueError("behaviour clip must satisfy 0 <= min <= max <= 1")
         if self.stop_ent_coef < 0.0:
             raise ValueError("stop entropy coefficient must be non-negative")
+        if self.stop_rule not in {"head", "value"}:
+            raise ValueError("stop_rule must be 'head' or 'value'")
+        if self.stop_rule == "value" and self.stop_ent_coef <= 0.0:
+            raise ValueError("the value rule needs a positive stop temperature")
 
 
-STOPPING = StoppingConfig()
+#: The final method (2026-10-06): value-based stopping.
+STOPPING = StoppingConfig(stop_rule="value")
+#: The 2026-10-02 formal round, kept for reproduction.
+STOPPING_HEAD_20261002 = StoppingConfig(stop_rule="head")
 
 #: SAC hyperparameters: V3e's, with the decision discount moved to 0.999.
 STOPPING_SAC: HybridSACConfig = replace(SAC_MPC_HYBRID, gamma=STOPPING.gamma)
@@ -349,22 +372,35 @@ class StoppingSAC(SAC):
     def stopping_config(self) -> StoppingConfig:
         return StoppingConfig(**self.stopping)
 
+    def continuation_value(self, observation: th.Tensor, *, target: bool = False) -> th.Tensor:
+        """V_C(s) = min_i Q_C^i(s, mu(s)): continuing with the deterministic task policy."""
+
+        critic = self.critic_target if target else self.critic
+        return th.min(*critic(observation, self.actor(observation, deterministic=True)))
+
+    def stop_logit(self, observation: th.Tensor, *, target: bool = False) -> th.Tensor:
+        """The logit of beta(s) under the configured stopping rule."""
+
+        config = self.stopping_config
+        if config.stop_rule == "head":
+            return self.stop.logit(observation)
+        gap = self.stop.q_handoff_min(observation) - self.continuation_value(observation, target=target)
+        return gap / config.stop_ent_coef
+
     def handoff_probability(self, observation: np.ndarray) -> float:
         with th.no_grad():
             obs = th.as_tensor(np.asarray(observation, dtype=np.float32), device=self.device).reshape(1, -1)
-            return float(th.sigmoid(self.stop.logit(obs)).item())
+            return float(th.sigmoid(self.stop_logit(obs)).item())
 
     def stopping_values(self, observation: np.ndarray) -> dict[str, float]:
-        """Diagnostics at one state: beta, Q_H, and Q_C at the deterministic action."""
+        """Diagnostics at one state: beta, Q_H, and V_C (Q_C at the deterministic action)."""
 
         with th.no_grad():
             obs = th.as_tensor(np.asarray(observation, dtype=np.float32), device=self.device).reshape(1, -1)
-            action = self.actor(obs, deterministic=True)
-            q_continue = th.min(*self.critic(obs, action))
             return {
-                "beta": float(th.sigmoid(self.stop.logit(obs)).item()),
+                "beta": float(th.sigmoid(self.stop_logit(obs)).item()),
                 "q_handoff": float(self.stop.q_handoff_min(obs).item()),
-                "q_continue": float(q_continue.item()),
+                "q_continue": float(self.continuation_value(obs).item()),
             }
 
     # -- data -----------------------------------------------------------------------
@@ -420,7 +456,7 @@ class StoppingSAC(SAC):
                 next_v = next_q - ent_coef * next_log_prob.reshape(-1, 1)
                 if have_handoff:
                     next_v = soft_stopping_value(
-                        self.stop.logit(replay_data.next_observations),
+                        self.stop_logit(replay_data.next_observations, target=True),
                         self.stop.q_handoff_min(replay_data.next_observations),
                         next_v,
                         config.stop_ent_coef,
@@ -454,14 +490,22 @@ class StoppingSAC(SAC):
                 self.q_handoff_optimizer.step()
 
                 with th.no_grad():
-                    v_continue = (min_qf_pi - ent_coef * log_prob).detach()
                     q_handoff_s = self.stop.q_handoff_min(replay_data.observations)
-                logit = self.stop.logit(replay_data.observations)
-                stop_loss = -soft_stopping_value(logit, q_handoff_s, v_continue, config.stop_ent_coef).mean()
-                stop_losses.append(stop_loss.item())
-                self.stop_head_optimizer.zero_grad()
-                stop_loss.backward()
-                self.stop_head_optimizer.step()
+                if config.stop_rule == "head":
+                    with th.no_grad():
+                        v_continue = (min_qf_pi - ent_coef * log_prob).detach()
+                    logit = self.stop.logit(replay_data.observations)
+                    stop_loss = -soft_stopping_value(logit, q_handoff_s, v_continue, config.stop_ent_coef).mean()
+                    stop_losses.append(stop_loss.item())
+                    self.stop_head_optimizer.zero_grad()
+                    stop_loss.backward()
+                    self.stop_head_optimizer.step()
+                else:
+                    # No separate network: beta is a closed-form function of
+                    # Q_H and V_C, so there is nothing else to fit.
+                    with th.no_grad():
+                        v_continue = self.continuation_value(replay_data.observations)
+                        logit = (q_handoff_s - v_continue) / config.stop_ent_coef
                 betas.append(float(th.sigmoid(logit).mean().item()))
                 gaps.append(float((q_handoff_s - v_continue).mean().item()))
 
@@ -477,7 +521,8 @@ class StoppingSAC(SAC):
             self.logger.record("train/critic_loss", np.mean(critic_losses))
         if q_handoff_losses:
             self.logger.record("stop/q_handoff_loss", np.mean(q_handoff_losses))
-            self.logger.record("stop/stop_loss", np.mean(stop_losses))
+            if stop_losses:
+                self.logger.record("stop/stop_loss", np.mean(stop_losses))
             self.logger.record("stop/beta_mean", np.mean(betas))
             self.logger.record("stop/q_handoff_minus_v_continue", np.mean(gaps))
         self.logger.record("stop/handoff_episodes", self.handoff_episodes)

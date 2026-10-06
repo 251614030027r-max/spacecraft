@@ -22,6 +22,7 @@ from train.mainline import mainline_v3e_configs
 from train.stopping import (
     HANDOFF_FEATURE_BLOCKS,
     STOPPING,
+    STOPPING_HEAD_20261002,
     STOPPING_SAC,
     HandoffOptionEnv,
     StoppingConfig,
@@ -128,11 +129,11 @@ def test_option_env_samples_the_clipped_probability() -> None:
     assert abs(np.mean(np.asarray(first) == 0) - 0.3) < 0.04
 
 
-def _model(env, **overrides) -> StoppingSAC:
+def _model(env, stopping: StoppingConfig = STOPPING, **overrides) -> StoppingSAC:
     kwargs = hybrid_model_kwargs(STOPPING_SAC)
     kwargs["policy_kwargs"]["net_arch"] = [16, 16]
     kwargs.update(learning_starts=0, buffer_size=1000, **overrides)
-    return StoppingSAC("MlpPolicy", env, stopping=asdict(STOPPING), seed=0, device="cpu",
+    return StoppingSAC("MlpPolicy", env, stopping=asdict(stopping), seed=0, device="cpu",
                        handoff_feature_index=handoff_feature_index(env.policy_observation_slices()), **kwargs)
 
 
@@ -163,7 +164,7 @@ def test_handoff_step_is_not_a_continue_transition_and_earns_its_updates(tmp_pat
     model.set_logger(configure(None, [""]))
     states = th.as_tensor(model.replay_buffer.observations[:8, 0])
     with th.no_grad():
-        before = float(th.sigmoid(model.stop.logit(states)).mean())
+        before = float(th.sigmoid(model.stop_logit(states)).mean())
     model.train(1, batch_size=8)
     assert model._n_updates == 1
     # Handoff is worth +40 everywhere and the untrained continuation is ~0:
@@ -171,7 +172,7 @@ def test_handoff_step_is_not_a_continue_transition_and_earns_its_updates(tmp_pat
     for _ in range(40):
         model.train(1, batch_size=8)
     with th.no_grad():
-        after = float(th.sigmoid(model.stop.logit(states)).mean())
+        after = float(th.sigmoid(model.stop_logit(states)).mean())
     assert after > before
 
     model.save(tmp_path / "m")
@@ -184,7 +185,7 @@ def test_handoff_step_is_not_a_continue_transition_and_earns_its_updates(tmp_pat
 
 def test_rows_reduce_to_pure_and_learned() -> None:
     env = _env()
-    model = _model(env)
+    model = _model(env, STOPPING_HEAD_20261002)
     meter = ImpulseMeter(env.controller, float(env.environment_config.dt_s))
     run = lambda row: run_stopping_episode(env, model, 263004, row, meter, max_decisions=2)
     pure, learned = run("pure"), run("learned")
@@ -204,7 +205,8 @@ def test_rows_reduce_to_pure_and_learned() -> None:
 
 def _episode(k, learned, gap):
     return {"handoff_k": k, "learned_decisions": learned, "clean_completion": True,
-            "trace": {"q_handoff": list(gap), "q_continue": [0.0] * len(gap), "beta": [0.0] * len(gap)}}
+            "trace": {"q_handoff": list(gap), "q_continue": [0.0] * len(gap),
+                      "beta": [1.0 if g >= 0 else 0.0 for g in gap]}}
 
 
 def test_dev_checks_catch_the_degenerate_corners() -> None:
@@ -228,12 +230,14 @@ def test_final_verdict_rules() -> None:
 
 def test_train_and_evaluate_cli(tmp_path: Path) -> None:
     subprocess.run([sys.executable, "-B", "-m", "train.train_stopping", "--steps", "6", "--seed", "3",
-                    "--run-name", "r", "--log-root", str(tmp_path), "--learning-starts", "2", "--net-arch", "16,16"],
+                    "--run-name", "r", "--log-root", str(tmp_path), "--learning-starts", "2", "--net-arch", "16,16",
+                    "--regime", "w3.00_r18"],
                    cwd=REPOSITORY, check=True, capture_output=True)
     run_dir = tmp_path / "r"
     manifest = json.loads((run_dir / "manifest.json").read_text())
     assert manifest["status"] == "completed" and manifest["actual_outer_decisions"] >= 6
     assert manifest["hybrid"]["decision_discount_factor"] == 0.999
+    assert manifest["regime"]["name"] == "w3.00_r18" and manifest["stopping"]["stop_rule"] == "value"
     assert (run_dir / "train.monitor.csv").exists()
     out = tmp_path / "eval"
     subprocess.run([sys.executable, "-B", "-m", "experiments.v3_stopping", "evaluate", "--run-dir", str(run_dir),
@@ -287,3 +291,36 @@ def test_value_gate_verdict() -> None:
     assert v["passes"] and v["rescued"] == [6, 7] and v["destroyed"] == [0]
     worse = {s: row(s not in (0, 1, 2), k=0) for s in range(8)}
     assert not gate_verdict(pure, worse)["passes"]
+
+
+def test_value_rule_stopping_is_the_value_comparison() -> None:
+    assert STOPPING.stop_rule == "value" and StoppingConfig().stop_rule == "head"
+    env = _env()
+    model = _model(env)  # the final method: value-based stopping
+    meter = ImpulseMeter(env.controller, float(env.environment_config.dt_s))
+    run = lambda row: run_stopping_episode(env, model, 263004, row, meter, max_decisions=2)
+    pure, learned = run("pure"), run("learned")
+    rng = np.random.default_rng(3)
+    for _ in range(20):
+        values = model.stopping_values(rng.normal(size=42).astype(np.float32))
+        assert (values["beta"] >= 0.5) == (values["q_handoff"] >= values["q_continue"])
+    for bias, expected, k in ((1.0e4, pure, 0), (-1.0e4, learned, None)):
+        with th.no_grad():
+            for net in (model.stop.q_handoff_1, model.stop.q_handoff_2):
+                net[-1].bias.fill_(bias)
+        for row in ("stopping", "value"):
+            got = run(row)
+            assert got["handoff_k"] == k
+            for key in ("survival_s", "equivalent_delta_v_m_s", "completed"):
+                assert got[key] == expected[key]
+    env.close()
+
+
+def test_dev_checks_require_stopping_to_match_the_value_rule() -> None:
+    monitor = [{"learned_decisions": "40", "handoff": "True"}] * 8
+    good = {s: _episode([None, 3, 7, 12, 40][s % 5], 40, [0.0, -2.0, 1.0]) for s in range(48)}
+    for e in good.values():
+        e["trace"]["beta"] = [1.0 if g >= 0 else 0.0 for g in e["trace"]["q_handoff"]]
+    assert dev_checks(monitor, good)["D4_stopping_matches_value_rule"]["pass"]
+    bad = {s: dict(e, trace=dict(e["trace"], beta=[1.0] * len(e["trace"]["beta"]))) for s, e in good.items()}
+    assert not dev_checks(monitor, bad)["D4_stopping_matches_value_rule"]["pass"]

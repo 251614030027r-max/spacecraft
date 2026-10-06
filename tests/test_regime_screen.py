@@ -50,8 +50,9 @@ def test_stage1_pass_and_selection() -> None:
     assert stage1_pass(ok)
     assert not stage1_pass(summarize(_rows(40, [["time_failure"]] * 8)))
     assert not stage1_pass(summarize(_rows(33, [["fov_failure"]] * 15)))
-    cells = {"w3.00_r18": {"passes": True, "pure_fail_nominal_clean": 5},
-             "w3.50_r18": {"passes": True, "pure_fail_nominal_clean": 5},
+    cells = {"w3.50_r18": {"passes": True, "pure_fail_nominal_clean": 8},
              "w3.00_r20": {"passes": True, "pure_fail_nominal_clean": 3},
+             "w3.00_r18": {"passes": True, "pure_fail_nominal_clean": 2},
              "w2.36_r15": {"passes": False, "pure_fail_nominal_clean": 9}}
-    assert select(cells) == "w3.00_r18"
+    assert select(cells) == "w3.00_r20"  # closest to the mainline with rescue space >= 3
+    assert select({"w3.00_r18": {"passes": True, "pure_fail_nominal_clean": 2}}) is None

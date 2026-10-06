@@ -39,6 +39,7 @@ from env.hybrid_env import PrecaptureHybridEnv
 from experiments.v3_common import parse_seed_range
 from experiments.v3_handoff_scan import ImpulseMeter, _outcome
 from experiments.v3_stage_c import _pairs, _scans, _write_json, model_verdict
+from train.regimes import REGIMES, regime_environment
 from train.stopping import STOPPING, StoppingSAC, discounted_returns_to_go, stopping_configs
 from train.train_hybrid import _code_provenance
 from train.train_stopping import METHOD
@@ -84,6 +85,11 @@ def env_for_stopping_run(run_dir: Path, allow_incomplete: bool) -> tuple[dict[st
     if not allow_incomplete and manifest.get("status") != "completed":
         raise ValueError(f"run {run_dir} is not completed (status={manifest.get('status')})")
     environment, hybrid = stopping_configs()
+    if manifest.get("regime"):
+        regime = REGIMES[manifest["regime"]["name"]]
+        if asdict(regime) != manifest["regime"]:
+            raise ValueError("this checkout defines the run's regime differently")
+        environment = regime_environment(environment, regime)
     if asdict(hybrid) != manifest["hybrid"]:
         raise ValueError("this checkout builds a different hybrid config from the run's manifest")
     if json.loads(json.dumps(asdict(environment), default=str)) != json.loads(
@@ -287,6 +293,13 @@ def dev_checks(monitor_rows: list[dict[str, str]], episodes: dict[int, dict[str,
         if gap.size >= 2:
             ranges.append(float(gap.max() - gap.min()))
     median_range = float(np.median(ranges)) if ranges else 0.0
+    agree = total = 0
+    for e in episodes.values():
+        t = e["trace"]
+        for b, qh, qc in zip(t["beta"], t["q_handoff"], t["q_continue"]):
+            total += 1
+            agree += (b >= 0.5) == (qh >= qc)
+    d4 = total > 0 and agree == total
     d1 = at_zero <= DEV_MAX_SAME_CORNER and never <= DEV_MAX_SAME_CORNER
     d2 = long_train >= DEV_MIN_LONG_LEARNED_TRAIN and long_eval >= DEV_MIN_LONG_LEARNED_EVAL
     d3 = len(set(mid)) >= DEV_MIN_DISTINCT_K and median_range >= DEV_MIN_GAP_RANGE
@@ -300,7 +313,8 @@ def dev_checks(monitor_rows: list[dict[str, str]], episodes: dict[int, dict[str,
         "D3_state_dependent_stopping_value": {"pass": d3, "distinct_mid_handoff_k": len(set(mid)),
                                               "handoff_k_values": mid,
                                               "median_within_episode_gap_range": median_range},
-        "all_pass": d1 and d2 and d3,
+        "D4_stopping_matches_value_rule": {"pass": d4, "decisions": total, "agreeing": agree},
+        "all_pass": d1 and d2 and d3 and d4,
         "reported_not_gated": {
             "clean_completions": sum(bool(e["clean_completion"]) for e in episodes.values()),
             "train_episodes": len(monitor_rows),

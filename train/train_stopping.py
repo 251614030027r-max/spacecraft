@@ -23,6 +23,7 @@ from stable_baselines3.common.monitor import Monitor
 from env.hybrid_env import PrecaptureHybridEnv, hybrid_mpc_config
 from train.hybrid_configs import hybrid_model_kwargs, serializable_hybrid_hyperparameters
 from train.mainline import MAINLINE_V3E, MAINLINE_V3E_EVALUATION_FLAGS
+from train.regimes import REGIMES, regime_environment
 from train.stopping import (
     HANDOFF_FEATURE_BLOCKS,
     STOPPING,
@@ -57,6 +58,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--log-root", type=Path, default=Path("logs"))
     parser.add_argument("--checkpoint-freq", type=int, default=5_000, help="outer decisions")
     parser.add_argument("--device", choices=("cpu", "cuda", "auto"), default="cpu")
+    parser.add_argument("--regime", choices=sorted(REGIMES), default=None,
+                        help="task regime from train/regimes.py (default: the V3e mainline task)")
     parser.add_argument("--learning-starts", type=int, default=None, help="smoke tests only")
     parser.add_argument("--net-arch", type=str, default=None, help="smoke tests only, e.g. 16,16")
     return parser.parse_args(argv)
@@ -72,6 +75,8 @@ def main(argv: list[str] | None = None) -> None:
     checkpoint_dir.mkdir(parents=True)
 
     environment_config, hybrid_config = stopping_configs()
+    if args.regime is not None:
+        environment_config = regime_environment(environment_config, REGIMES[args.regime])
     mpc_config = hybrid_mpc_config(hybrid_config, environment_config)
     raw_env = PrecaptureHybridEnv(environment_config, hybrid_config)
     raw_env.reset(seed=args.seed)
@@ -99,6 +104,7 @@ def main(argv: list[str] | None = None) -> None:
         "fresh_initialization": True,
         "smoke_overrides": smoke_overrides or None,
         "mainline": MAINLINE_V3E,
+        "regime": None if args.regime is None else asdict(REGIMES[args.regime]),
         # Kept so the shared V3 loaders accept the manifest; the environment is
         # rebuilt from ``hybrid`` / ``training_environment`` below, not from flags.
         "waypoint_parametrization": "task_state_v3",

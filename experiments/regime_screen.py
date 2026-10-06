@@ -36,6 +36,8 @@ PURE_CLEAN_MIN, PURE_CLEAN_MAX = 29, 36
 MIN_TIME_FAILURE_SHARE = 2.0 / 3.0
 #: ... and at most two Pure episodes with a truth violation.
 MAX_PURE_VIOLATION_EPISODES = 2
+#: Stage-2: the interface itself must reach at least this many Pure failures.
+MIN_NOMINAL_RESCUE = 3
 
 
 def regime_env(name: str) -> PrecaptureHybridEnv:
@@ -116,14 +118,15 @@ def stage1_pass(summary: dict[str, Any]) -> bool:
 
 
 def select(cells: dict[str, dict[str, Any]]) -> str | None:
-    """Among passing cells with a nominal row: most openings Pure fails and the
-    nominal completes cleanly; ties -> smaller tumble, then smaller range_min."""
+    """The passing cell closest to the current mainline (smaller tumble, then
+    smaller range_min) among those where the scripted nominal completes
+    cleanly on at least MIN_NOMINAL_RESCUE openings that Pure fails."""
 
-    ready = [n for n, c in cells.items() if c["passes"] and c.get("pure_fail_nominal_clean") is not None]
+    ready = [n for n, c in cells.items()
+             if c["passes"] and (c.get("pure_fail_nominal_clean") or 0) >= MIN_NOMINAL_RESCUE]
     if not ready:
         return None
-    return sorted(ready, key=lambda n: (-cells[n]["pure_fail_nominal_clean"], REGIMES[n].tumble_deg_s,
-                                        REGIMES[n].range_min_m))[0]
+    return sorted(ready, key=lambda n: (REGIMES[n].tumble_deg_s, REGIMES[n].range_min_m))[0]
 
 
 def cmd_readout(args: argparse.Namespace) -> None:
@@ -159,7 +162,8 @@ def cmd_readout(args: argparse.Namespace) -> None:
         "preregistration": "docs/REGIME_SCREEN_20261006.md", "seeds": args.seeds, "problems": problems,
         "constants": {"pure_clean_range": [PURE_CLEAN_MIN, PURE_CLEAN_MAX],
                       "min_time_failure_share": MIN_TIME_FAILURE_SHARE,
-                      "max_pure_violation_episodes": MAX_PURE_VIOLATION_EPISODES},
+                      "max_pure_violation_episodes": MAX_PURE_VIOLATION_EPISODES,
+                      "min_nominal_rescue": MIN_NOMINAL_RESCUE},
         "cells": cells,
         "stage1_passing": [n for n, c in cells.items() if c["passes"]],
         "selected": None if problems else select(cells),

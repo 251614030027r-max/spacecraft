@@ -101,6 +101,11 @@ perception line and the 24D mission schemas is history; it is kept under
 > screening on block 269000 with a preregistered selection rule:
 > `docs/REGIME_SCREEN_20261006.md`, `experiments/regime_screen.py`,
 > `train/regimes.py`. Final formal block 271000-271047.
+> **Final mainline run order (2026-10-06):** `docs/FINAL_MAINLINE_RUN_ORDER_20261006.md`
+> -- regime screen -> value-based stopping (`stop_rule="value"`, no separate
+> head; beta = sigmoid((Q_H - V_C)/0.005), V_C = min Q_C(s, mu(s))) ->
+> 262450-262452 x 60k on the selected regime with the structural check D1-D4 at
+> the 30k checkpoint (dev block 266000) -> formal block 271000.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
