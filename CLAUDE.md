@@ -95,6 +95,12 @@ perception line and the 24D mission schemas is history; it is kept under
 > the learned policy, no net gain over Pure MPC; the takeover time is not
 > identifiable from state well enough (stage C, formal round, this check agree).
 > Next direction is the user's call.
+> **Regime change (user's call, 2026-10-06):** the method stays; the final task
+> moves to a regime where Pure MPC is not saturated (faster tumble and/or
+> farther initial range; MPC, constraints, reward, interface unchanged). Pure-only
+> screening on block 269000 with a preregistered selection rule:
+> `docs/REGIME_SCREEN_20261006.md`, `experiments/regime_screen.py`,
+> `train/regimes.py`. Final formal block 271000-271047.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
