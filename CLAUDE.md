@@ -106,6 +106,13 @@ perception line and the 24D mission schemas is history; it is kept under
 > head; beta = sigmoid((Q_H - V_C)/0.005), V_C = min Q_C(s, mu(s))) ->
 > 262450-262452 x 60k on the selected regime with the structural check D1-D4 at
 > the 30k checkpoint (dev block 266000) -> formal block 271000.
+> **Upper/lower collaboration hub (user, 2026-10-06):** branch `collab/spacecraft`,
+> `docs/collaboration/` (`CURRENT.json` = lower-verified state; upper run orders
+> go to `upper/run_orders/<topic>_<date>.md` from `upper/TASK_TEMPLATE.md`, index
+> in `upper/README.md`; lower hand-offs in `lower/handoffs/`; reviews in
+> `reviews/`). Commit only `docs/collaboration/` there, fetch first, never
+> force-push. Science code stays on this branch. Final mainline order:
+> `upper/run_orders/FINAL_MAINLINE_20261006.md` (collab commit `39ecee2`).
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
