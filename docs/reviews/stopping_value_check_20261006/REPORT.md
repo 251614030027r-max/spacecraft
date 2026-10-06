@@ -1,0 +1,507 @@
+# Value-rule check: independent developer delivery
+
+Commit: 758c9a89b3121ad4e3f73d2c716b1471dc94fe86; block 268000–268047; 336 episodes, all eight workers exited. Verdict: VALUE_RULE_DOES_NOT_HOLD.
+
+Frozen models unchanged, no training. Physics/control/train diff vs2e5c236 empty; specified tests13 passed; model SHA in PRECHECK. Value rule: first Q_H >= Q_C at deterministic action, ignoring entropy. Stopping-head controls reported only. Gate: strictly more clean completions than same-block Pure, no more violations, destroyed Pure successes <=2; at least two models.
+
+Historical267000: Pure41, stopping37/41/36, learned12/31/17; METHOD_DOES_NOT_HOLD. Different block, background only. New result is development validation, excluded from paper performance numbers. No automatic method changes, new rules or training after verdict.
+
+Current raw results and all vc logs in this package. Models excluded; frozen hashes: {"262430": "a3f36bde8589853efefc7abb24f13f3b068974badd3e9ad2b104742d272b0b3b", "262431": "4b5b53ee4903e1af0d7534898360a3c0db003eb88b9582d55dbfefed33721b82", "262432": "8b56adbf09d4a9753a040955324f3f75cda487bfcc77695644f16f6fdcccd74b"}
+
+Supervisor events record start/end and errors; no early result inspection. Parallel runtime is not a real-time performance claim.
+
+Official readout:
+```json
+{
+  "preregistration": "docs/STOPPING_VALUE_RULE_CHECK_20261006.md",
+  "seeds": "268000-268047",
+  "problems": [],
+  "verdict": "VALUE_RULE_DOES_NOT_HOLD",
+  "models": {
+    "262430": {
+      "clean_completions": {
+        "pure": 39,
+        "method": 36
+      },
+      "violation_episodes": {
+        "pure": 1,
+        "method": 0
+      },
+      "rescued": [
+        268010,
+        268023
+      ],
+      "destroyed": [
+        268003,
+        268007,
+        268019,
+        268029,
+        268035
+      ],
+      "passes": false,
+      "shared_clean": 34,
+      "median_excess_vs_pure": {
+        "time_s": 0.6499999999999986,
+        "delta_v_m_s": 0.021837323831735533
+      },
+      "handoff": {
+        "k0": 17,
+        "never": 1,
+        "mid": 30,
+        "k": [
+          10,
+          0,
+          4,
+          14,
+          17,
+          8,
+          2,
+          2,
+          9,
+          0,
+          4,
+          11,
+          0,
+          31,
+          0,
+          8,
+          9,
+          6,
+          16,
+          4,
+          1,
+          1,
+          0,
+          4,
+          0,
+          0,
+          0,
+          1,
+          1,
+          12,
+          1,
+          12,
+          0,
+          null,
+          0,
+          7,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          3,
+          31
+        ]
+      }
+    },
+    "262431": {
+      "clean_completions": {
+        "pure": 39,
+        "method": 38
+      },
+      "violation_episodes": {
+        "pure": 1,
+        "method": 0
+      },
+      "rescued": [
+        268020
+      ],
+      "destroyed": [
+        268005,
+        268035
+      ],
+      "passes": false,
+      "shared_clean": 37,
+      "median_excess_vs_pure": {
+        "time_s": 2.299999999999997,
+        "delta_v_m_s": 0.15767212740138414
+      },
+      "handoff": {
+        "k0": 21,
+        "never": 1,
+        "mid": 26,
+        "k": [
+          0,
+          0,
+          24,
+          0,
+          2,
+          null,
+          0,
+          0,
+          10,
+          21,
+          0,
+          0,
+          4,
+          17,
+          54,
+          0,
+          16,
+          15,
+          30,
+          40,
+          6,
+          27,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          33,
+          4,
+          1,
+          0,
+          11,
+          1,
+          0,
+          7,
+          0,
+          0,
+          0,
+          5,
+          8,
+          0,
+          5,
+          0,
+          54,
+          36,
+          4,
+          0
+        ]
+      }
+    },
+    "262432": {
+      "clean_completions": {
+        "pure": 39,
+        "method": 38
+      },
+      "violation_episodes": {
+        "pure": 1,
+        "method": 0
+      },
+      "rescued": [
+        268027
+      ],
+      "destroyed": [
+        268029,
+        268035
+      ],
+      "passes": false,
+      "shared_clean": 37,
+      "median_excess_vs_pure": {
+        "time_s": 0.0,
+        "delta_v_m_s": 0.0
+      },
+      "handoff": {
+        "k0": 26,
+        "never": 1,
+        "mid": 21,
+        "k": [
+          0,
+          0,
+          34,
+          0,
+          0,
+          0,
+          0,
+          89,
+          11,
+          0,
+          0,
+          0,
+          44,
+          0,
+          0,
+          1,
+          14,
+          18,
+          10,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          0,
+          1,
+          20,
+          0,
+          24,
+          40,
+          10,
+          0,
+          0,
+          52,
+          8,
+          20,
+          24,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          106,
+          32,
+          26
+        ]
+      }
+    }
+  },
+  "stopping_head_control": {
+    "262430": {
+      "clean_completions": {
+        "pure": 39,
+        "method": 36
+      },
+      "violation_episodes": {
+        "pure": 1,
+        "method": 0
+      },
+      "rescued": [
+        268010,
+        268027
+      ],
+      "destroyed": [
+        268003,
+        268007,
+        268035,
+        268038,
+        268041
+      ],
+      "passes": false,
+      "shared_clean": 34,
+      "median_excess_vs_pure": {
+        "time_s": 0.0,
+        "delta_v_m_s": 0.0
+      },
+      "handoff": {
+        "k0": 21,
+        "never": 4,
+        "mid": 23,
+        "k": [
+          0,
+          5,
+          0,
+          18,
+          0,
+          21,
+          0,
+          3,
+          9,
+          0,
+          5,
+          0,
+          0,
+          54,
+          0,
+          null,
+          0,
+          42,
+          20,
+          2,
+          57,
+          0,
+          25,
+          0,
+          0,
+          0,
+          0,
+          11,
+          0,
+          1,
+          1,
+          0,
+          0,
+          85,
+          1,
+          81,
+          0,
+          39,
+          17,
+          0,
+          0,
+          null,
+          1,
+          26,
+          null,
+          28,
+          null,
+          0
+        ]
+      }
+    },
+    "262431": {
+      "clean_completions": {
+        "pure": 39,
+        "method": 36
+      },
+      "violation_episodes": {
+        "pure": 1,
+        "method": 1
+      },
+      "rescued": [
+        268020
+      ],
+      "destroyed": [
+        268035,
+        268037,
+        268038,
+        268045
+      ],
+      "passes": false,
+      "shared_clean": 35,
+      "median_excess_vs_pure": {
+        "time_s": 5.5,
+        "delta_v_m_s": 0.16466786492641527
+      },
+      "handoff": {
+        "k0": 15,
+        "never": 1,
+        "mid": 32,
+        "k": [
+          0,
+          15,
+          0,
+          89,
+          0,
+          43,
+          0,
+          0,
+          7,
+          0,
+          0,
+          28,
+          118,
+          5,
+          40,
+          7,
+          9,
+          88,
+          45,
+          0,
+          6,
+          20,
+          113,
+          21,
+          5,
+          0,
+          5,
+          0,
+          0,
+          1,
+          7,
+          0,
+          11,
+          3,
+          27,
+          7,
+          0,
+          9,
+          27,
+          4,
+          39,
+          0,
+          80,
+          78,
+          0,
+          null,
+          61,
+          3
+        ]
+      }
+    },
+    "262432": {
+      "clean_completions": {
+        "pure": 39,
+        "method": 36
+      },
+      "violation_episodes": {
+        "pure": 1,
+        "method": 0
+      },
+      "rescued": [
+        268010,
+        268023
+      ],
+      "destroyed": [
+        268008,
+        268021,
+        268035,
+        268036,
+        268038
+      ],
+      "passes": false,
+      "shared_clean": 34,
+      "median_excess_vs_pure": {
+        "time_s": 7.150000000000006,
+        "delta_v_m_s": 0.10619809411660608
+      },
+      "handoff": {
+        "k0": 15,
+        "never": 4,
+        "mid": 29,
+        "k": [
+          0,
+          9,
+          0,
+          0,
+          57,
+          0,
+          1,
+          65,
+          null,
+          1,
+          2,
+          1,
+          37,
+          0,
+          10,
+          0,
+          29,
+          55,
+          0,
+          0,
+          0,
+          null,
+          6,
+          73,
+          null,
+          0,
+          84,
+          6,
+          30,
+          50,
+          42,
+          12,
+          12,
+          0,
+          50,
+          4,
+          23,
+          21,
+          122,
+          0,
+          10,
+          1,
+          15,
+          0,
+          0,
+          0,
+          null,
+          1
+        ]
+      }
+    }
+  }
+}
+```
