@@ -4,6 +4,7 @@
 
 | 文件 | 状态 |
 |---|---|
-| `FINAL_EVIDENCE_20261007.md` | 已授权待执行（补充 FINAL_MAINLINE；A/B 用冻结提交，C 用分析提交 ed8db6a） |
+| `ASSET_INVENTORY_20261007.md` | 已授权待执行（只读盘点） |
+| `FINAL_EVIDENCE_20261007.md` | 暂缓下发（盘点后原样恢复）；已授权（补充 FINAL_MAINLINE；A/B 用冻结提交，C 用分析提交 ed8db6a） |
 | `FINAL_MAINLINE_20261006.md` | 执行中（科学提交 e855bb7） |
 | `STOPPING_VALUE_RULE_CHECK_20261006.md` | 已执行，结论 VALUE_RULE_DOES_NOT_HOLD |
