@@ -113,6 +113,14 @@ perception line and the 24D mission schemas is history; it is kept under
 > `reviews/`). Commit only `docs/collaboration/` there, fetch first, never
 > force-push. Science code stays on this branch. Final mainline order:
 > `upper/run_orders/FINAL_MAINLINE_20261006.md` (collab commit `39ecee2`).
+> **Paper-closure evidence (user, 2026-10-07):** mainline frozen; research layer
+> (user + discussion window) owns the claims and success criteria, upper reviews
+> and writes run orders. Added, descriptive only: nominal formal rows, second and
+> last formal block 272000 (96 paired openings with 271000), deterministic replay
+> (`experiments/stopping_replay.py`: state at handoff, V_C semantics audit,
+> counterfactual eps_H / eps_C) and `experiments/final_tables.py`. Collab order
+> `upper/run_orders/FINAL_EVIDENCE_20261007.md` (collab `b1b18c9`). No new gate,
+> classifier, residual anchor, reward or task change.
 >
 > **Live status -- 2026-09-30 (earlier).** Value round 2 does not hold (only 262420
 > passed M6; its arbitrated row 40/48 with 1 truth violation). Full review in
