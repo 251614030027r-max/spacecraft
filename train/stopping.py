@@ -112,6 +112,16 @@ class StoppingConfig:
     #: deployment, so deploying beta >= 0.5 is exactly Q_H(s) >= V_C(s).
     #: The default stays "head" so the 2026-10-02 runs load unchanged.
     stop_rule: str = "head"
+    #: Which continuation value the Bellman target uses for the stopping weight
+    #: (value rule only). ``"deterministic"`` (the interrupted 2026-10-07 runs):
+    #: beta' from V_C^targ(s') = min Q_targ(s', mu(s')) while the continue term
+    #: is the SAC soft value -- two definitions inside one target. ``"soft"``
+    #: (final, 2026-10-07): beta' is computed from the same soft continuation
+    #: value the continue term uses, so the target is exactly the
+    #: entropy-regularised maximum of Q_H and V_C^soft. Deployment is unchanged
+    #: (Q_H(s) >= Q_C(s, mu(s)), the deterministic counterpart, as SAC itself
+    #: trains stochastic and deploys the mean).
+    bellman_stop_value: str = "deterministic"
 
     def __post_init__(self) -> None:
         if not 0.0 < self.gamma <= 1.0:
@@ -122,12 +132,16 @@ class StoppingConfig:
             raise ValueError("stop entropy coefficient must be non-negative")
         if self.stop_rule not in {"head", "value"}:
             raise ValueError("stop_rule must be 'head' or 'value'")
+        if self.bellman_stop_value not in {"deterministic", "soft"}:
+            raise ValueError("bellman_stop_value must be 'deterministic' or 'soft'")
         if self.stop_rule == "value" and self.stop_ent_coef <= 0.0:
             raise ValueError("the value rule needs a positive stop temperature")
 
 
 #: The final method (2026-10-06): value-based stopping.
-STOPPING = StoppingConfig(stop_rule="value")
+STOPPING = StoppingConfig(stop_rule="value", bellman_stop_value="soft")
+#: The interrupted 2026-10-07 runs (262450-262452), kept for reproduction.
+STOPPING_VALUE_20261006 = StoppingConfig(stop_rule="value", bellman_stop_value="deterministic")
 #: The 2026-10-02 formal round, kept for reproduction.
 STOPPING_HEAD_20261002 = StoppingConfig(stop_rule="head")
 
@@ -387,6 +401,23 @@ class StoppingSAC(SAC):
         gap = self.stop.q_handoff_min(observation) - self.continuation_value(observation, target=target)
         return gap / config.stop_ent_coef
 
+    def bellman_next_value(self, next_observations: th.Tensor, have_handoff: bool) -> th.Tensor:
+        """V(s') in the critic target (call under no_grad)."""
+
+        config = self.stopping_config
+        ent_coef = self.ent_coef_tensor
+        next_actions, next_log_prob = self.actor.action_log_prob(next_observations)
+        next_q = th.min(*self.critic_target(next_observations, next_actions))
+        v_continue = next_q - ent_coef * next_log_prob.reshape(-1, 1)
+        if not have_handoff:
+            return v_continue
+        q_handoff = self.stop.q_handoff_min(next_observations)
+        if config.stop_rule == "value" and config.bellman_stop_value == "soft":
+            logit = (q_handoff - v_continue) / config.stop_ent_coef
+        else:
+            logit = self.stop_logit(next_observations, target=True)
+        return soft_stopping_value(logit, q_handoff, v_continue, config.stop_ent_coef)
+
     def handoff_probability(self, observation: np.ndarray) -> float:
         with th.no_grad():
             obs = th.as_tensor(np.asarray(observation, dtype=np.float32), device=self.device).reshape(1, -1)
@@ -451,16 +482,7 @@ class StoppingSAC(SAC):
             log_prob = log_prob.reshape(-1, 1)
 
             with th.no_grad():
-                next_actions, next_log_prob = self.actor.action_log_prob(replay_data.next_observations)
-                next_q = th.min(*self.critic_target(replay_data.next_observations, next_actions))
-                next_v = next_q - ent_coef * next_log_prob.reshape(-1, 1)
-                if have_handoff:
-                    next_v = soft_stopping_value(
-                        self.stop_logit(replay_data.next_observations, target=True),
-                        self.stop.q_handoff_min(replay_data.next_observations),
-                        next_v,
-                        config.stop_ent_coef,
-                    )
+                next_v = self.bellman_next_value(replay_data.next_observations, have_handoff)
                 target_q = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_v
 
             current_q = self.critic(replay_data.observations, replay_data.actions)
@@ -551,6 +573,7 @@ __all__ = [
     "HANDOFF_FEATURE_BLOCKS",
     "STOPPING",
     "STOPPING_SAC",
+    "STOPPING_VALUE_20261006",
     "HandoffOptionEnv",
     "SimulatedDecisionCheckpoint",
     "StopNetworks",

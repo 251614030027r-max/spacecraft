@@ -324,3 +324,25 @@ def test_dev_checks_require_stopping_to_match_the_value_rule() -> None:
     assert dev_checks(monitor, good)["D4_stopping_matches_value_rule"]["pass"]
     bad = {s: dict(e, trace=dict(e["trace"], beta=[1.0] * len(e["trace"]["beta"]))) for s, e in good.items()}
     assert not dev_checks(monitor, bad)["D4_stopping_matches_value_rule"]["pass"]
+
+
+def test_bellman_target_uses_one_continuation_value_for_the_stop_weight() -> None:
+    from train.stopping import STOPPING_VALUE_20261006
+
+    assert STOPPING.bellman_stop_value == "soft" and STOPPING_VALUE_20261006.bellman_stop_value == "deterministic"
+    env = _env()
+    model = _model(env)
+    obs = th.as_tensor(np.random.default_rng(0).normal(size=(8, 42)).astype(np.float32))
+    with th.no_grad():
+        th.manual_seed(7)
+        got = model.bellman_next_value(obs, have_handoff=True)
+        th.manual_seed(7)
+        actions, log_prob = model.actor.action_log_prob(obs)
+        v_soft = th.min(*model.critic_target(obs, actions)) - model.ent_coef_tensor * log_prob.reshape(-1, 1)
+        q_h = model.stop.q_handoff_min(obs)
+        alpha = STOPPING.stop_ent_coef
+        expected = soft_stopping_value((q_h - v_soft) / alpha, q_h, v_soft, alpha)
+        th.testing.assert_close(got, expected)
+        th.manual_seed(7)
+        th.testing.assert_close(model.bellman_next_value(obs, have_handoff=False), v_soft)
+    env.close()
