@@ -9,3 +9,5 @@
 最新最终主线：[下层交接](handoffs/final_mainline_20261006.md)。
 
 269000筛选已完成；[两份官方readout与SHA](handoffs/final_mainline_screen_20261007/README.md)已提前提供上层机制核对。选定w2.36_r15，三种子正式训练已自动启动。
+
+最新重训准备：[交接](handoffs/final_rerun_20261007.md)，等待用户手动启动。

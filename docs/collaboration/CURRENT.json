@@ -1,25 +1,32 @@
 {
   "schema": "spacecraft_collaboration_v1",
   "verified_date_jst": "2026-10-07",
-  "topic": "final_mainline",
-  "phase": "formal_training_running",
-  "scientific_commit": "867a3a13e4ad1125a3420bd7ca2bc65d67bb2ba9",
-  "run_order": "upper/run_orders/FINAL_MAINLINE_20261006.md",
-  "run_order_commit": "39ecee2b08cc63d95d0ab1e0e7ed98253dbe6aeb",
-  "authority": "User 2026-10-06: read collaboration FINAL_MAINLINE_20261006 and execute",
-  "supervisor_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线\\记录\\FINAL_MAINLINE_EXECUTION.json",
-  "selected_regime": "w2.36_r15",
+  "topic": "final_rerun",
+  "phase": "ready_for_manual_training",
+  "scientific_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
+  "run_order": "upper/run_orders/FINAL_RERUN_20261007.md",
+  "run_order_commit": "19aa467",
+  "authorization": "User requested sync/preparation, then manual training launch",
+  "tests": "28 passed in 150.57s",
+  "tracked_clean": true,
+  "training_started": false,
   "training_seeds": [
+    262460,
+    262461,
+    262462
+  ],
+  "outer_decisions_each": 60000,
+  "regime": "w2.36_r15",
+  "stop_rule": "value",
+  "bellman_stop_value": "soft",
+  "invalid_interrupted_runs": [
     262450,
     262451,
     262452
   ],
-  "outer_decisions_each": 60000,
-  "screen_block": "269000-269047",
-  "structural_block": "266000-266047",
-  "formal_block": "271000-271047",
-  "official_verdict": null,
-  "review_url": null,
-  "local_delivery": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新",
-  "next_action": "自动按冻结单推进；预注册停止点停止，正式交付后等上层。"
+  "previous_runs_preserved": true,
+  "preparation_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\PREPARATION.json",
+  "manual_launch_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\MANUAL_TRAINING_LAUNCH.json",
+  "next_action": "User launches Start-FinalRerun.ps1 from independent Windows PowerShell; no training started by Codex",
+  "handoff": "lower/handoffs/final_rerun_20261007.md"
 }
