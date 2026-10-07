@@ -10,6 +10,14 @@ SAC-MPC coupling.** Everything about `single_phase`, the Waypoint, the A1/A2/A3
 perception line and the 24D mission schemas is history; it is kept under
 *Historical research line* because the lessons transfer, not because it is live.
 
+> **START HERE (2026-10-07).** The single current entry is
+> `docs/collaboration/PROJECT_STATE.md` on branch `collab/spacecraft` (paper
+> line, work in flight, paper evidence matrix L1-L4, Git branch roles), with the
+> experiment registry in `docs/collaboration/registry/`. Every "Live status"
+> block below is history; where they conflict with PROJECT_STATE, PROJECT_STATE
+> wins. Read-only asset inventory order: `upper/run_orders/ASSET_INVENTORY_20261007.md`
+> (collab `5b12711`); `FINAL_EVIDENCE_20261007` is on hold until it is delivered.
+>
 > **Live status -- 2026-09-30 (plan frozen by the user).** The coordination
 > question is redefined from "which continuation is better" (V_L vs V_B) to
 > **"continue learned (keeping the option to hand off later) vs hand off to
