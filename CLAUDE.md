@@ -16,7 +16,11 @@ perception line and the 24D mission schemas is history; it is kept under
 > experiment registry in `docs/collaboration/registry/`. Every "Live status"
 > block below is history; where they conflict with PROJECT_STATE, PROJECT_STATE
 > wins. Read-only asset inventory order: `upper/run_orders/ASSET_INVENTORY_20261007.md`
-> (collab `5b12711`); `FINAL_EVIDENCE_20261007` is on hold until it is delivered.
+> (collab `5b12711`). **Current order (2026-10-07): `upper/run_orders/FINAL_RERUN_20261007.md`**
+> (collab `19aa467`): the 262450-262452 runs were interrupted by an operator
+> mistake (INVALID, kept); clean rerun on seeds 262460-262462 at `f2f8169`
+> (only method-internal change: `bellman_stop_value="soft"`), merging
+> FINAL_EVIDENCE; the asset inventory runs after its delivery.
 >
 > **Live status -- 2026-09-30 (plan frozen by the user).** The coordination
 > question is redefined from "which continuation is better" (V_L vs V_B) to
