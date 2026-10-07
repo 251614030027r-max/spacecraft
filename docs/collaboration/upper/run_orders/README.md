@@ -4,7 +4,8 @@
 
 | 文件 | 状态 |
 |---|---|
-| `ASSET_INVENTORY_20261007.md` | 已授权待执行（只读盘点） |
-| `FINAL_EVIDENCE_20261007.md` | 暂缓下发（盘点后原样恢复）；已授权（补充 FINAL_MAINLINE；A/B 用冻结提交，C 用分析提交 ed8db6a） |
-| `FINAL_MAINLINE_20261006.md` | 执行中（科学提交 e855bb7） |
+| `FINAL_RERUN_20261007.md` | **当前**，已授权待执行（提交 f2f8169，种子 262460–262462） |
+| `ASSET_INVENTORY_20261007.md` | 已授权，FINAL_RERUN 交付后执行 |
+| `FINAL_EVIDENCE_20261007.md` | 已并入 FINAL_RERUN，不再单独执行；原（补充 FINAL_MAINLINE；A/B 用冻结提交，C 用分析提交 ed8db6a） |
+| `FINAL_MAINLINE_20261006.md` | 筛选已完成；训练被误中断；其余部分由 FINAL_RERUN 取代 |
 | `STOPPING_VALUE_RULE_CHECK_20261006.md` | 已执行，结论 VALUE_RULE_DOES_NOT_HOLD |
