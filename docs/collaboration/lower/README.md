@@ -1,6 +1,8 @@
 # 下层交付入口
 
-最新：[停止头正式轮完成交接](handoffs/stopping_20261006.md)。逐开局证据保存在专用审查分支固定提交，见交接内链接；不复制旧证据到每轮新交付。
+当前共用交接：[HANDOFF](../HANDOFF.md)（重点见第6、10节）；最新下层完整交接：[窗口交接](handoffs/window_handoff_20261009/WINDOW_HANDOFF_20261009.md)（2026-10-09快照）。三个种子均已完成60k，F01三模型官方METHOD_DOES_NOT_HOLD，现有650个评估已收口归档、缺118不补跑；最新工程已回到DRL2，整体审查待新计划。
+
+历史：[停止头正式轮完成交接](handoffs/stopping_20261006.md)。逐开局证据保存在固定版本，见交接内链接；不复制旧证据到每轮新交付。
 
 新交接写入handoffs/<主题>_<日期>.md，并更新本索引和../CURRENT.json。完整原始ZIP在Spacecraft上层交付/最新，模型仅给路径和SHA；公开材料按当轮授权。
 
@@ -30,3 +32,7 @@ Git整理第1–3步完成：[标签、分支及流水线去重回执](handoffs/
 - [本地整理阶段交付](handoffs/cleanup_local_20261010/README.md)：新干净副本、历史复制与SHA、最新交付入口；活动评估保留，测试/行为验收与离线备份尚待完成。
 
 - [本窗口唯一完整交接（已合并开场提示）](handoffs/window_handoff_20261009/WINDOW_HANDOFF_20261009.md)：研究停止，等待用户新计划；残余记录任务与整理验收分开。
+
+- [F01最终数据记录与三模型判读](handoffs/F01_closed_records_20261010/README.md)：271000完整，METHOD_DOES_NOT_HOLD；272000缺118，用户取消补跑；最新工程已回到DRL2。
+
+- [最新工程DRL2整理回执与资产索引](handoffs/DRL2_return_20261010/README.md)：4795910科学分支Git干净，环境与模型SHA不变，354通过/3预期失败；无新增正式仿真。

@@ -1,9 +1,9 @@
 {
   "schema": "spacecraft_collaboration_v1",
-  "verified_date_jst": "2026-10-09",
+  "verified_date_jst": "2026-10-10",
   "topic": "final_rerun",
-  "phase": "await_user_upper_plan_existing_record_jobs_active",
-  "scientific_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
+  "phase": "F01_closed_records_archived_DRL2_ready_for_project_review",
+  "scientific_commit": "4795910102cf9fbf1dfec74b77e9449623a7b51e",
   "run_order": "upper/run_orders/FINAL_RERUN_20261007.md",
   "run_order_commit": "19aa467",
   "authorization": "User requested sync/preparation, then manual training launch",
@@ -27,7 +27,7 @@
   "previous_runs_preserved": true,
   "preparation_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\PREPARATION.json",
   "manual_launch_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\MANUAL_TRAINING_LAUNCH.json",
-  "next_action": "Read window handoff, verify existing jobs read-only, wait for new explicit user/upper plan. Do not automatically launch experiments, cleanup tests, replays or migration.",
+  "next_action": "Project review only; new research awaits user/upper run order. Missing evaluations remain missing; no restart.",
   "handoff": "lower/handoffs/final_rerun_20261007.md",
   "training_launcher": "user_manual_independent_windows_powershell",
   "structure_gate_30k": "three models D1-D4 passed; 144 openings completed",
@@ -54,29 +54,30 @@
     "identical_to_git": 3,
     "duplicates": 22,
     "handoff": "lower/handoffs/cleanup_b123_20261010/README.md",
-    "verification_target": "60d768ab47a3236ebe4cf3fcd05553ed4652c792",
-    "step5_condition": "All experimental evidence delivered and evaluation/replay processes exited",
-    "scientific_checkout_untouched": true
+    "verification_target": "4795910102cf9fbf1dfec74b77e9449623a7b51e",
+    "step5_condition": "User cancelled remaining experiments; tests done, 6 formal replay checks not performed",
+    "scientific_checkout_untouched": true,
+    "step5_status": "CODE_TESTS_DONE_BEHAVIOR_RERUN_NOT_PERFORMED"
   },
   "interim_experiment_review": {
     "scope": "271000 two-model complete rows; third pending",
     "handoff": "lower/handoffs/final_rerun_271000_early_20261009/PHASE_REVIEW.md",
     "science_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
     "review_does_not_stop_experiments": true,
-    "final_verdict": "PENDING"
+    "final_verdict": "METHOD_DOES_NOT_HOLD_THREE_MODELS_COMPLETE_271000"
   },
   "upper_decision": {
     "source": "latest direct user instruction",
     "decision": "experiment failed; remaining evaluations for records only",
     "review": "reviews/F01_271000_UPPER_REVIEW_20261010.md",
-    "formal_three_model_readout": "PENDING; not replaced by upper decision"
+    "formal_three_model_readout": "METHOD_DOES_NOT_HOLD; problems=[]"
   },
   "local_cleanup": {
     "new_checkout": "D:/py/spacecraft",
-    "checkout_commit": "046878c",
+    "checkout_commit": "4795910",
     "archive_root": "D:/spacecraft_archive",
     "active_experiment_untouched": true,
-    "verification": "DEFERRED until processes exit",
+    "verification": "354 passed and 3 expected failures across full-suite run plus 13 setup-error retries; no new formal replay",
     "offline_backup": "PENDING",
     "handoff": "lower/handoffs/cleanup_local_20261010/README.md",
     "archive_files": 3679,
@@ -86,7 +87,11 @@
     "temporary_verification_checkout": "D:/py/spacecraft",
     "coordination_workspace": "C:\\Users\\35884\\Documents\\Spacecraft",
     "return_condition": "Existing evaluations/replays exit; evidence delivered; cleanup verification passes; preserve Python/PyCharm environment and result/model hashes",
-    "authority": "Latest direct user instruction: return latest project to DRL2 after evaluations"
+    "authority": "Latest direct user instruction: return latest project to DRL2 after evaluations",
+    "return_completed": true,
+    "models_and_environment_sha_unchanged": true,
+    "return_handoff": "lower/handoffs/DRL2_return_20261010/README.md",
+    "git_clean": true
   },
   "window_handoff": {
     "path": "lower/handoffs/window_handoff_20261009/WINDOW_HANDOFF_20261009.md",
@@ -96,5 +101,20 @@
     "formal_three_model_verdict": "PENDING",
     "research_progression": "STOPPED awaiting latest user plan",
     "format": "single consolidated handoff including opening prompt"
-  }
+  },
+  "experiment_scientific_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
+  "record_closure": {
+    "handoff": "lower/handoffs/F01_closed_records_20261010/README.md",
+    "evaluation_files": 650,
+    "missing": 118,
+    "replay_file_counts": [
+      12,
+      0,
+      11
+    ],
+    "background_processes": "NONE at closure",
+    "missing_not_replaced": true,
+    "new_simulations": false
+  },
+  "training_active": false
 }
