@@ -20,3 +20,6 @@
 
 
 只读盘点A段（实际2026-10-09，主题20261010）：[LOCAL_ASSET_MAP](handoffs/cleanup_inventory_20261010/LOCAL_ASSET_MAP.md)。含未入Git代码候选、历史尝试/探针、原位目录与哈希。B/C未执行，活动实验不动。
+
+
+Git整理第1–3步完成：[标签、分支及流水线去重回执](handoffs/cleanup_b123_20261010/README.md)；[流水线INDEX](pipeline_scripts/INDEX.csv)。第5步等待实验交付，目标60d768a；本地未整理。
