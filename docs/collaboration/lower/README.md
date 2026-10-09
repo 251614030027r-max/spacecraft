@@ -26,3 +26,5 @@ Git整理第1–3步完成：[标签、分支及流水线去重回执](handoffs/
 
 
 当前实验阶段审查（不等262461）：[PHASE_REVIEW](handoffs/final_rerun_271000_early_20261009/PHASE_REVIEW.md)。完整192回合，最终三模型判读待齐；现有评估继续。
+
+- [本地整理阶段交付](handoffs/cleanup_local_20261010/README.md)：新干净副本、历史复制与SHA、最新交付入口；活动评估保留，测试/行为验收与离线备份尚待完成。

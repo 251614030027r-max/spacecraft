@@ -2,7 +2,7 @@
   "schema": "spacecraft_collaboration_v1",
   "verified_date_jst": "2026-10-09",
   "topic": "final_rerun",
-  "phase": "formal_evaluation_active_271000_priority",
+  "phase": "upper_review_failed_remaining_evidence_active",
   "scientific_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
   "run_order": "upper/run_orders/FINAL_RERUN_20261007.md",
   "run_order_commit": "19aa467",
@@ -27,7 +27,7 @@
   "previous_runs_preserved": true,
   "preparation_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\PREPARATION.json",
   "manual_launch_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\MANUAL_TRAINING_LAUNCH.json",
-  "next_action": "Keep current evaluations running; 271000 priority delivery, retain seed262461; B/C cleanup only after experiment delivery and user confirmation",
+  "next_action": "Finish existing record evaluations and authorized replays; no new research/training. Local archives copied; tests and read-only transition after workers exit.",
   "handoff": "lower/handoffs/final_rerun_20261007.md",
   "training_launcher": "user_manual_independent_windows_powershell",
   "structure_gate_30k": "three models D1-D4 passed; 144 openings completed",
@@ -64,5 +64,23 @@
     "science_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
     "review_does_not_stop_experiments": true,
     "final_verdict": "PENDING"
+  },
+  "upper_decision": {
+    "source": "latest direct user instruction",
+    "decision": "experiment failed; remaining evaluations for records only",
+    "review": "reviews/F01_271000_UPPER_REVIEW_20261010.md",
+    "formal_three_model_readout": "PENDING; not replaced by upper decision"
+  },
+  "local_cleanup": {
+    "new_checkout": "D:/py/spacecraft",
+    "checkout_commit": "046878c",
+    "archive_root": "D:/spacecraft_archive",
+    "active_experiment_untouched": true,
+    "verification": "DEFERRED until processes exit",
+    "offline_backup": "PENDING",
+    "handoff": "lower/handoffs/cleanup_local_20261010/README.md",
+    "archive_files": 3679,
+    "archive_bytes": 4654435093,
+    "archive_sha_verified": true
   }
 }
