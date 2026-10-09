@@ -33,7 +33,9 @@ def csvout(name,rows):
 def axis(ax):ax.tick_params(top=True,right=True);ax.grid(color='#e6e6e6',ls='--',lw=.6,alpha=.6);ax.set_axisbelow(True)
 def save(fig,name,caption):
     fig.text(.5,.025,caption,ha='center',va='bottom',fontsize=10)
-    for ext in ('png',):fig.savefig(OUT/(name+'.'+ext),dpi=400,facecolor='white')
+    target=OUT/'备份页' if name in ('fig_trajectory_3d','fig_state_response') else OUT
+    target.mkdir(parents=True,exist_ok=True)
+    for ext in ('png',):fig.savefig(target/(name+'.'+ext),dpi=400,facecolor='white')
     plt.close(fig);captions[name]=caption;print('SAVED',name,flush=True)
 def load_block(root,block,models,rows=('pure','learned','stopping')):
     records=[]
@@ -51,6 +53,7 @@ def comparison(records,models,name,caption):
     assert all(len(s)==48 for s in sets)
     colors=[PURE]+[COLORS[i] for i in range(len(models))]*2
     labels=['Pure']+[f'单飞\n{s}' for s in models]+[f'交接\n{s}' for s in models]
+    sample_labels=[f'{label}\nn={sum(r["clean"] for r in rs)}' for label,rs in zip(labels,sets)]
     fig,axs=plt.subplots(1,3,figsize=(19.2,9));x=np.arange(7)
     for i,(rs,c) in enumerate(zip(sets,colors)):
         clean=sum(r['clean'] for r in rs);violation=sum(r['violation'] for r in rs)
@@ -65,7 +68,7 @@ def comparison(records,models,name,caption):
         for i,(patch,c,v) in enumerate(zip(boxes['boxes'],colors,values)):
             patch.set_facecolor(c);patch.set_alpha(.25);ax.scatter(i+rng.uniform(-.12,.12,len(v)),v,s=13,color=c,alpha=.55,edgecolors='none')
         ax.set_ylabel(label);ax.set_title(title,pad=18)
-    for ax in axs:ax.set_xticks(x,labels,fontsize=10);axis(ax)
+    for i,ax in enumerate(axs):ax.set_xticks(x,labels if i==0 else sample_labels,fontsize=10);axis(ax)
     fig.subplots_adjust(left=.055,right=.99,top=.87,bottom=.20,wspace=.32);save(fig,name,caption)
     paired=[]
     pure={r['seed']:r for r in sets[0]}
@@ -89,7 +92,7 @@ def baseline_scatter(records,name,caption):
             assert len(selected)==48
             for success in (True,False):
                 rs=[r for r in selected if bool(r['clean'])==success]
-                ax.scatter([r['time_s'] for r in rs],[r['delta_v_m_s'] for r in rs],color=color,s=45,marker='o' if success else 'x',alpha=.8,label=f'{"Pure MPC" if row=="pure" else "nominal"}（{"完成" if success else "失败"}）')
+                ax.scatter([r['time_s'] for r in rs],[r['delta_v_m_s'] for r in rs],color=color,s=45,marker='o' if success else 'x',alpha=.8,label=f'{"Pure MPC" if row=="pure" else "nominal"}（{"完成" if success else "失败"} {len(rs)}/48）')
         ax.set_xlabel('结束时间 / s');ax.set_ylabel('等效 Δv / (m/s)');ax.set_title(f'工况 w2.36_r15 · 块 {block}',pad=18);axis(ax);ax.legend(frameon=False,fontsize=12)
     fig.subplots_adjust(left=.09,right=.97,top=.86,bottom=.18,wspace=.25);save(fig,name,caption)
 def training():
@@ -175,7 +178,7 @@ def cases():
         for key,a in rows.items():ax.plot(a['time_s'],a[field],color=colors[key],lw=1.8,ls='--' if key=='pure' else '-',label=labels[key])
         for seed in (262460,262462):ax.axvline(results[seed]['handoff_time_s'],color=colors[seed],ls=':',lw=1.2)
         ax.axhline(threshold,color='#ad6b00',ls='--',lw=1.1);ax.text(.99,threshold,f' 捕获阈值 {threshold:g}',transform=ax.get_yaxis_transform(),ha='right',va='bottom',fontsize=10,color='#ad6b00');ax.set_ylabel(label);axis(ax)
-    for seed in (262460,262462):axs[0].text(results[seed]['handoff_time_s']+1,.08,f'交接（{seed}）',transform=axs[0].get_xaxis_transform(),color=colors[seed],fontsize=10,rotation=90,va='bottom')
+    for seed in (262460,262462):axs[0].text(results[seed]['handoff_time_s'],1.02,f'交接（{seed}）',transform=axs[0].get_xaxis_transform(),color=colors[seed],fontsize=10,rotation=0,ha='center',va='bottom')
     handles,labels_=axs[0].get_legend_handles_labels();fig.legend(handles,labels_,ncol=3,frameon=False,loc='upper center',bbox_to_anchor=(.56,.945),fontsize=12);fig.suptitle('预捕获状态与捕获条件',y=.985,fontsize=18);axs[-1].set_xlabel('时间 / s');axs[-1].set_xlim(0,161.1);fig.subplots_adjust(left=.14,right=.97,top=.85,bottom=.17,hspace=.20);save(fig,'fig_state_response',cap)
     value=[]
     for seed in (262460,262462):

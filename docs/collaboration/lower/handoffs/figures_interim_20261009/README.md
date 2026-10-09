@@ -1,19 +1,22 @@
-# 阶段汇报基准图（临时、待审查）
+# 汇报图表：正文五张，备份两张
 
-TEMPORARY_REVIEW_ONLY / NOT_PAPER_PERFORMANCE。执行单85bc7a8，五项共七张图；仅已有资产，无新实验，训练不动。历史正式与新方法中间案例分开注明，不能混成当前方法已成立。
+仅高清PNG（400 dpi）。只读取已有资产、调整标注；不新增仿真，不修改训练或控制方法。临时汇报资产，不作为本轮方法论文性能。
 
-- [1 · V3e历史学习层训练](fig1_v3e_training.png)
-- [2 · 原工况正式完成数/能耗/时间](fig2_formal_comparison.png)
-- [3 · 新工况Pure与nominal](fig3_baseline_time_energy.png)
-- [4 · 事后交接时机价值](fig4_hindsight_timing.png)
-- [5a · 已有50k案例轨迹](fig_trajectory_3d.png)
-- [5b · 案例闭环与捕获阈值](fig_state_response.png)
-- [5c · 案例价值触发](fig_handoff_value.png)
+## 正文顺序
 
-[核对数字](CHECKS.md) · [科学支撑与限制](REVIEW.md) · [实际绘图CSV](plot_data/) · [源文件及SHA](INPUTS_SHA256.json) · [脚本复用](REUSE.md) · [全文件SHA](FILES_SHA256.json)。
+1. [事后交接上界](fig4_hindsight_timing.png)：动机；48/48是事后最优机会，非可部署方法性能。
+2. [V3e学习层训练](fig1_v3e_training.png)：历史学习层训练，非本轮价值停止方法。
+3. [原工况正式轮](fig2_formal_comparison.png)：负结果保留；交接完成增益+25/+10/+19，未超过Pure。箱线图每箱注明自身干净完成样本数n，共同成功配对数据另存。
+4. [新工况两条基线](fig3_baseline_time_energy.png)：图例注明Pure完成34/48、nominal完成45/48；不是学习方法性能。
+5. [交接价值差](fig_handoff_value.png)：已有50k案例的阈值触发机制，非总体收益证明。
 
-按真实learned违规1/0/1绘制已获用户明确授权。当前final2混合训练曲线剔除，旧图仅历史留存。后续更好的正式资产可替换本入口，不能抹掉不利证据。
+## 备份页
 
-上层已在c4fecf2同步更正图2真值违规：Pure0、stopping0/0/0、learned1/0/1，与本包及用户明确确认一致；RUN_ORDER.md保存该更正版。
+- [三维轨迹](备份页/fig_trajectory_3d.png)
+- [状态响应](备份页/fig_state_response.png)：交接文字顶部横排，避免遮挡曲线。
 
-2026-10-09格式更新：按用户最新指令仅保留高清PNG，移除PDF/SVG；科学数据、脚本及审核证据保留。归档执行单中的矢量格式要求由本次用户指令取代。
+两张备份是开发开局266019、50k中间模型：协调133.9/161.1s，Pure106.8s。本例协调更慢，仅说明执行与捕获过程，不能当优势案例。正式案例待正式评估后按冻结规则选取。
+
+[数字核对](CHECKS.md) · [支撑与限制](REVIEW.md) · [绘图数据](plot_data/) · [源SHA](INPUTS_SHA256.json) · [复用](REUSE.md) · [本包SHA](FILES_SHA256.json)。
+
+已剔除当前方法的无支撑正文训练图；旧版本仅历史保留。归档执行单的PDF/SVG要求由用户PNG-only指令取代。训练进度及结构门控为独立动态状态，不在本次标注更新中刷新或推断。
