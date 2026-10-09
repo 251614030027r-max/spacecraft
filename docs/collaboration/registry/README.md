@@ -22,6 +22,7 @@
 | `local_sha_verified` | 下层 | 主读数文件本地 SHA 与上层所填是否一致：`yes` / `no` / `n/a` |
 | `lower_note` | 下层 | 不同意上层标注的地方、找不到的文件、补充信息 |
 
-主张代号见 `../PROJECT_STATE.md` 第 3 节（L1–L4）。
 
 总账只登记、不判定。改动状态标签需要上层或研究讨论层确认；下层的不同意见写在 `lower_note`。
+
+`paper_role`、`claim_served` 两列里的 L1–L4 是 2026-10-07 时的论文主张代号。论文主张推演已移出 git（见 WORKFLOW 第 8 条），这两列只作历史标注。
