@@ -17,3 +17,6 @@
 
 
 **最新阶段基准图（2026-10-09，待审查，可替换）：** [交接](handoffs/figures_interim_20261009.md) · [五项七张图及独立证据](handoffs/figures_interim_20261009/README.md)。按85bc7a8执行；当前训练出图搁置，无新仿真，正文不用混合训练图。
+
+
+只读盘点A段（实际2026-10-09，主题20261010）：[LOCAL_ASSET_MAP](handoffs/cleanup_inventory_20261010/LOCAL_ASSET_MAP.md)。含未入Git代码候选、历史尝试/探针、原位目录与哈希。B/C未执行，活动实验不动。
