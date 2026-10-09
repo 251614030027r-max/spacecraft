@@ -31,7 +31,7 @@
   - (a) 完成数柱状图：Pure；三个种子的 learned-only；三个种子的 stopping。柱顶标数字，违规回合数另行标出。
   - (b) 等效 Δv（`equivalent_delta_v_m_s`）：各行只取自己的干净完成回合，箱线图叠散点。
   - (c) 完成时间（`survival_s`）：画法同 (b)。
-- **核对**：Pure 41；stopping 37/41/36；learned 12/31/17；违规 0。
+- **核对**：Pure 41；stopping 37/41/36；learned 12/31/17。真值违规回合：Pure 0，stopping 0/0/0，learned 1/0/1（2026-10-09 更正：原写"违规 0"只指 Pure 和 stopping，learned 行按真实逐行数标注）。
 - **图注**：必须写"原工况正式轮，判定 METHOD_DOES_NOT_HOLD；交接相对同一策略单飞 +25/+10/+19"。
 
 ### 图 3：新工况基线的能耗与时间散点
