@@ -10,6 +10,10 @@ Pure MPC now.
 
 ## Start here
 
+**First read the shared three-window handoff:** branch `collab/spacecraft`,
+`docs/collaboration/HANDOFF.md` (background, current state, each window's role
+and discipline). Then this file and the pages below.
+
 | What | Where |
 |---|---|
 | Task, regime, constraints | `docs/current/TASK.md` |
