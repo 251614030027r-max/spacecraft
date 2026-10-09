@@ -1,5 +1,7 @@
 # 项目整体整理：现状分析、目标结构与分阶段执行单_20261010
 
+修订（用户 2026-10-10）：**不合并分支**。`main` 保持落后，实验全部结束后再统一并入；`claude/...` 和 `collab/spacecraft` 继续作为工作分支；只清理其余杂乱分支，并在 `claude/...` 上整理。新增要求：所有试过的方向都要留档，防止以后改进方法时重走死胡同（第 4 节 B2 第 8 步、A 段 3.8）。
+
 状态：A 段已授权待执行（与正在进行的评估并行，只读）；B、C 段为计划，待评估交付、实验停止并经用户确认后执行。
 人类授权来源：用户 2026-10-09/10 原话："可以提前让下层开始资产整理，git比较乱，本次评估完毕后停止实验我们会好好整理分析问题所在……旧指令无用数据整理归档，确保项目整体呈现一份干净且历史可查，历史线迭代清晰的工程"。
 
@@ -13,9 +15,9 @@
 
 | 分支 | 末次提交 | 与科学分支的关系 | 处理 |
 |---|---|---|---|
-| `main` | 09-04 `619e491` | 落后科学分支 232 个提交；多 3 个网页上传的 PDF | B 段：合并科学线后作为唯一稳定主线 |
-| `claude/sac-mpc-coupling-design-ns7g6i` | 10-08 `813e27f` | 科学代码主线，259 个提交；最新一个是网页上传的 PDF | B 段：在其上完成整理，再并入 `main` |
-| `collab/spacecraft` | 10-09 | 只改动 `docs/collaboration/`（已核实，其他路径零差异） | B 段：并入 `main`，打标签后删除 |
+| `main` | 09-04 `619e491` | 落后科学分支 232 个提交；多 3 个网页上传的 PDF | 不动，实验全部结束后统一并入 |
+| `claude/sac-mpc-coupling-design-ns7g6i` | 10-08 `813e27f` | 科学代码主线，259 个提交；最新一个是网页上传的 PDF | 保留为工作分支，B 段在其上整理 |
+| `collab/spacecraft` | 10-09 | 只改动 `docs/collaboration/`（已核实，其他路径零差异） | 保留为工作分支，不动 |
 | `v2-evaluation-20260924` | 09-24 | 已完全包含在科学分支中 | 打归档标签后删除 |
 | `v3-t0b-20260925` | 09-25 | 已完全包含在科学分支中 | 打归档标签后删除 |
 | `review/v3e-60k-value-r2-20260930` | 09-30 | 多 1 个证据提交（17 个文件） | 打归档标签后删除 |
@@ -61,9 +63,10 @@
 ## 2. 目标结构（B 段完成后）
 
 **分支：**
-- `main`：唯一稳定主线；
-- `claude/sac-mpc-coupling-design-ns7g6i`：上层开发分支，按阶段并入 `main`；
-- 其余只用短期分支。
+- `main`：不动，实验全部结束后统一并入；
+- `claude/sac-mpc-coupling-design-ns7g6i`：科学代码工作分支，在其上整理；
+- `collab/spacecraft`：协作工作分支，不动；
+- 其余 6 个分支打归档标签后删除。
 
 **历史：** 全部以 `archive/*` 标签保存。
 
@@ -89,7 +92,6 @@ docs/
     handoffs/                       历代窗口交接与开场提示
     README.md                       各组结论摘要与路径对照
     ARTIFACT_INDEX.csv              从工作树移除的文件 → 归档标签路径
-  collaboration/             协作入口（由 collab 分支并入），继续使用
 ```
 
 文档归组草案见 `upper/cleanup/DOC_CLASSIFICATION_DRAFT.csv`：140 篇全部按文件名归入以上 8 组，无未分类项。B 段执行前由上层逐条复核"状态说明"列。
@@ -150,6 +152,14 @@ docs/
 
 把 `过程文件/` 下的文件分为四类：执行回执、运行记录、交接、临时，并列出每个文件对应的执行单。
 
+### 3.8 本地试过的方向清单（防重走死胡同）
+
+把交接记录、回执和本地运行目录里出现过的每一种方法变体、探针和参数尝试都列出来，包括没有进入总账的探索性尝试。
+
+每条写明：名称、日期、运行目录、对应的执行单、结果一句话（有数字就带上数字，数字要能指向文件）、当时为什么停止。
+
+输出 `tried_variants.csv`。不要判断它是否"值得重开"，这一项由上层在 `DEAD_ENDS.md` 里统一写。
+
 ### 3.7 交付
 
 推送到协作分支 `lower/handoffs/cleanup_inventory_20261010/`，只提交 `docs/collaboration/`：
@@ -157,10 +167,11 @@ docs/
 - `local_assets.csv`，列为：路径、字节数、文件数、实验 ID、状态、manifest 摘要、哈希文件位置、建议处理；
   - "建议处理"取值：`KEEP_ARCHIVE` / `KEEP_ACTIVE` / `INVALID_KEEP` / `CACHE_DELETABLE` / `COMMIT_TO_GIT` / `ASK_USER`；
 - `untracked_code.csv`（3.2 的结果）；
+- `tried_variants.csv`（3.8 的结果）；
 - 补全总账的本地列：`local_result_path`、`local_sha_verified`、`lower_note`；
 - 更新 `CURRENT.json`。
 
-**停止条件：** 3.1–3.6 都有结果，所有目录都归入了实验 ID 或标为 `ORPHAN`/`CACHE`。不做任何移动和删除，不对任何结果做解读。
+**停止条件：** 3.1–3.8 都有结果，所有目录都归入了实验 ID 或标为 `ORPHAN`/`CACHE`。不做任何移动和删除，不对任何结果做解读。
 
 ---
 
@@ -175,8 +186,6 @@ docs/
 
 **B1 打标签（只增不删，可随时撤销）：**
 - 科学分支末端：`archive/pre-cleanup-<日期>`；
-- 旧 `main` 末端：`archive/main-pre-cleanup`；
-- 协作分支末端：`archive/collab-pre-cleanup`；
 - 每个待删分支各一个标签：`archive/review/...`、`archive/v2-evaluation-20260924`、`archive/v3-t0b-20260925`。
 - 所有标签都是附注标签，说明里写明它保存的内容。
 
@@ -188,7 +197,9 @@ docs/
 5. 删除不在用的代码文件：`experiments/` 约 70 个、`eval/` 约 15 个、`train/train.py`、`train/configs.py`、`train/callbacks.py`、`read_cal.py`，以及只测试这些文件的测试。生成 `docs/archive/CODE_INDEX.csv`（路径、最后提交、归档标签）。
    - **不改任何在用模块的行为。** env 中的旧任务分支（single_phase 等）留到根部优化时再处理。
 6. 把证据 JSON 从 `eval/` 移到 `evidence/<实验ID>/`，同步更新总账路径。
-7. 重写 CLAUDE.md 和 README.md；建立 `references/README.md`；并入 main 上 3 个网页上传的 PDF。
+7. 重写 CLAUDE.md 和 README.md；建立 `references/README.md`。
+8. **写 `docs/DEAD_ENDS.md`（已验证的负结果台账）。** 每个试过而没有成立的方向一条，固定写明：试了什么（一句话）；在什么任务和接口上试的；结果数字和判定；证据出处（实验 ID 加归档标签路径）；失败的根因（已测得的，还是推断的）；什么条件变了才值得重开。上层起草，来源包括 CLAUDE.md 历史段落、各组 README，以及 A 段 3.8 的本地清单。以后任何方法改动，提出前先对照这份台账。
+9. `CODE_INDEX.csv` 里每个被移除的脚本，都标上它服务的实验 ID 和那个实验的判定。被删的只是工作树里的文件，所有试过的代码都能从标签取回，并且知道它当时得出了什么结论。
 
 **B2 验证（下层在本机做，全部通过才能进入 B3）：**
 - 全部测试通过：`python -B -m pytest -q`；
@@ -198,18 +209,18 @@ docs/
 - 链接检查：`docs/current/`、`HISTORY.md`、各组 README、总账里的每个路径，在新主线或归档标签下都能找到。
 
 **B3 分支收口（远端操作，用户逐项确认）：**
-1. 把整理后的科学分支和协作分支并入 `main`。由用户在 GitHub 上合并，或授权上层开 PR。
-2. 删除远端分支：两个旧开发分支、四个 review 分支、协作分支。它们的内容都已在标签里。
-3. 协作入口从此放在 `main` 的 `docs/collaboration/`。上下层各自在单独的工作树中编辑，先 fetch 再提交，不 force-push。上层写 `upper/`、`reviews/`；下层写 `lower/`、`CURRENT.json`。
+1. 确认 6 个归档标签都已推到远端，并且每个标签都指向对应分支的末端提交。
+2. 删除远端分支：`v2-evaluation-20260924`、`v3-t0b-20260925` 和 4 个 `review/*`。
+3. 不合并，不动 `main` 和 `collab/spacecraft`。
 
-完成后远端只剩 `main` 和上层开发分支两个分支，外加 `archive/*` 标签。
+完成后远端只剩 `main`、`claude/...`、`collab/spacecraft` 三个分支，外加 `archive/*` 标签。
 
 ---
 
 ## 5. C 段：本地整理（B 段完成后，经用户确认）
 
 1. **新建干净工作副本，不在旧目录里清理。**
-   - 命令：`git clone --filter=blob:limit=5m <仓库> D:/py/spacecraft`。部分克隆不会下载历史里 1.5 GB 的模型 ZIP，需要时再按需取。
+   - 命令：`git clone --filter=blob:limit=5m -b claude/sac-mpc-coupling-design-ns7g6i <仓库> D:/py/spacecraft`。部分克隆不会下载历史里 1.5 GB 的模型 ZIP，需要时再按需取。
    - 旧 `D:/py/DRL2` 和 `DRL2_v3e` 设为只读，原样保留，直到用户决定删除。
 2. **建立本地归档** `D:/spacecraft_archive/<实验ID>/`，按 A 段的映射复制（不移动），每个文件复制后核对 SHA。作废运行单独放进 `_invalid/<实验ID>/`。
 3. **再做一份离线备份**（移动硬盘或网盘）。只有 `MANIFEST_SHA256.csv` 进入 git。
