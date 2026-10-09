@@ -1,0 +1,75 @@
+{
+  "science_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
+  "block": "271000-271047",
+  "scope": "PARTIAL_TWO_MODEL_REVIEW_NOT_FINAL_THREE_MODEL_VERDICT",
+  "sample_rows": {
+    "pure": {
+      "clean": 35,
+      "violations": 0,
+      "failure_counts": {
+        "time_failure": 13
+      },
+      "median_own_success_time_s": 99.4,
+      "median_own_success_delta_v_m_s": 2.5890851133377084
+    },
+    "nominal": {
+      "clean": 48,
+      "violations": 0,
+      "failure_counts": {},
+      "median_own_success_time_s": 196.8,
+      "median_own_success_delta_v_m_s": 4.348020271409302,
+      "shared_success_vs_pure": {
+        "n": 35,
+        "median_time_change_s": 86.1,
+        "median_delta_v_change_m_s": 1.3293454192869598
+      }
+    },
+    "262460": {
+      "clean": 30,
+      "violations": 3,
+      "failure_counts": {
+        "fov_failure": 3,
+        "distance_failure": 1,
+        "time_failure": 14
+      },
+      "median_own_success_time_s": 131.20000000000002,
+      "median_own_success_delta_v_m_s": 3.2305626275293102,
+      "handoff": {
+        "immediate": 9,
+        "never": 6,
+        "mid": 33
+      },
+      "shared_success_vs_pure": {
+        "n": 26,
+        "median_time_change_s": 23.200000000000003,
+        "median_delta_v_change_m_s": 0.18216682128197226
+      }
+    },
+    "262462": {
+      "clean": 37,
+      "violations": 0,
+      "failure_counts": {
+        "time_failure": 10,
+        "distance_failure": 1
+      },
+      "median_own_success_time_s": 116.2,
+      "median_own_success_delta_v_m_s": 3.4755480157540584,
+      "handoff": {
+        "immediate": 15,
+        "never": 1,
+        "mid": 32
+      },
+      "shared_success_vs_pure": {
+        "n": 33,
+        "median_time_change_s": 2.200000000000003,
+        "median_delta_v_change_m_s": 0.20486632301208285
+      }
+    }
+  },
+  "model_sha256": {
+    "262460": "86703e4620a1b0ed7087f9466599a5e00a10e89b3226260e5a6899d65c531fcb",
+    "262462": "bb0e52c022fa74ce7e1b273c9dc0081bc4a969a30e584d5976901194bbea768f"
+  },
+  "three_model_verdict": "PENDING",
+  "gate_function": "experiments.v3_stopping.gate_verdict"
+}

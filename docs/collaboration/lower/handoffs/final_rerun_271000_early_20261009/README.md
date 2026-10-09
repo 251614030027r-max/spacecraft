@@ -1,10 +1,5 @@
-# 271000提前交付：官方单模型门槛
+# 271000阶段审查入口
 
-固定代码f2f8169，工况w2.36_r15，60k最终模型262460/262462，271000–271047各48开局；Pure及两条stopping共144个原始结果随包提供。不等272000，262461训练与评估照常保留。
+[立即供上层审查的实验状况](PHASE_REVIEW.md) · [指标与模型SHA](PHASE_SUMMARY.json) · [官方门槛阶段读数](readout_gates_271000.json) · [失败开局](failed_openings_271000.csv) · [共同成功配对](paired_common_success_271000.csv) · [进度快照](evaluation_progress.json)。
 
-门槛：干净完成数大于Pure、违规不多于Pure、毁掉Pure成功开局≤2；三个模型至少两个通过。直接调用冻结官方gate_verdict，无新门槛。当前是两模型阶段判定，完整readout需learned及262461；不以缺少第三模型的结果宣布最终失败。
-
-- 262460：完成{'pure': 35, 'method': 30}；违规{'pure': 0, 'method': 3}；救回4；毁掉9；通过False。
-- 262462：完成{'pure': 35, 'method': 37}；违规{'pure': 0, 'method': 0}；救回4；毁掉2；通过True。
-
-本次检验无保真问题；模型SHA见manifest及状态。协调增益待learned齐全后补。分析定义与完整源文件见readout_gates_271000.json、raw/、training/。
+完整192份原始结果与两模型训练证据随包提供；这是阶段报告，不是三模型最终结论，不剔除262461。
