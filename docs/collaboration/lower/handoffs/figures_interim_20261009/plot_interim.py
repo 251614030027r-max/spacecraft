@@ -33,7 +33,7 @@ def csvout(name,rows):
 def axis(ax):ax.tick_params(top=True,right=True);ax.grid(color='#e6e6e6',ls='--',lw=.6,alpha=.6);ax.set_axisbelow(True)
 def save(fig,name,caption):
     fig.text(.5,.025,caption,ha='center',va='bottom',fontsize=10)
-    for ext in ('png','pdf','svg'):fig.savefig(OUT/(name+'.'+ext),dpi=400,facecolor='white')
+    for ext in ('png',):fig.savefig(OUT/(name+'.'+ext),dpi=400,facecolor='white')
     plt.close(fig);captions[name]=caption;print('SAVED',name,flush=True)
 def load_block(root,block,models,rows=('pure','learned','stopping')):
     records=[]

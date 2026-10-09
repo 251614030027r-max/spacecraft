@@ -12,7 +12,7 @@ checks=read(OUT/'CHECKS.json');assert all(r['passed'] for r in checks)
 names=['fig1_v3e_training','fig2_formal_comparison','fig3_baseline_time_energy','fig4_hindsight_timing','fig_trajectory_3d','fig_state_response','fig_handoff_value']
 for name in names:
     with Image.open(OUT/(name+'.png')) as im:assert min(im.info['dpi'])>=300
-    assert (OUT/(name+'.pdf')).is_file() and (OUT/(name+'.svg')).is_file()
+    assert (OUT/(name+'.png')).is_file()
 order=REPO/'docs/collaboration/upper/run_orders/FIGURES_INTERIM_20261009.md';shutil.copy2(order,OUT/'RUN_ORDER.md')
 report='''# 阶段基准图：独立审核与展示口径
 
@@ -56,7 +56,7 @@ plot_data包含所有画入的数值CSV及同块配对CSV，INPUTS_SHA256列出�
 ''',encoding='utf-8')
 labels=[('fig1_v3e_training','1 · V3e历史学习层训练'),('fig2_formal_comparison','2 · 原工况正式完成数/能耗/时间'),('fig3_baseline_time_energy','3 · 新工况Pure与nominal'),('fig4_hindsight_timing','4 · 事后交接时机价值'),('fig_trajectory_3d','5a · 已有50k案例轨迹'),('fig_state_response','5b · 案例闭环与捕获阈值'),('fig_handoff_value','5c · 案例价值触发')]
 index='# 阶段汇报基准图（临时、待审查）\n\nTEMPORARY_REVIEW_ONLY / NOT_PAPER_PERFORMANCE。执行单85bc7a8，五项共七张图；仅已有资产，无新实验，训练不动。历史正式与新方法中间案例分开注明，不能混成当前方法已成立。\n\n'
-for name,label in labels:index+=f'- [{label}]({name}.png) · [PDF]({name}.pdf) · [SVG]({name}.svg)\n'
+for name,label in labels:index+=f'- [{label}]({name}.png)\n'
 index+='\n[核对数字](CHECKS.md) · [科学支撑与限制](REVIEW.md) · [实际绘图CSV](plot_data/) · [源文件及SHA](INPUTS_SHA256.json) · [脚本复用](REUSE.md) · [全文件SHA](FILES_SHA256.json)。\n\n按真实learned违规1/0/1绘制已获用户明确授权。当前final2混合训练曲线剔除，旧图仅历史留存。后续更好的正式资产可替换本入口，不能抹掉不利证据。\n'
 (OUT/'README.md').write_text(index,encoding='utf-8')
 with (OUT/'ASSET_INVENTORY.csv').open('w',encoding='utf-8-sig',newline='') as f:
