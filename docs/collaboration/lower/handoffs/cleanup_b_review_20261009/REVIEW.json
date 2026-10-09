@@ -1,0 +1,495 @@
+{
+  "refs": {
+    "old": "813e27f982ee24076d7ef9ae2cbb6061e0881c42",
+    "new": "dccee28a74f60f4f7bbb28d5957c2bbaa73ae515",
+    "frozen": "f2f8169acd580ea96a578d45022dd8952447eca5"
+  },
+  "before": {
+    "files": 2109,
+    "bytes": 1815357691
+  },
+  "after": {
+    "files": 411,
+    "bytes": 99664322
+  },
+  "surviving_code_files": 62,
+  "changed_surviving_code": [],
+  "artifact_index_rows": 1618,
+  "code_index_rows": 91,
+  "path_map_rows": 257,
+  "index_issues": [],
+  "missing_static_imports": [],
+  "dead_end_rows": 24,
+  "open_questions": 5,
+  "archive_tags_on_remote": "",
+  "heads_on_remote": "dccee28a74f60f4f7bbb28d5957c2bbaa73ae515\trefs/heads/claude/sac-mpc-coupling-design-ns7g6i\n3883aaa5d1031614f6acae3d880b1ce918d3cd42\trefs/heads/collab/spacecraft\n619e4917549526deeb39a9cfe2e6b60077ffb90d\trefs/heads/main\n6c5cb97a319e425bd616d4fe323ed1a9c43902a4\trefs/heads/review/stopping-20261006-audit\n2d8a5818037b6d753f4866969fae372da6cbef84\trefs/heads/review/stopping-value-check-20261006\ndc6682d4ec11e5858bedc9e619ac6c4142fc7e66\trefs/heads/review/v3e-60k-value-r2-20260930\nb383cd285de78561f116b1dc6cdab10fe3694088\trefs/heads/review/v3e-stage-c-20261002\n736edbca691336efe8e5296bc2f10d8a39e35190\trefs/heads/v2-evaluation-20260924\nf50eb78350604431fb042eca6b3f655cd5c26bab\trefs/heads/v3-t0b-20260925\n",
+  "dead_end_abbreviated_refs": [
+    "02_.../T7_RESULTS_AND_VERDICT.md",
+    "02_.../INTERFACE_SINGLE_FACTOR.md",
+    "02_.../T7_RESULTS_AND_VERDICT.md",
+    "03_.../ADAPTIVE_ROUND1_CLOSEOUT_20260921.md",
+    "04_.../V3E_STATE_REVIEW_20260930.md",
+    "02_.../OPPORTUNITY_MAINLINE_RUNSHEET.md",
+    "03_.../ROUND1_EXTERNAL_REVIEW_20260922.md",
+    "05_.../REGIME_SCREEN_20261006.md",
+    "02_.../PROBE2_NONCOOP_RESULT_20260916.md",
+    "01_.../ATTITUDE_REFERENCE_PROBE.md",
+    "01_.../P1_*",
+    "02_.../T7_T9_REVIEW_20260912.md",
+    "02_.../MAINLINE_TRAIN_EVAL_RUNSHEET.md",
+    "02_.../T12_S10_FORMAL_EVALUATION_REPORT_20260915.md",
+    "04_.../V3E_VALUE_R2_ANALYSIS_20260930.md",
+    "05_.../STAGE_C_RESULT_20261002.md",
+    "05_.../STAGE_C_RESULT_20261002.md",
+    "05_.../STOPPING_FORMAL_REVIEW_20261006.md",
+    "05_.../STOPPING_VALUE_RULE_RESULT_20261006.md"
+  ],
+  "test_difference": "diff --git a/tests/test_v3_mainline.py b/tests/test_v3_mainline.py\nindex 8d462e8..55e8cc2 100644\n--- a/tests/test_v3_mainline.py\n+++ b/tests/test_v3_mainline.py\n@@ -4,7 +4,7 @@\n changed nothing:\n \n 1. its environment and hybrid configs equal, field for field, the three v3e\n-   training manifests (``eval/v3e/manifests/``, copied from the round-2\n+   training manifests (``evidence/E01_v3e_60k/manifests/``, copied from the round-2\n    evidence package; SHA-256 in\n    ``docs/STAGE_B_HANDOFF_WINDOW_PREREGISTRATION_20260930.md``);\n 2. the formal evaluator's Pure MPC row (``--control desired_pose``) and\n@@ -28,7 +28,7 @@ from experiments.v3_handoff_scan import ImpulseMeter\n from train.mainline import MAINLINE_V3E_EVALUATION_FLAGS, mainline_v3e_configs, mainline_v3e_env\n \n REPOSITORY = Path(__file__).resolve().parents[1]\n-MANIFESTS = sorted((REPOSITORY / \"eval\" / \"v3e\" / \"manifests\").glob(\"v3e_*_manifest.json\"))\n+MANIFESTS = sorted((REPOSITORY / \"evidence\" / \"E01_v3e_60k\" / \"manifests\").glob(\"v3e_*_manifest.json\"))\n SEED = 263003\n DECISIONS = 2\n \n",
+  "limits": "No tests or simulation run; verification step 5 deferred until evaluations finish. No tag/branch/worktree mutation.",
+  "artifact_quoted_paths": [
+    {
+      "indexed_path": "\"logs/fullmission_sac_200k_seed260830/tensorboard/SAC_1/events.out.tfevents.1787289274.\\351\\243\\216\\351\\223\\203.22420.0\"",
+      "actual_path": "logs/fullmission_sac_200k_seed260830/tensorboard/SAC_1/events.out.tfevents.1787289274.风铃.22420.0",
+      "blob_sha1": "3e4c252f7ec4f6bcf7c5c4c4747cbd70a066ab05",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/fullmission_sac_200k_seed260831/tensorboard/SAC_1/events.out.tfevents.1787289274.\\351\\243\\216\\351\\223\\203.10604.0\"",
+      "actual_path": "logs/fullmission_sac_200k_seed260831/tensorboard/SAC_1/events.out.tfevents.1787289274.风铃.10604.0",
+      "blob_sha1": "2164355fb43c222191566e9e7ed430bcd16a7738",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/fullmission_sac_200k_seed260832/tensorboard/SAC_1/events.out.tfevents.1787289281.\\351\\243\\216\\351\\223\\203.5916.0\"",
+      "actual_path": "logs/fullmission_sac_200k_seed260832/tensorboard/SAC_1/events.out.tfevents.1787289281.风铃.5916.0",
+      "blob_sha1": "c3eaf027813148218ddf1817dc6d8517883bd4d3",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/gatefree_sac_150k_seed260840/tensorboard/SAC_1/events.out.tfevents.1787376731.\\351\\243\\216\\351\\223\\203.12440.0\"",
+      "actual_path": "logs/gatefree_sac_150k_seed260840/tensorboard/SAC_1/events.out.tfevents.1787376731.风铃.12440.0",
+      "blob_sha1": "51726f88d98e5ca0e10c465b695569e1eadd15b7",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/gatefree_sac_150k_seed260841/tensorboard/SAC_1/events.out.tfevents.1787376739.\\351\\243\\216\\351\\223\\203.24400.0\"",
+      "actual_path": "logs/gatefree_sac_150k_seed260841/tensorboard/SAC_1/events.out.tfevents.1787376739.风铃.24400.0",
+      "blob_sha1": "443b7b24cdd04c942e1014f56f77839f436fa9be",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/gatefree_sac_150k_seed260842/tensorboard/SAC_1/events.out.tfevents.1787376748.\\351\\243\\216\\351\\223\\203.5736.0\"",
+      "actual_path": "logs/gatefree_sac_150k_seed260842/tensorboard/SAC_1/events.out.tfevents.1787376748.风铃.5736.0",
+      "blob_sha1": "b1b99eb72ae0ea8b641e958d538200f60a9f76ae",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/gatefree_sac_400k_fix_seed260860/tensorboard/SAC_1/events.out.tfevents.1787450736.\\351\\243\\216\\351\\223\\203.17020.0\"",
+      "actual_path": "logs/gatefree_sac_400k_fix_seed260860/tensorboard/SAC_1/events.out.tfevents.1787450736.风铃.17020.0",
+      "blob_sha1": "960dd9cab1654ecce917293e1aafacfa9f1d6a3b",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/gatefree_sac_400k_fix_seed260861/tensorboard/SAC_1/events.out.tfevents.1787450747.\\351\\243\\216\\351\\223\\203.11368.0\"",
+      "actual_path": "logs/gatefree_sac_400k_fix_seed260861/tensorboard/SAC_1/events.out.tfevents.1787450747.风铃.11368.0",
+      "blob_sha1": "ca9eae0fe636857ef547f13beb677bd8d8d38199",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/gatefree_sac_400k_fix_seed260862/tensorboard/SAC_1/events.out.tfevents.1787450757.\\351\\243\\216\\351\\223\\203.2168.0\"",
+      "actual_path": "logs/gatefree_sac_400k_fix_seed260862/tensorboard/SAC_1/events.out.tfevents.1787450757.风铃.2168.0",
+      "blob_sha1": "1ee2f59283f2ddaa93bd1c043b8e4ee0cf24d2fe",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/gatefree_sac_400k_seed260850/tensorboard/SAC_1/events.out.tfevents.1787403786.\\351\\243\\216\\351\\223\\203.13440.0\"",
+      "actual_path": "logs/gatefree_sac_400k_seed260850/tensorboard/SAC_1/events.out.tfevents.1787403786.风铃.13440.0",
+      "blob_sha1": "143047f2e7cc93179fa52dc4cd0bf577521a759c",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/gatefree_sac_400k_seed260851/tensorboard/SAC_1/events.out.tfevents.1787403791.\\351\\243\\216\\351\\223\\203.15348.0\"",
+      "actual_path": "logs/gatefree_sac_400k_seed260851/tensorboard/SAC_1/events.out.tfevents.1787403791.风铃.15348.0",
+      "blob_sha1": "fdd15eb7c2f4a0f7f924efb4249105d44764eb33",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/gatefree_sac_400k_seed260852/tensorboard/SAC_1/events.out.tfevents.1787403796.\\351\\243\\216\\351\\223\\203.2648.0\"",
+      "actual_path": "logs/gatefree_sac_400k_seed260852/tensorboard/SAC_1/events.out.tfevents.1787403796.风铃.2648.0",
+      "blob_sha1": "874cff6f6245b4f5d2dd912d8c502b00a05a0051",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/interrupted_codex_20260907_2353/sac_mpc_hybrid_262100/tensorboard/SAC_1/events.out.tfevents.1788792822.\\351\\243\\216\\351\\223\\203.380.0\"",
+      "actual_path": "logs/hybrid/interrupted_codex_20260907_2353/sac_mpc_hybrid_262100/tensorboard/SAC_1/events.out.tfevents.1788792822.风铃.380.0",
+      "blob_sha1": "3a9885323482fef6b1353d86bcfa7a10685e60b1",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/interrupted_codex_20260907_2353/sac_mpc_hybrid_262101/tensorboard/SAC_1/events.out.tfevents.1788792822.\\351\\243\\216\\351\\223\\203.14024.0\"",
+      "actual_path": "logs/hybrid/interrupted_codex_20260907_2353/sac_mpc_hybrid_262101/tensorboard/SAC_1/events.out.tfevents.1788792822.风铃.14024.0",
+      "blob_sha1": "3a9885323482fef6b1353d86bcfa7a10685e60b1",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/interrupted_codex_20260907_2353/sac_mpc_hybrid_262102/tensorboard/SAC_1/events.out.tfevents.1788792822.\\351\\243\\216\\351\\223\\203.22216.0\"",
+      "actual_path": "logs/hybrid/interrupted_codex_20260907_2353/sac_mpc_hybrid_262102/tensorboard/SAC_1/events.out.tfevents.1788792822.风铃.22216.0",
+      "blob_sha1": "3a9885323482fef6b1353d86bcfa7a10685e60b1",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/sac_mpc_hybrid_v2_262100/tensorboard/SAC_1/events.out.tfevents.1788835059.\\351\\243\\216\\351\\223\\203.27628.0\"",
+      "actual_path": "logs/hybrid/sac_mpc_hybrid_v2_262100/tensorboard/SAC_1/events.out.tfevents.1788835059.风铃.27628.0",
+      "blob_sha1": "95476fededf74d25a49bcfadeb740e79f67953b3",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/sac_mpc_hybrid_v2_262101/tensorboard/SAC_1/events.out.tfevents.1788835064.\\351\\243\\216\\351\\223\\203.28544.0\"",
+      "actual_path": "logs/hybrid/sac_mpc_hybrid_v2_262101/tensorboard/SAC_1/events.out.tfevents.1788835064.风铃.28544.0",
+      "blob_sha1": "4e5129d22ca354054455f5af8fe17b7dc9c52acb",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/sac_mpc_hybrid_v2_262102/tensorboard/SAC_1/events.out.tfevents.1788835076.\\351\\243\\216\\351\\223\\203.1700.0\"",
+      "actual_path": "logs/hybrid/sac_mpc_hybrid_v2_262102/tensorboard/SAC_1/events.out.tfevents.1788835076.风铃.1700.0",
+      "blob_sha1": "055d2e72be2c3ec503540bfe55b64ecaaa794f96",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/sac_mpc_hybrid_v3_macro_262100/tensorboard/SAC_1/events.out.tfevents.1788885126.\\351\\243\\216\\351\\223\\203.25644.0\"",
+      "actual_path": "logs/hybrid/sac_mpc_hybrid_v3_macro_262100/tensorboard/SAC_1/events.out.tfevents.1788885126.风铃.25644.0",
+      "blob_sha1": "5e72eeb4476c70988fff4f230cb4244e9d3d5faf",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/sac_mpc_hybrid_v3_macro_262101/tensorboard/SAC_1/events.out.tfevents.1788885182.\\351\\243\\216\\351\\223\\203.28952.0\"",
+      "actual_path": "logs/hybrid/sac_mpc_hybrid_v3_macro_262101/tensorboard/SAC_1/events.out.tfevents.1788885182.风铃.28952.0",
+      "blob_sha1": "099969f9cfdcfbccaf5ea1c6f1e6361e9183c7af",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/sac_mpc_hybrid_v3_macro_262102/tensorboard/SAC_1/events.out.tfevents.1788885193.\\351\\243\\216\\351\\223\\203.16500.0\"",
+      "actual_path": "logs/hybrid/sac_mpc_hybrid_v3_macro_262102/tensorboard/SAC_1/events.out.tfevents.1788885193.风铃.16500.0",
+      "blob_sha1": "5cf57c6d4f471a8dec5c751e18e578c1b3761ed2",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/sac_mpc_hybrid_v4_phase_time_262100/tensorboard/SAC_1/events.out.tfevents.1788975436.\\351\\243\\216\\351\\223\\203.23208.0\"",
+      "actual_path": "logs/hybrid/sac_mpc_hybrid_v4_phase_time_262100/tensorboard/SAC_1/events.out.tfevents.1788975436.风铃.23208.0",
+      "blob_sha1": "0373edf32bdc9c56e610f0fdc251a88f23422077",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/sac_mpc_hybrid_v4_phase_time_262101/tensorboard/SAC_1/events.out.tfevents.1788975436.\\351\\243\\216\\351\\223\\203.8268.0\"",
+      "actual_path": "logs/hybrid/sac_mpc_hybrid_v4_phase_time_262101/tensorboard/SAC_1/events.out.tfevents.1788975436.风铃.8268.0",
+      "blob_sha1": "a2768775adb22821ccce8971a9c9644a7d0fd985",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/hybrid/sac_mpc_hybrid_v4_phase_time_262102/tensorboard/SAC_1/events.out.tfevents.1788975436.\\351\\243\\216\\351\\223\\203.9728.0\"",
+      "actual_path": "logs/hybrid/sac_mpc_hybrid_v4_phase_time_262102/tensorboard/SAC_1/events.out.tfevents.1788975436.风铃.9728.0",
+      "blob_sha1": "4911522afcb80243b3fc0af6d5b6c6d96a8751c0",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1_adaptive_actioncontrast_seed260814/tensorboard/SAC_1/events.out.tfevents.1786681445.\\351\\243\\216\\351\\223\\203.13952.0\"",
+      "actual_path": "logs/phase2_mission_s1_adaptive_actioncontrast_seed260814/tensorboard/SAC_1/events.out.tfevents.1786681445.风铃.13952.0",
+      "blob_sha1": "0f8c3854977b471fa2405aee9ad936aca5ccf277",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1_cone20_autoent_seed260814/tensorboard/SAC_1/events.out.tfevents.1786712138.\\351\\243\\216\\351\\223\\203.8232.0\"",
+      "actual_path": "logs/phase2_mission_s1_cone20_autoent_seed260814/tensorboard/SAC_1/events.out.tfevents.1786712138.风铃.8232.0",
+      "blob_sha1": "4b27b0ef449f10bedd3f03b6c2d78f6b8248161d",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1_cone20_bodyobs_autoent_seed260814/tensorboard/SAC_1/events.out.tfevents.1786717772.\\351\\243\\216\\351\\223\\203.14940.0\"",
+      "actual_path": "logs/phase2_mission_s1_cone20_bodyobs_autoent_seed260814/tensorboard/SAC_1/events.out.tfevents.1786717772.风铃.14940.0",
+      "blob_sha1": "c34ab7e3e08ce0ef24ce196ed3de956b2b3bf1a5",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1_cone20_bodyobs_autoent_tau001_seed260814/tensorboard/SAC_1/events.out.tfevents.1786722836.\\351\\243\\216\\351\\223\\203.7148.0\"",
+      "actual_path": "logs/phase2_mission_s1_cone20_bodyobs_autoent_tau001_seed260814/tensorboard/SAC_1/events.out.tfevents.1786722836.风铃.7148.0",
+      "blob_sha1": "a5a37ff46310f0af3eb7b41fa975415602962fc8",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1_fullcanonical_autoent_seed260814/tensorboard/SAC_1/events.out.tfevents.1786694811.\\351\\243\\216\\351\\223\\203.23100.0\"",
+      "actual_path": "logs/phase2_mission_s1_fullcanonical_autoent_seed260814/tensorboard/SAC_1/events.out.tfevents.1786694811.风铃.23100.0",
+      "blob_sha1": "d3657a6ebf6c9278b878049ef9949ae0a8bffb5b",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1_fullcanonical_localprogress_autoent_seed260814/tensorboard/SAC_1/events.out.tfevents.1786705707.\\351\\243\\216\\351\\223\\203.2760.0\"",
+      "actual_path": "logs/phase2_mission_s1_fullcanonical_localprogress_autoent_seed260814/tensorboard/SAC_1/events.out.tfevents.1786705707.风铃.2760.0",
+      "blob_sha1": "9031c2d236f39e9118ca77160da860f1ed3fa6be",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1_fullcanonical_seed260814/tensorboard/SAC_1/events.out.tfevents.1786688953.\\351\\243\\216\\351\\223\\203.2104.0\"",
+      "actual_path": "logs/phase2_mission_s1_fullcanonical_seed260814/tensorboard/SAC_1/events.out.tfevents.1786688953.风铃.2104.0",
+      "blob_sha1": "7a487d07d34f5c4220a62f7aedd44831bf02a6de",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1_rewardfix_seed260813/tensorboard/SAC_1/events.out.tfevents.1786621833.\\351\\243\\216\\351\\223\\203.19396.0\"",
+      "actual_path": "logs/phase2_mission_s1_rewardfix_seed260813/tensorboard/SAC_1/events.out.tfevents.1786621833.风铃.19396.0",
+      "blob_sha1": "38f81d5339877e9ccf7bc2f783885a07ded7ca73",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1_seed260813/tensorboard/SAC_1/events.out.tfevents.1786602479.\\351\\243\\216\\351\\223\\203.9568.0\"",
+      "actual_path": "logs/phase2_mission_s1_seed260813/tensorboard/SAC_1/events.out.tfevents.1786602479.风铃.9568.0",
+      "blob_sha1": "f64e7ce5a933ab2a10d21fce0aa6bcfaa56607a1",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1_semanticfix_seed260813/tensorboard/SAC_1/events.out.tfevents.1786633126.\\351\\243\\216\\351\\223\\203.10548.0\"",
+      "actual_path": "logs/phase2_mission_s1_semanticfix_seed260813/tensorboard/SAC_1/events.out.tfevents.1786633126.风铃.10548.0",
+      "blob_sha1": "d59df48a14cbdcf53cab9778f1917bc23f376e59",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1_stable_seed260813/tensorboard/SAC_1/events.out.tfevents.1786614593.\\351\\243\\216\\351\\223\\203.14216.0\"",
+      "actual_path": "logs/phase2_mission_s1_stable_seed260813/tensorboard/SAC_1/events.out.tfevents.1786614593.风铃.14216.0",
+      "blob_sha1": "e40e7c7dd356ff9791aa20b2472bce5a65a8f673",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1v2_acquisition_bodyobs_autoent_tau001_seed260815/tensorboard/SAC_1/events.out.tfevents.1786761508.\\351\\243\\216\\351\\223\\203.15624.0\"",
+      "actual_path": "logs/phase2_mission_s1v2_acquisition_bodyobs_autoent_tau001_seed260815/tensorboard/SAC_1/events.out.tfevents.1786761508.风铃.15624.0",
+      "blob_sha1": "7b3c19a890f178bc7f84d51a6954a0d98f2c4194",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1v2_fixedalpha_200k_seed260816/tensorboard/SAC_1/events.out.tfevents.1787231647.\\351\\243\\216\\351\\223\\203.20368.0\"",
+      "actual_path": "logs/phase2_mission_s1v2_fixedalpha_200k_seed260816/tensorboard/SAC_1/events.out.tfevents.1787231647.风铃.20368.0",
+      "blob_sha1": "df3edd5d02ccf03f0db367b252d0bac9c6c58483",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1v2_fixedalpha_200k_seed260817/tensorboard/SAC_1/events.out.tfevents.1787231731.\\351\\243\\216\\351\\223\\203.16560.0\"",
+      "actual_path": "logs/phase2_mission_s1v2_fixedalpha_200k_seed260817/tensorboard/SAC_1/events.out.tfevents.1787231731.风铃.16560.0",
+      "blob_sha1": "8ce2e5f901151066524ba13203d2755aca7ed609",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1v2_velerror_bodyobs_autoent_tau001_seed260815/tensorboard/SAC_1/events.out.tfevents.1786776597.\\351\\243\\216\\351\\223\\203.19676.0\"",
+      "actual_path": "logs/phase2_mission_s1v2_velerror_bodyobs_autoent_tau001_seed260815/tensorboard/SAC_1/events.out.tfevents.1786776597.风铃.19676.0",
+      "blob_sha1": "c2f09f85f53a71db0a8e5ee021693f0d15f0db5c",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1v2_velerror_buffer600k_seed260815/tensorboard/SAC_1/events.out.tfevents.1787221026.\\351\\243\\216\\351\\223\\203.18648.0\"",
+      "actual_path": "logs/phase2_mission_s1v2_velerror_buffer600k_seed260815/tensorboard/SAC_1/events.out.tfevents.1787221026.风铃.18648.0",
+      "blob_sha1": "76420db7350c479c5424db1f15a5d0db52f89969",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1v2_velerror_fixedalpha_seed260815/tensorboard/SAC_1/events.out.tfevents.1787209296.\\351\\243\\216\\351\\223\\203.15348.0\"",
+      "actual_path": "logs/phase2_mission_s1v2_velerror_fixedalpha_seed260815/tensorboard/SAC_1/events.out.tfevents.1787209296.风铃.15348.0",
+      "blob_sha1": "50b887db4e5f7c8829b169812769796d8a917e29",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_mission_s1v2_velerror_utd4_seed260815/tensorboard/SAC_1/events.out.tfevents.1787205418.\\351\\243\\216\\351\\223\\203.2732.0\"",
+      "actual_path": "logs/phase2_mission_s1v2_velerror_utd4_seed260815/tensorboard/SAC_1/events.out.tfevents.1787205418.风铃.2732.0",
+      "blob_sha1": "1906404914184ebe9476e4011894b07f4af0e7fb",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_sac_v2_1_stagea_200k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786514347.\\351\\243\\216\\351\\223\\203.19656.0\"",
+      "actual_path": "logs/phase2_sac_v2_1_stagea_200k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786514347.风铃.19656.0",
+      "blob_sha1": "6098cad097feec6506086d1a7feaa0fa0f32acf1",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_sac_v2_1b_boundedobs_stagea_150k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786518014.\\351\\243\\216\\351\\223\\203.17060.0\"",
+      "actual_path": "logs/phase2_sac_v2_1b_boundedobs_stagea_150k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786518014.风铃.17060.0",
+      "blob_sha1": "f1500d20f397247b344699a12f96963a9b434a2b",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_sac_v2_2_mpc_actor_init_stagea_100k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786527603.\\351\\243\\216\\351\\223\\203.18512.0\"",
+      "actual_path": "logs/phase2_sac_v2_2_mpc_actor_init_stagea_100k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786527603.风铃.18512.0",
+      "blob_sha1": "092e8549e2b6f5fe109dce6660b3f2e91a1582ab",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_sac_v2_300k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786496140.\\351\\243\\216\\351\\223\\203.2428.0\"",
+      "actual_path": "logs/phase2_sac_v2_300k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786496140.风铃.2428.0",
+      "blob_sha1": "8fc0a68fa1ac8c9296de8a5d81f6ad613a273fc8",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_sac_v2_densecost_seed260812/tensorboard/SAC_1/events.out.tfevents.1786506400.\\351\\243\\216\\351\\223\\203.18932.0\"",
+      "actual_path": "logs/phase2_sac_v2_densecost_seed260812/tensorboard/SAC_1/events.out.tfevents.1786506400.风铃.18932.0",
+      "blob_sha1": "51f69acb60a855d12ba9e7881643a6d80d64710f",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_sac_v2_dt_reward_seed260812/tensorboard/SAC_1/events.out.tfevents.1786503043.\\351\\243\\216\\351\\223\\203.17048.0\"",
+      "actual_path": "logs/phase2_sac_v2_dt_reward_seed260812/tensorboard/SAC_1/events.out.tfevents.1786503043.风铃.17048.0",
+      "blob_sha1": "b59885f5374e82a73fe5385bc8d36ac50f523eb6",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_sac_v2_gamma999_seed260812/tensorboard/SAC_1/events.out.tfevents.1786504662.\\351\\243\\216\\351\\223\\203.9612.0\"",
+      "actual_path": "logs/phase2_sac_v2_gamma999_seed260812/tensorboard/SAC_1/events.out.tfevents.1786504662.风铃.9612.0",
+      "blob_sha1": "04fe20cb15e9977a987dd25b6d61cc4beff1b0f8",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_sac_v2_smoke_30k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786467505.\\351\\243\\216\\351\\223\\203.3244.0\"",
+      "actual_path": "logs/phase2_sac_v2_smoke_30k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786467505.风铃.3244.0",
+      "blob_sha1": "b541b26d91c844c17ea17b8ebb9e03bd226aed41",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_sac_v2_teachingA_seed260812/tensorboard/SAC_1/events.out.tfevents.1786501511.\\351\\243\\216\\351\\223\\203.8808.0\"",
+      "actual_path": "logs/phase2_sac_v2_teachingA_seed260812/tensorboard/SAC_1/events.out.tfevents.1786501511.风铃.8808.0",
+      "blob_sha1": "afc46ada96b6e85a60cbe870f6db8107a2b35470",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_sac_v2_terminalcost_seed260812/tensorboard/SAC_1/events.out.tfevents.1786500027.\\351\\243\\216\\351\\223\\203.14472.0\"",
+      "actual_path": "logs/phase2_sac_v2_terminalcost_seed260812/tensorboard/SAC_1/events.out.tfevents.1786500027.风铃.14472.0",
+      "blob_sha1": "e76e67d7c197a54e0d5d84ab47b6682f2620f1f3",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/phase2_sac_v2_warmup75k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786498521.\\351\\243\\216\\351\\223\\203.9588.0\"",
+      "actual_path": "logs/phase2_sac_v2_warmup75k_seed260812/tensorboard/SAC_1/events.out.tfevents.1786498521.风铃.9588.0",
+      "blob_sha1": "606beaf02fcbd9d6922e4dc31423cbadb3f58f97",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/sac_mpc_v2_arrival_262200/tensorboard/SAC_1/events.out.tfevents.1789092564.\\351\\243\\216\\351\\223\\203.9520.0\"",
+      "actual_path": "logs/sac_mpc_v2_arrival_262200/tensorboard/SAC_1/events.out.tfevents.1789092564.风铃.9520.0",
+      "blob_sha1": "a986773bdbe1265c23f1344074acfaead2963c89",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/sac_mpc_v2_arrival_262201/tensorboard/SAC_1/events.out.tfevents.1789092564.\\351\\243\\216\\351\\223\\203.12036.0\"",
+      "actual_path": "logs/sac_mpc_v2_arrival_262201/tensorboard/SAC_1/events.out.tfevents.1789092564.风铃.12036.0",
+      "blob_sha1": "e2ed56535ab87be13ec1c3cfb520daafb91bea40",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/sac_mpc_v2_arrival_262202/tensorboard/SAC_1/events.out.tfevents.1789092564.\\351\\243\\216\\351\\223\\203.13940.0\"",
+      "actual_path": "logs/sac_mpc_v2_arrival_262202/tensorboard/SAC_1/events.out.tfevents.1789092564.风铃.13940.0",
+      "blob_sha1": "3c21f8965cdf2ba4fef66e820350c5ffa552c1d2",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/sac_mpc_v3_bidirectional_262300/tensorboard/SAC_1/events.out.tfevents.1789092564.\\351\\243\\216\\351\\223\\203.11396.0\"",
+      "actual_path": "logs/sac_mpc_v3_bidirectional_262300/tensorboard/SAC_1/events.out.tfevents.1789092564.风铃.11396.0",
+      "blob_sha1": "8470780dda16a80f2a8018877a5584e65e76da78",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/sac_mpc_v3_bidirectional_262301/tensorboard/SAC_1/events.out.tfevents.1789092564.\\351\\243\\216\\351\\223\\203.4064.0\"",
+      "actual_path": "logs/sac_mpc_v3_bidirectional_262301/tensorboard/SAC_1/events.out.tfevents.1789092564.风铃.4064.0",
+      "blob_sha1": "0567b7287579029c8767ae017b779a0bd36743c6",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/sac_mpc_v3_bidirectional_262302/tensorboard/SAC_1/events.out.tfevents.1789092564.\\351\\243\\216\\351\\223\\203.7812.0\"",
+      "actual_path": "logs/sac_mpc_v3_bidirectional_262302/tensorboard/SAC_1/events.out.tfevents.1789092564.风铃.7812.0",
+      "blob_sha1": "812a2e2985ec9142210fead930be83d2f3a1b09c",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t12_train/sac_mpc_arrival_262400/tensorboard/SAC_1/events.out.tfevents.1789261454.\\351\\243\\216\\351\\223\\203.17136.0\"",
+      "actual_path": "logs/t12_train/sac_mpc_arrival_262400/tensorboard/SAC_1/events.out.tfevents.1789261454.风铃.17136.0",
+      "blob_sha1": "e05cb9ec7b0be31617a56a3478a92e4cfb25998a",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t12_train/sac_mpc_arrival_262401/tensorboard/SAC_1/events.out.tfevents.1789261454.\\351\\243\\216\\351\\223\\203.11960.0\"",
+      "actual_path": "logs/t12_train/sac_mpc_arrival_262401/tensorboard/SAC_1/events.out.tfevents.1789261454.风铃.11960.0",
+      "blob_sha1": "b74d209f44a3dcf6693272e48203ea6a778c64bc",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t12_train/sac_mpc_arrival_262402/tensorboard/SAC_1/events.out.tfevents.1789261454.\\351\\243\\216\\351\\223\\203.20948.0\"",
+      "actual_path": "logs/t12_train/sac_mpc_arrival_262402/tensorboard/SAC_1/events.out.tfevents.1789261454.风铃.20948.0",
+      "blob_sha1": "234e87adea0251262fb1b723032ebe55832066bb",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t12_train/sac_mpc_radial_262500/tensorboard/SAC_1/events.out.tfevents.1789261454.\\351\\243\\216\\351\\223\\203.5068.0\"",
+      "actual_path": "logs/t12_train/sac_mpc_radial_262500/tensorboard/SAC_1/events.out.tfevents.1789261454.风铃.5068.0",
+      "blob_sha1": "704587fc1d224985c7087645e63bfdb1cbd6dd66",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t12_train/sac_mpc_radial_262501/tensorboard/SAC_1/events.out.tfevents.1789261454.\\351\\243\\216\\351\\223\\203.17320.0\"",
+      "actual_path": "logs/t12_train/sac_mpc_radial_262501/tensorboard/SAC_1/events.out.tfevents.1789261454.风铃.17320.0",
+      "blob_sha1": "8a98ed5ecdbe1a238c1bdf8b0ef4ca70b379291d",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t12_train/sac_mpc_radial_262502/tensorboard/SAC_1/events.out.tfevents.1789261454.\\351\\243\\216\\351\\223\\203.6660.0\"",
+      "actual_path": "logs/t12_train/sac_mpc_radial_262502/tensorboard/SAC_1/events.out.tfevents.1789261454.风铃.6660.0",
+      "blob_sha1": "37c44651ded784512e390fd2fd5267921f653ea6",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t7_retry1_20260911/sac_mpc_v2_arrival_262200/tensorboard/SAC_1/events.out.tfevents.1789100131.\\351\\243\\216\\351\\223\\203.11424.0\"",
+      "actual_path": "logs/t7_retry1_20260911/sac_mpc_v2_arrival_262200/tensorboard/SAC_1/events.out.tfevents.1789100131.风铃.11424.0",
+      "blob_sha1": "a74bdce947d2cbaf0d19f8d14b1ad9261a6bd57c",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t7_retry1_20260911/sac_mpc_v2_arrival_262201/tensorboard/SAC_1/events.out.tfevents.1789100131.\\351\\243\\216\\351\\223\\203.22004.0\"",
+      "actual_path": "logs/t7_retry1_20260911/sac_mpc_v2_arrival_262201/tensorboard/SAC_1/events.out.tfevents.1789100131.风铃.22004.0",
+      "blob_sha1": "084d53c601ba398f717bb5c48fdf7936707ef793",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t7_retry1_20260911/sac_mpc_v2_arrival_262202/tensorboard/SAC_1/events.out.tfevents.1789100131.\\351\\243\\216\\351\\223\\203.21880.0\"",
+      "actual_path": "logs/t7_retry1_20260911/sac_mpc_v2_arrival_262202/tensorboard/SAC_1/events.out.tfevents.1789100131.风铃.21880.0",
+      "blob_sha1": "feb1602c4b7053f099f42e8345200320bfe2d0bf",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t7_retry1_20260911/sac_mpc_v3_bidirectional_262300/tensorboard/SAC_1/events.out.tfevents.1789100131.\\351\\243\\216\\351\\223\\203.14768.0\"",
+      "actual_path": "logs/t7_retry1_20260911/sac_mpc_v3_bidirectional_262300/tensorboard/SAC_1/events.out.tfevents.1789100131.风铃.14768.0",
+      "blob_sha1": "b03e8c860df5e86b11f86df9628598efb8432a32",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t7_retry1_20260911/sac_mpc_v3_bidirectional_262301/tensorboard/SAC_1/events.out.tfevents.1789100131.\\351\\243\\216\\351\\223\\203.14004.0\"",
+      "actual_path": "logs/t7_retry1_20260911/sac_mpc_v3_bidirectional_262301/tensorboard/SAC_1/events.out.tfevents.1789100131.风铃.14004.0",
+      "blob_sha1": "6a86418c55a90a88460b0e5e046fe877ada16ec6",
+      "blob_preserved": true
+    },
+    {
+      "indexed_path": "\"logs/t7_retry1_20260911/sac_mpc_v3_bidirectional_262302/tensorboard/SAC_1/events.out.tfevents.1789100131.\\351\\243\\216\\351\\223\\203.19988.0\"",
+      "actual_path": "logs/t7_retry1_20260911/sac_mpc_v3_bidirectional_262302/tensorboard/SAC_1/events.out.tfevents.1789100131.风铃.19988.0",
+      "blob_sha1": "feb1602c4b7053f099f42e8345200320bfe2d0bf",
+      "blob_preserved": true
+    }
+  ],
+  "confirmed_findings": [
+    {
+      "id": "R1",
+      "finding": "71 artifact paths retain Git C-style display escaping; actual blobs match but indexed retrieve paths are not literal paths"
+    },
+    {
+      "id": "R2",
+      "finding": "DEAD_ENDS D01 calls 20/10/0 clean completion, while frozen CLAUDE says no-violation; completion is 3/1/0"
+    },
+    {
+      "id": "R3",
+      "finding": "D23 root-cause identifiability/saturation is marked measured but the reported counts alone establish outcome, not causal identifiability"
+    },
+    {
+      "id": "R4",
+      "finding": "288 inventory entries are 120 evidenced run entries plus 168 report families, not 288 independent trials"
+    }
+  ]
+}
