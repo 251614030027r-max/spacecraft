@@ -11,3 +11,5 @@
 [价值规则检验完整证据](https://github.com/251614030027r-max/spacecraft/tree/2d8a5818037b6d753f4866969fae372da6cbef84/docs/reviews/stopping_value_check_20261006)，官方VALUE_RULE_DOES_NOT_HOLD，仅开发验证。
 
 |上层价值检验结果|2336a3e|[结果记录](https://github.com/251614030027r-max/spacecraft/blob/2336a3e/docs/STOPPING_VALUE_RULE_RESULT_20261006.md)|确认 VALUE_RULE_DOES_NOT_HOLD；名义工况下交接线收口|
+
+- [F01_271000_UPPER_REVIEW_20261010](F01_271000_UPPER_REVIEW_20261010.md)：F01 在 271000 上两模型阶段的独立重算与失败分解（上层，2026-10-10）。
