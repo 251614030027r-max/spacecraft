@@ -13,4 +13,7 @@
 最新重训准备：[交接](handoffs/final_rerun_20261007.md)，等待用户手动启动。
 
 
-**最新临时汇报资产（2026-10-09，待上层审查，可替换）：** [交接](handoffs/ppt_temporary_20261009.md) · [图表及证据](handoffs/ppt_temporary_20261009/README.md)。不是正式交付或论文性能；含不利训练诊断和全部本轮复核数据。
+**旧临时资产（已被阶段基准图替代，仅历史引用）：** [交接](handoffs/ppt_temporary_20261009.md) · [图表及证据](handoffs/ppt_temporary_20261009/README.md)。不是正式交付或论文性能；含不利训练诊断和全部本轮复核数据。
+
+
+**最新阶段基准图（2026-10-09，待审查，可替换）：** [交接](handoffs/figures_interim_20261009.md) · [五项七张图及独立证据](handoffs/figures_interim_20261009/README.md)。按85bc7a8执行；当前训练出图搁置，无新仿真，正文不用混合训练图。

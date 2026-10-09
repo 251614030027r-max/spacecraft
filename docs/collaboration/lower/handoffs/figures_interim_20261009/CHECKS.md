@@ -1,0 +1,111 @@
+# 输入数字核对
+
+- fig1 262420 10k bin0 episodes：实际 `80`；预期 `80`；通过 `True`。
+- fig1 262420 10k bin0 completed：实际 `20`；预期 `20`；通过 `True`。
+- fig1 262420 10k bin0 completion rate：实际 `0.25`；预期 `0.25`；通过 `True`。
+- fig1 262420 10k bin1 episodes：实际 `82`；预期 `82`；通过 `True`。
+- fig1 262420 10k bin1 completed：实际 `29`；预期 `29`；通过 `True`。
+- fig1 262420 10k bin1 completion rate：实际 `0.35365853658536583`；预期 `0.35365853658536583`；通过 `True`。
+- fig1 262420 10k bin2 episodes：实际 `95`；预期 `95`；通过 `True`。
+- fig1 262420 10k bin2 completed：实际 `65`；预期 `65`；通过 `True`。
+- fig1 262420 10k bin2 completion rate：实际 `0.6842105263157895`；预期 `0.6842105263157895`；通过 `True`。
+- fig1 262420 10k bin3 episodes：实际 `97`；预期 `97`；通过 `True`。
+- fig1 262420 10k bin3 completed：实际 `72`；预期 `72`；通过 `True`。
+- fig1 262420 10k bin3 completion rate：实际 `0.7422680412371134`；预期 `0.7422680412371134`；通过 `True`。
+- fig1 262420 10k bin4 episodes：实际 `97`；预期 `97`；通过 `True`。
+- fig1 262420 10k bin4 completed：实际 `73`；预期 `73`；通过 `True`。
+- fig1 262420 10k bin4 completion rate：实际 `0.7525773195876289`；预期 `0.7525773195876289`；通过 `True`。
+- fig1 262420 10k bin5 episodes：实际 `97`；预期 `97`；通过 `True`。
+- fig1 262420 10k bin5 completed：实际 `72`；预期 `72`；通过 `True`。
+- fig1 262420 10k bin5 completion rate：实际 `0.7422680412371134`；预期 `0.7422680412371134`；通过 `True`。
+- fig1 262421 10k bin0 episodes：实际 `79`；预期 `79`；通过 `True`。
+- fig1 262421 10k bin0 completed：实际 `13`；预期 `13`；通过 `True`。
+- fig1 262421 10k bin0 completion rate：实际 `0.16455696202531644`；预期 `0.16455696202531644`；通过 `True`。
+- fig1 262421 10k bin1 episodes：实际 `84`；预期 `84`；通过 `True`。
+- fig1 262421 10k bin1 completed：实际 `38`；预期 `38`；通过 `True`。
+- fig1 262421 10k bin1 completion rate：实际 `0.4523809523809524`；预期 `0.4523809523809524`；通过 `True`。
+- fig1 262421 10k bin2 episodes：实际 `90`；预期 `90`；通过 `True`。
+- fig1 262421 10k bin2 completed：实际 `62`；预期 `62`；通过 `True`。
+- fig1 262421 10k bin2 completion rate：实际 `0.6888888888888889`；预期 `0.6888888888888889`；通过 `True`。
+- fig1 262421 10k bin3 episodes：实际 `95`；预期 `95`；通过 `True`。
+- fig1 262421 10k bin3 completed：实际 `69`；预期 `69`；通过 `True`。
+- fig1 262421 10k bin3 completion rate：实际 `0.7263157894736842`；预期 `0.7263157894736842`；通过 `True`。
+- fig1 262421 10k bin4 episodes：实际 `99`；预期 `99`；通过 `True`。
+- fig1 262421 10k bin4 completed：实际 `71`；预期 `71`；通过 `True`。
+- fig1 262421 10k bin4 completion rate：实际 `0.7171717171717171`；预期 `0.7171717171717171`；通过 `True`。
+- fig1 262421 10k bin5 episodes：实际 `98`；预期 `98`；通过 `True`。
+- fig1 262421 10k bin5 completed：实际 `79`；预期 `79`；通过 `True`。
+- fig1 262421 10k bin5 completion rate：实际 `0.8061224489795918`；预期 `0.8061224489795918`；通过 `True`。
+- fig1 262422 10k bin0 episodes：实际 `92`；预期 `92`；通过 `True`。
+- fig1 262422 10k bin0 completed：实际 `41`；预期 `41`；通过 `True`。
+- fig1 262422 10k bin0 completion rate：实际 `0.44565217391304346`；预期 `0.44565217391304346`；通过 `True`。
+- fig1 262422 10k bin1 episodes：实际 `80`；预期 `80`；通过 `True`。
+- fig1 262422 10k bin1 completed：实际 `32`；预期 `32`；通过 `True`。
+- fig1 262422 10k bin1 completion rate：实际 `0.4`；预期 `0.4`；通过 `True`。
+- fig1 262422 10k bin2 episodes：实际 `89`；预期 `89`；通过 `True`。
+- fig1 262422 10k bin2 completed：实际 `56`；预期 `56`；通过 `True`。
+- fig1 262422 10k bin2 completion rate：实际 `0.6292134831460674`；预期 `0.6292134831460674`；通过 `True`。
+- fig1 262422 10k bin3 episodes：实际 `93`；预期 `93`；通过 `True`。
+- fig1 262422 10k bin3 completed：实际 `57`；预期 `57`；通过 `True`。
+- fig1 262422 10k bin3 completion rate：实际 `0.6129032258064516`；预期 `0.6129032258064516`；通过 `True`。
+- fig1 262422 10k bin4 episodes：实际 `95`；预期 `95`；通过 `True`。
+- fig1 262422 10k bin4 completed：实际 `64`；预期 `64`；通过 `True`。
+- fig1 262422 10k bin4 completion rate：实际 `0.6736842105263158`；预期 `0.6736842105263158`；通过 `True`。
+- fig1 262422 10k bin5 episodes：实际 `94`；预期 `94`；通过 `True`。
+- fig1 262422 10k bin5 completed：实际 `72`；预期 `72`；通过 `True`。
+- fig1 262422 10k bin5 completion rate：实际 `0.7659574468085106`；预期 `0.7659574468085106`；通过 `True`。
+- fig3 pure clean：实际 `34`；预期 `34`；通过 `True`。
+- fig3 pure median time：实际 `98.70000000000002`；预期 `98.7`；通过 `True`。
+- fig3 nominal clean：实际 `45`；预期 `45`；通过 `True`。
+- fig3 nominal median time：实际 `196.3`；预期 `196.3`；通过 `True`。
+- fig3 Pure failures：实际 `14`；预期 `14`；通过 `True`。
+- fig3 Pure all failures timeout：实际 `True`；预期 `True`；通过 `True`。
+- fig4 fidelity problems：实际 `[]`；预期 `[]`；通过 `True`。
+- fig4 Pure records：实际 `48`；预期 `48`；通过 `True`。
+- fig4 Pure seed block：实际 `[262000, 262001, 262002, 262003, 262004, 262005, 262006, 262007, 262008, 262009, 262010, 262011, 262012, 262013, 262014, 262015, 262016, 262017, 262018, 262019, 262020, 262021, 262022, 262023, 262024, 262025, 262026, 262027, 262028, 262029, 262030, 262031, 262032, 262033, 262034, 262035, 262036, 262037, 262038, 262039, 262040, 262041, 262042, 262043, 262044, 262045, 262046, 262047]`；预期 `[262000, 262001, 262002, 262003, 262004, 262005, 262006, 262007, 262008, 262009, 262010, 262011, 262012, 262013, 262014, 262015, 262016, 262017, 262018, 262019, 262020, 262021, 262022, 262023, 262024, 262025, 262026, 262027, 262028, 262029, 262030, 262031, 262032, 262033, 262034, 262035, 262036, 262037, 262038, 262039, 262040, 262041, 262042, 262043, 262044, 262045, 262046, 262047]`；通过 `True`。
+- fig4 Pure complete：实际 `37`；预期 `37`；通过 `True`。
+- fig4 learned 262420：实际 `42`；预期 `42`；通过 `True`。
+- fig4 B2 successes 262420：实际 `42`；预期 `42`；通过 `True`。
+- fig4 all failed rescusable 262420：实际 `6`；预期 `6`；通过 `True`。
+- fig4 oracle 262420：实际 `48`；预期 `48`；通过 `True`。
+- fig4 262420 median saving：实际 `59.7`；预期 `59.7`；通过 `True`。
+- fig4 learned 262421：实际 `33`；预期 `33`；通过 `True`。
+- fig4 B2 successes 262421：实际 `33`；预期 `33`；通过 `True`。
+- fig4 all failed rescusable 262421：实际 `15`；预期 `15`；通过 `True`。
+- fig4 oracle 262421：实际 `48`；预期 `48`；通过 `True`。
+- fig4 262421 median saving：实际 `67.0`；预期 `67.0`；通过 `True`。
+- fig4 learned 262422：实际 `38`；预期 `38`；通过 `True`。
+- fig4 B2 successes 262422：实际 `38`；预期 `38`；通过 `True`。
+- fig4 all failed rescusable 262422：实际 `10`；预期 `10`；通过 `True`。
+- fig4 oracle 262422：实际 `48`；预期 `48`；通过 `True`。
+- fig4 262422 median saving：实际 `57.49999999999999`；预期 `57.49999999999999`；通过 `True`。
+- fig4 262420 median saving stated：实际 `59.7`；预期 `59.7`；通过 `True`。
+- fig4 262420 delta-v rounded：实际 `-0.38`；预期 `-0.38`；通过 `True`。
+- fig5 position threshold：实际 `0.25`；预期 `0.25`；通过 `True`。
+- fig5 speed threshold：实际 `0.05`；预期 `0.05`；通过 `True`。
+- fig5 attitude threshold deg：实际 `10.0`；预期 `10.0`；通过 `True`。
+- fig5 pure time：实际 `106.80000000000001`；预期 `106.8`；通过 `True`。
+- fig5 pure clean：实际 `True`；预期 `True`；通过 `True`。
+- fig5 262460 time：实际 `133.9`；预期 `133.9`；通过 `True`。
+- fig5 262460 clean：实际 `True`；预期 `True`；通过 `True`。
+- fig5 262462 time：实际 `161.10000000000002`；预期 `161.1`；通过 `True`。
+- fig5 262462 clean：实际 `True`；预期 `True`；通过 `True`。
+- fig5 262460 handoff k：实际 `21`；预期 `21`；通过 `True`。
+- fig5 262462 handoff k：实际 `39`；预期 `39`；通过 `True`。
+- fig2 science commit：实际 `['2e5c236f7412caea3b203519619ef7a48bb16df9']`；预期 `['2e5c236f7412caea3b203519619ef7a48bb16df9']`；通过 `True`。
+- fig2 262430 learned/stopping same frozen SHA：实际 `1`；预期 `1`；通过 `True`。
+- fig2 262431 learned/stopping same frozen SHA：实际 `1`；预期 `1`；通过 `True`。
+- fig2 262432 learned/stopping same frozen SHA：实际 `1`；预期 `1`；通过 `True`。
+- fig2 learned 262430 clean：实际 `12`；预期 `12`；通过 `True`。
+- fig2 learned 262431 clean：实际 `31`；预期 `31`；通过 `True`。
+- fig2 learned 262432 clean：实际 `17`；预期 `17`；通过 `True`。
+- fig2 stopping 262430 clean：实际 `37`；预期 `37`；通过 `True`。
+- fig2 stopping 262431 clean：实际 `41`；预期 `41`；通过 `True`。
+- fig2 stopping 262432 clean：实际 `36`；预期 `36`；通过 `True`。
+- fig2 Pure clean：实际 `41`；预期 `41`；通过 `True`。
+- fig2 stopping violations：实际 `0`；预期 `0`；通过 `True`。
+- fig2 learned 262430 actual violations：实际 `1`；预期 `1`；通过 `True`。
+- fig2 learned 262431 actual violations：实际 `0`；预期 `0`；通过 `True`。
+- fig2 learned 262432 actual violations：实际 `1`；预期 `1`；通过 `True`。
+
+图2learned实际违规1/0/1，stopping0；用户已明确授权“按真实1／0／1标注，继续图2”。案例距离阈值使用真实位置误差，不以质心距离代替；第一栏相应改标。271000/272000完整基线尚不存在，不补仿真。
