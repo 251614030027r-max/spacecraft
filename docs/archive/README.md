@@ -30,4 +30,6 @@ git checkout archive/pre-cleanup-20261010 -- <旧路径>      # 恢复到工作�
 
 旧文档中引用的提交 SHA 全部有效，因为历史没有重写。
 
+标签 `archive/pre-cleanup-20261010` 推到远端之前，把命令中的标签名换成提交 `813e27f` 即可，两者指向同一提交。
+
 几个旧 review 分支的证据，保存在标签 `archive/review/...` 下。
