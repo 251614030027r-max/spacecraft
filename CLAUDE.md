@@ -34,6 +34,11 @@ Pure MPC now.
   only when the experiments are over. No PRs unless the user asks.
 - This sandbox cannot push tags or delete remote branches (proxy 403); the
   lower window does those from the user's machine.
+- **Git holds facts, not discussion.** Code, executed run orders, results,
+  evidence, registry, hand-offs and reviews of finished results go in git.
+  Direction ideas, proposals, brainstorming and window-to-window discussion
+  stay in the conversations; a proposal enters git only as an authorised
+  run order, and a conclusion only with the artifact behind it.
 
 ## Non-negotiables
 
