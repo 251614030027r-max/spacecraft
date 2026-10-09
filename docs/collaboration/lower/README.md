@@ -11,3 +11,6 @@
 269000筛选已完成；[两份官方readout与SHA](handoffs/final_mainline_screen_20261007/README.md)已提前提供上层机制核对。选定w2.36_r15，三种子正式训练已自动启动。
 
 最新重训准备：[交接](handoffs/final_rerun_20261007.md)，等待用户手动启动。
+
+
+**最新临时汇报资产（2026-10-09，待上层审查，可替换）：** [交接](handoffs/ppt_temporary_20261009.md) · [图表及证据](handoffs/ppt_temporary_20261009/README.md)。不是正式交付或论文性能；含不利训练诊断和全部本轮复核数据。
