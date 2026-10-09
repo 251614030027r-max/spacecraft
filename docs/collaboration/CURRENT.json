@@ -2,7 +2,7 @@
   "schema": "spacecraft_collaboration_v1",
   "verified_date_jst": "2026-10-09",
   "topic": "final_rerun",
-  "phase": "upper_review_failed_remaining_evidence_active",
+  "phase": "await_user_upper_plan_existing_record_jobs_active",
   "scientific_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
   "run_order": "upper/run_orders/FINAL_RERUN_20261007.md",
   "run_order_commit": "19aa467",
@@ -27,7 +27,7 @@
   "previous_runs_preserved": true,
   "preparation_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\PREPARATION.json",
   "manual_launch_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\MANUAL_TRAINING_LAUNCH.json",
-  "next_action": "Finish existing record evaluations and authorized replays; no new research/training. Local archives copied; tests and read-only transition after workers exit.",
+  "next_action": "Read window handoff, verify existing jobs read-only, wait for new explicit user/upper plan. Do not automatically launch experiments, cleanup tests, replays or migration.",
   "handoff": "lower/handoffs/final_rerun_20261007.md",
   "training_launcher": "user_manual_independent_windows_powershell",
   "structure_gate_30k": "three models D1-D4 passed; 144 openings completed",
@@ -87,5 +87,14 @@
     "coordination_workspace": "C:\\Users\\35884\\Documents\\Spacecraft",
     "return_condition": "Existing evaluations/replays exit; evidence delivered; cleanup verification passes; preserve Python/PyCharm environment and result/model hashes",
     "authority": "Latest direct user instruction: return latest project to DRL2 after evaluations"
+  },
+  "window_handoff": {
+    "path": "lower/handoffs/window_handoff_20261009/WINDOW_HANDOFF_20261009.md",
+    "prompt": "lower/handoffs/window_handoff_20261009/NEXT_WINDOW_PROMPT_20261009.md",
+    "snapshot_jst": "2026-10-09T21:45:00+09:00",
+    "background": "8 evaluation workers and 2 existing replay workers; counts and PIDs require refresh",
+    "training": "all three 60000 completed; no new training authorized",
+    "formal_three_model_verdict": "PENDING",
+    "research_progression": "STOPPED awaiting latest user plan"
   }
 }
