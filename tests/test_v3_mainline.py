@@ -4,7 +4,7 @@
 changed nothing:
 
 1. its environment and hybrid configs equal, field for field, the three v3e
-   training manifests (``eval/v3e/manifests/``, copied from the round-2
+   training manifests (``evidence/E01_v3e_60k/manifests/``, copied from the round-2
    evidence package; SHA-256 in
    ``docs/STAGE_B_HANDOFF_WINDOW_PREREGISTRATION_20260930.md``);
 2. the formal evaluator's Pure MPC row (``--control desired_pose``) and
@@ -28,7 +28,7 @@ from experiments.v3_handoff_scan import ImpulseMeter
 from train.mainline import MAINLINE_V3E_EVALUATION_FLAGS, mainline_v3e_configs, mainline_v3e_env
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-MANIFESTS = sorted((REPOSITORY / "eval" / "v3e" / "manifests").glob("v3e_*_manifest.json"))
+MANIFESTS = sorted((REPOSITORY / "evidence" / "E01_v3e_60k" / "manifests").glob("v3e_*_manifest.json"))
 SEED = 263003
 DECISIONS = 2
 
