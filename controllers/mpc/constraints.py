@@ -672,3 +672,168 @@ def linearize_precapture_constraint_margins(
             - radial_closing_speed
         ) / task.outer_inertial_speed_limit_m_s
     return jacobian, jacobian @ x - nominal
+
+
+# --------------------------------------------------------------------------- #
+# T1 (versioned task, env/t1_task.py). Same row count as the precapture rows so
+# the QP structure is unchanged; F01 never reaches this code.
+# --------------------------------------------------------------------------- #
+
+#: Normalisation of the two braking-envelope rows (m/s). The shared QP adds
+#: ``constraint_tightening`` (0.02) in normalised units to every row, so this
+#: scale sets the speed margin the optimiser keeps: 1.5 m/s -> 0.03 m/s. The
+#: local prediction model's one-step radial-speed error reaches ~0.01 m/s in
+#: non-co-rotating (inertial staging) flight, which the former 0.01 m/s
+#: margin did not cover.
+_T1_SPEED_ROW_SCALE = 1.5
+
+
+def is_t1_task(task: object) -> bool:
+    """Duck-typed dispatch: only T1TaskConfig carries an operation sphere."""
+
+    return getattr(task, "operation_sphere_radius_m", None) is not None
+
+
+def t1_cone_branch(position: FloatArray, task: PrecaptureTaskConfig) -> bool:
+    """Which half of the union {r >= R_KOS} OR {inside cone} a node is held to.
+
+    Cone rows when the node is inside the cone and within the mouth band of
+    the sphere (the truth model's ``mouth_region``); inside the sphere and
+    outside the cone, the less violated half.
+    """
+
+    axis = task.approach_axis
+    displacement = position - task.port_position
+    axial = float(axis @ displacement)
+    lateral = float(np.linalg.norm(displacement - axial * axis))
+    cone_margin = min(
+        axial - task.port_axial_clearance_m,  # type: ignore[attr-defined]
+        axial * np.tan(task.corridor_half_angle_rad) - lateral,
+    )
+    range_m = float(np.linalg.norm(position))
+    sphere = task.operation_sphere_radius_m  # type: ignore[attr-defined]
+    if cone_margin >= 0.0 and range_m < sphere + task.mouth_band_m:  # type: ignore[attr-defined]
+        return True
+    return bool(range_m < sphere and cone_margin > range_m - sphere)
+
+
+def linearize_t1_constraint_margins(
+    state: ArrayLike,
+    task: PrecaptureTaskConfig,
+    *,
+    target_angular_velocity_rad_s: ArrayLike,
+    corridor_facets: int,
+    distance_scale_m: float = 3.0,
+) -> tuple[FloatArray, FloatArray]:
+    """Analytic linearization of the T1 rows; returns ``(J, J x - margin)``.
+
+    Rows: 0 operation sphere (sphere branch), 1 FOV, 2 unused, 3 radial braking
+    envelope (sphere branch), 4 port axial clearance, 5.. cone facets,
+    f+5 terminal total speed, f+6 axial braking envelope (cone branch).
+    """
+
+    x = _state(state)
+    target_omega = np.asarray(target_angular_velocity_rad_s, dtype=np.float64)
+    geometry = _corridor_geometry(task, corridor_facets, distance_scale_m)
+    phi, rho, velocity = x[:3], x[3:6], x[9:]
+    rotation, position, left_jacobian = _pose(x)
+    right_jacobian = left_jacobian.T
+    range_m = float(np.linalg.norm(position))
+    cone = t1_cone_branch(position, task)
+    count = corridor_facets + 7
+    position_gradient = np.zeros((count, 3), dtype=np.float64)
+    rate_gradient = np.zeros((count, 3), dtype=np.float64)
+    rotation_gradient = np.zeros((count, 3), dtype=np.float64)
+    nominal = np.full(count, _INACTIVE_MARGIN, dtype=np.float64)
+    position_rate = rotation @ velocity
+    speed = float(np.linalg.norm(position_rate))
+    sphere = float(task.operation_sphere_radius_m)  # type: ignore[attr-defined]
+
+    angle, line_of_sight, line_of_sight_norm = _fov_angle(rotation, position, task)
+    sine = float(np.sin(angle))
+    if line_of_sight_norm > _DEGENERATE and abs(sine) > _DEGENERATE:
+        unit = line_of_sight / line_of_sight_norm
+        boresight = task.camera_boresight
+        perpendicular = boresight - float(boresight @ unit) * unit
+        gradient = perpendicular / (line_of_sight_norm * sine * task.fov_half_angle_rad)
+        position_gradient[1] = -gradient @ rotation.T
+        rotation_gradient[1] = gradient @ hat3(line_of_sight)
+    nominal[1] = (task.fov_half_angle_rad - angle) / task.fov_half_angle_rad
+
+    if cone:
+        displacement = position - task.port_position
+        axial = float(geometry.axis @ displacement)
+        lateral = displacement - axial * geometry.axis
+        polygon_radius = (
+            axial * np.tan(task.corridor_half_angle_rad) * np.cos(np.pi / corridor_facets)
+        )
+        position_gradient[4 : 5 + corridor_facets] = geometry.position_gradient
+        nominal[4] = (axial - task.port_axial_clearance_m) / distance_scale_m  # type: ignore[attr-defined]
+        nominal[5 : 5 + corridor_facets] = (
+            polygon_radius - geometry.directions @ lateral
+        ) / distance_scale_m
+        if speed > _DEGENERATE:
+            rate_gradient[corridor_facets + 5] = (
+                -position_rate / speed / task.terminal_total_speed_limit_m_s
+            )
+        nominal[corridor_facets + 5] = (
+            task.terminal_total_speed_limit_m_s - speed
+        ) / task.terminal_total_speed_limit_m_s
+        closing_index = corridor_facets + 6
+        axial_remaining = float(geometry.axis @ (position - task.desired_position))
+        limit = task.closing_speed_limit(axial_remaining)
+        rate_gradient[closing_index] = geometry.axis / _T1_SPEED_ROW_SCALE
+        position_gradient[closing_index] = (
+            task.braking_speed_slope(axial_remaining)  # type: ignore[attr-defined]
+            / _T1_SPEED_ROW_SCALE
+        ) * geometry.axis
+        nominal[closing_index] = (
+            limit - float(-geometry.axis @ position_rate)
+        ) / _T1_SPEED_ROW_SCALE
+    elif range_m > _DEGENERATE:
+        radial_direction = position / range_m
+        position_gradient[0] = radial_direction / sphere
+        nominal[0] = (range_m - sphere) / sphere
+        inertial_velocity = position_rate + np.cross(target_omega, position)
+        limit = task.outer_radial_closing_speed_limit(range_m)
+        projection = np.eye(3) - np.outer(radial_direction, radial_direction)
+        derivative = task.braking_speed_slope(range_m - sphere)  # type: ignore[attr-defined]
+        position_gradient[3] = (
+            derivative * radial_direction
+            + projection @ inertial_velocity / range_m
+            + radial_direction @ hat3(target_omega)
+        ) / _T1_SPEED_ROW_SCALE
+        rate_gradient[3] = radial_direction / _T1_SPEED_ROW_SCALE
+        nominal[3] = (
+            limit + float(radial_direction @ inertial_velocity)
+        ) / _T1_SPEED_ROW_SCALE
+
+    jacobian = np.zeros((count, 12), dtype=np.float64)
+    jacobian[:, :3] = (
+        position_gradient @ _position_rotation_gradient(phi, rho)
+        + rotation_gradient @ right_jacobian
+        - rate_gradient @ (rotation @ hat3(velocity) @ right_jacobian)
+    )
+    jacobian[:, 3:6] = position_gradient @ left_jacobian
+    jacobian[:, 9:] = rate_gradient @ rotation
+    return jacobian, jacobian @ x - nominal
+
+
+def normalized_t1_constraint_margins(
+    state: ArrayLike,
+    task: PrecaptureTaskConfig,
+    *,
+    target_angular_velocity_rad_s: ArrayLike,
+    corridor_facets: int,
+    distance_scale_m: float = 3.0,
+) -> FloatArray:
+    """The nominal margins the T1 linearization is taken around (for tests)."""
+
+    jacobian, offset = linearize_t1_constraint_margins(
+        state,
+        task,
+        target_angular_velocity_rad_s=target_angular_velocity_rad_s,
+        corridor_facets=corridor_facets,
+        distance_scale_m=distance_scale_m,
+    )
+    return jacobian @ _state(state) - offset

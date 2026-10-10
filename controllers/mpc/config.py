@@ -95,6 +95,11 @@ class MPCConfig:
     # command is held for a high-level period; the lower layer estimates its
     # inertial motion from consecutive accepted waypoints for horizon preview.
     external_reference_hold_steps: int = 20
+    # T1 only. Write reference attitudes on the exponential-coordinate branch
+    # nearest the current state, so a relative attitude crossing pi does not
+    # appear to the optimiser as a 2 pi tracking error. Off reproduces every
+    # earlier row bitwise.
+    attitude_chart_unwrap: bool = False
 
     def __post_init__(self) -> None:
         state_scales = np.asarray(self.state_scales, dtype=np.float64)

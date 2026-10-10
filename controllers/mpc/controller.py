@@ -22,14 +22,17 @@ from env.task import corridor_guidance_velocity
 
 from .config import MPCConfig
 from .constraints import (
+    is_t1_task,
     linearize_constraint_margins,
     linearize_precapture_constraint_margins,
+    linearize_t1_constraint_margins,
     normalized_constraint_margins,
     normalized_precapture_truth_margins,
     normalized_truth_margins,
 )
 from .cost import nonlinear_rollout_cost
 from .linearization import central_difference_linearization
+from .prediction import nearest_equivalent_log
 from .prediction import LocalRelativePredictionModel, RelativePredictionModel
 
 
@@ -527,6 +530,9 @@ class MPCController:
                 reference[:6, index] = se3_log(
                     make_transform(rotations[index], positions[:, index])
                 )
+                if self.config.attitude_chart_unwrap:
+                    hint = state[:3] if index == 0 else reference[:3, index - 1]
+                    reference[:6, index] = nearest_equivalent_log(reference[:6, index], hint)
                 reference[9:12, index] = (
                     rotations[index].T @ position_rates[:, index]
                 )
@@ -745,7 +751,14 @@ class MPCController:
                         or self.config.precapture_task is not None
                     ):
                         started_constraints = perf_counter()
-                        if self.config.precapture_task is not None:
+                        if is_t1_task(self.config.precapture_task):
+                            jacobian, offset = linearize_t1_constraint_margins(
+                                nominal_states[index + 1],
+                                self.config.precapture_task,
+                                target_angular_velocity_rad_s=target_state.omega,
+                                corridor_facets=self.config.corridor_facets,
+                            )
+                        elif self.config.precapture_task is not None:
                             assert terminal_latched is not None
                             jacobian, offset = (
                                 linearize_precapture_constraint_margins(
