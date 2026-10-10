@@ -10,7 +10,7 @@ from numpy.typing import ArrayLike, NDArray
 from dynamics.disturbance import zero_disturbance
 from dynamics.gravity import GravityOptions
 from dynamics.integrator import RK45Settings, propagate_rk45
-from dynamics.lie import se3_exp, se3_log
+from dynamics.lie import left_jacobian_so3, left_jacobian_so3_inv, se3_exp, se3_log
 from dynamics.relative import (
     RelativeState,
     reconstruct_chaser_state,
@@ -24,6 +24,35 @@ FloatArray = NDArray[np.float64]
 
 def relative_to_vector(relative: RelativeState) -> FloatArray:
     return np.concatenate((relative.exponential_coordinates, relative.twist))
+
+
+def nearest_equivalent_log(coordinates: ArrayLike, hint_phi: ArrayLike) -> FloatArray:
+    """Same SE(3) element, exponential coordinates on the branch nearest ``hint_phi``.
+
+    ``se3_log`` returns the principal rotation vector, which jumps from +pi to
+    -pi when the relative attitude crosses pi. Any phi and phi - 2 pi phi/|phi|
+    describe the same rotation; this picks the one closest to the hint and
+    recomputes rho so that the position is unchanged. Used only when a model
+    or controller is built with attitude unwrapping enabled (T1).
+    """
+
+    xi = np.asarray(coordinates, dtype=np.float64).copy()
+    phi = xi[:3]
+    hint = np.asarray(hint_phi, dtype=np.float64)
+    theta = float(np.linalg.norm(phi))
+    if theta < 1.0e-9:
+        return xi
+    alternative = phi - 2.0 * np.pi * phi / theta
+    if np.linalg.norm(alternative - hint) >= np.linalg.norm(phi - hint):
+        return xi
+    position = left_jacobian_so3(phi) @ xi[3:6]
+    xi[:3] = alternative
+    xi[3:6] = left_jacobian_so3_inv(alternative) @ position
+    return xi
+
+
+def _unwrap_prediction(prediction: FloatArray, previous: FloatArray) -> FloatArray:
+    return np.concatenate((nearest_equivalent_log(prediction[:6], previous[:3]), prediction[6:]))
 
 
 def _vector(value: ArrayLike, size: int, name: str) -> FloatArray:
@@ -44,6 +73,8 @@ class RelativePredictionModel:
     solver_settings: RK45Settings = RK45Settings(
         rtol=1.0e-7, atol=1.0e-9, max_step=0.1
     )
+    #: T1 only: return coordinates on the branch nearest the input attitude.
+    unwrap_attitude: bool = False
 
     def reconstruct_chaser(
         self, target: SpacecraftState, relative_vector: ArrayLike
@@ -90,7 +121,8 @@ class RelativePredictionModel:
             gravity_options=self.gravity_options,
             settings=self.solver_settings,
         )
-        return relative_to_vector(relative_state(target_next, chaser_next))
+        prediction = relative_to_vector(relative_state(target_next, chaser_next))
+        return _unwrap_prediction(prediction, x) if self.unwrap_attitude else prediction
 
     def predict(
         self,
@@ -121,6 +153,8 @@ class LocalRelativePredictionModel:
 
     chaser_parameters: SpacecraftParameters
     dt_s: float = 0.1
+    #: T1 only: return coordinates on the branch nearest the input attitude.
+    unwrap_attitude: bool = False
 
     def predict(self, relative_vector: ArrayLike, wrench_vector: ArrayLike) -> FloatArray:
         x = _vector(relative_vector, 12, "relative_vector")
@@ -131,4 +165,30 @@ class LocalRelativePredictionModel:
         next_twist = x[6:] + self.dt_s * acceleration
         midpoint_twist = x[6:] + 0.5 * self.dt_s * acceleration
         next_transform = se3_exp(x[:6]) @ se3_exp(self.dt_s * midpoint_twist)
-        return np.concatenate((se3_log(next_transform, project=True), next_twist))
+        prediction = np.concatenate((se3_log(next_transform, project=True), next_twist))
+        return _unwrap_prediction(prediction, x) if self.unwrap_attitude else prediction
+
+    def analytic_kinematic_linearization(
+        self, relative_vector: ArrayLike, wrench_vector: ArrayLike
+    ) -> tuple[FloatArray, FloatArray, FloatArray]:
+        """Cheap on-board affine model, exact at the current state/control.
+
+        The Jacobian is the first-order constant-acceleration SE(3) kinematic
+        model. The affine residual is chosen from the nonlinear local predictor,
+        so the approximation interpolates that model at the operating point
+        without 36 finite-difference predictions per refresh.
+        """
+
+        x = _vector(relative_vector, 12, "relative_vector")
+        u = _vector(wrench_vector, 6, "wrench_vector")
+        inverse_inertia = np.linalg.inv(
+            self.chaser_parameters.generalized_inertia
+        )
+        a = np.eye(12, dtype=np.float64)
+        a[:6, 6:] = self.dt_s * np.eye(6)
+        b = np.zeros((12, 6), dtype=np.float64)
+        b[:6] = 0.5 * self.dt_s**2 * inverse_inertia
+        b[6:] = self.dt_s * inverse_inertia
+        nominal = self.predict(x, u)
+        c = nominal - a @ x - b @ u
+        return a, b, c

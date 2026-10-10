@@ -1,0 +1,503 @@
+{
+  "schema": "t12_s10_final_summary_v2",
+  "generated_from": "logs/t12_eval_v2",
+  "pure_mpc": {
+    "completed": 32,
+    "episodes": 48,
+    "completion_time_mean_s": 78.825,
+    "force_impulse_completed_mean_n_s": 187.72109375,
+    "source": "logs/t10/pure_mpc_h35_48.json",
+    "missing_new_metrics": true
+  },
+  "runs": [
+    {
+      "run": "arrival_262400",
+      "arm": "arrival",
+      "episodes": 48,
+      "seed_min": 262000,
+      "seed_max": 262047,
+      "unique_seeds": 48,
+      "horizon": 35,
+      "parametrization": "arrival_condition",
+      "phase_time_observation": true,
+      "execution_feedback": false,
+      "all_violation_fields_nonnull": true,
+      "deterministic_records_equal_to_first_pass_except_new_fields": true,
+      "completed": 16,
+      "completion_rate": 0.3333333333333333,
+      "completion_time_s": {
+        "count": 16,
+        "mean": 111.82500000000002,
+        "median": 102.20000000000002,
+        "std": 29.49399303248036,
+        "p95": 190.4,
+        "min": 75.5,
+        "max": 190.4
+      },
+      "force_impulse_completed_n_s": {
+        "count": 16,
+        "mean": 294.10096456070613,
+        "median": 252.73707232314433,
+        "std": 130.7561801886733,
+        "p95": 568.897428256507,
+        "min": 138.6209071109099,
+        "max": 568.897428256507
+      },
+      "force_impulse_all_n_s": {
+        "count": 48,
+        "mean": 649.1016375079336,
+        "median": 470.5789198288984,
+        "std": 477.01051326033775,
+        "p95": 1769.7470354826212,
+        "min": 138.6209071109099,
+        "max": 1900.0883666587845
+      },
+      "constraint_violation_rate": 0.0,
+      "truth_zero_violation_completed": 16,
+      "worst_truth_normalized_margin": 0.01381591029255928,
+      "violation_steps_total": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 0,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0
+      },
+      "episodes_with_violation": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 0,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0
+      },
+      "illegal_terminal_entries": 28,
+      "illegal_crossings": 28,
+      "primary_illegal_cause": "radial_distance",
+      "illegal_violation_fractions": {
+        "radial_distance": 0.9642857142857143,
+        "target_frame_speed": 0.5357142857142857,
+        "closing_speed": 0.2857142857142857
+      },
+      "qp_infeasible_steps_total": 0,
+      "max_consecutive_zero_wrench_steps": 0,
+      "timeouts": 32,
+      "distance_failures": 0,
+      "retained_baseline_successes": 16,
+      "rescued_baseline_failures": 0,
+      "lost_baseline_successes": 16
+    },
+    {
+      "run": "arrival_262401",
+      "arm": "arrival",
+      "episodes": 48,
+      "seed_min": 262000,
+      "seed_max": 262047,
+      "unique_seeds": 48,
+      "horizon": 35,
+      "parametrization": "arrival_condition",
+      "phase_time_observation": true,
+      "execution_feedback": false,
+      "all_violation_fields_nonnull": true,
+      "deterministic_records_equal_to_first_pass_except_new_fields": true,
+      "completed": 34,
+      "completion_rate": 0.7083333333333334,
+      "completion_time_s": {
+        "count": 34,
+        "mean": 99.16470588235295,
+        "median": 84.35000000000001,
+        "std": 39.787478686235104,
+        "p95": 206.10000000000002,
+        "min": 69.0,
+        "max": 235.9
+      },
+      "force_impulse_completed_n_s": {
+        "count": 34,
+        "mean": 273.7760722657175,
+        "median": 200.84347554465216,
+        "std": 229.91710950546025,
+        "p95": 825.1614648212687,
+        "min": 111.29377682957524,
+        "max": 1250.9471172766891
+      },
+      "force_impulse_all_n_s": {
+        "count": 48,
+        "mean": 344.18428674263373,
+        "median": 260.6272490891614,
+        "std": 242.97919709267475,
+        "p95": 876.7455345773611,
+        "min": 111.29377682957524,
+        "max": 1250.9471172766891
+      },
+      "constraint_violation_rate": 0.020833333333333332,
+      "truth_zero_violation_completed": 34,
+      "worst_truth_normalized_margin": -0.0005024230038127205,
+      "violation_steps_total": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 0,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 1
+      },
+      "episodes_with_violation": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 0,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 1
+      },
+      "illegal_terminal_entries": 18,
+      "illegal_crossings": 18,
+      "primary_illegal_cause": "radial_distance",
+      "illegal_violation_fractions": {
+        "radial_distance": 0.8888888888888888,
+        "target_frame_speed": 0.5555555555555556,
+        "closing_speed": 0.3888888888888889
+      },
+      "qp_infeasible_steps_total": 0,
+      "max_consecutive_zero_wrench_steps": 0,
+      "timeouts": 13,
+      "distance_failures": 0,
+      "retained_baseline_successes": 28,
+      "rescued_baseline_failures": 6,
+      "lost_baseline_successes": 4
+    },
+    {
+      "run": "arrival_262402",
+      "arm": "arrival",
+      "episodes": 48,
+      "seed_min": 262000,
+      "seed_max": 262047,
+      "unique_seeds": 48,
+      "horizon": 35,
+      "parametrization": "arrival_condition",
+      "phase_time_observation": true,
+      "execution_feedback": false,
+      "all_violation_fields_nonnull": true,
+      "deterministic_records_equal_to_first_pass_except_new_fields": true,
+      "completed": 28,
+      "completion_rate": 0.5833333333333334,
+      "completion_time_s": {
+        "count": 28,
+        "mean": 153.5,
+        "median": 133.7,
+        "std": 72.79476040799327,
+        "p95": 290.1,
+        "min": 69.2,
+        "max": 293.40000000000003
+      },
+      "force_impulse_completed_n_s": {
+        "count": 28,
+        "mean": 432.1923874417079,
+        "median": 355.96206736062805,
+        "std": 261.24651958073684,
+        "p95": 1040.6023690431534,
+        "min": 111.78266277144755,
+        "max": 1097.7668657489642
+      },
+      "force_impulse_all_n_s": {
+        "count": 48,
+        "mean": 515.5293463094038,
+        "median": 456.3112847939751,
+        "std": 276.7702180801124,
+        "p95": 1097.7668657489642,
+        "min": 111.78266277144755,
+        "max": 1262.4491856583675
+      },
+      "constraint_violation_rate": 0.0,
+      "truth_zero_violation_completed": 28,
+      "worst_truth_normalized_margin": 0.0036872893018894772,
+      "violation_steps_total": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 0,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0
+      },
+      "episodes_with_violation": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 0,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0
+      },
+      "illegal_terminal_entries": 16,
+      "illegal_crossings": 16,
+      "primary_illegal_cause": "radial_distance",
+      "illegal_violation_fractions": {
+        "radial_distance": 0.875,
+        "target_frame_speed": 0.6875,
+        "closing_speed": 0.3125
+      },
+      "qp_infeasible_steps_total": 0,
+      "max_consecutive_zero_wrench_steps": 0,
+      "timeouts": 19,
+      "distance_failures": 1,
+      "retained_baseline_successes": 25,
+      "rescued_baseline_failures": 3,
+      "lost_baseline_successes": 7
+    },
+    {
+      "run": "radial_262500",
+      "arm": "radial",
+      "episodes": 48,
+      "seed_min": 262000,
+      "seed_max": 262047,
+      "unique_seeds": 48,
+      "horizon": 35,
+      "parametrization": "radial_local",
+      "phase_time_observation": true,
+      "execution_feedback": false,
+      "all_violation_fields_nonnull": true,
+      "deterministic_records_equal_to_first_pass_except_new_fields": true,
+      "completed": 0,
+      "completion_rate": 0.0,
+      "completion_time_s": null,
+      "force_impulse_completed_n_s": null,
+      "force_impulse_all_n_s": {
+        "count": 48,
+        "mean": 1935.1737403437437,
+        "median": 2317.2727187356813,
+        "std": 685.64017866985,
+        "p95": 2447.005610910498,
+        "min": 329.92470212804676,
+        "max": 2465.5564049836203
+      },
+      "constraint_violation_rate": 0.16666666666666666,
+      "truth_zero_violation_completed": 0,
+      "worst_truth_normalized_margin": -0.013862994157142336,
+      "violation_steps_total": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 7,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 1,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0
+      },
+      "episodes_with_violation": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 7,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 1,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0
+      },
+      "illegal_terminal_entries": 73,
+      "illegal_crossings": 73,
+      "primary_illegal_cause": "radial_distance",
+      "illegal_violation_fractions": {
+        "radial_distance": 0.9178082191780822,
+        "target_frame_speed": 0.5753424657534246,
+        "closing_speed": 0.5342465753424658
+      },
+      "qp_infeasible_steps_total": 61,
+      "max_consecutive_zero_wrench_steps": 44,
+      "timeouts": 32,
+      "distance_failures": 8,
+      "retained_baseline_successes": 0,
+      "rescued_baseline_failures": 0,
+      "lost_baseline_successes": 32
+    },
+    {
+      "run": "radial_262501",
+      "arm": "radial",
+      "episodes": 48,
+      "seed_min": 262000,
+      "seed_max": 262047,
+      "unique_seeds": 48,
+      "horizon": 35,
+      "parametrization": "radial_local",
+      "phase_time_observation": true,
+      "execution_feedback": false,
+      "all_violation_fields_nonnull": true,
+      "deterministic_records_equal_to_first_pass_except_new_fields": true,
+      "completed": 0,
+      "completion_rate": 0.0,
+      "completion_time_s": null,
+      "force_impulse_completed_n_s": null,
+      "force_impulse_all_n_s": {
+        "count": 48,
+        "mean": 1765.508611615689,
+        "median": 2176.7480723468007,
+        "std": 698.4176010164059,
+        "p95": 2407.2607505359806,
+        "min": 358.2342909323481,
+        "max": 2428.938668222465
+      },
+      "constraint_violation_rate": 0.16666666666666666,
+      "truth_zero_violation_completed": 0,
+      "worst_truth_normalized_margin": -0.0317236336396353,
+      "violation_steps_total": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 8,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0
+      },
+      "episodes_with_violation": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 8,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0
+      },
+      "illegal_terminal_entries": 80,
+      "illegal_crossings": 80,
+      "primary_illegal_cause": "radial_distance",
+      "illegal_violation_fractions": {
+        "radial_distance": 0.8125,
+        "target_frame_speed": 0.5375,
+        "closing_speed": 0.5625
+      },
+      "qp_infeasible_steps_total": 265,
+      "max_consecutive_zero_wrench_steps": 125,
+      "timeouts": 37,
+      "distance_failures": 3,
+      "retained_baseline_successes": 0,
+      "rescued_baseline_failures": 0,
+      "lost_baseline_successes": 32
+    },
+    {
+      "run": "radial_262502",
+      "arm": "radial",
+      "episodes": 48,
+      "seed_min": 262000,
+      "seed_max": 262047,
+      "unique_seeds": 48,
+      "horizon": 35,
+      "parametrization": "radial_local",
+      "phase_time_observation": true,
+      "execution_feedback": false,
+      "all_violation_fields_nonnull": true,
+      "deterministic_records_equal_to_first_pass_except_new_fields": true,
+      "completed": 0,
+      "completion_rate": 0.0,
+      "completion_time_s": null,
+      "force_impulse_completed_n_s": null,
+      "force_impulse_all_n_s": {
+        "count": 48,
+        "mean": 1255.5895627218354,
+        "median": 1073.1655536588792,
+        "std": 677.3760053598588,
+        "p95": 2362.4461237255696,
+        "min": 297.56900387967227,
+        "max": 2421.575396192301
+      },
+      "constraint_violation_rate": 0.20833333333333334,
+      "truth_zero_violation_completed": 0,
+      "worst_truth_normalized_margin": -0.018140012644133223,
+      "violation_steps_total": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 10,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0
+      },
+      "episodes_with_violation": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 10,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0
+      },
+      "illegal_terminal_entries": 59,
+      "illegal_crossings": 59,
+      "primary_illegal_cause": "radial_distance",
+      "illegal_violation_fractions": {
+        "radial_distance": 0.8135593220338984,
+        "target_frame_speed": 0.576271186440678,
+        "closing_speed": 0.6101694915254238
+      },
+      "qp_infeasible_steps_total": 1063,
+      "max_consecutive_zero_wrench_steps": 167,
+      "timeouts": 32,
+      "distance_failures": 6,
+      "retained_baseline_successes": 0,
+      "rescued_baseline_failures": 0,
+      "lost_baseline_successes": 32
+    }
+  ],
+  "arms": {
+    "arrival": {
+      "runs": [
+        "arrival_262400",
+        "arrival_262401",
+        "arrival_262402"
+      ],
+      "completed_per_48": [
+        16,
+        34,
+        28
+      ],
+      "completed_mean_per_48": 26,
+      "completed_pstdev": 7.483314773547883,
+      "completed_range": [
+        16,
+        34
+      ],
+      "successful_time_mean_per_run_s": [
+        111.82500000000002,
+        99.16470588235295,
+        153.5
+      ],
+      "time_seed_mean_s": 121.49656862745098,
+      "time_seed_pstdev_s": 23.212575277198678,
+      "successful_force_mean_per_run_n_s": [
+        294.10096456070613,
+        273.7760722657175,
+        432.1923874417079
+      ],
+      "force_seed_mean_n_s": 333.35647475604384,
+      "force_seed_pstdev_n_s": 70.37839885934169
+    },
+    "radial": {
+      "runs": [
+        "radial_262500",
+        "radial_262501",
+        "radial_262502"
+      ],
+      "completed_per_48": [
+        0,
+        0,
+        0
+      ],
+      "completed_mean_per_48": 0,
+      "completed_pstdev": 0.0,
+      "completed_range": [
+        0,
+        0
+      ],
+      "successful_time_mean_per_run_s": [],
+      "time_seed_mean_s": null,
+      "time_seed_pstdev_s": null,
+      "successful_force_mean_per_run_n_s": [],
+      "force_seed_mean_n_s": null,
+      "force_seed_pstdev_n_s": null
+    }
+  },
+  "all_six_deterministic_match_first_pass": true,
+  "all_six_configs_valid": true,
+  "all_violation_fields_complete": true,
+  "preregistered_decision": "branch_2_interface_improves_learnability_but_does_not_beat_pure_mpc",
+  "compute_status": "parallel measurements invalid for realtime evidence; no compute-only CLI exists, so no third full result rerun was started"
+}
