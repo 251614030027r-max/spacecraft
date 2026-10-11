@@ -1,0 +1,368 @@
+"""G*: arrival-time / descent-pace reference generator for T1 (versioned, R0 prototype).
+
+The task intent is two numbers chosen every 2 s decision:
+
+``tau_s``  remaining time until the chaser is planned to sit at the mouth
+           entry point (on the port axis, just outside the operation sphere)
+           and co-rotate with it;
+``kappa``  descent pace inside the cone, as a fraction of the braking envelope.
+
+Approach (outside the cone): the reference moves, at a constant fraction of the
+remaining time per second, from the chaser's current inertial line of sight and
+range to the moving entry point: direction ``slerp(u0, R(t) n_p, h)`` and
+radius ``r0 + (r_e - r0) h`` with ``h = (t - t0) / tau`` clipped to [0, 1].
+Because the endpoint is the *moving* entry point, choosing tau chooses where
+on its sweep the port is met. The radius never drops below ``r_e`` before the
+direction reaches the axis, so the reference does not cut through the sphere.
+A linear ``h`` keeps the plan consistent when it is re-anchored every 2 s with
+the remaining time.
+
+Descent (state inside the cone, or inside the sphere): a target-frame carrot
+on the port axis that advances toward the precapture point at ``kappa`` times
+the braking envelope speed.
+
+``tau <= 0`` means "go now": the approach reference is Pure's fixed terminal
+setpoint (so the row with tau = 0 everywhere is Pure up to the descent pace).
+
+v0.2 (R0): v0.1 kept the approach reference on the moving entry point until
+the state reached the mouth band. At 2.7 deg/s, co-rotating at 7-8 m needs
+1.7-1.9 N of the 2 N per-axis force for the centripetal term alone; the h35
+tracking MPC then lost the tangential race and was flung out to 30 m
+(290001, tau 60 and geo rows). The carrot now starts as soon as the state is
+in the cone, and an expired tau hands the approach to the Pure setpoint.
+
+Nothing here touches the MPC: the reference goes through the same
+``external_reference`` / ``external_reference_path`` channel as G.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+import cvxpy as cp
+import numpy as np
+
+from dynamics.lie import so3_exp
+from env.t1_task import T1Metrics, _slerp_deterministic
+
+
+@dataclass
+class GStarPlan:
+    tau_s: float
+    kappa: float
+    #: "gstar" approach, or "pure" (fixed terminal setpoint until the mouth)
+    approach: str = "gstar"
+    entry_radius_m: float = 6.3
+    #: set by begin(): decision start time, line of sight and range there
+    t0: float = 0.0
+    u0: np.ndarray | None = None
+    r0: float = 0.0
+
+    def begin(self, env) -> None:
+        los = env.chaser_state.position - env.target_state.position
+        self.r0 = float(np.linalg.norm(los))
+        self.u0 = los / self.r0
+        self.t0 = float(env.time_s)
+
+    # ------------------------------------------------------------------ #
+    def _predicted_rotations(self, env, count: int) -> list[np.ndarray]:
+        dt = env.config.dt_s
+        return [
+            env.target_state.rotation @ so3_exp(j * dt * env.target_state.omega)
+            for j in range(count)
+        ]
+
+    def _approach_point(self, env, rotation: np.ndarray, t: float) -> np.ndarray:
+        n_p = env.config.task.approach_axis
+        h = 1.0 if self.tau_s <= 1e-9 else float(np.clip((t - self.t0) / self.tau_s, 0.0, 1.0))
+        port_inertial = rotation @ n_p
+        direction = _slerp_deterministic(self.u0, port_inertial, h)
+        radius = self.r0 + (self.entry_radius_m - self.r0) * h
+        return rotation.T @ (radius * direction)
+
+    def _descent_path(self, env, metrics: T1Metrics, count: int) -> np.ndarray:
+        task = env.config.task
+        n_p = task.approach_axis
+        desired = np.asarray(task.desired_position, dtype=np.float64)
+        d = max(float(n_p @ (metrics.position_target_m - desired)), 0.0)
+        path = np.zeros((3, count))
+        for j in range(count):
+            path[:, j] = desired + d * n_p
+            d = max(d - self.kappa * task.closing_speed_limit(d) * env.config.dt_s, 0.0)
+        return path
+
+    def __call__(self, env, metrics: T1Metrics) -> tuple[np.ndarray, np.ndarray | None]:
+        count = env.mpc_config.horizon_steps + 1
+        if (
+            metrics.in_cone
+            or metrics.mouth_region
+            or metrics.range_m < env.config.task.operation_sphere_radius_m
+        ):
+            path = self._descent_path(env, metrics, count)
+            return path[:, 0].copy(), path
+        if self.approach == "pure" or self.tau_s <= 1e-9:
+            return np.asarray(env.config.task.desired_position, dtype=np.float64), None
+        rotations = self._predicted_rotations(env, count)
+        dt = env.config.dt_s
+        path = np.column_stack(
+            [self._approach_point(env, rotations[j], env.time_s + j * dt) for j in range(count)]
+        )
+        return path[:, 0].copy(), path
+
+
+def next_pass_tau(env, transfer_speed_m_s: float = 0.15) -> float:
+    """Geometric rule without learning: meet the port on its next pass.
+
+    The port normal sweeps about the spin axis; ``phase`` (deg) is how far it
+    still has to rotate to reach the chaser's line of sight. If the chaser can
+    cover the radial distance to the entry point (at ``transfer_speed``) before
+    that, wait for the pass; otherwise take the following one.
+    """
+
+    f = env.features()
+    omega = np.deg2rad(f["omega_deg_s"])
+    wait = np.deg2rad(f["phase_deg"]) / omega
+    transfer = max(f["range_m"] - 6.3, 0.0) / transfer_speed_m_s
+    period = 2 * np.pi / omega
+    return float(wait if wait >= transfer else wait + period)
+
+
+# ---------------------------------------------------------------------- #
+# G* v0.3: tau is the arrival time of a planned rendezvous with the moving
+# mouth entry point.
+# ---------------------------------------------------------------------- #
+
+
+def free_body_rotations(
+    rotation: np.ndarray, omega_body: np.ndarray, inertia: np.ndarray, horizon_s: float, step_s: float = 0.5
+) -> tuple[np.ndarray, list[np.ndarray], list[np.ndarray]]:
+    """Torque-free rigid-body prediction (Euler equations, RK4) from the current estimate.
+
+    Returns times, rotations and body rates. This is the onboard model's
+    forecast of the target attitude; gravity-gradient torque is neglected.
+    """
+
+    inverse = np.linalg.inv(inertia)
+
+    def rate(w: np.ndarray) -> np.ndarray:
+        return inverse @ (-np.cross(w, inertia @ w))
+
+    times, rotations, rates = [0.0], [rotation.copy()], [omega_body.copy()]
+    r, w, t = rotation.copy(), omega_body.copy(), 0.0
+    while t < horizon_s - 1e-9:
+        k1 = rate(w)
+        k2 = rate(w + 0.5 * step_s * k1)
+        k3 = rate(w + 0.5 * step_s * k2)
+        k4 = rate(w + step_s * k3)
+        w_next = w + step_s / 6.0 * (k1 + 2 * k2 + 2 * k3 + k4)
+        r = r @ so3_exp(0.5 * step_s * (w + w_next))
+        w, t = w_next, t + step_s
+        times.append(t)
+        rotations.append(r.copy())
+        rates.append(w.copy())
+    return np.array(times), rotations, rates
+
+
+def _rotation_at(history, t: float) -> tuple[np.ndarray, np.ndarray]:
+    times, rotations, rates = history
+    i = int(np.clip(np.searchsorted(times, t, side="right") - 1, 0, len(times) - 1))
+    rotation = rotations[i] @ so3_exp((t - times[i]) * rates[i])
+    return rotation, rotation @ rates[i]
+
+
+class RendezvousPlanner:
+    """Minimum delta-v transfer, in a fixed time, to the moving mouth entry point.
+
+    Relative ECI double integrator (differential gravity neglected: ~1e-5 m/s^2
+    at 12 m), ``|F| <= F_max`` (2-norm, inside the per-axis box), from the
+    current relative state to ``E(t+tau) = R(t+tau) r_e n_p`` with the
+    co-rotating velocity there minus a small inward speed. The operation
+    sphere is kept out by half-spaces linearised at the previous iterate and
+    the radial braking envelope is imposed through all of its chords. Solved by
+    sequential convex programming on a DPP-compiled problem with ``nodes``
+    uniform intervals. The plan only shapes the reference: the shared MPC and
+    the truth check are unchanged.
+    """
+
+    def __init__(self, task, mass: float, max_force_n: float, *, nodes: int = 30,
+                 entry_radius_m: float = 6.3, entry_inward_speed_m_s: float = 0.06) -> None:
+        self.task, self.mass, self.max_force_n, self.nodes = task, float(mass), float(max_force_n), nodes
+        self.entry_radius_m, self.entry_inward_speed_m_s = entry_radius_m, entry_inward_speed_m_s
+        n = nodes
+        self.q, self.v, self.f = cp.Variable((n + 1, 3)), cp.Variable((n + 1, 3)), cp.Variable((n, 3))
+        self.q0, self.v0 = cp.Parameter(3), cp.Parameter(3)
+        self.qe, self.ve = cp.Parameter(3), cp.Parameter(3)
+        self.dt = cp.Parameter(nonneg=True)
+        self.half_dt2_m = cp.Parameter(nonneg=True)
+        self.dt_m = cp.Parameter(nonneg=True)
+        self.normals = cp.Parameter((n - 1, 3))
+        q, v, f = self.q, self.v, self.f
+        cons = [q[0] == self.q0, v[0] == self.v0, q[n] == self.qe, v[n] == self.ve,
+                q[1:] == q[:-1] + self.dt * v[:-1] + self.half_dt2_m * f,
+                v[1:] == v[:-1] + self.dt_m * f,
+                cp.norm(f, axis=1) <= self.max_force_n]
+        radius = cp.sum(cp.multiply(self.normals, q[1:n]), axis=1)
+        closing = -cp.sum(cp.multiply(self.normals, v[1:n]), axis=1)
+        sphere = float(task.operation_sphere_radius_m)
+        cons.append(radius >= entry_radius_m)
+        knots = task.envelope_knots_m
+        for a, b in zip(knots[:-1], knots[1:]):
+            value = task.braking_speed_limit(a)
+            slope = (task.braking_speed_limit(b) - value) / (b - a)
+            cons.append(closing <= value + slope * (radius - sphere - a))
+        self.problem = cp.Problem(cp.Minimize(self.dt_m * cp.sum(cp.norm(f, axis=1))), cons)
+
+    def solve(self, q0: np.ndarray, v0: np.ndarray, tau_s: float, history,
+              guess: np.ndarray | None = None, iterations: int = 4) -> dict[str, Any]:
+        n = self.nodes
+        dt = tau_s / n
+        rotation, omega_inertial = _rotation_at(history, tau_s)
+        entry = rotation @ (self.entry_radius_m * self.task.approach_axis)
+        entry_velocity = np.cross(omega_inertial, entry) - self.entry_inward_speed_m_s * entry / np.linalg.norm(entry)
+        if guess is None:
+            u0, ue = q0 / np.linalg.norm(q0), entry / np.linalg.norm(entry)
+            r0 = float(np.linalg.norm(q0))
+            guess = np.array([
+                (r0 + (self.entry_radius_m - r0) * k / n) * _slerp_deterministic(u0, ue, k / n)
+                for k in range(n + 1)
+            ])
+        self.q0.value, self.v0.value, self.qe.value, self.ve.value = q0, v0, entry, entry_velocity
+        self.dt.value, self.half_dt2_m.value, self.dt_m.value = dt, 0.5 * dt * dt / self.mass, dt / self.mass
+        status, cost = "not_solved", np.inf
+        for _ in range(iterations):
+            self.normals.value = guess[1:n] / np.linalg.norm(guess[1:n], axis=1, keepdims=True)
+            try:
+                self.problem.solve(solver="CLARABEL")
+            except cp.error.SolverError as error:
+                status = f"solver_error:{error}"
+                break
+            status = self.problem.status
+            if status not in ("optimal", "optimal_inaccurate"):
+                break
+            new = np.asarray(self.q.value)
+            change = float(np.max(np.linalg.norm(new - guess, axis=1)))
+            guess, cost = new, float(self.problem.value)
+            if change < 1e-2:
+                break
+        ok = status in ("optimal", "optimal_inaccurate")
+        return {
+            "status": status, "feasible": ok, "tau_s": tau_s, "dt": dt,
+            "delta_v_m_s": cost if ok else None,
+            "q": guess if ok else None,
+            "v": np.asarray(self.v.value) if ok else None,
+            "f": np.asarray(self.f.value) if ok else None,
+        }
+
+
+def _plan_position(plan: dict[str, Any], s: float, mass: float) -> np.ndarray:
+    """Plan position ``s`` seconds after its start (exact double-integrator interpolation)."""
+
+    q, v, f, dt = plan["q"], plan["v"], plan["f"], plan["dt"]
+    n = len(f)
+    if s >= n * dt:
+        return q[-1] + v[-1] * (s - n * dt)
+    i = int(np.clip(np.floor(max(s, 0.0) / dt), 0, n - 1))
+    h = max(s, 0.0) - i * dt
+    return q[i] + v[i] * h + 0.5 * f[i] / mass * h * h
+
+
+@dataclass
+class GStarRendezvous:
+    """G* v0.3 reference: tau = arrival time at the moving entry point, kappa = descent pace.
+
+    Call ``decide(env, tau)`` once per 2 s decision (re-plans from the current
+    state, warm-started from the previous plan), then use the object as the
+    per-control-step reference callable. ``tau <= tau_min`` or an infeasible
+    plan means "go now" (Pure's terminal setpoint). Inside the mouth region,
+    inside the sphere, or in the cone within ``descent_radius_m`` the
+    reference is the descent carrot at pace ``kappa``.
+    """
+
+    kappa: float
+    planner: RendezvousPlanner
+    tau_min_s: float = 2.0
+    descent_radius_m: float = 6.8
+    tau_s: float = 0.0
+    plan: dict[str, Any] | None = None
+    plan_start_s: float = 0.0
+    last_status: str = "none"
+    slips_s: tuple[float, ...] = (0.0, 4.0, 8.0, 16.0)
+    plan_wall_s: list[float] = field(default_factory=list)
+    _descent: GStarPlan | None = None
+
+    def _descending(self, env, metrics: T1Metrics) -> bool:
+        return bool(
+            metrics.mouth_region
+            or metrics.range_m < env.config.task.operation_sphere_radius_m
+            or (metrics.in_cone and metrics.range_m < self.descent_radius_m)
+        )
+
+    def decide(self, env, tau_s: float) -> None:
+        from time import perf_counter
+
+        self.tau_s = float(tau_s)
+        self._descent = GStarPlan(tau_s=0.0, kappa=self.kappa)
+        metrics = env.metrics()
+        if self.tau_s <= self.tau_min_s or self._descending(env, metrics):
+            self.plan, self.last_status = None, "go_now" if self.tau_s <= self.tau_min_s else "descent"
+            return
+        started = perf_counter()
+        target, chaser = env.target_state, env.chaser_state
+        q0 = chaser.position - target.position
+        v0 = chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
+        history = free_body_rotations(
+            target.rotation, target.omega, env.target_parameters.inertia, self.tau_s + max(self.slips_s) + 1.0
+        )
+        guess = None
+        if self.plan is not None:
+            n = self.planner.nodes
+            shift = env.time_s - self.plan_start_s
+            guess = np.array([
+                _plan_position(self.plan, shift + k * self.tau_s / n, self.planner.mass) for k in range(n + 1)
+            ])
+            guess[0] = q0
+        # An arrival time the current state can no longer meet slips by the
+        # smallest of a few increments (recorded); with none feasible the
+        # previous plan is kept, and without one the reference is "go now".
+        result = {"feasible": False, "status": "not_solved"}
+        for slip in self.slips_s:
+            result = self.planner.solve(q0, v0, self.tau_s + slip, history, guess)
+            if not result["feasible"] and guess is not None:
+                result = self.planner.solve(q0, v0, self.tau_s + slip, history, None)
+            if result["feasible"]:
+                result["slip_s"] = slip
+                break
+        self.plan_wall_s.append(perf_counter() - started)
+        self.last_status = result["status"] if result["feasible"] else f"kept:{result['status']}"
+        if result["feasible"]:
+            self.plan = result
+            self.plan_start_s = float(env.time_s)
+        elif self.plan is None:
+            self.last_status = f"go_now:{result['status']}"
+
+    def __call__(self, env, metrics: T1Metrics) -> tuple[np.ndarray, np.ndarray | None]:
+        if self._descending(env, metrics):
+            assert self._descent is not None
+            return self._descent(env, metrics)
+        if self.plan is None:
+            return np.asarray(env.config.task.desired_position, dtype=np.float64), None
+        count = env.mpc_config.horizon_steps + 1
+        dt = env.config.dt_s
+        path = np.zeros((3, count))
+        for j in range(count):
+            rotation = env.target_state.rotation @ so3_exp(j * dt * env.target_state.omega)
+            s = env.time_s + j * dt - self.plan_start_s
+            path[:, j] = rotation.T @ _plan_position(self.plan, s, self.planner.mass)
+        return path[:, 0].copy(), path
+
+
+def make_rendezvous(env, kappa: float, **kwargs: Any) -> GStarRendezvous:
+    planner = RendezvousPlanner(env.config.task, env.chaser_parameters.mass, env.config.max_force_per_axis_n)
+    return GStarRendezvous(kappa=kappa, planner=planner, **kwargs)
+
+
+__all__ = [
+    "GStarPlan", "GStarRendezvous", "RendezvousPlanner", "free_body_rotations",
+    "make_rendezvous", "next_pass_tau",
+]

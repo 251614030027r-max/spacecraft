@@ -224,19 +224,36 @@ class T1Env:
             if np.isfinite(value):
                 self._min_margins[name] = min(self._min_margins.get(name, np.inf), float(value))
 
-    def step(self, action: np.ndarray | None = None, *, pure: bool = False) -> tuple[float, bool, bool, dict[str, Any]]:
-        """One 2 s decision. Returns (reward, terminated, truncated, info)."""
+    def step(
+        self,
+        action: np.ndarray | None = None,
+        *,
+        pure: bool = False,
+        reference: Any = None,
+    ) -> tuple[float, bool, bool, dict[str, Any]]:
+        """One 2 s decision. Returns (reward, terminated, truncated, info).
+
+        ``reference`` (optional) is a callable ``(env, metrics) -> (waypoint,
+        path)`` evaluated at every control step; it replaces G (used by the
+        G* reference generator in ``env/t1_gstar.py``). Same MPC, same truth.
+        """
 
         c = self.config
         assert self.target_state is not None and self.chaser_state is not None
-        latitude, sigma = (np.nan, 1.0) if pure else intent_from_action(np.asarray(action))
+        if reference is not None:
+            latitude, sigma = np.nan, np.nan
+        else:
+            latitude, sigma = (np.nan, 1.0) if pure else intent_from_action(np.asarray(action))
         self._last_intent = (latitude, sigma)
         reward = 0.0
         event = None
         info: dict[str, Any] = {}
         for _ in range(c.decision_steps):
             m_before = self.metrics()
-            waypoint, path = self._reference(latitude, sigma, pure)
+            if reference is not None:
+                waypoint, path = reference(self, m_before)
+            else:
+                waypoint, path = self._reference(latitude, sigma, pure)
             if self._last_reference is not None:
                 self._reference_jump_max = max(
                     self._reference_jump_max, float(np.linalg.norm(waypoint - self._last_reference))

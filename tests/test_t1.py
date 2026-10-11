@@ -248,3 +248,35 @@ def test_mpc_radial_row_matches_the_truth_metric():
         from controllers.mpc.constraints import _T1_SPEED_ROW_SCALE
         assert row * _T1_SPEED_ROW_SCALE == pytest.approx(m.radial_envelope_margin_m_s, abs=1e-9)
 
+
+def test_free_body_prediction_conserves_momentum_and_energy():
+    from env.t1_gstar import free_body_rotations
+    from env.t1_task import T1_TARGET_INERTIA_KG_M2 as inertia
+
+    omega = np.deg2rad(2.5) * np.array([0.25, 0.1, 0.96])
+    times, rotations, rates = free_body_rotations(np.eye(3), omega, inertia, 120.0)
+    h0 = inertia @ omega
+    for rotation, w in zip(rotations[::40], rates[::40]):
+        assert np.allclose(rotation @ (inertia @ w), h0, atol=1e-4 * np.linalg.norm(h0))
+        assert float(w @ inertia @ w) == pytest.approx(float(omega @ inertia @ omega), rel=1e-8)
+        assert np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-10)
+
+
+def test_rendezvous_plan_meets_the_moving_entry_point_within_the_force_bound():
+    from env.t1_gstar import free_body_rotations, make_rendezvous
+
+    env = T1Env(T1EnvConfig())
+    env.reset(290000)
+    generator = make_rendezvous(env, 0.7)
+    planner = generator.planner
+    target, chaser = env.target_state, env.chaser_state
+    q0 = chaser.position - target.position
+    v0 = chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
+    history = free_body_rotations(target.rotation, target.omega, env.target_parameters.inertia, 100.0)
+    plan = planner.solve(q0, v0, 80.0, history)
+    assert plan["feasible"]
+    assert np.allclose(plan["q"][0], q0, atol=1e-6)
+    assert np.linalg.norm(plan["q"][-1]) == pytest.approx(planner.entry_radius_m, abs=1e-5)
+    assert np.max(np.linalg.norm(plan["f"], axis=1)) <= planner.max_force_n + 1e-6
+    assert np.min(np.linalg.norm(plan["q"][1:-1], axis=1)) >= planner.entry_radius_m - 1e-3
+    assert not planner.solve(q0, v0, 20.0, history)["feasible"]
