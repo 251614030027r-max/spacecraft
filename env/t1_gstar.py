@@ -175,7 +175,11 @@ class RendezvousPlanner:
     """Minimum delta-v transfer, in a fixed time, to the moving mouth entry point.
 
     Relative ECI double integrator (differential gravity neglected: ~1e-5 m/s^2
-    at 12 m), ``|F| <= F_max`` (2-norm, inside the per-axis box), from the
+    at 12 m), ``|F| <= F_plan`` (2-norm; ``make_rendezvous`` plans with 80 %
+    of the per-axis bound so that the MPC keeps authority to track: a
+    minimum-delta-v plan is bang-coast-bang and a plan at the full bound
+    turns infeasible at the first tracking error), within ``max_range_m``
+    (a free coast otherwise drifts out towards the 30 m limit), from the
     current relative state to ``E(t+tau) = R(t+tau) r_e n_p`` with the
     co-rotating velocity there minus a small inward speed. The operation
     sphere is kept out by half-spaces linearised at the previous iterate and
@@ -186,9 +190,11 @@ class RendezvousPlanner:
     """
 
     def __init__(self, task, mass: float, max_force_n: float, *, nodes: int = 30,
-                 entry_radius_m: float = 6.3, entry_inward_speed_m_s: float = 0.06) -> None:
+                 entry_radius_m: float = 6.3, entry_inward_speed_m_s: float = 0.06,
+                 max_range_m: float = 20.0) -> None:
         self.task, self.mass, self.max_force_n, self.nodes = task, float(mass), float(max_force_n), nodes
         self.entry_radius_m, self.entry_inward_speed_m_s = entry_radius_m, entry_inward_speed_m_s
+        self.max_range_m = max_range_m
         n = nodes
         self.q, self.v, self.f = cp.Variable((n + 1, 3)), cp.Variable((n + 1, 3)), cp.Variable((n, 3))
         self.q0, self.v0 = cp.Parameter(3), cp.Parameter(3)
@@ -206,6 +212,7 @@ class RendezvousPlanner:
         closing = -cp.sum(cp.multiply(self.normals, v[1:n]), axis=1)
         sphere = float(task.operation_sphere_radius_m)
         cons.append(radius >= entry_radius_m)
+        cons.append(cp.norm(q[1:n], axis=1) <= max_range_m)
         knots = task.envelope_knots_m
         for a, b in zip(knots[:-1], knots[1:]):
             value = task.braking_speed_limit(a)
@@ -271,25 +278,59 @@ def _plan_position(plan: dict[str, Any], s: float, mass: float) -> np.ndarray:
 class GStarRendezvous:
     """G* v0.3 reference: tau = arrival time at the moving entry point, kappa = descent pace.
 
-    Call ``decide(env, tau)`` once per 2 s decision (re-plans from the current
-    state, warm-started from the previous plan), then use the object as the
-    per-control-step reference callable. ``tau <= tau_min`` or an infeasible
-    plan means "go now" (Pure's terminal setpoint). Inside the mouth region,
-    inside the sphere, or in the cone within ``descent_radius_m`` the
-    reference is the descent carrot at pace ``kappa``.
+    Call ``decide(env, tau)`` once per 2 s decision, then use the object as
+    the per-control-step reference callable. The plan is kept while the
+    request agrees with it (``|tau - remaining_s| <= replan_tau_tolerance_s``)
+    and the state is within ``replan_deviation_m`` of it; otherwise it is
+    re-planned from the current state. Re-planning a minimum-delta-v plan
+    from the measured state every 2 s procrastinates: the shared MPC (input
+    cost, frozen) lags a bang-coast-bang plan slightly, the remaining fixed
+    time becomes infeasible, the arrival slips, and the slip repeats (R0,
+    290003). A kept plan is what the offline OCP replay flew.
+
+    * ``tau > tau_min``: the plan arrives at ``tau``; if the current state can
+      no longer meet it, at the smallest feasible ``tau + slip`` (slips in
+      ``slips_s``). ``tau_effective_s`` is the arrival time actually planned.
+    * ``tau <= tau_min``: the earliest feasible arrival on ``earliest_grid_s``.
+    * No feasible plan at all: hold the current inertial position (no
+      co-rotation is demanded; see the module note on Pure's setpoint).
+    * Inside the mouth region, inside the sphere, or in the cone within
+      ``descent_radius_m``: the descent carrot at pace ``kappa``.
+    * ``pure_approach=True`` (diagnostic row only, not part of G*): Pure's
+      fixed terminal setpoint outside the descent region, the G* descent in it.
+
+    Pure's setpoint is never used as a G* fallback: a constant target-frame
+    setpoint asks for zero target-frame velocity, i.e. co-rotation at the
+    current range, which at 9-15 m with the port facing away exceeds the 2 N
+    bound and the shared MPC is flung out (R0, 290002/290003 after a late
+    hand-over). Pure keeps that property; it is not changed.
     """
 
     kappa: float
     planner: RendezvousPlanner
+    pure_approach: bool = False
     tau_min_s: float = 2.0
-    descent_radius_m: float = 6.8
+    descent_radius_m: float = 7.0
+    replan_tau_tolerance_s: float = 1.0
+    replan_deviation_m: float = 1.0
+    slips_s: tuple[float, ...] = (0.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0)
+    earliest_grid_s: tuple[float, ...] = (8.0, 12.0, 16.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0, 80.0, 100.0,
+                                          130.0, 160.0, 200.0)
     tau_s: float = 0.0
+    tau_effective_s: float = 0.0
     plan: dict[str, Any] | None = None
     plan_start_s: float = 0.0
+    hold_position: np.ndarray | None = None
     last_status: str = "none"
-    slips_s: tuple[float, ...] = (0.0, 4.0, 8.0, 16.0)
     plan_wall_s: list[float] = field(default_factory=list)
     _descent: GStarPlan | None = None
+
+    def remaining_s(self, env) -> float:
+        """Planned time to arrival from now (0 without a plan)."""
+
+        if self.plan is None:
+            return 0.0
+        return max(float(self.plan["tau_s"]) - (env.time_s - self.plan_start_s), 0.0)
 
     def _descending(self, env, metrics: T1Metrics) -> bool:
         return bool(
@@ -303,62 +344,86 @@ class GStarRendezvous:
 
         self.tau_s = float(tau_s)
         self._descent = GStarPlan(tau_s=0.0, kappa=self.kappa)
-        metrics = env.metrics()
-        if self.tau_s <= self.tau_min_s or self._descending(env, metrics):
-            self.plan, self.last_status = None, "go_now" if self.tau_s <= self.tau_min_s else "descent"
+        self.hold_position = None
+        if self._descending(env, env.metrics()):
+            self.plan, self.last_status, self.tau_effective_s = None, "descent", 0.0
+            return
+        if self.pure_approach:
+            self.plan, self.last_status, self.tau_effective_s = None, "pure", 0.0
             return
         started = perf_counter()
         target, chaser = env.target_state, env.chaser_state
         q0 = chaser.position - target.position
         v0 = chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
-        history = free_body_rotations(
-            target.rotation, target.omega, env.target_parameters.inertia, self.tau_s + max(self.slips_s) + 1.0
-        )
-        guess = None
         if self.plan is not None:
-            n = self.planner.nodes
-            shift = env.time_s - self.plan_start_s
-            guess = np.array([
-                _plan_position(self.plan, shift + k * self.tau_s / n, self.planner.mass) for k in range(n + 1)
-            ])
-            guess[0] = q0
-        # An arrival time the current state can no longer meet slips by the
-        # smallest of a few increments (recorded); with none feasible the
-        # previous plan is kept, and without one the reference is "go now".
-        result = {"feasible": False, "status": "not_solved"}
-        for slip in self.slips_s:
-            result = self.planner.solve(q0, v0, self.tau_s + slip, history, guess)
+            elapsed = env.time_s - self.plan_start_s
+            deviation = float(np.linalg.norm(_plan_position(self.plan, elapsed, self.planner.mass) - q0))
+            agrees = (
+                abs(self.tau_s - self.remaining_s(env)) <= self.replan_tau_tolerance_s
+                or (self.tau_s <= self.tau_min_s and self.remaining_s(env) > 0.0)
+            )
+            if agrees and deviation <= self.replan_deviation_m and self.remaining_s(env) > 0.0:
+                self.last_status = "kept"
+                return
+        if self.tau_s > self.tau_min_s:
+            candidates = [self.tau_s + slip for slip in self.slips_s]
+        else:
+            candidates = list(self.earliest_grid_s)
+        history = free_body_rotations(
+            target.rotation, target.omega, env.target_parameters.inertia, max(candidates) + 1.0
+        )
+        result: dict[str, Any] = {"feasible": False, "status": "not_solved"}
+        for tau in candidates:
+            guess = None
+            if self.plan is not None:
+                n, shift = self.planner.nodes, env.time_s - self.plan_start_s
+                guess = np.array([
+                    _plan_position(self.plan, shift + k * tau / n, self.planner.mass) for k in range(n + 1)
+                ])
+                guess[0] = q0
+            result = self.planner.solve(q0, v0, tau, history, guess)
             if not result["feasible"] and guess is not None:
-                result = self.planner.solve(q0, v0, self.tau_s + slip, history, None)
+                result = self.planner.solve(q0, v0, tau, history, None)
             if result["feasible"]:
-                result["slip_s"] = slip
                 break
         self.plan_wall_s.append(perf_counter() - started)
-        self.last_status = result["status"] if result["feasible"] else f"kept:{result['status']}"
+        self.plan_start_s = float(env.time_s)
         if result["feasible"]:
-            self.plan = result
-            self.plan_start_s = float(env.time_s)
-        elif self.plan is None:
-            self.last_status = f"go_now:{result['status']}"
+            self.plan, self.last_status = result, str(result["status"])
+            self.tau_effective_s = float(result["tau_s"])
+        else:
+            self.plan, self.last_status, self.tau_effective_s = None, f"hold:{result['status']}", 0.0
+            self.hold_position = q0.copy()
 
     def __call__(self, env, metrics: T1Metrics) -> tuple[np.ndarray, np.ndarray | None]:
         if self._descending(env, metrics):
             assert self._descent is not None
             return self._descent(env, metrics)
-        if self.plan is None:
+        if self.pure_approach:
             return np.asarray(env.config.task.desired_position, dtype=np.float64), None
         count = env.mpc_config.horizon_steps + 1
         dt = env.config.dt_s
         path = np.zeros((3, count))
         for j in range(count):
             rotation = env.target_state.rotation @ so3_exp(j * dt * env.target_state.omega)
+            if self.plan is None:
+                if self.hold_position is None:
+                    self.hold_position = env.chaser_state.position - env.target_state.position
+                path[:, j] = rotation.T @ self.hold_position
+                continue
             s = env.time_s + j * dt - self.plan_start_s
-            path[:, j] = rotation.T @ _plan_position(self.plan, s, self.planner.mass)
+            if s >= self.plan["tau_s"]:
+                # after the planned arrival: the co-rotating entry point
+                path[:, j] = self.planner.entry_radius_m * env.config.task.approach_axis
+            else:
+                path[:, j] = rotation.T @ _plan_position(self.plan, s, self.planner.mass)
         return path[:, 0].copy(), path
 
 
-def make_rendezvous(env, kappa: float, **kwargs: Any) -> GStarRendezvous:
-    planner = RendezvousPlanner(env.config.task, env.chaser_parameters.mass, env.config.max_force_per_axis_n)
+def make_rendezvous(env, kappa: float, plan_force_fraction: float = 0.8, **kwargs: Any) -> GStarRendezvous:
+    planner = RendezvousPlanner(
+        env.config.task, env.chaser_parameters.mass, plan_force_fraction * env.config.max_force_per_axis_n
+    )
     return GStarRendezvous(kappa=kappa, planner=planner, **kwargs)
 
 

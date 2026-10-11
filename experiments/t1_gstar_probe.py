@@ -13,7 +13,11 @@ Rows:
   (the four rows above use the v0.1/v0.2 linear generator, superseded in R0)
 
 G* v0.3 rows (rendezvous planner, env/t1_gstar.py GStarRendezvous):
-  rv:T:K          arrival time T s at reset, decremented 2 s per decision, pace K.
+  pf:K            Pure approach (fixed setpoint), G* descent at pace K: the
+                  no-learning terminal fast-descent rule (not a G* action).
+  rv:T:K          arrival time T s at reset; each later decision asks for the
+                  remaining planned time (slips carried, so the plan is kept), pace K.
+                  rv:0:K is "earliest feasible arrival" at every decision.
   rvgeo:K         T from the next-pass geometric rule at reset (one more pass if infeasible).
   rvbest:K        T at reset minimising the planned phase-A cost 0.05 T + 5 dv over
                   T = 20..200 s (step 10): a no-learning timing rule that uses the plan.
@@ -42,7 +46,11 @@ def run_row(env: T1Env, seed: int, row: str) -> dict[str, Any]:
     kind = parts[0]
     tau0 = None
     rendezvous = None
-    if kind.startswith("rv"):
+    if kind == "pf":
+        kappa = float(parts[1])
+        rendezvous = make_rendezvous(env, kappa, pure_approach=True)
+        tau0 = 0.0
+    elif kind.startswith("rv"):
         kappa = float(parts[-1])
         rendezvous = make_rendezvous(env, kappa)
         if kind == "rv":
@@ -64,7 +72,8 @@ def run_row(env: T1Env, seed: int, row: str) -> dict[str, Any]:
         if kind == "pure":
             reward, terminated, truncated, step_info = env.step(pure=True)
         elif rendezvous is not None:
-            rendezvous.decide(env, max(tau0 - 2.0 * k, 0.0))
+            tau_request = tau0 if k == 0 else rendezvous.remaining_s(env)
+            rendezvous.decide(env, tau_request)
             reward, terminated, truncated, step_info = env.step(reference=rendezvous)
         else:
             plan = GStarPlan(
@@ -76,7 +85,9 @@ def run_row(env: T1Env, seed: int, row: str) -> dict[str, Any]:
             reward, terminated, truncated, step_info = env.step(reference=plan)
         f = env.features()
         trace.append({"k": k, "range_m": f["range_m"], "port_los_angle_deg": f["port_los_angle_deg"], "reward": reward,
-                      **({"plan_status": rendezvous.last_status} if rendezvous is not None else {})})
+                      **({"plan_status": rendezvous.last_status, "tau_effective_s": rendezvous.tau_effective_s,
+                          "remaining_s": rendezvous.remaining_s(env)}
+                         if rendezvous is not None else {})})
         discounted += gamma**k * reward
         k += 1
         if terminated or truncated:
