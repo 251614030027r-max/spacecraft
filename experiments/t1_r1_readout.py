@@ -2,17 +2,17 @@
 
 Written before any R1 row was run; thresholds are not to be edited after.
 
-Rows (``experiments.t1_gstar_probe``): ``pure``; ``rv:0:K`` (Pure approach,
+Rows (``experiments.t1_gstar_probe``): ``pure``; ``pf:K`` (Pure approach,
 G* descent at pace K: the no-learning terminal fast-descent rule); G* rows
-``rv:T:K`` (T > 0), ``rvgeo:K``, ``rvbest:K``.
+``rv:T:K`` (T = 0: earliest feasible arrival), ``rvgeo:K``, ``rvbest:K``.
 
 Per opening, J is the discounted task return of the row (time, delta-v and
 outcome in one scalar, gamma = 0.999 per 2 s); times are clean-capture times
 (a non-capture counts as 300 s for the paired time statistics).
 
-  descent gain   J(rv:0) - J(pure)
-  route gain     J(oracle) - J(rv:0), oracle = best G* row of that opening
-  rule capture   sum over openings of (J(rule) - J(rv:0)) / sum of route gains,
+  descent gain   J(pf) - J(pure)
+  route gain     J(oracle) - J(pf), oracle = best G* row of that opening
+  rule capture   sum over openings of (J(rule) - J(pf)) / sum of route gains,
                  for the best single no-learning rule (highest mean J among
                  the G* rows; every G* row here is a no-learning rule)
 
@@ -53,8 +53,8 @@ def capture_time(result: dict) -> float:
 
 
 def readout(rows: dict[str, dict[int, dict]], seeds: list[int], kappa: str = "0.7") -> dict:
-    fast_tag = f"rv_0_{kappa}"
-    gstar = sorted(t for t in rows if t.startswith("rv") and t != fast_tag)
+    fast_tag = f"pf_{kappa}"
+    gstar = sorted(t for t in rows if t.startswith("rv"))
     missing = {t: sorted(set(seeds) - set(rows[t])) for t in ["pure", fast_tag, *gstar] if t in rows}
     complete = [s for s in seeds if all(s in rows.get(t, {}) for t in ["pure", fast_tag, *gstar])]
     per_row = {}
