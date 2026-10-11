@@ -192,8 +192,9 @@ class RendezvousPlanner:
     of the per-axis bound so that the MPC keeps authority to track: a
     minimum-delta-v plan is bang-coast-bang and a plan at the full bound
     turns infeasible at the first tracking error), within ``max_range_m``
-    (a free coast otherwise drifts out towards the 30 m limit; the cap is
-    raised to the current range + 5 m when needed), from the
+    (a free coast otherwise drifts out towards the 30 m limit; beyond it the
+    cap only leaves the stopping distance and the excess range is penalised),
+    from the
     current relative state to ``E(t+tau) = R(t+tau) r_e n_p`` with the
     co-rotating velocity there minus a small inward speed. The operation
     sphere is kept out by half-spaces linearised at the previous iterate and
@@ -209,6 +210,10 @@ class RendezvousPlanner:
         self.task, self.mass, self.max_force_n, self.nodes = task, float(mass), float(max_force_n), nodes
         self.entry_radius_m, self.entry_inward_speed_m_s = entry_radius_m, entry_inward_speed_m_s
         self.max_range_m = max_range_m
+        #: delta-v equivalent (m/s) of one metre beyond max_range_m held for one second
+        self.range_penalty_per_m_s = 0.01
+        #: the plan never extends past this (30 m is the truth limit)
+        self.hard_range_m = 28.0
         n = nodes
         self.q, self.v, self.f = cp.Variable((n + 1, 3)), cp.Variable((n + 1, 3)), cp.Variable((n, 3))
         self.q0, self.v0 = cp.Parameter(3), cp.Parameter(3)
@@ -233,7 +238,12 @@ class RendezvousPlanner:
             value = task.braking_speed_limit(a)
             slope = (task.braking_speed_limit(b) - value) / (b - a)
             cons.append(closing <= value + slope * (radius - sphere - a))
-        self.problem = cp.Problem(cp.Minimize(self.dt_m * cp.sum(cp.norm(f, axis=1))), cons)
+        # Range beyond ``max_range_m`` is penalised (convex), so a plan that
+        # starts outside it comes back instead of coasting along its cap.
+        excess = cp.sum(cp.pos(cp.norm(q[1:n], axis=1) - max_range_m))
+        self.problem = cp.Problem(
+            cp.Minimize(self.dt_m * cp.sum(cp.norm(f, axis=1)) + self.range_penalty_per_m_s * self.dt * excess), cons
+        )
 
     def solve(self, q0: np.ndarray, v0: np.ndarray, tau_s: float, history,
               guess: np.ndarray | None = None, iterations: int = 4) -> dict[str, Any]:
@@ -251,8 +261,14 @@ class RendezvousPlanner:
             ])
         self.q0.value, self.v0.value, self.qe.value, self.ve.value = q0, v0, entry, entry_velocity
         self.dt.value, self.half_dt2_m.value, self.dt_m.value = dt, 0.5 * dt * dt / self.mass, dt / self.mass
-        # a state already near the cap and moving out needs room to stop
-        self.range_cap.value = max(self.max_range_m, float(np.linalg.norm(q0)) + 5.0)
+        # A state beyond the cap, or moving out near it, gets exactly the room
+        # it needs to stop at the plan's force bound -- not a fixed +5 m: with
+        # re-planning, a fixed allowance ratcheted out 5 m per plan (R1 pass 2
+        # and random-action checks: 291047 walked from 13 m to 30 m).
+        r0 = float(np.linalg.norm(q0))
+        outward = max(float(q0 @ v0) / max(r0, 1e-9), 0.0)
+        stopping = outward**2 / (2.0 * self.max_force_n / self.mass)
+        self.range_cap.value = min(max(self.max_range_m, r0 + stopping), self.hard_range_m)
         status, cost = "not_solved", np.inf
         for _ in range(iterations):
             self.normals.value = guess[1:n] / np.linalg.norm(guess[1:n], axis=1, keepdims=True)
