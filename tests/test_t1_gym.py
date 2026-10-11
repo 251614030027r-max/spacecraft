@@ -1,0 +1,45 @@
+"""Training contract of the T1 + G* gym wrapper (M0 / M1)."""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from env.t1_gym import OBSERVATION_NAMES, T1GStarEnv, T1GymConfig
+
+
+@pytest.fixture(scope="module")
+def env():
+    return T1GStarEnv(openings=[1_000_000])
+
+
+def test_reset_observation_and_action_space(env):
+    obs, info = env.reset()
+    assert obs.shape == (len(OBSERVATION_NAMES),) and np.all(np.isfinite(obs))
+    assert info["opening"] == 1_000_000
+    assert env.action_space.shape == (2,)
+    # no plan yet: the request is absolute, and kappa spans its range
+    c = T1GymConfig()
+    assert env.intent(np.array([-1.0, -1.0])) == pytest.approx((0.0, c.kappa_min))
+    assert env.intent(np.array([1.0, 1.0])) == pytest.approx((c.tau_max_s, c.kappa_max))
+
+
+def test_step_plans_then_a_small_shift_keeps_the_plan(env):
+    env.reset()
+    obs, reward, terminated, truncated, info = env.step(np.array([0.0, 0.0]))
+    x = info["execution"]
+    assert x["new_plan"] and x["tau_effective_s"] >= x["tau_request_s"] - 1e-9
+    assert reward < 0.0 and not terminated and not truncated
+    assert obs[OBSERVATION_NAMES.index("has_plan")] == 1.0
+    remaining = env.generator.remaining_s(env.env)
+    tau, _ = env.intent(np.array([0.05, 0.0]))  # 1.5 s shift, inside the keep band
+    assert tau == pytest.approx(remaining + 1.5)
+    _, _, _, _, info = env.step(np.array([0.05, 0.0]))
+    assert info["execution"]["plan_status"] == "kept"
+    assert info["execution"]["plan_wall_s"] == 0.0
+
+
+def test_training_openings_are_disjoint_from_the_research_blocks():
+    for seed in range(3):
+        base = 1_000_000 * (seed + 1)
+        assert base > 1_000_000 - 1 and not (290000 <= base < 1_000_000)
