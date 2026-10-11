@@ -68,13 +68,13 @@ class T1TaskConfig(PrecaptureTaskConfig):
     chaser_envelope_radius_m: float = 0.95
     grab_rod_radius_m: float = 0.05
     max_distance_m: float = 30.0
-    #: Truth-violation tolerances. The shared QP holds these rows as soft
-    #: constraints; a breach must exceed a physically meaningful size to end
-    #: an episode (a 9e-6 m/s envelope excursion is solver noise, not a
-    #: safety event). Collision stays exact.
-    speed_tolerance_m_s: float = 1.0e-3
-    geometry_tolerance_m: float = 1.0e-3
-    angle_tolerance_rad: float = 1.0e-3
+    #: Truth-violation tolerances, strict by default (same as every other
+    #: precapture margin). They were briefly 1e-3 while a frame bug in the
+    #: radial-speed truth metric produced spurious envelope breaches; with
+    #: the bug fixed they are back to strict.
+    speed_tolerance_m_s: float = 1.0e-9
+    geometry_tolerance_m: float = 1.0e-9
+    angle_tolerance_rad: float = 1.0e-9
 
     #: Knots (m) of the piecewise-linear braking envelope. Between knots the
     #: envelope is the chord of sqrt(v_f^2 + 2 a_eff d); a chord of a concave
@@ -214,8 +214,11 @@ def compute_t1_metrics(
     mouth = bool(in_cone and range_m < task.operation_sphere_radius_m + task.mouth_band_m)
     union_margin = max(range_m - task.operation_sphere_radius_m, cone_margin)
     clearance = collision_clearance(p, task)
-    inertial = np.asarray(base.inertial_relative_velocity_m_s, dtype=np.float64)
-    radial_closing = float(-(p / max(range_m, 1e-12)) @ inertial)
+    # Inward radial speed of the inertial relative motion. Taken from the F01
+    # metric, which projects the ECI relative velocity on the ECI line of
+    # sight; base.inertial_relative_velocity_m_s is ECI and must not be dotted
+    # with the target-frame position (a frame mix-up in the first T1 version).
+    radial_closing = float(base.outer_radial_closing_speed_m_s)
     rate = np.asarray(base.position_rate_target_m_s, dtype=np.float64)
     speed = float(np.linalg.norm(rate))
     axial_closing = float(-task.approach_axis @ rate)

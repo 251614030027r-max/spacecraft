@@ -215,3 +215,36 @@ def test_nearest_equivalent_log_keeps_the_pose_and_moves_to_the_hint_branch():
     assert np.allclose(se3_exp(out), se3_exp(xi), atol=1e-10)
     assert np.linalg.norm(out[:3] - hint) < np.deg2rad(10.0)
     assert np.array_equal(nearest_equivalent_log(xi, xi[:3]), xi)
+
+
+def test_radial_closing_speed_is_the_inertial_line_of_sight_rate():
+    rng = np.random.default_rng(11)
+    for _ in range(10):
+        target, chaser = sample_t1_initial_states(rng, T1InitialDistribution(), TASK)
+        # give the chaser a co-rotating-ish velocity so frames matter
+        chaser.velocity = chaser.velocity + chaser.rotation.T @ np.cross(
+            target.rotation @ target.omega, chaser.position - target.position
+        )
+        m = compute_t1_metrics(target, chaser, TASK)
+        los = chaser.position - target.position
+        rel = chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
+        expected = -float(los @ rel) / np.linalg.norm(los)
+        assert m.radial_closing_speed_m_s == pytest.approx(expected, abs=1e-9)
+
+
+def test_mpc_radial_row_matches_the_truth_metric():
+    from controllers.mpc.prediction import relative_to_vector
+    from dynamics.relative import relative_state
+
+    rng = np.random.default_rng(12)
+    for _ in range(10):
+        target, chaser = sample_t1_initial_states(rng, T1InitialDistribution(), TASK)
+        chaser.velocity = chaser.velocity + chaser.rotation.T @ (0.2 * rng.normal(size=3))
+        m = compute_t1_metrics(target, chaser, TASK)
+        x = relative_to_vector(relative_state(target, chaser))
+        row = normalized_t1_constraint_margins(
+            x, TASK, target_angular_velocity_rad_s=target.omega, corridor_facets=8
+        )[3]
+        from controllers.mpc.constraints import _T1_SPEED_ROW_SCALE
+        assert row * _T1_SPEED_ROW_SCALE == pytest.approx(m.radial_envelope_margin_m_s, abs=1e-9)
+

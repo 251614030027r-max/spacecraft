@@ -680,12 +680,9 @@ def linearize_precapture_constraint_margins(
 # --------------------------------------------------------------------------- #
 
 #: Normalisation of the two braking-envelope rows (m/s). The shared QP adds
-#: ``constraint_tightening`` (0.02) in normalised units to every row, so this
-#: scale sets the speed margin the optimiser keeps: 1.5 m/s -> 0.03 m/s. The
-#: local prediction model's one-step radial-speed error reaches ~0.01 m/s in
-#: non-co-rotating (inertial staging) flight, which the former 0.01 m/s
-#: margin did not cover.
-_T1_SPEED_ROW_SCALE = 1.5
+#: ``constraint_tightening`` (0.02) in normalised units to every row, so the
+#: optimiser keeps 0.02 * scale of speed margin (0.01 m/s at 0.5).
+_T1_SPEED_ROW_SCALE = 0.5
 
 
 def is_t1_task(task: object) -> bool:
