@@ -54,6 +54,7 @@ class GStarPlan:
     #: "gstar" approach, or "pure" (fixed terminal setpoint until the mouth)
     approach: str = "gstar"
     entry_radius_m: float = 6.3
+    coriolis_force_fraction: float = 0.5
     #: set by begin(): decision start time, line of sight and range there
     t0: float = 0.0
     u0: np.ndarray | None = None
@@ -86,10 +87,22 @@ class GStarPlan:
         n_p = task.approach_axis
         desired = np.asarray(task.desired_position, dtype=np.float64)
         d = max(float(n_p @ (metrics.position_target_m - desired)), 0.0)
+        # Legal pace: the braking envelope, and what the force bound can
+        # carry in the rotating frame. Moving along the spinning axis at v
+        # costs 2 omega v m of Coriolis force; half the per-axis bound is
+        # allowed for it (the rest holds the centripetal term and attitude).
+        # Without this cap, kappa 0.7 at 2.7 deg/s saturated every axis at
+        # 5.6 m and the FOV was lost (R1 pass 1, 291000).
+        omega = float(np.linalg.norm(env.target_state.omega))
+        coriolis_speed = (
+            self.coriolis_force_fraction * env.config.max_force_per_axis_n
+            / (2.0 * max(omega, 1e-9) * env.chaser_parameters.mass)
+        )
         path = np.zeros((3, count))
         for j in range(count):
             path[:, j] = desired + d * n_p
-            d = max(d - self.kappa * task.closing_speed_limit(d) * env.config.dt_s, 0.0)
+            pace = min(task.closing_speed_limit(d), coriolis_speed)
+            d = max(d - self.kappa * pace * env.config.dt_s, 0.0)
         return path
 
     def __call__(self, env, metrics: T1Metrics) -> tuple[np.ndarray, np.ndarray | None]:
@@ -179,7 +192,8 @@ class RendezvousPlanner:
     of the per-axis bound so that the MPC keeps authority to track: a
     minimum-delta-v plan is bang-coast-bang and a plan at the full bound
     turns infeasible at the first tracking error), within ``max_range_m``
-    (a free coast otherwise drifts out towards the 30 m limit), from the
+    (a free coast otherwise drifts out towards the 30 m limit; the cap is
+    raised to the current range + 5 m when needed), from the
     current relative state to ``E(t+tau) = R(t+tau) r_e n_p`` with the
     co-rotating velocity there minus a small inward speed. The operation
     sphere is kept out by half-spaces linearised at the previous iterate and
@@ -203,6 +217,7 @@ class RendezvousPlanner:
         self.half_dt2_m = cp.Parameter(nonneg=True)
         self.dt_m = cp.Parameter(nonneg=True)
         self.normals = cp.Parameter((n - 1, 3))
+        self.range_cap = cp.Parameter(nonneg=True)
         q, v, f = self.q, self.v, self.f
         cons = [q[0] == self.q0, v[0] == self.v0, q[n] == self.qe, v[n] == self.ve,
                 q[1:] == q[:-1] + self.dt * v[:-1] + self.half_dt2_m * f,
@@ -212,7 +227,7 @@ class RendezvousPlanner:
         closing = -cp.sum(cp.multiply(self.normals, v[1:n]), axis=1)
         sphere = float(task.operation_sphere_radius_m)
         cons.append(radius >= entry_radius_m)
-        cons.append(cp.norm(q[1:n], axis=1) <= max_range_m)
+        cons.append(cp.norm(q[1:n], axis=1) <= self.range_cap)
         knots = task.envelope_knots_m
         for a, b in zip(knots[:-1], knots[1:]):
             value = task.braking_speed_limit(a)
@@ -236,6 +251,8 @@ class RendezvousPlanner:
             ])
         self.q0.value, self.v0.value, self.qe.value, self.ve.value = q0, v0, entry, entry_velocity
         self.dt.value, self.half_dt2_m.value, self.dt_m.value = dt, 0.5 * dt * dt / self.mass, dt / self.mass
+        # a state already near the cap and moving out needs room to stop
+        self.range_cap.value = max(self.max_range_m, float(np.linalg.norm(q0)) + 5.0)
         status, cost = "not_solved", np.inf
         for _ in range(iterations):
             self.normals.value = guess[1:n] / np.linalg.norm(guess[1:n], axis=1, keepdims=True)
@@ -344,7 +361,6 @@ class GStarRendezvous:
 
         self.tau_s = float(tau_s)
         self._descent = GStarPlan(tau_s=0.0, kappa=self.kappa)
-        self.hold_position = None
         if self._descending(env, env.metrics()):
             self.plan, self.last_status, self.tau_effective_s = None, "descent", 0.0
             return
@@ -391,9 +407,14 @@ class GStarRendezvous:
         if result["feasible"]:
             self.plan, self.last_status = result, str(result["status"])
             self.tau_effective_s = float(result["tau_s"])
+            self.hold_position = None
         else:
+            # The hold point is fixed on entering the hold. Re-anchoring it
+            # at the current position every decision let an outward drift
+            # carry the reference along with it (R1 pass 1, 291047: 19 -> 30 m).
             self.plan, self.last_status, self.tau_effective_s = None, f"hold:{result['status']}", 0.0
-            self.hold_position = q0.copy()
+            if self.hold_position is None:
+                self.hold_position = q0.copy()
 
     def __call__(self, env, metrics: T1Metrics) -> tuple[np.ndarray, np.ndarray | None]:
         if self._descending(env, metrics):
