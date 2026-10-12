@@ -77,10 +77,14 @@ class T1GStarEnv(gym.Env):
         self._last_request = 0.0
         self._last_kappa = 0.0
         self._step_log: list[tuple[float, bool, int, bool]] = []
+        self.first_wrench: np.ndarray | None = None
         original = self.env.controller.command
 
         def command(*args: Any, **kwargs: Any):
             wrench, diagnostics = original(*args, **kwargs)
+            if not self._step_log:
+                # first control of the decision, as commanded (read-only record)
+                self.first_wrench = np.array(wrench, dtype=np.float64)
             force = np.asarray(wrench, dtype=np.float64)[3:]
             self._step_log.append((
                 float(diagnostics.maximum_slack) if not diagnostics.used_zero_fallback else np.nan,
