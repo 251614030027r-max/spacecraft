@@ -1,120 +1,235 @@
 {
   "schema": "spacecraft_collaboration_v1",
-  "verified_date_jst": "2026-10-10",
-  "topic": "final_rerun",
-  "phase": "F01_closed_records_archived_DRL2_ready_for_project_review",
-  "scientific_commit": "4795910102cf9fbf1dfec74b77e9449623a7b51e",
-  "run_order": "upper/run_orders/FINAL_RERUN_20261007.md",
-  "run_order_commit": "19aa467",
-  "authorization": "User requested sync/preparation, then manual training launch",
-  "tests": "28 passed in 150.57s",
-  "tracked_clean": true,
+  "topic": "t1_round1",
+  "phase": "seed0_pair_training_wait_5k_engineering_health",
+  "scientific_commit": "f36ac77bc2dd328bcc6ec08bfa86e684f8e9ed8c",
+  "run_order": "upper/run_orders/T1_ROUND1_M0M1_20261012.md",
+  "admission": "lower/handoffs/t1_round1_20261012/ADMISSION.md",
+  "t1_worktree": "D:\\py\\DRL2_T1",
+  "selected_workers": 2,
   "training_started": true,
   "training_seeds": [
-    262460,
-    262461,
-    262462
+    0,
+    1,
+    2
   ],
-  "outer_decisions_each": 60000,
-  "regime": "w2.36_r15",
-  "stop_rule": "value",
-  "bellman_stop_value": "soft",
-  "invalid_interrupted_runs": [
-    262450,
-    262451,
-    262452
+  "methods": [
+    "m0",
+    "m1"
   ],
-  "previous_runs_preserved": true,
-  "preparation_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\PREPARATION.json",
-  "manual_launch_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\MANUAL_TRAINING_LAUNCH.json",
-  "next_action": "Project review only; new research awaits user/upper run order. Missing evaluations remain missing; no restart.",
-  "handoff": "lower/handoffs/final_rerun_20261007.md",
-  "training_launcher": "user_manual_independent_windows_powershell",
-  "structure_gate_30k": "three models D1-D4 passed; 144 openings completed",
-  "temporary_asset_handoff": "lower/handoffs/figures_interim_20261009.md",
-  "temporary_asset_status": "TEMPORARY_REVIEW_ONLY_REPLACEABLE_NOT_PAPER_PERFORMANCE",
-  "temporary_asset_run_order": "upper/run_orders/FIGURES_INTERIM_20261009.md",
-  "current_training_figures": "on hold; no new simulation or checkpoint evaluation",
-  "asset_inventory": {
-    "phase": "A_READONLY_COMPLETED_B_C_PENDING_USER_CONFIRMATION",
-    "run_order": "upper/run_orders/PROJECT_CLEANUP_20261010.md",
-    "run_order_commit": "960a8520d8ab92e357196e5ebe997741ae863da3",
-    "handoff": "lower/handoffs/cleanup_inventory_20261010/LOCAL_ASSET_MAP.md",
-    "verified_date_jst": "2026-10-09",
-    "scientific_files_moved_or_deleted": false
-  },
-  "priority_supervisor_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\PRIORITY_EXECUTION.json",
-  "cleanup_b": {
-    "phase": "B1_B2_BRANCHES_B3_PIPELINES_DONE_STEP5_DEFERRED",
-    "science_cleanup_commit": "60d768ab47a3236ebe4cf3fcd05553ed4652c792",
-    "archive_tags_verified": 7,
-    "old_remote_branches_deleted": 6,
-    "pipeline_candidates": 106,
-    "new_unique_copies": 81,
-    "identical_to_git": 3,
-    "duplicates": 22,
-    "handoff": "lower/handoffs/cleanup_b123_20261010/README.md",
-    "verification_target": "4795910102cf9fbf1dfec74b77e9449623a7b51e",
-    "step5_condition": "User cancelled remaining experiments; tests done, 6 formal replay checks not performed",
-    "scientific_checkout_untouched": true,
-    "step5_status": "CODE_TESTS_DONE_BEHAVIOR_RERUN_NOT_PERFORMED"
-  },
-  "interim_experiment_review": {
-    "scope": "271000 two-model complete rows; third pending",
-    "handoff": "lower/handoffs/final_rerun_271000_early_20261009/PHASE_REVIEW.md",
-    "science_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
-    "review_does_not_stop_experiments": true,
-    "final_verdict": "METHOD_DOES_NOT_HOLD_THREE_MODELS_COMPLETE_271000"
-  },
-  "upper_decision": {
-    "source": "latest direct user instruction",
-    "decision": "experiment failed; remaining evaluations for records only",
-    "review": "reviews/F01_271000_UPPER_REVIEW_20261010.md",
-    "formal_three_model_readout": "METHOD_DOES_NOT_HOLD; problems=[]"
-  },
-  "local_cleanup": {
-    "new_checkout": "D:/py/spacecraft",
-    "checkout_commit": "4795910",
-    "archive_root": "D:/spacecraft_archive",
-    "active_experiment_untouched": true,
-    "verification": "354 passed and 3 expected failures across full-suite run plus 13 setup-error retries; no new formal replay",
-    "offline_backup": "PENDING",
-    "handoff": "lower/handoffs/cleanup_local_20261010/README.md",
-    "archive_files": 3679,
-    "archive_bytes": 4654435093,
-    "archive_sha_verified": true,
-    "final_scientific_directory": "D:/py/DRL2",
-    "temporary_verification_checkout": "D:/py/spacecraft",
-    "coordination_workspace": "C:\\Users\\35884\\Documents\\Spacecraft",
-    "return_condition": "Existing evaluations/replays exit; evidence delivered; cleanup verification passes; preserve Python/PyCharm environment and result/model hashes",
-    "authority": "Latest direct user instruction: return latest project to DRL2 after evaluations",
-    "return_completed": true,
-    "models_and_environment_sha_unchanged": true,
-    "return_handoff": "lower/handoffs/DRL2_return_20261010/README.md",
-    "git_clean": true
-  },
-  "window_handoff": {
-    "path": "lower/handoffs/window_handoff_20261009/WINDOW_HANDOFF_20261009.md",
-    "snapshot_jst": "2026-10-09T21:45:00+09:00",
-    "background": "8 evaluation workers and 2 existing replay workers; counts and PIDs require refresh",
-    "training": "all three 60000 completed; no new training authorized",
-    "formal_three_model_verdict": "PENDING",
-    "research_progression": "STOPPED awaiting latest user plan",
-    "format": "single consolidated handoff including opening prompt"
-  },
-  "experiment_scientific_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
-  "record_closure": {
-    "handoff": "lower/handoffs/F01_closed_records_20261010/README.md",
-    "evaluation_files": 650,
-    "missing": 118,
-    "replay_file_counts": [
-      12,
-      0,
-      11
+  "outer_decisions_each": 20000,
+  "formal_evaluation_authorized": false,
+  "previous_phase_snapshot": {
+    "schema": "spacecraft_collaboration_v1",
+    "verified_date_jst": "2026-10-10",
+    "topic": "final_rerun",
+    "phase": "F01_closed_records_archived_DRL2_ready_for_project_review",
+    "scientific_commit": "4795910102cf9fbf1dfec74b77e9449623a7b51e",
+    "run_order": "upper/run_orders/FINAL_RERUN_20261007.md",
+    "run_order_commit": "19aa467",
+    "authorization": "User requested sync/preparation, then manual training launch",
+    "tests": "28 passed in 150.57s",
+    "tracked_clean": true,
+    "training_started": true,
+    "training_seeds": [
+      262460,
+      262461,
+      262462
     ],
-    "background_processes": "NONE at closure",
-    "missing_not_replaced": true,
-    "new_simulations": false
+    "outer_decisions_each": 60000,
+    "regime": "w2.36_r15",
+    "stop_rule": "value",
+    "bellman_stop_value": "soft",
+    "invalid_interrupted_runs": [
+      262450,
+      262451,
+      262452
+    ],
+    "previous_runs_preserved": true,
+    "preparation_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\PREPARATION.json",
+    "manual_launch_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\MANUAL_TRAINING_LAUNCH.json",
+    "next_action": "Project review only; new research awaits user/upper run order. Missing evaluations remain missing; no restart.",
+    "handoff": "lower/handoffs/final_rerun_20261007.md",
+    "training_launcher": "user_manual_independent_windows_powershell",
+    "structure_gate_30k": "three models D1-D4 passed; 144 openings completed",
+    "temporary_asset_handoff": "lower/handoffs/figures_interim_20261009.md",
+    "temporary_asset_status": "TEMPORARY_REVIEW_ONLY_REPLACEABLE_NOT_PAPER_PERFORMANCE",
+    "temporary_asset_run_order": "upper/run_orders/FIGURES_INTERIM_20261009.md",
+    "current_training_figures": "on hold; no new simulation or checkpoint evaluation",
+    "asset_inventory": {
+      "phase": "A_READONLY_COMPLETED_B_C_PENDING_USER_CONFIRMATION",
+      "run_order": "upper/run_orders/PROJECT_CLEANUP_20261010.md",
+      "run_order_commit": "960a8520d8ab92e357196e5ebe997741ae863da3",
+      "handoff": "lower/handoffs/cleanup_inventory_20261010/LOCAL_ASSET_MAP.md",
+      "verified_date_jst": "2026-10-09",
+      "scientific_files_moved_or_deleted": false
+    },
+    "priority_supervisor_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\最终主线重训\\记录\\PRIORITY_EXECUTION.json",
+    "cleanup_b": {
+      "phase": "B1_B2_BRANCHES_B3_PIPELINES_DONE_STEP5_DEFERRED",
+      "science_cleanup_commit": "60d768ab47a3236ebe4cf3fcd05553ed4652c792",
+      "archive_tags_verified": 7,
+      "old_remote_branches_deleted": 6,
+      "pipeline_candidates": 106,
+      "new_unique_copies": 81,
+      "identical_to_git": 3,
+      "duplicates": 22,
+      "handoff": "lower/handoffs/cleanup_b123_20261010/README.md",
+      "verification_target": "4795910102cf9fbf1dfec74b77e9449623a7b51e",
+      "step5_condition": "User cancelled remaining experiments; tests done, 6 formal replay checks not performed",
+      "scientific_checkout_untouched": true,
+      "step5_status": "CODE_TESTS_DONE_BEHAVIOR_RERUN_NOT_PERFORMED"
+    },
+    "interim_experiment_review": {
+      "scope": "271000 two-model complete rows; third pending",
+      "handoff": "lower/handoffs/final_rerun_271000_early_20261009/PHASE_REVIEW.md",
+      "science_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
+      "review_does_not_stop_experiments": true,
+      "final_verdict": "METHOD_DOES_NOT_HOLD_THREE_MODELS_COMPLETE_271000"
+    },
+    "upper_decision": {
+      "source": "latest direct user instruction",
+      "decision": "experiment failed; remaining evaluations for records only",
+      "review": "reviews/F01_271000_UPPER_REVIEW_20261010.md",
+      "formal_three_model_readout": "METHOD_DOES_NOT_HOLD; problems=[]"
+    },
+    "local_cleanup": {
+      "new_checkout": "D:/py/spacecraft",
+      "checkout_commit": "4795910",
+      "archive_root": "D:/spacecraft_archive",
+      "active_experiment_untouched": true,
+      "verification": "354 passed and 3 expected failures across full-suite run plus 13 setup-error retries; no new formal replay",
+      "offline_backup": "PENDING",
+      "handoff": "lower/handoffs/cleanup_local_20261010/README.md",
+      "archive_files": 3679,
+      "archive_bytes": 4654435093,
+      "archive_sha_verified": true,
+      "final_scientific_directory": "D:/py/DRL2",
+      "temporary_verification_checkout": "D:/py/spacecraft",
+      "coordination_workspace": "C:\\Users\\35884\\Documents\\Spacecraft",
+      "return_condition": "Existing evaluations/replays exit; evidence delivered; cleanup verification passes; preserve Python/PyCharm environment and result/model hashes",
+      "authority": "Latest direct user instruction: return latest project to DRL2 after evaluations",
+      "return_completed": true,
+      "models_and_environment_sha_unchanged": true,
+      "return_handoff": "lower/handoffs/DRL2_return_20261010/README.md",
+      "git_clean": true
+    },
+    "window_handoff": {
+      "path": "lower/handoffs/window_handoff_20261009/WINDOW_HANDOFF_20261009.md",
+      "snapshot_jst": "2026-10-09T21:45:00+09:00",
+      "background": "8 evaluation workers and 2 existing replay workers; counts and PIDs require refresh",
+      "training": "all three 60000 completed; no new training authorized",
+      "formal_three_model_verdict": "PENDING",
+      "research_progression": "STOPPED awaiting latest user plan",
+      "format": "single consolidated handoff including opening prompt"
+    },
+    "experiment_scientific_commit": "f2f8169acd580ea96a578d45022dd8952447eca5",
+    "record_closure": {
+      "handoff": "lower/handoffs/F01_closed_records_20261010/README.md",
+      "evaluation_files": 650,
+      "missing": 118,
+      "replay_file_counts": [
+        12,
+        0,
+        11
+      ],
+      "background_processes": "NONE at closure",
+      "missing_not_replaced": true,
+      "new_simulations": false
+    },
+    "training_active": false
   },
-  "training_active": false
+  "updated_utc": "2026-10-12T17:59:02.275615+00:00",
+  "launched_seeds": [
+    0
+  ],
+  "queued_seeds": [
+    1,
+    2
+  ],
+  "seed0_launch_receipt": "lower/handoffs/t1_round1_20261012/SEED0_LAUNCH_RECEIPT.json",
+  "seed0_processes": [
+    {
+      "kind": "training",
+      "method": "m0",
+      "seed": 0,
+      "pid": 14552,
+      "command": [
+        "D:/py/DRL2/.venv/Scripts/python.exe",
+        "-B",
+        "-m",
+        "train.train_t1",
+        "--method",
+        "m0",
+        "--steps",
+        "20000",
+        "--seed",
+        "0",
+        "--run-name",
+        "t1_m0_s0",
+        "--log-root",
+        "logs/t1"
+      ],
+      "utc": "2026-10-12T17:44:30.616166+00:00"
+    },
+    {
+      "kind": "training",
+      "method": "m1",
+      "seed": 0,
+      "pid": 6696,
+      "command": [
+        "D:/py/DRL2/.venv/Scripts/python.exe",
+        "-B",
+        "-m",
+        "train.train_t1",
+        "--method",
+        "m1",
+        "--steps",
+        "20000",
+        "--seed",
+        "0",
+        "--run-name",
+        "t1_m1_s0",
+        "--log-root",
+        "logs/t1"
+      ],
+      "utc": "2026-10-12T17:44:30.634337+00:00"
+    },
+    {
+      "kind": "evaluation_watch",
+      "method": "m0",
+      "seed": 0,
+      "pid": 23640,
+      "command": [
+        "D:/py/DRL2/.venv/Scripts/python.exe",
+        "-B",
+        "-m",
+        "experiments.t1_dev_eval",
+        "--watch",
+        "logs/t1/t1_m0_s0",
+        "--openings",
+        "experiments/t1_dev_openings_295000.json"
+      ],
+      "utc": "2026-10-12T17:44:40.650000+00:00"
+    },
+    {
+      "kind": "evaluation_watch",
+      "method": "m1",
+      "seed": 0,
+      "pid": 26608,
+      "command": [
+        "D:/py/DRL2/.venv/Scripts/python.exe",
+        "-B",
+        "-m",
+        "experiments.t1_dev_eval",
+        "--watch",
+        "logs/t1/t1_m1_s0",
+        "--openings",
+        "experiments/t1_dev_openings_295000.json"
+      ],
+      "utc": "2026-10-12T17:44:40.650000+00:00"
+    }
+  ],
+  "health_5k_seed0": "PENDING",
+  "automatic_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1首轮_20261012\\记录"
 }

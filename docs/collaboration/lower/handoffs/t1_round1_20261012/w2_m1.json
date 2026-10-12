@@ -1,0 +1,31 @@
+{
+ "workers": 2,
+ "method": "m1",
+ "platform": "Windows-11-10.0.26200-SP0",
+ "cpu_count": 12,
+ "thread_env": {
+  "OMP_NUM_THREADS": "1",
+  "MKL_NUM_THREADS": "1",
+  "OPENBLAS_NUM_THREADS": "1"
+ },
+ "rows": [
+  {
+   "worker": 0,
+   "decisions": 40,
+   "wall_s": 70.34856690000743,
+   "s_per_decision": 1.7587141725001856,
+   "peak_rss_mb": 575.2890625
+  },
+  {
+   "worker": 1,
+   "decisions": 40,
+   "wall_s": 75.32792420001351,
+   "s_per_decision": 1.883198105000338,
+   "peak_rss_mb": 575.21484375
+  }
+ ],
+ "s_per_decision_mean": 1.8209561387502617,
+ "s_per_decision_max": 1.883198105000338,
+ "aggregate_decisions_per_hour": 3585.0745682621205,
+ "peak_rss_mb_max": 575.2890625
+}
