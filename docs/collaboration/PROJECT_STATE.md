@@ -1,22 +1,25 @@
-# 项目当前状态（2026-10-10）
+# 项目当前状态（2026-10-12）
 
-*先读 [HANDOFF.md](HANDOFF.md)。只记事实：正在运行什么、东西在哪里、哪些事已完成、哪些事还没完成。方向判断、论文主张和方案讨论不写在这里，留在研究层（用户和讨论窗口）的对话中。由上层维护；下层的核验状态见 `CURRENT.json`。*
+*先读 [HANDOFF.md](HANDOFF.md) 与 [研究演进与耦合设计专题分析](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md)。只记事实：正在运行什么、东西在哪里、哪些事已完成、哪些事还没完成。由上层维护；下层的核验状态见 `CURRENT.json`。*
 
 ## 1. 当前状态
 
 | 项 | 状态 |
 |---|---|
-| F01 训练 | 三个种子 262460–262462 都已完成 60k |
-| F02 30k 结构检查 | 三个模型 D1–D4 全部通过 |
-| F03 正式判定 | 用户已判 F01 失败。271000 两模型读数为 METHOD_DOES_NOT_HOLD（文件在本机 `eval/final2/formal/readout_271000_two.json`）。三模型读数等收尾 |
-| F04、F05 | 后台记录性评估与重放仍在运行，只作记录 |
-| 主线 | 已停。新工作等用户和协作窗口定计划，再由上层写执行单 |
+| 主线 | T1 六自由度翻滚预捕获，比较 Pure MPC / M0（SAC + G★ + MPC）/ M1（M0 + 训练期门控 MPC 反事实 critic 目标）。F01 已结束（用户判失败），只作历史 |
+| 冻结科学提交 | `f36ac77bc2dd328bcc6ec08bfa86e684f8e9ed8c`（G★ 0.3.2；冻结配置 `evidence/T1_pretrain_checks/frozen_config.json`） |
+| 已完成 | R0、R1（两遍，均 REVIEW_EXECUTOR，开发块）；M1 验收 A/B/C；训练前最终核查 P0/P1/P2；开发块规则基准 81.0895（16/16）。证据见下表 |
+| 已授权待执行 | 执行单 `upper/run_orders/T1_ROUND1_M0M1_20261012.md`：本机准入 → 种子 0 成对 20k → 5k 工程健康检查 → 种子 1、2 |
+| 未授权 | 独立正式评估（正式块 300000 起）；任何奖励、网络、门控、预算、种子或任务的改动 |
+| 已知局限（用户特别记录） | M1 开局择时阶段辅助门控通过率约 4%；计划管理的改善不得表述为初始择时的学习优势 |
+
+**T1 证据（科学分支）：** `evidence/T1_R0`、`evidence/T1_R1_pass1`、`evidence/T1_R1_pass2`、`evidence/T1_M1_validationB`、`evidence/T1_dev_rule_295000`、`evidence/T1_pretrain_checks`。
 
 ## 2. 东西在哪里
 
 | 内容 | 位置 |
 |---|---|
-| 科学代码 | 分支 `claude/sac-mpc-coupling-design-ns7g6i`，整理后末端提交 `046878c`。正在运行的实验固定在 `f2f8169`；在用代码与 `f2f8169` 逐字节相同 |
+| 科学代码 | 分支 `claude/sac-mpc-coupling-design-ns7g6i`。T1 第一轮冻结在 `f36ac77`（本机检出 `D:/py/DRL2_T1`，独立工作树）；`D:/py/DRL2` 保持整理后的 `4795910` 不动（F01 结果已归档） |
 | 当前规格 | 科学分支 `docs/current/`：TASK、METHOD、EVALUATION、REPRODUCE |
 | 研究时间线、负结果台账 | 科学分支 `docs/HISTORY.md`、`docs/DEAD_ENDS.md` |
 | 已发布证据 | 科学分支 `evidence/<实验ID>/` |

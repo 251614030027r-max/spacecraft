@@ -4,6 +4,7 @@
 
 | 执行单 | 状态 |
 |---|---|
+| [T1_ROUND1_M0M1_20261012](run_orders/T1_ROUND1_M0M1_20261012.md) | **已授权待执行**（用户 2026-10-12）。T1 第一轮 M0/M1 × 3 种子 × 20k 与开发评估，科学提交 `f36ac77`。审批记录 [T1_ROUND1_PRETRAIN_GO_NO_GO_20261012](T1_ROUND1_PRETRAIN_GO_NO_GO_20261012.md)。独立正式评估未授权 |
 | [FINAL_RERUN_20261007](run_orders/FINAL_RERUN_20261007.md) | F01 训练、F03–F05 评估进行中（代码 `f2f8169`）。F02 结构检查已通过 |
 | [CLEANUP_B_LOWER_20261010](run_orders/CLEANUP_B_LOWER_20261010.md) | 第 1–3 步已完成：7 个标签、删除 6 个分支、流水线脚本入库。第 5 步验证等评估结束 |
 | [PROJECT_CLEANUP_20261010](run_orders/PROJECT_CLEANUP_20261010.md) | A 段、B 段已完成；C 段本地归档等验证通过并经用户确认 |

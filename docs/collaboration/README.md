@@ -1,6 +1,6 @@
 # Spacecraft 上下层协作入口
 
-> **所有新窗口第一份要读的是 [HANDOFF.md](HANDOFF.md)**（三窗口共用交接：背景、现状、各窗口职责与纪律）。每个窗口结束前更新自己那一节。
+> **所有新窗口必须先读两份文件：** [HANDOFF.md](HANDOFF.md)（T1 当前背景、R0/R1 状态、窗口分工、执行纪律）以及 [研究演进与耦合设计专题分析](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md)（研究历史、用户论文诉求、理论与耦合设计取舍）。两份由协作窗口按用户要求同步维护；方法方向和新训练仍须用户批准。
 
 固定分支：`collab/spacecraft`。本目录是任务交换与交付索引，正式实验只用各执行单冻结的科学提交；同步本分支不会同步实验工程。
 
@@ -14,7 +14,7 @@
 |已完成结果的审查|[reviews/README.md](reviews/README.md)|上下层分别写署名报告|
 |协作规则、接续方式|[WORKFLOW.md](WORKFLOW.md)|用户决策优先|
 
-**当前状态的唯一入口：[PROJECT_STATE.md](PROJECT_STATE.md)**，包括正在运行的工作、资产位置、Git 结构和未完成事项。实验总账见 [registry/](registry/README.md)。本段之下的旧描述与历史执行单仅作历史资料。
+**项目研究主线与当前协作快照优先阅读上述两份必读文件；工程现场由上层同步 [PROJECT_STATE.md](PROJECT_STATE.md)、下层同步 [CURRENT.json](CURRENT.json)。** PROJECT_STATE 与 CURRENT 截至 2026-10-12 可能仍含 F01 旧快照，未刷新之前不得据其“主线停止”等旧表述覆盖 T1。实验总账见 [registry/](registry/README.md)。本段之下的旧描述与历史执行单仅作历史资料。
 
 上层以后把执行单提交到本目录upper，下层把完成状态与交付入口提交到lower并更新CURRENT；每次工作先同步这个分支。用户只需指示“读协作入口并推进已授权任务”，无需转发长文或下载再上传结果。
 
