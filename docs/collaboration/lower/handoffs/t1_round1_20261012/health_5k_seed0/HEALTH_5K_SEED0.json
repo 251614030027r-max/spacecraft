@@ -1,0 +1,331 @@
+{
+  "utc": "2026-10-12T23:02:59.494106+00:00",
+  "scientific_commit": "f36ac77bc2dd328bcc6ec08bfa86e684f8e9ed8c",
+  "passed": true,
+  "speed_threshold": 2.824797157500507,
+  "results": {
+    "m0": {
+      "gates": {
+        "no_abort_finite_and_grown": true,
+        "checkpoint_load_finite": true,
+        "dev_16_episodes": true,
+        "termination_and_decision_growth": true,
+        "speed": true
+      },
+      "heartbeat": {
+        "decisions": 8200,
+        "wall_s": 18891.547499499982,
+        "utc": "2026-10-12T22:59:31.765028+00:00",
+        "parameters_finite": true
+      },
+      "s_per_decision": 2.3038472560365832,
+      "action": [
+        0.9300421476364136,
+        0.8624427318572998
+      ],
+      "checkpoint_sha256": "441b1b014841c0b924d6b25133d159eadfcbc61455612e11c6a2b2043a4496ec",
+      "evaluation": {
+        "policy": "logs\\t1\\t1_m0_s0\\checkpoints\\m0_5000_decisions.zip",
+        "episodes": 16,
+        "clean_capture": 3,
+        "mean_discounted_return": -106.95811160421513,
+        "mean_time_s_fail_as_300": 287.11249999999995,
+        "mean_delta_v_m_s": 2.494678266296837,
+        "failures": {
+          "distance": 10,
+          "timeout": 3
+        },
+        "openings_sha256": "97f4d8f1f2ffdc952f0d90cb6fe95c5ae607d8281f0969935a97cfa2c9230b5f"
+      },
+      "stats": {
+        "decisions": 8259,
+        "episodes": 74,
+        "opening_timing": {
+          "a0": [
+            -0.999,
+            -0.401,
+            0.859,
+            1.0,
+            1.0
+          ],
+          "tau_request_s": [
+            0.1,
+            47.9,
+            148.7,
+            160.0,
+            160.0
+          ],
+          "tau_effective_s": [
+            50.4,
+            100.0,
+            148.7,
+            160.0,
+            160.0
+          ],
+          "distinct_effective_tau": 36,
+          "earliest_requests": 4
+        },
+        "plan_status_share": {
+          "optimal": 0.7247850829398232,
+          "hold": 0.12095895386850708,
+          "descent": 0.10376558905436493,
+          "kept": 0.05036929410340235,
+          "optimal_inaccurate": 0.0001210800339024095
+        },
+        "slip_share": 0.17423416878556727,
+        "action_saturation_share": 0.4425475239133067,
+        "outcomes": {
+          "timeout": 24,
+          "unsafe": 29,
+          "success": 21
+        },
+        "failure_kinds": {
+          "distance": 29
+        },
+        "end_phase_by_outcome": {
+          "timeout": {
+            "far_field": 19,
+            "near_field": 4,
+            "entry": 1
+          },
+          "unsafe": {
+            "far_field": 29
+          },
+          "success": {
+            "near_field": 21
+          }
+        },
+        "terminal_rewards_seen": {
+          "capture": 21,
+          "unsafe": 29,
+          "timeout": 24
+        },
+        "episodes_without_plan_ever": 0
+      },
+      "snapshot_decisions": 8259,
+      "snapshot_episodes": 74
+    },
+    "m1": {
+      "gates": {
+        "no_abort_finite_and_grown": true,
+        "checkpoint_load_finite": true,
+        "dev_16_episodes": true,
+        "termination_and_decision_growth": true,
+        "speed": true,
+        "m1_aux_after_warmup_and_w": true
+      },
+      "heartbeat": {
+        "decisions": 6800,
+        "wall_s": 18891.459539100004,
+        "utc": "2026-10-12T22:59:31.398730+00:00",
+        "parameters_finite": true
+      },
+      "s_per_decision": 2.77815581457353,
+      "action": [
+        -0.9799826741218567,
+        0.9377083778381348
+      ],
+      "checkpoint_sha256": "2b31fff870ecaa35edc4056fdcb8b28afd51923e24b22199b1182aa0dc703944",
+      "evaluation": {
+        "policy": "logs\\t1\\t1_m1_s0\\checkpoints\\m1_5000_decisions.zip",
+        "episodes": 16,
+        "clean_capture": 3,
+        "mean_discounted_return": -101.5697527297175,
+        "mean_time_s_fail_as_300": 287.95000000000005,
+        "mean_delta_v_m_s": 3.1779468227490275,
+        "failures": {
+          "distance": 7,
+          "timeout": 6
+        },
+        "openings_sha256": "97f4d8f1f2ffdc952f0d90cb6fe95c5ae607d8281f0969935a97cfa2c9230b5f"
+      },
+      "stats": {
+        "decisions": 6870,
+        "episodes": 60,
+        "opening_timing": {
+          "a0": [
+            -0.999,
+            -0.452,
+            0.702,
+            0.997,
+            1.0
+          ],
+          "tau_request_s": [
+            0.1,
+            43.8,
+            136.1,
+            159.8,
+            160.0
+          ],
+          "tau_effective_s": [
+            34.1,
+            89.9,
+            136.6,
+            159.8,
+            160.0
+          ],
+          "distinct_effective_tau": 33,
+          "earliest_requests": 4
+        },
+        "plan_status_share": {
+          "optimal": 0.6864628820960699,
+          "hold": 0.1438136826783115,
+          "descent": 0.11703056768558952,
+          "kept": 0.05254730713245997,
+          "optimal_inaccurate": 0.0001455604075691412
+        },
+        "slip_share": 0.2262008733624454,
+        "action_saturation_share": 0.37438136826783114,
+        "gate_by_kind": {
+          "request_vs_earliest": {
+            "n": 511,
+            "open": 14,
+            "open_share": 0.0273972602739726,
+            "reasons": {
+              "alt_saturation": 435,
+              "alt_not_tracking": 389,
+              "same_effective_tau": 383,
+              "real_not_tracking": 381,
+              "e_p": 282,
+              "e_o": 227,
+              "e_r": 174,
+              "alt_mode_switch": 46,
+              "real_mode_switch": 46,
+              "real_terminated": 10,
+              "near_horizon": 3
+            }
+          },
+          "replan_vs_keep": {
+            "n": 4722,
+            "open": 3050,
+            "open_share": 0.6459127488352393,
+            "reasons": {
+              "same_effective_tau": 919,
+              "alt_mode_switch": 362,
+              "real_mode_switch": 362,
+              "alt_saturation": 324,
+              "real_not_tracking": 152,
+              "e_r": 120,
+              "e_o": 95,
+              "e_p": 64,
+              "real_terminated": 18,
+              "real_slack": 16,
+              "alt_slack": 14,
+              "near_horizon": 10
+            }
+          },
+          "keep_vs_shift": {
+            "n": 311,
+            "open": 236,
+            "open_share": 0.7588424437299035,
+            "reasons": {
+              "real_mode_switch": 32,
+              "alt_mode_switch": 31,
+              "alt_saturation": 22,
+              "same_effective_tau": 21,
+              "e_r": 11,
+              "alt_not_tracking": 9,
+              "e_o": 6,
+              "e_p": 4,
+              "near_horizon": 1
+            }
+          },
+          "earliest_vs_later": {
+            "n": 472,
+            "open": 9,
+            "open_share": 0.019067796610169493,
+            "reasons": {
+              "real_not_tracking": 436,
+              "same_effective_tau": 433,
+              "alt_not_tracking": 433,
+              "alt_saturation": 355,
+              "e_p": 288,
+              "e_o": 219,
+              "e_r": 180,
+              "alt_mode_switch": 36,
+              "real_mode_switch": 36,
+              "real_terminated": 7,
+              "near_horizon": 3,
+              "alt_slack": 2,
+              "real_slack": 2
+            }
+          },
+          "not_representable": {
+            "n": 50,
+            "open": 0,
+            "open_share": 0.0,
+            "reasons": {
+              "not_representable": 50
+            }
+          },
+          "descent_mode": {
+            "n": 804,
+            "open": 0,
+            "open_share": 0.0,
+            "reasons": {
+              "descent_mode": 804
+            }
+          }
+        },
+        "gate_open_share": {
+          "all_decisions": 0.4816593886462882,
+          "policy_keeps_plan": 0.7588424437299035,
+          "policy_changes_or_starts_plan": 0.5386503067484663
+        },
+        "real_prediction_error_quantiles": {
+          "e_r": [
+            0.0159,
+            0.0547,
+            0.1992
+          ],
+          "e_p": [
+            0.005,
+            0.0215,
+            0.0454
+          ],
+          "e_o": [
+            0.0172,
+            0.0666,
+            0.1253
+          ]
+        },
+        "outcomes": {
+          "timeout": 20,
+          "unsafe": 20,
+          "success": 20
+        },
+        "failure_kinds": {
+          "distance": 20
+        },
+        "end_phase_by_outcome": {
+          "timeout": {
+            "far_field": 16,
+            "near_field": 4
+          },
+          "unsafe": {
+            "far_field": 20
+          },
+          "success": {
+            "near_field": 20
+          }
+        },
+        "terminal_rewards_seen": {
+          "capture": 20,
+          "unsafe": 20,
+          "timeout": 20
+        },
+        "episodes_without_plan_ever": 0
+      },
+      "snapshot_decisions": 6870,
+      "snapshot_episodes": 60,
+      "aux_loss_evidence": {
+        "updates": 3999,
+        "nonzero_updates": 2000,
+        "first_nonzero_decision": 3000,
+        "max_aux_loss": 3.9033150672912598,
+        "valid_decisions_through5000": 2629
+      }
+    }
+  },
+  "snapshot_scope": "Complete lines at check time after 5k evaluations, not truncated to 5k; exact counts recorded. Checkpoint/evaluation rows are exactly5k."
+}
