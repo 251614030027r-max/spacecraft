@@ -247,6 +247,13 @@ class RendezvousPlanner:
 
     def solve(self, q0: np.ndarray, v0: np.ndarray, tau_s: float, history,
               guess: np.ndarray | None = None, iterations: int = 4) -> dict[str, Any]:
+        # Every plan is solved from a freshly built solver: CVXPY otherwise
+        # updates the cached CLARABEL object in place and the result depends
+        # on earlier solves at ~1e-5 (v0.3.2). A plan must be a function of
+        # its inputs only -- for replay, for the M1 shadow and for the policy.
+        cache = getattr(self.problem, "_solver_cache", None)
+        if cache is not None:
+            cache.clear()
         n = self.nodes
         dt = tau_s / n
         rotation, omega_inertial = _rotation_at(history, tau_s)
