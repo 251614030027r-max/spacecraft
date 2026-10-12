@@ -98,6 +98,12 @@ class Prediction:
     end_mouth_or_cone: bool
     end_violation: bool
     max_range_m: float
+    #: the whole predicted 2 s window (steps 1..20), not only its end
+    window_violation: bool
+    window_violation_kinds: list[str]
+    window_first_violation_step: int | None
+    window_mode_switch: bool
+    window_first_mode_switch_step: int | None
     wall_s: float
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -189,8 +195,11 @@ class CounterfactualPredictor:
         ranges = [float(np.linalg.norm(se3_exp(x[:6])[:3, 3])) for x in states]
         target = e.target_state
         model = controller.reference_model
+        targets = [target]
         for i in range(steps):
             target = model.propagate_target(target, e.time_s + i * c.dt_s)
+            targets.append(target)
+        window = check_predicted_window(e, g, targets, states)
         chaser = model.reconstruct_chaser(target, states[steps])
         e.target_state, e.chaser_state = target, chaser
         e.time_s = round(e.time_s + steps * c.dt_s, 10)
@@ -205,7 +214,7 @@ class CounterfactualPredictor:
             end_descending=bool(g._descending(e, m_end)),
             end_mouth_or_cone=bool(m_end.mouth_region or m_end.in_cone),
             end_violation=bool(m_end.hard_violation or m_end.range_m > c.task.max_distance_m),
-            max_range_m=max(ranges), wall_s=perf_counter() - started,
+            max_range_m=max(ranges), wall_s=perf_counter() - started, **window,
         )
 
     def closed_loop(self, action: np.ndarray) -> dict[str, Any]:
@@ -259,10 +268,10 @@ class CounterfactualPredictor:
                 reasons.append(f"{name}_fallback")
             if p.solve_slack > cfg.max_solve_slack:
                 reasons.append(f"{name}_slack")
-            if p.end_descending or p.end_mouth_or_cone:
+            if p.window_mode_switch:
                 reasons.append(f"{name}_mode_switch")
-            if p.end_violation:
-                reasons.append(f"{name}_predicted_violation")
+            if p.window_violation:
+                reasons.append(f"{name}_predicted_violation:{'+'.join(p.window_violation_kinds)}")
         if p_alt.saturation > cfg.max_predicted_saturation:
             reasons.append("alt_saturation")
         # called after the real step: time_s is already the predicted end time t + 2 s
@@ -275,6 +284,49 @@ class CounterfactualPredictor:
         if errors["e_o"] > cfg.max_observation_error:
             reasons.append("e_o")
         return int(not reasons), reasons
+
+
+def check_predicted_window(env, generator, targets: list, states: list) -> dict[str, Any]:
+    """Truth rules on every predicted state of the 2 s window (design 2026-10-12 / P0-1).
+
+    Each predicted relative state is turned into a chaser state against the
+    predicted target of the same instant and checked with the truth metric
+    (collision, sphere-or-cone union, FOV, radial / axial braking envelope,
+    near-field total speed), the 30 m distance limit and finiteness. A step in
+    the mouth region, in the cone, inside the sphere or in the descent region
+    is a mode switch. Any violation or mode switch anywhere -> w = 0; a window
+    that violates mid-way and recovers by its end is *not* accepted.
+    """
+
+    from env.t1_task import compute_t1_metrics
+
+    task = env.config.task
+    model = env.controller.reference_model
+    kinds: list[str] = []
+    first_violation = first_switch = None
+    for i in range(1, len(states)):
+        x = np.asarray(states[i], dtype=np.float64)
+        step_kinds: list[str] = []
+        if not np.all(np.isfinite(x)):
+            step_kinds.append("non_finite")
+        else:
+            chaser = model.reconstruct_chaser(targets[i], x)
+            m = compute_t1_metrics(targets[i], chaser, task)
+            step_kinds.extend(sorted(m.violations))
+            if m.range_m > task.max_distance_m:
+                step_kinds.append("distance")
+            if first_switch is None and (m.mouth_region or m.in_cone or generator._descending(env, m)):
+                first_switch = i
+        if step_kinds:
+            first_violation = i if first_violation is None else first_violation
+            kinds.extend(k for k in step_kinds if k not in kinds)
+    return {
+        "window_violation": first_violation is not None,
+        "window_violation_kinds": kinds,
+        "window_first_violation_step": first_violation,
+        "window_mode_switch": first_switch is not None,
+        "window_first_mode_switch_step": first_switch,
+    }
 
 
 def prediction_errors(p: Prediction, reward: float, observation: np.ndarray, relative_position_eci_m: np.ndarray) -> dict[str, float]:
@@ -335,5 +387,5 @@ class T1CounterfactualEnv(T1GStarEnv):
 
 __all__ = [
     "CounterfactualConfig", "CounterfactualPredictor", "Prediction", "T1CounterfactualEnv",
-    "copy_controller_state", "copy_generator_state", "mirror_solver_cache", "prediction_errors", "OBSERVATION_NAMES",
+    "check_predicted_window", "copy_controller_state", "copy_generator_state", "mirror_solver_cache", "prediction_errors", "OBSERVATION_NAMES",
 ]

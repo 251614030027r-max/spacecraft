@@ -1,4 +1,4 @@
-"""Gymnasium wrapper of T1 + G* v0.3 for SAC (M0 and M1 use it unchanged).
+"""Gymnasium wrapper of T1 + G* (``GSTAR_VERSION``, 0.3.2) for SAC (M0 and M1 use it unchanged).
 
 One ``step`` is one 2 s decision: the action becomes a G* request, the
 generator decides (keep / re-plan / descent / hold), then 20 MPC control

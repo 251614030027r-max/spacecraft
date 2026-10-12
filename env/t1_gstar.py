@@ -46,6 +46,10 @@ import numpy as np
 from dynamics.lie import so3_exp
 from env.t1_task import T1Metrics, _slerp_deterministic
 
+#: Version of the G* reference generator used by M0/M1 training (frozen):
+#: v0.3 (R1 pass 2, e80b476) + v0.3.1 range cap (83f035a) + v0.3.2 fresh solves (acc3366).
+GSTAR_VERSION = "0.3.2"
+
 
 @dataclass
 class GStarPlan:
@@ -472,6 +476,6 @@ def make_rendezvous(env, kappa: float, plan_force_fraction: float = 0.8, **kwarg
 
 
 __all__ = [
-    "GStarPlan", "GStarRendezvous", "RendezvousPlanner", "free_body_rotations",
+    "GSTAR_VERSION", "GStarPlan", "GStarRendezvous", "RendezvousPlanner", "free_body_rotations",
     "make_rendezvous", "next_pass_tau",
 ]
