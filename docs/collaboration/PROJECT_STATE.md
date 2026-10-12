@@ -19,7 +19,7 @@
 
 | 内容 | 位置 |
 |---|---|
-| 科学代码 | 分支 `claude/sac-mpc-coupling-design-ns7g6i`。T1 第一轮冻结在 `f36ac77`（本机检出 `D:/py/DRL2_T1`，独立工作树）；F01 的本机检出 `D:/py/DRL2` 保持 `f2f8169` 不动 |
+| 科学代码 | 分支 `claude/sac-mpc-coupling-design-ns7g6i`。T1 第一轮冻结在 `f36ac77`（本机检出 `D:/py/DRL2_T1`，独立工作树）；`D:/py/DRL2` 保持整理后的 `4795910` 不动（F01 结果已归档） |
 | 当前规格 | 科学分支 `docs/current/`：TASK、METHOD、EVALUATION、REPRODUCE |
 | 研究时间线、负结果台账 | 科学分支 `docs/HISTORY.md`、`docs/DEAD_ENDS.md` |
 | 已发布证据 | 科学分支 `evidence/<实验ID>/` |
