@@ -83,16 +83,6 @@ def model_kwargs(config: T1SACConfig, net_arch: list[int] | None = None) -> dict
     return values
 
 
-def _phase(m) -> str:
-    """Where the episode is, from the truth state (descriptive label, not a rule)."""
-
-    if m.mouth_region or m.range_m < 6.0:
-        return "near_field"
-    if m.in_cone and m.range_m < 7.0:
-        return "entry"
-    return "far_field"
-
-
 class EpisodeLog(BaseCallback):
     """``episodes.jsonl``: one line per finished episode (outcome, every violated rule, end
     phase, plan usage, counterfactual counts). ``decisions.jsonl``: one line per decision
@@ -124,7 +114,8 @@ class EpisodeLog(BaseCallback):
         }
         if cf is not None:
             line["cf"] = {"kind": cf["kind"], "w": int(cf["w"]), "reasons": cf["reasons"],
-                          "e": {k: round(float(v), 6) for k, v in cf["errors_real"].items()},
+                          "e": None if cf["errors_real"] is None else
+                          {k: round(float(v), 6) for k, v in cf["errors_real"].items()},
                           "tau_eff_alt": cf["tau_effective_alt_s"], "alt_status": cf["alt_status"]}
         self._decisions.write(json.dumps(line, default=float) + "\n")
         self._k += 1
@@ -143,15 +134,12 @@ class EpisodeLog(BaseCallback):
             c["cf_available"] = c.get("cf_available", 0) + int(cf["a_tilde"] is not None)
             c["cf_overhead_wall_s"] = c.get("cf_overhead_wall_s", 0.0) + cf["overhead_wall_s"]
         if "episode_summary" in info:
-            env = self.training_env.envs[0].unwrapped  # type: ignore[attr-defined]
-            m = env.env.metrics()
+            # opening, end phase and violations come from the env's own terminal record:
+            # by now the vectorised wrapper has already reset the environment.
             record = {
                 "num_timesteps": int(self.num_timesteps),
-                "opening": env.current_opening,
                 **info["episode_summary"],
-                "violations": info.get("violations", {}),
                 "numerical_error": info.get("numerical_error"),
-                "end_phase": _phase(m), "end_range_m": m.range_m,
                 **self._counts,
             }
             with self.path.open("a") as handle:

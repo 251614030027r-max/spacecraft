@@ -162,14 +162,32 @@ class CounterfactualPredictor:
         s._last_request, s._last_kappa = r._last_request, r._last_kappa
         s.current_opening, s.episode = r.current_opening, r.episode
 
-    def predict(self, action: np.ndarray) -> Prediction:
-        """One G* decision and one MPC solve in the (already synced) shadow."""
+    def target_window(self) -> list:
+        """Predicted target states over the next 2 s from the (synced) shadow's current target.
+
+        Action-independent, so one propagation per decision serves both branches.
+        """
+
+        e = self.shadow.env
+        model = e.controller.reference_model
+        targets = [e.target_state]
+        for i in range(e.config.decision_steps):
+            targets.append(model.propagate_target(targets[-1], e.time_s + i * e.config.dt_s))
+        return targets
+
+    def predict(self, action: np.ndarray, targets: list | None = None) -> Prediction:
+        """One G* decision and one MPC solve in the (already synced) shadow.
+
+        ``targets``: the decision's ``target_window()`` (computed here when omitted).
+        """
 
         started = perf_counter()
         sh = self.shadow
         e, g = sh.env, sh.generator
         assert g is not None
         c = e.config
+        if targets is None:
+            targets = self.target_window()
         tau, kappa = sh.intent(action)
         g.kappa = kappa
         g.decide(e, tau)
@@ -193,12 +211,8 @@ class CounterfactualPredictor:
         reward = -c.reward.time_cost_per_s * c.dt_s * steps - c.reward.delta_v_cost_per_m_s * dv
         saturation = float(np.mean(np.max(np.abs(force), axis=1) >= 0.99 * c.max_force_per_axis_n))
         ranges = [float(np.linalg.norm(se3_exp(x[:6])[:3, 3])) for x in states]
-        target = e.target_state
         model = controller.reference_model
-        targets = [target]
-        for i in range(steps):
-            target = model.propagate_target(target, e.time_s + i * c.dt_s)
-            targets.append(target)
+        target = targets[steps]
         window = check_predicted_window(e, g, targets, states)
         chaser = model.reconstruct_chaser(target, states[steps])
         e.target_state, e.chaser_state = target, chaser
@@ -351,14 +365,27 @@ class T1CounterfactualEnv(T1GStarEnv):
         if not self.enabled:
             return super().step(action)
         started = perf_counter()
+        assert self.generator is not None
+        if self.generator._descending(self.env, self.env.metrics()):
+            # the design disables the counterfactual in the descent mode (w = 0 whatever is
+            # predicted), so nothing is predicted there
+            obs, reward, terminated, truncated, info = super().step(action)
+            info["counterfactual"] = {
+                "kind": "descent_mode", "a_tilde": None, "r_hat": None, "z_hat": None, "w": 0,
+                "reasons": ["descent_mode"], "errors_real": None, "real_first_wrench": None,
+                "tau_effective_real_pred_s": None, "tau_effective_alt_s": None, "alt_status": None,
+                "alt_saturation": None, "overhead_wall_s": perf_counter() - started,
+            }
+            return obs, reward, terminated, truncated, info
         pred = self.predictor
         pred.sync(self)
-        p_real = pred.predict(action)
+        targets = pred.target_window()
+        p_real = pred.predict(action, targets)
         alt, kind = pred.alternative(self, action, p_real)
         p_alt = None
         if alt is not None:
             pred.sync(self)
-            p_alt = pred.predict(alt)
+            p_alt = pred.predict(alt, targets)
         overhead = perf_counter() - started
         obs, reward, terminated, truncated, info = super().step(action)
         rel = self.env.chaser_state.position - self.env.target_state.position

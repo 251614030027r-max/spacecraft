@@ -130,3 +130,17 @@ def test_sb3_stores_terminals_without_bootstrap_and_truncations_with_it():
     sampled_done = dones * (1 - timeouts)
     assert sampled_done.tolist() == [0, 0, 1, 0, 0, 0, 0, 0, 1]  # truncation bootstraps, terminals do not
     assert b.rewards[:9, 0].tolist() == [-1, -2, -3] * 3
+
+
+def test_terminal_record_is_taken_before_any_auto_reset():
+    from stable_baselines3.common.vec_env import DummyVecEnv
+
+    vec = DummyVecEnv([lambda: T1GStarEnv(openings=[291000, 291013])])
+    vec.reset()
+    inner = vec.envs[0]
+    inner.env.time_s = 299.0
+    _, _, dones, infos = vec.step(np.array([[0.0, 0.0]]))
+    summary = infos[0]["episode_summary"]
+    assert dones[0] and summary["event"] == "timeout"
+    assert summary["opening"] == 291000 and inner.current_opening == 291013  # vec env already reset
+    assert summary["end_phase"] in ("far_field", "entry", "near_field") and summary["end_range_m"] > 0

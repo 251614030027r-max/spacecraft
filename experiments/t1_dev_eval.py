@@ -56,11 +56,9 @@ def run_episode(env: T1GStarEnv, opening: int, policy) -> dict:
         if terminated or truncated:
             break
     statuses = [s["status"] for s in log]
-    m = env.env.metrics()
     return {
-        "opening": opening, **info["episode_summary"], "discounted_return": ret,
-        "violations": info.get("violations", {}), "numerical_error": info.get("numerical_error"),
-        "end_phase": "near_field" if (m.mouth_region or m.range_m < 6.0) else ("entry" if (m.in_cone and m.range_m < 7.0) else "far_field"),
+        **info["episode_summary"], "opening": opening, "discounted_return": ret,
+        "numerical_error": info.get("numerical_error"),
         "first_tau_request_s": log[0]["tau_request_s"], "kappa_mean": float(np.mean([s["kappa"] for s in log])),
         "new_plans": sum(s.startswith("optimal") for s in statuses), "kept": statuses.count("kept"),
         "holds": sum(s.startswith("hold") for s in statuses), "slips": sum(s["slip_s"] > 0 for s in log),

@@ -49,6 +49,16 @@ OBSERVATION_NAMES = (
 )
 
 
+def end_phase(m) -> str:
+    """Where an episode ended, from the truth state (descriptive label, not a rule)."""
+
+    if m.mouth_region or m.range_m < 6.0:
+        return "near_field"
+    if m.in_cone and m.range_m < 7.0:
+        return "entry"
+    return "far_field"
+
+
 @dataclass(frozen=True)
 class T1GymConfig:
     tau_max_s: float = 160.0
@@ -157,7 +167,13 @@ class T1GStarEnv(gym.Env):
         }
         info["kappa"] = kappa
         if terminated or truncated:
-            info["episode_summary"] = {"event": info["event"], **self.env.summary()}
+            # taken here, before any auto-reset by a vectorised wrapper can replace the state
+            m = self.env.metrics()
+            info["episode_summary"] = {
+                "event": info["event"], **self.env.summary(), "opening": self.current_opening,
+                "violations": dict(info.get("violations", {})), "end_phase": end_phase(m),
+                "end_range_m": float(m.range_m),
+            }
         terminal = info["event"] in ("success", "unsafe", "timeout")
         return self._observation(), float(reward), bool(terminal), bool(info["event"] == "numerical_failure"), info
 
@@ -188,4 +204,4 @@ class T1GStarEnv(gym.Env):
         return obs
 
 
-__all__ = ["OBSERVATION_NAMES", "T1GStarEnv", "T1GymConfig"]
+__all__ = ["OBSERVATION_NAMES", "T1GStarEnv", "T1GymConfig", "end_phase"]
