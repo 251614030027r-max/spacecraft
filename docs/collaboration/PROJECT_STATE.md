@@ -1,4 +1,4 @@
-# 项目当前状态（2026-10-12）
+# 项目当前状态（2026-10-13）
 
 *先读 [HANDOFF.md](HANDOFF.md) 与 [研究演进与耦合设计专题分析](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md)。只记事实：正在运行什么、东西在哪里、哪些事已完成、哪些事还没完成。由上层维护；下层的核验状态见 `CURRENT.json`。*
 
@@ -7,19 +7,21 @@
 | 项 | 状态 |
 |---|---|
 | 主线 | T1 六自由度翻滚预捕获，比较 Pure MPC / M0（SAC + G★ + MPC）/ M1（M0 + 训练期门控 MPC 反事实 critic 目标）。F01 已结束（用户判失败），只作历史 |
-| 冻结科学提交 | `f36ac77bc2dd328bcc6ec08bfa86e684f8e9ed8c`（G★ 0.3.2；冻结配置 `evidence/T1_pretrain_checks/frozen_config.json`） |
+| 当前科学提交 | `78eb63c22615c9672c43338be4cec54da713812c`（G★ 0.4、接口 v2、UTD 4、n_envs 6；配置由 `experiments.t1_frozen_config` 从代码输出）。第一轮冻结在 `f36ac77`（G★ 0.3.2），种子 0 中断后作废 |
 | 已完成 | R0、R1（两遍，均 REVIEW_EXECUTOR，开发块）；M1 验收 A/B/C；训练前最终核查 P0/P1/P2；开发块规则基准 81.0895（16/16）。证据见下表 |
-| 已授权待执行 | 执行单 `upper/run_orders/T1_ROUND1_M0M1_20261012.md`：本机准入 → 种子 0 成对 20k → 5k 工程健康检查 → 种子 1、2 |
-| 未授权 | 独立正式评估（正式块 300000 起）；任何奖励、网络、门控、预算、种子或任务的改动 |
+| 已授权待执行 | 执行单 `upper/run_orders/T1_V2_SEED0_VALIDATION_20261013.md`：只训练 M1 种子 0（20k–60k，预注册平台期规则自动停止），开发块逐检查点评估（含未训练零点） |
+| 已停止 | 第一轮 `T1_ROUND1_M0M1_20261012.md`：种子 0 成对训练在 13.1k/10.7k 被误中断（collab `709a3ec`），不续训；种子 1、2 未启动且不再按该单执行 |
+| 开发块参照 | Pure MPC 11/16、平均折扣回报 0.91（`evidence/T1_dev_pure_295000`）；规则 16/16、81.0895（`evidence/T1_dev_rule_295000`） |
+| 未授权 | 独立正式评估（正式块 300000 起）；M0 新训练；种子 1、2；任何奖励、任务、Pure MPC 或共享 MPC 的改动 |
 | 已知局限（用户特别记录） | M1 开局择时阶段辅助门控通过率约 4%；计划管理的改善不得表述为初始择时的学习优势 |
 
-**T1 证据（科学分支）：** `evidence/T1_R0`、`evidence/T1_R1_pass1`、`evidence/T1_R1_pass2`、`evidence/T1_M1_validationB`、`evidence/T1_dev_rule_295000`、`evidence/T1_pretrain_checks`。
+**T1 证据（科学分支）：** `evidence/T1_R0`、`evidence/T1_R1_pass1`、`evidence/T1_R1_pass2`、`evidence/T1_M1_validationB`、`evidence/T1_dev_rule_295000`、`evidence/T1_dev_pure_295000`、`evidence/T1_pretrain_checks`。
 
 ## 2. 东西在哪里
 
 | 内容 | 位置 |
 |---|---|
-| 科学代码 | 分支 `claude/sac-mpc-coupling-design-ns7g6i`。T1 第一轮冻结在 `f36ac77`（本机检出 `D:/py/DRL2_T1`，独立工作树）；`D:/py/DRL2` 保持整理后的 `4795910` 不动（F01 结果已归档） |
+| 科学代码 | 分支 `claude/sac-mpc-coupling-design-ns7g6i`。T1 本机检出 `D:/py/DRL2_T1`（独立工作树；第一轮在 `f36ac77`，本轮切到 `78eb63c`）；`D:/py/DRL2` 保持整理后的 `4795910` 不动（F01 结果已归档） |
 | 当前规格 | 科学分支 `docs/current/`：TASK、METHOD、EVALUATION、REPRODUCE |
 | 研究时间线、负结果台账 | 科学分支 `docs/HISTORY.md`、`docs/DEAD_ENDS.md` |
 | 已发布证据 | 科学分支 `evidence/<实验ID>/` |

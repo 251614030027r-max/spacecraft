@@ -4,7 +4,9 @@
 
 | 文件 | 状态 |
 |---|---|
-| `FINAL_RERUN_20261007.md` | **当前**，已授权待执行（提交 f2f8169，种子 262460–262462） |
+| `T1_V2_SEED0_VALIDATION_20261013.md` | **当前**，已授权待执行：M1 种子 0 单条开发验证（提交 78eb63c，20k–60k，平台期自动停止） |
+| `T1_ROUND1_M0M1_20261012.md` | 准入与种子 0 已执行；种子 0 中断（collab 709a3ec）；其余部分由 T1_V2_SEED0_VALIDATION 取代 |
+| `FINAL_RERUN_20261007.md` | F01 已结束（用户判失败），只作历史（提交 f2f8169，种子 262460–262462） |
 | `ASSET_INVENTORY_20261007.md` | 已授权，FINAL_RERUN 交付后执行 |
 | `FINAL_EVIDENCE_20261007.md` | 已并入 FINAL_RERUN，不再单独执行；原（补充 FINAL_MAINLINE；A/B 用冻结提交，C 用分析提交 ed8db6a） |
 | `FINAL_MAINLINE_20261006.md` | 筛选已完成；训练被误中断；其余部分由 FINAL_RERUN 取代 |
