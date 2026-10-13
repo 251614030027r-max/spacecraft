@@ -1,5 +1,5 @@
 <!-- T1 interrupted 2026-10-13 -->
-最新：[T1种子0中断核查](handoffs/t1_round1_20261012/INTERRUPTION_REVIEW.md)，两条未完成，自动跟进暂停，等待核查后从零重训。
+临时审查（数据不足，审查后可删除）：[T1种子0中断核查](handoffs/t1_round1_20261012/INTERRUPTION_REVIEW.md)，两条未完成，自动跟进暂停，等待核查后从零重训。
 
 # 下层交付入口
 
