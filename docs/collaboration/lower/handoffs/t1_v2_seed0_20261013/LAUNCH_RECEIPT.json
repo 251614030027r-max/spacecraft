@@ -1,0 +1,74 @@
+{
+  "utc": "2026-10-13T08:09:30.228512+00:00",
+  "run": "t1v2_m1_s0_r1",
+  "heartbeat": {
+    "decisions": 3402,
+    "wall_s": 2105.4323108,
+    "utc": "2026-10-13T08:08:55.652568+00:00",
+    "parameters_finite": true
+  },
+  "decisions_per_hour": 5816.9526216430295,
+  "zero_point": {
+    "policy": "D:\\py\\DRL2_T1\\logs\\t1\\t1v2_m1_s0_r1\\checkpoints\\m1_0_decisions.zip",
+    "episodes": 16,
+    "clean_capture": 16,
+    "mean_discounted_return": 81.02096824746869,
+    "mean_time_s_fail_as_300": 129.4125,
+    "mean_delta_v_m_s": 1.346663399261335,
+    "failures": {},
+    "openings_sha256": "97f4d8f1f2ffdc952f0d90cb6fe95c5ae607d8281f0969935a97cfa2c9230b5f"
+  },
+  "actual_training_pid": 22808,
+  "actual_watch_pid": 13148,
+  "training": {
+    "mode": "train",
+    "run": "t1v2_m1_s0_r1",
+    "pid": 20888,
+    "command": [
+      "D:/py/DRL2/.venv/Scripts/python.exe",
+      "-u",
+      "-B",
+      "-m",
+      "train.train_t1",
+      "--method",
+      "m1",
+      "--steps",
+      "60000",
+      "--seed",
+      "0",
+      "--n-envs",
+      "6",
+      "--run-name",
+      "t1v2_m1_s0_r1",
+      "--log-root",
+      "logs/t1",
+      "--checkpoint-freq",
+      "5000"
+    ],
+    "utc": "2026-10-13T07:33:18.371163+00:00",
+    "launcher": "pycharm_foreground_no_external_windows"
+  },
+  "watch": {
+    "mode": "watch",
+    "run": "t1v2_m1_s0_r1",
+    "pid": 13280,
+    "command": [
+      "D:/py/DRL2/.venv/Scripts/python.exe",
+      "-u",
+      "-B",
+      "-m",
+      "experiments.t1_dev_eval",
+      "--watch",
+      "D:\\py\\DRL2_T1\\logs\\t1\\t1v2_m1_s0_r1",
+      "--openings",
+      "experiments/t1_dev_openings_295000.json",
+      "--checkpoints",
+      "0,5000,10000,15000,20000,25000,30000,35000,40000,45000,50000,55000,60000",
+      "--workers",
+      "3",
+      "--stop-on-plateau"
+    ],
+    "utc": "2026-10-13T07:33:54.701575+00:00",
+    "launcher": "pycharm_foreground_no_external_windows"
+  }
+}

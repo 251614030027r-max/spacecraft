@@ -1,13 +1,13 @@
 {
   "schema": "spacecraft_collaboration_v1",
   "topic": "t1_v2_seed0",
-  "phase": "v2_seed0_interrupted_waiting_user_foreground_r1",
+  "phase": "v2_seed0_r1_training_zero_point_complete",
   "scientific_commit": "78eb63c22615c9672c43338be4cec54da713812c",
   "run_order": "upper/run_orders/T1_V2_SEED0_VALIDATION_20261013.md",
   "admission": "lower/handoffs/t1_v2_seed0_20261013/ADMISSION.md",
   "t1_worktree": "D:\\py\\DRL2_T1",
-  "training_started": false,
-  "training_active": false,
+  "training_started": true,
+  "training_active": true,
   "method": "m1",
   "seed": 0,
   "n_envs": 6,
@@ -15,7 +15,7 @@
   "maximum_decisions": 60000,
   "plateau_stop": "watcher only; minimum20000/margin2/patience2; marks25000 onward",
   "formal_evaluation_authorized": false,
-  "automatic_followup": "PAUSED_WAITING_USER_LAUNCH",
+  "automatic_followup": "ACTIVE_HOURLY",
   "launch_script": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1v2种子0验证_20261013\\脚本\\pycharm_run.py",
   "local_topic": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1v2种子0验证_20261013",
   "previous_phase_snapshot": {
@@ -147,5 +147,11 @@
   },
   "updated_utc": "2026-10-13T04:26:57.666320+00:00",
   "run_name": "t1v2_m1_s0_r1",
-  "launch_mode": "pycharm_two_foreground_terminals"
+  "launch_mode": "pycharm_two_foreground_terminals",
+  "zero_point": {
+    "clean_capture": 16,
+    "episodes": 16,
+    "mean_discounted_return": 81.02096824746869
+  },
+  "launch_receipt": "lower/handoffs/t1_v2_seed0_20261013/LAUNCH_RECEIPT.json"
 }
