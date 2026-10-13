@@ -55,7 +55,19 @@ def pack(package: Path, output: Path) -> None:
 
 
 def _arrival_clock(log: list[dict]) -> list[float]:
-    return [2.0 * k + x["tau_effective_s"] for k, x in enumerate(log)]
+    """Absolute planned arrival after each decision: plan start + the plan's total tau.
+
+    Corrected after 818fcd8, which used ``2 k + tau_effective_s`` on every decision; on a
+    kept decision that drifts by 2 s although the plan (and its arrival) is unchanged.
+    Decisions without a plan (descent, hold) carry the last planned arrival forward.
+    """
+
+    arrival, out = None, []
+    for k, x in enumerate(log):
+        if x["status"].startswith(("optimal", "recovery")) or arrival is None:
+            arrival = 2.0 * k + x["tau_effective_s"]
+        out.append(arrival)
+    return out
 
 
 def readout(evidence: Path, r1: Path) -> dict:
