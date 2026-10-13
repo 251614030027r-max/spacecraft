@@ -1,13 +1,13 @@
 {
   "schema": "spacecraft_collaboration_v1",
   "topic": "t1_v2_seed0",
-  "phase": "v2_seed0_r1_training_5k_eval_complete",
+  "phase": "v2_seed0_r1_plateau_stopped_final_delivered",
   "scientific_commit": "78eb63c22615c9672c43338be4cec54da713812c",
   "run_order": "upper/run_orders/T1_V2_SEED0_VALIDATION_20261013.md",
   "admission": "lower/handoffs/t1_v2_seed0_20261013/ADMISSION.md",
   "t1_worktree": "D:\\py\\DRL2_T1",
   "training_started": true,
-  "training_active": true,
+  "training_active": false,
   "method": "m1",
   "seed": 0,
   "n_envs": 6,
@@ -15,7 +15,7 @@
   "maximum_decisions": 60000,
   "plateau_stop": "watcher only; minimum20000/margin2/patience2; marks25000 onward",
   "formal_evaluation_authorized": false,
-  "automatic_followup": "ACTIVE_HOURLY",
+  "automatic_followup": "PAUSED_COMPLETED",
   "launch_script": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1v2种子0验证_20261013\\脚本\\pycharm_run.py",
   "local_topic": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1v2种子0验证_20261013",
   "previous_phase_snapshot": {
@@ -161,5 +161,12 @@
     "snapshot_rows": 5004,
     "action_saturation_share": 0.37170263788968827,
     "kept_share": 0.3655075939248601
-  }
+  },
+  "training_completed": true,
+  "actual_decisions": 32088,
+  "plateau_at_mark": 30000,
+  "dev_evaluation_completed": true,
+  "dev_episodes": 112,
+  "report": "lower/handoffs/t1_v2_seed0_20261013/REPORT.md",
+  "final_receipt": "lower/handoffs/t1_v2_seed0_20261013/FINAL_DELIVERY_RECEIPT.json"
 }
