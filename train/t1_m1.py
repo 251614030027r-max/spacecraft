@@ -29,6 +29,7 @@ import torch as th
 import torch.nn.functional as F
 from stable_baselines3 import SAC
 from stable_baselines3.common.buffers import ReplayBuffer
+from stable_baselines3.common.type_aliases import ReplayBufferSamples
 from stable_baselines3.common.utils import polyak_update
 
 
@@ -40,47 +41,61 @@ class CounterfactualBatch(NamedTuple):
 
 
 class M1ReplayBuffer(ReplayBuffer):
+    """SB3 replay buffer plus the cached counterfactual per transition, for any number of envs."""
+
     def __init__(self, buffer_size, observation_space, action_space, device="auto", n_envs=1,
                  optimize_memory_usage=False, handle_timeout_termination=True) -> None:
-        if n_envs != 1 or optimize_memory_usage:
-            raise ValueError("M1ReplayBuffer supports one environment without memory optimisation")
+        if optimize_memory_usage:
+            raise ValueError("M1ReplayBuffer does not support memory optimisation")
         super().__init__(buffer_size, observation_space, action_space, device, n_envs,
                          optimize_memory_usage, handle_timeout_termination)
         obs_dim = int(np.prod(observation_space.shape))
         act_dim = int(np.prod(action_space.shape))
-        self.cf_actions = np.zeros((self.buffer_size, act_dim), dtype=np.float32)
-        self.cf_rewards = np.zeros((self.buffer_size, 1), dtype=np.float32)
-        self.cf_next_observations = np.zeros((self.buffer_size, obs_dim), dtype=np.float32)
-        self.cf_weights = np.zeros((self.buffer_size, 1), dtype=np.float32)
-        self._last_batch_inds: np.ndarray | None = None
+        self.cf_actions = np.zeros((self.buffer_size, self.n_envs, act_dim), dtype=np.float32)
+        self.cf_rewards = np.zeros((self.buffer_size, self.n_envs, 1), dtype=np.float32)
+        self.cf_next_observations = np.zeros((self.buffer_size, self.n_envs, obs_dim), dtype=np.float32)
+        self.cf_weights = np.zeros((self.buffer_size, self.n_envs, 1), dtype=np.float32)
+        self._last: tuple[np.ndarray, np.ndarray] | None = None
 
     def add(self, obs, next_obs, action, reward, done, infos: list[dict[str, Any]]) -> None:
-        cf = infos[0].get("counterfactual") if infos else None
-        valid = bool(cf and cf.get("w") == 1 and cf.get("a_tilde") is not None)
         i = self.pos
-        self.cf_weights[i] = 1.0 if valid else 0.0
-        if valid:
-            self.cf_actions[i] = np.asarray(cf["a_tilde"], dtype=np.float32)
-            self.cf_rewards[i] = np.float32(cf["r_hat"])
-            self.cf_next_observations[i] = np.asarray(cf["z_hat"], dtype=np.float32)
-        else:
-            self.cf_actions[i] = 0.0
-            self.cf_rewards[i] = 0.0
-            self.cf_next_observations[i] = 0.0
+        for e in range(self.n_envs):
+            cf = infos[e].get("counterfactual") if e < len(infos) else None
+            valid = bool(cf and cf.get("w") == 1 and cf.get("a_tilde") is not None)
+            self.cf_weights[i, e] = 1.0 if valid else 0.0
+            if valid:
+                self.cf_actions[i, e] = np.asarray(cf["a_tilde"], dtype=np.float32)
+                self.cf_rewards[i, e] = np.float32(cf["r_hat"])
+                self.cf_next_observations[i, e] = np.asarray(cf["z_hat"], dtype=np.float32)
+            else:
+                self.cf_actions[i, e] = 0.0
+                self.cf_rewards[i, e] = 0.0
+                self.cf_next_observations[i, e] = 0.0
         super().add(obs, next_obs, action, reward, done, infos)
 
     def _get_samples(self, batch_inds: np.ndarray, env=None):
-        self._last_batch_inds = np.asarray(batch_inds)
-        return super()._get_samples(batch_inds, env)
+        # SB3 2.7.1 ReplayBuffer._get_samples, keeping the env indices it draws (same
+        # random draws, so the real batch is exactly SB3's).
+        env_indices = np.random.randint(0, high=self.n_envs, size=(len(batch_inds),))
+        self._last = (np.asarray(batch_inds), env_indices)
+        next_obs = self._normalize_obs(self.next_observations[batch_inds, env_indices, :], env)
+        data = (
+            self._normalize_obs(self.observations[batch_inds, env_indices, :], env),
+            self.actions[batch_inds, env_indices, :],
+            next_obs,
+            (self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(-1, 1),
+            self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env),
+        )
+        return ReplayBufferSamples(*tuple(map(self.to_torch, data)))
 
     def counterfactual(self) -> CounterfactualBatch:
         """The cached counterfactual of the transitions of the last ``sample``."""
 
-        assert self._last_batch_inds is not None
-        i = self._last_batch_inds
+        assert self._last is not None
+        i, e = self._last
         return CounterfactualBatch(
-            self.to_torch(self.cf_actions[i]), self.to_torch(self.cf_rewards[i]),
-            self.to_torch(self.cf_next_observations[i]), self.to_torch(self.cf_weights[i]),
+            self.to_torch(self.cf_actions[i, e]), self.to_torch(self.cf_rewards[i, e]),
+            self.to_torch(self.cf_next_observations[i, e]), self.to_torch(self.cf_weights[i, e]),
         )
 
 
@@ -92,9 +107,11 @@ def auxiliary_critic_loss(q_values: list[th.Tensor], target: th.Tensor, weights:
 
 class M1SAC(SAC):
     def __init__(self, *args: Any, cf_lambda: float = 0.5, cf_warmup_fraction: float = 0.15,
-                 cf_diagnostics_every: int = 50, **kwargs: Any) -> None:
+                 cf_warmup_decisions: int | None = None, cf_diagnostics_every: int = 50, **kwargs: Any) -> None:
         self.cf_lambda = float(cf_lambda)
         self.cf_warmup_fraction = float(cf_warmup_fraction)
+        #: absolute warm-up (decisions); when set it replaces the fraction of the budget
+        self.cf_warmup_decisions = cf_warmup_decisions
         self.cf_diagnostics_every = int(cf_diagnostics_every)
         kwargs.setdefault("replay_buffer_class", M1ReplayBuffer)
         super().__init__(*args, **kwargs)
@@ -104,6 +121,8 @@ class M1SAC(SAC):
         }
 
     def current_lambda(self) -> float:
+        if getattr(self, "cf_warmup_decisions", None) is not None:
+            return 0.0 if self.num_timesteps < self.cf_warmup_decisions else self.cf_lambda
         total = getattr(self, "_total_timesteps", 0) or 0
         return 0.0 if self.num_timesteps < self.cf_warmup_fraction * total else self.cf_lambda
 

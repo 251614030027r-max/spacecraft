@@ -47,8 +47,10 @@ from dynamics.lie import so3_exp
 from env.t1_task import T1Metrics, _slerp_deterministic
 
 #: Version of the G* reference generator used by M0/M1 training (frozen):
-#: v0.3 (R1 pass 2, e80b476) + v0.3.1 range cap (83f035a) + v0.3.2 fresh solves (acc3366).
-GSTAR_VERSION = "0.3.2"
+#: v0.3 (R1 pass 2, e80b476) + v0.3.1 range cap (83f035a) + v0.3.2 fresh solves (acc3366)
+#: + v0.4 plan stability (an unmeetable earlier request or an infeasible request keeps a
+#: usable plan; no usable plan -> full-force earliest-arrival recovery before the hold).
+GSTAR_VERSION = "0.4"
 
 
 @dataclass
@@ -352,6 +354,7 @@ class GStarRendezvous:
 
     kappa: float
     planner: RendezvousPlanner
+    recovery_planner: RendezvousPlanner | None = None
     pure_approach: bool = False
     tau_min_s: float = 2.0
     descent_radius_m: float = 7.0
@@ -398,14 +401,17 @@ class GStarRendezvous:
         target, chaser = env.target_state, env.chaser_state
         q0 = chaser.position - target.position
         v0 = chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
+        remaining = self.remaining_s(env)
+        usable_plan = False
         if self.plan is not None:
             elapsed = env.time_s - self.plan_start_s
             deviation = float(np.linalg.norm(_plan_position(self.plan, elapsed, self.planner.mass) - q0))
+            usable_plan = deviation <= self.replan_deviation_m and remaining > 0.0
             agrees = (
-                abs(self.tau_s - self.remaining_s(env)) <= self.replan_tau_tolerance_s
-                or (self.tau_s <= self.tau_min_s and self.remaining_s(env) > 0.0)
+                abs(self.tau_s - remaining) <= self.replan_tau_tolerance_s
+                or (self.tau_s <= self.tau_min_s and remaining > 0.0)
             )
-            if agrees and deviation <= self.replan_deviation_m and self.remaining_s(env) > 0.0:
+            if agrees and usable_plan:
                 self.last_status = "kept"
                 return
         if self.tau_s > self.tau_min_s:
@@ -429,6 +435,28 @@ class GStarRendezvous:
                 result = self.planner.solve(q0, v0, tau, history, None)
             if result["feasible"]:
                 break
+        # v0.4 plan stability. A usable plan is not replaced by one that fails the request
+        # it was asked for: an earlier arrival that is not achievable (the new plan would
+        # arrive no earlier than the current one), or a request with no feasible plan at all.
+        # Replacing it there only churns the plan (R1-round-1 seed 0: SAC requests at the
+        # action bound re-planned every 2 s, with slips and holds, and failed far out).
+        earlier_request = self.tau_s < remaining - self.replan_tau_tolerance_s
+        if usable_plan and (
+            not result["feasible"]
+            or (earlier_request and float(result["tau_s"]) >= remaining - self.replan_tau_tolerance_s)
+        ):
+            self.plan_wall_s.append(perf_counter() - started)
+            self.last_status = "kept:no_earlier" if result["feasible"] else "kept:infeasible_request"
+            return
+        if not result["feasible"] and self.recovery_planner is not None:
+            # No usable plan: the earliest arrival at the full force bound before holding.
+            for tau in self.earliest_grid_s:
+                history = free_body_rotations(
+                    target.rotation, target.omega, env.target_parameters.inertia, tau + 1.0)
+                result = self.recovery_planner.solve(q0, v0, tau, history, None)
+                if result["feasible"]:
+                    result["status"] = f"recovery:{result['status']}"
+                    break
         self.plan_wall_s.append(perf_counter() - started)
         self.plan_start_s = float(env.time_s)
         if result["feasible"]:
@@ -472,7 +500,8 @@ def make_rendezvous(env, kappa: float, plan_force_fraction: float = 0.8, **kwarg
     planner = RendezvousPlanner(
         env.config.task, env.chaser_parameters.mass, plan_force_fraction * env.config.max_force_per_axis_n
     )
-    return GStarRendezvous(kappa=kappa, planner=planner, **kwargs)
+    recovery = RendezvousPlanner(env.config.task, env.chaser_parameters.mass, env.config.max_force_per_axis_n)
+    return GStarRendezvous(kappa=kappa, planner=planner, recovery_planner=recovery, **kwargs)
 
 
 __all__ = [

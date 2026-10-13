@@ -27,7 +27,7 @@ def test_observation_closure_uses_the_alternative_request_and_kappa(started):
     predictor = CounterfactualPredictor()
     predictor.sync(started)
     real_action = np.array([0.0, -0.5])
-    alt_action = np.array([0.5, 0.8])  # different tau shift and different kappa
+    alt_action = np.array([0.9, 0.8])  # a real tau shift (interface v2) and a different kappa
     tau_real, kappa_real = started.intent(real_action)
     tau_alt, kappa_alt = started.intent(alt_action)
     p = predictor.predict(alt_action)
@@ -58,10 +58,11 @@ def test_alternative_rule_matches_the_design_table(started):
     predictor = CounterfactualPredictor()
     predictor.sync(started)
     p = predictor.predict(np.array([0.0, 0.1]))
-    alt, kind = predictor.alternative(started, np.array([0.5, 0.1]), p)
+    alt, kind = predictor.alternative(started, np.array([0.8, 0.1]), p)
     assert kind == "replan_vs_keep" and alt[0] == 0.0 and alt[1] == 0.1
     alt, kind = predictor.alternative(started, np.array([0.05, 0.1]), p)
-    assert kind == "keep_vs_shift" and abs(alt[0]) == pytest.approx(0.5) and alt[1] == 0.1
+    assert kind == "keep_vs_shift" and abs(alt[0]) == pytest.approx(0.75) and alt[1] == 0.1
+    assert abs(started.shift_of(alt[0])) == pytest.approx(15.0)
 
 
 def test_shadow_closed_loop_reproduces_the_real_step_bitwise_including_the_first_decision():

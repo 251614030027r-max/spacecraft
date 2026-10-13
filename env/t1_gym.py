@@ -6,9 +6,11 @@ steps of 0.1 s run under RK45 truth (``T1Env.step``).
 
 Action ``a`` in [-1, 1]^2:
   a[0] -> arrival-time request. With a live plan the request is relative:
-          tau = remaining + ``tau_shift_s`` * a[0], and the plan is kept while
-          |tau_shift_s * a[0]| <= ``keep_tolerance_s`` (so "keep" is a set of
-          actions of positive measure, reachable by a stochastic policy).
+          tau = remaining + shift(a[0]). Interface v2: |a[0]| <= ``keep_band``
+          (0.5) asks to keep the plan (shift 0); beyond it the shift grows
+          linearly to +-``tau_shift_s`` at the bound. v1 kept only for
+          |a[0]| <= 0.1, and SAC at the action bound re-planned every 2 s
+          (round-1 seed 0); "keep" is now half of the action range.
           Without a plan it is absolute: tau = ``tau_max_s`` (a[0] + 1) / 2,
           and tau <= 2 s asks for the earliest feasible arrival.
   a[1] -> descent pace kappa = kappa_min + (kappa_max - kappa_min)(a[1] + 1)/2.
@@ -64,6 +66,8 @@ class T1GymConfig:
     tau_max_s: float = 160.0
     tau_shift_s: float = 30.0
     keep_tolerance_s: float = 3.0
+    #: interface v2: fraction of the a[0] range (around 0) that asks to keep the live plan
+    keep_band: float = 0.5
     kappa_min: float = 0.3
     kappa_max: float = 1.0
     #: training openings: seed_base + episode index (disjoint from R0 2900xx,
@@ -123,12 +127,26 @@ class T1GStarEnv(gym.Env):
         self._last_request, self._last_kappa = 0.0, kappa_mid
         return self._observation(), {"opening": opening}
 
+    def shift_of(self, a0: float) -> float:
+        """Arrival-time shift (s) asked by a[0] when a plan is live (interface v2)."""
+
+        band, size = self.config.keep_band, abs(float(a0))
+        if size <= band:
+            return 0.0
+        return float(np.sign(a0)) * self.config.tau_shift_s * (min(size, 1.0) - band) / (1.0 - band)
+
+    def action_for_shift(self, shift_s: float) -> float:
+        """Inverse of ``shift_of`` for a non-zero shift (|shift| <= tau_shift_s)."""
+
+        band = self.config.keep_band
+        return float(np.sign(shift_s)) * (band + (1.0 - band) * min(abs(shift_s) / self.config.tau_shift_s, 1.0))
+
     def intent(self, action: np.ndarray) -> tuple[float, float]:
         a = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
         assert self.generator is not None
         remaining = self.generator.remaining_s(self.env)
         if remaining > 0.0:
-            tau = max(remaining + self.config.tau_shift_s * a[0], 0.0)
+            tau = max(remaining + self.shift_of(float(a[0])), 0.0)
         else:
             tau = self.config.tau_max_s * 0.5 * (a[0] + 1.0)
         kappa = self.config.kappa_min + (self.config.kappa_max - self.config.kappa_min) * 0.5 * (a[1] + 1.0)
@@ -204,4 +222,6 @@ class T1GStarEnv(gym.Env):
         return obs
 
 
-__all__ = ["OBSERVATION_NAMES", "T1GStarEnv", "T1GymConfig", "end_phase"]
+GYM_INTERFACE_VERSION = "2"
+
+__all__ = ["GYM_INTERFACE_VERSION", "OBSERVATION_NAMES", "T1GStarEnv", "T1GymConfig", "end_phase"]

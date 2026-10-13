@@ -116,3 +116,26 @@ def test_warmup_keeps_lambda_zero():
 
 def test_m1_buffer_is_a_plain_replay_buffer_otherwise():
     assert issubclass(M1ReplayBuffer, ReplayBuffer)
+
+
+def test_buffer_keeps_each_environments_counterfactual_apart():
+    import gymnasium as gym_
+    space_o = gym_.spaces.Box(-np.inf, np.inf, shape=(OBS,), dtype=np.float32)
+    space_a = gym_.spaces.Box(-1.0, 1.0, shape=(ACT,), dtype=np.float32)
+    b = M1ReplayBuffer(50, space_o, space_a, device="cpu", n_envs=2)
+    for k in range(10):
+        infos = [{"counterfactual": {"w": 1, "a_tilde": np.full(ACT, e + k / 100, np.float32), "r_hat": 10 * e + k,
+                                     "z_hat": np.full(OBS, e, np.float32)}} if (k + e) % 2 == 0 else {}
+                 for e in range(2)]
+        obs = np.stack([np.full(OBS, 10 * e + k, np.float32) for e in range(2)])
+        b.add(obs, obs, np.zeros((2, ACT)), np.zeros(2), np.zeros(2), infos)
+    np.random.seed(0)
+    samples = b.sample(40)
+    cf = b.counterfactual()
+    for j in range(40):
+        o = samples.observations[j, 0].item()
+        e, k = int(o // 10), int(o % 10)
+        valid = (k + e) % 2 == 0
+        assert cf.weights[j, 0].item() == (1.0 if valid else 0.0)
+        if valid:
+            assert cf.rewards[j, 0].item() == 10 * e + k and cf.next_observations[j, 0].item() == e

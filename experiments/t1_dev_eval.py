@@ -60,7 +60,8 @@ def run_episode(env: T1GStarEnv, opening: int, policy) -> dict:
         **info["episode_summary"], "opening": opening, "discounted_return": ret,
         "numerical_error": info.get("numerical_error"),
         "first_tau_request_s": log[0]["tau_request_s"], "kappa_mean": float(np.mean([s["kappa"] for s in log])),
-        "new_plans": sum(s.startswith("optimal") for s in statuses), "kept": statuses.count("kept"),
+        "new_plans": sum(s.startswith(("optimal", "recovery")) for s in statuses),
+        "kept": sum(s.startswith("kept") for s in statuses),
         "holds": sum(s.startswith("hold") for s in statuses), "slips": sum(s["slip_s"] > 0 for s in log),
         "decision_log": log,
     }
@@ -69,15 +70,47 @@ def run_episode(env: T1GStarEnv, opening: int, policy) -> dict:
 CHECKPOINTS = (5_000, 10_000, 15_000, 20_000)
 
 
-def evaluate(policy_arg: str, openings: Path, output_dir: Path) -> dict:
-    return main([f"--policy={policy_arg}", f"--openings={openings}", f"--output-dir={output_dir}"])
+def _write_row(output_dir: Path, opening: int, row: dict) -> None:
+    (output_dir / f"{opening}.json").write_text(json.dumps(row, default=float))
+    print(opening, row["event"], round(row["time_s"], 1), round(row["delta_v_m_s"], 2),
+          round(row["discounted_return"], 2), flush=True)
 
 
-def watch(run_dir: Path, openings: Path, poll_s: float = 60.0) -> None:
+def _load_policy(policy_arg: str):
+    if policy_arg == "rule:earliest":
+        return None
+    from stable_baselines3 import SAC
+
+    from train.t1_m1 import M1SAC
+
+    try:
+        return M1SAC.load(policy_arg, device="cpu")
+    except Exception:  # noqa: BLE001 -- an M0 checkpoint
+        return SAC.load(policy_arg, device="cpu")
+
+
+def _evaluate_one(policy_arg: str, opening: int, output_dir: str) -> None:
+    import torch
+
+    torch.set_num_threads(1)
+    _write_row(Path(output_dir), opening, run_episode(T1GStarEnv(), opening, _load_policy(policy_arg)))
+
+
+def evaluate(policy_arg: str, openings: Path, output_dir: Path, workers: int = 1) -> dict:
+    return main([f"--policy={policy_arg}", f"--openings={openings}", f"--output-dir={output_dir}",
+                 f"--workers={workers}"])
+
+
+def watch(run_dir: Path, openings: Path, poll_s: float = 60.0, checkpoints=CHECKPOINTS, workers: int = 1) -> None:
     import time
 
+    CHECKPOINTS = tuple(checkpoints)  # noqa: N806 -- the marks this watcher follows
     done = set()
     while len(done) < len(CHECKPOINTS):
+        if (run_dir / "finished.json").exists() and not any(
+                (run_dir / "checkpoints").glob(f"*_{n}_decisions.zip") for n in CHECKPOINTS if n not in done):
+            print("run finished; remaining checkpoints were never written", flush=True)
+            return
         if (run_dir / "ABORTED.json").exists():
             print("run aborted:", (run_dir / "ABORTED.json").read_text(), flush=True)
             return
@@ -85,7 +118,7 @@ def watch(run_dir: Path, openings: Path, poll_s: float = 60.0) -> None:
             zips = sorted((run_dir / "checkpoints").glob(f"*_{n}_decisions.zip"))
             if n not in done and zips:
                 time.sleep(5.0)  # let the save finish
-                evaluate(str(zips[0]), openings, run_dir / "dev_eval" / str(n))
+                evaluate(str(zips[0]), openings, run_dir / "dev_eval" / str(n), workers)
                 done.add(n)
         if len(done) < len(CHECKPOINTS):
             time.sleep(poll_s)
@@ -97,34 +130,29 @@ def main(argv: list[str] | None = None) -> dict:
     parser.add_argument("--watch", type=Path, help="training run directory to follow")
     parser.add_argument("--openings", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--workers", type=int, default=1, help="episodes evaluated in parallel processes")
+    parser.add_argument("--checkpoints", default=None, help="with --watch: comma-separated decision marks")
     args = parser.parse_args(argv)
     if args.watch is not None:
-        watch(args.watch, args.openings)
+        marks = tuple(int(x) for x in args.checkpoints.split(",")) if args.checkpoints else CHECKPOINTS
+        watch(args.watch, args.openings, checkpoints=marks, workers=args.workers)
         return {}
     if args.output_dir is None or args.policy is None:
         parser.error("--policy and --output-dir are required without --watch")
-    policy = None
-    if args.policy != "rule:earliest":
-        from train.t1_m1 import M1SAC
-        from stable_baselines3 import SAC
-        try:
-            policy = M1SAC.load(args.policy, device="cpu")
-        except Exception:  # noqa: BLE001 -- an M0 checkpoint
-            policy = SAC.load(args.policy, device="cpu")
+    policy = _load_policy(args.policy) if args.workers <= 1 else None
     seeds = json.loads(args.openings.read_text())["seeds"]
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    env = T1GStarEnv()
-    rows = []
-    for opening in seeds:
-        path = args.output_dir / f"{opening}.json"
-        if path.exists():
-            rows.append(json.loads(path.read_text()))
-            continue
-        row = run_episode(env, opening, policy)
-        path.write_text(json.dumps(row, default=float))
-        rows.append(row)
-        print(opening, row["event"], round(row["time_s"], 1), round(row["delta_v_m_s"], 2),
-              round(row["discounted_return"], 2), flush=True)
+    todo = [o for o in seeds if not (args.output_dir / f"{o}.json").exists()]
+    if args.workers > 1 and todo:
+        import multiprocessing as mp
+
+        with mp.get_context("spawn").Pool(min(args.workers, len(todo))) as pool:
+            pool.starmap(_evaluate_one, [(args.policy, o, str(args.output_dir)) for o in todo])
+    else:
+        env = T1GStarEnv()
+        for opening in todo:
+            _write_row(args.output_dir, opening, run_episode(env, opening, policy))
+    rows = [json.loads((args.output_dir / f"{o}.json").read_text()) for o in seeds]
     summary = {
         "policy": args.policy, "episodes": len(rows),
         "clean_capture": sum(r["event"] == "success" for r in rows),

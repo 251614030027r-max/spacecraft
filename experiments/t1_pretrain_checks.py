@@ -86,7 +86,7 @@ def offline(run: Path) -> dict:
     buffer = model.replay_buffer
     n = buffer.pos if not buffer.full else buffer.buffer_size
     kinds = {x["t"] - 1: x["cf"]["kind"] for x in _lines(run / "decisions.jsonl") if "cf" in x}
-    valid = np.flatnonzero(buffer.cf_weights[:n, 0] > 0)
+    valid = np.flatnonzero(buffer.cf_weights[:n, 0, 0] > 0)  # env 0
     out: dict = {"replay_size": int(n), "valid_counterfactuals": int(len(valid))}
     model._total_timesteps = 20_000
     for clock in (2_999, 3_000):
@@ -96,9 +96,9 @@ def offline(run: Path) -> dict:
     idx = valid
     obs = buffer.to_torch(buffer.observations[idx, 0])
     act = buffer.to_torch(buffer.actions[idx, 0])
-    alt = buffer.to_torch(buffer.cf_actions[idx])
-    r_hat = buffer.to_torch(buffer.cf_rewards[idx])
-    z_hat = buffer.to_torch(buffer.cf_next_observations[idx])
+    alt = buffer.to_torch(buffer.cf_actions[idx, 0])
+    r_hat = buffer.to_torch(buffer.cf_rewards[idx, 0])
+    z_hat = buffer.to_torch(buffer.cf_next_observations[idx, 0])
     with th.no_grad():
         a_next, logp = model.actor.action_log_prob(z_hat)
         v_next = th.min(th.cat(model.critic_target(z_hat, a_next), dim=1), dim=1, keepdim=True)[0] \

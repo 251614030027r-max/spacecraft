@@ -15,9 +15,9 @@ from pathlib import Path
 def frozen() -> dict:
     from env.t1_env import T1EnvConfig, T1Reward, t1_mpc_config
     from env.t1_gstar import GSTAR_VERSION
-    from env.t1_gym import OBSERVATION_NAMES, T1GymConfig
+    from env.t1_gym import GYM_INTERFACE_VERSION, OBSERVATION_NAMES, T1GymConfig
     from experiments import t1_dev_eval, t1_learning_readout
-    from train.train_t1 import COUNTERFACTUAL, M1_LAMBDA, M1_WARMUP_FRACTION, T1_SAC, model_kwargs
+    from train.train_t1 import COUNTERFACTUAL, M1_LAMBDA, M1_WARMUP_DECISIONS, T1_SAC, model_kwargs
     from train.train_hybrid import _code_provenance
 
     env = T1EnvConfig()
@@ -32,13 +32,15 @@ def frozen() -> dict:
                  "max_distance_m": env.task.max_distance_m},
         "reward": asdict(T1Reward()),
         "mpc": {"horizon_steps": mpc.horizon_steps, "solver": mpc.solver, "outer_iterations": mpc.outer_iterations},
-        "gym": asdict(T1GymConfig()) | {"observation": list(OBSERVATION_NAMES), "action": "a0 -> tau (relative with a live plan, keep band +-3 s; absolute 0..160 s without), a1 -> kappa 0.3..1.0"},
+        "gym": asdict(T1GymConfig()) | {"observation": list(OBSERVATION_NAMES), "action": "interface v2: a0 -> tau (with a live plan: keep for |a0| <= keep_band, else shift linearly to +-tau_shift_s; without: absolute 0..160 s, <= 2 s earliest), a1 -> kappa 0.3..1.0"},
         "sac": asdict(T1_SAC) | {"replay_buffer_kwargs": kwargs["replay_buffer_kwargs"]},
-        "m1": {"lambda": M1_LAMBDA, "warmup_fraction": M1_WARMUP_FRACTION, "warmup_decisions_at_20k": int(M1_WARMUP_FRACTION * 20_000),
+        "gym_interface_version": GYM_INTERFACE_VERSION,
+        "m1": {"lambda": M1_LAMBDA, "warmup_decisions": M1_WARMUP_DECISIONS,
                "loss_normalisation": "full minibatch B", "gate": asdict(COUNTERFACTUAL)},
-        "round": {"methods": ["m0", "m1"], "seeds": [0, 1, 2], "decisions_per_run": 20_000,
-                  "training_openings": "1_000_000 * (seed + 1) + episode index",
-                  "checkpoints": list(t1_dev_eval.CHECKPOINTS)},
+        "round": {"stage": "development validation (method iteration 1): M1 seed 0 only",
+                  "decisions": "at least 20000, continue while the development curve still rises, at most 60000",
+                  "checkpoints": "0 (untrained policy, the zero point) and every 5000 decisions", "n_envs": 6, "updates_per_transition": T1_SAC.updates_per_transition,
+                  "training_openings": "1_000_000 * (seed + 1) + env_index * 100000 + episode index"},
         "development_evaluation": {
             "openings_file": str(openings), "sha256": hashlib.sha256(openings.read_bytes()).hexdigest(),
             "seeds": json.loads(openings.read_text())["seeds"],

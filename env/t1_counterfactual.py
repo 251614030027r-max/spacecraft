@@ -254,13 +254,13 @@ class CounterfactualPredictor:
         cfg, gym = self.config, real.config
         remaining = g.remaining_s(real.env)
         if remaining > 0.0:
-            keeps = abs(gym.tau_shift_s * a[0]) <= gym.keep_tolerance_s
+            keeps = abs(real.shift_of(float(a[0]))) <= gym.keep_tolerance_s
             if not keeps:
                 return np.array([0.0, a[1]]), "replan_vs_keep"
             sign = 1.0 if real.env.decision % 2 == 0 else -1.0
             if remaining - cfg.shift_s <= g.tau_min_s:
                 sign = 1.0
-            return np.array([sign * cfg.shift_s / gym.tau_shift_s, a[1]]), "keep_vs_shift"
+            return np.array([real.action_for_shift(sign * cfg.shift_s), a[1]]), "keep_vs_shift"
         tau = gym.tau_max_s * 0.5 * (a[0] + 1.0)
         if tau > g.tau_min_s:
             return np.array([-1.0, a[1]]), "request_vs_earliest"

@@ -1,6 +1,7 @@
-"""Train M0 (plain SAC + G* v0.3.2 + shared MPC) or M1 (same + gated MPC counterfactual critic target) on T1 from zero.
+"""Train M0 (plain SAC + G* + shared MPC) or M1 (same + gated MPC counterfactual critic target) on T1 from zero.
 
-``--steps`` counts 2 s decisions, one gradient update each. Training openings
+``--steps`` counts 2 s decisions (over all parallel environments); each collected
+decision gets ``updates_per_transition`` gradient updates. Training openings
 are ``seed_base + episode`` with ``seed_base = 1_000_000 * (seed + 1)``: never
 the R0 (2900xx), R1 (2910xx) or formal (>= 300000, < 1e6) openings.
 
@@ -28,7 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from time import perf_counter
 from pathlib import Path
@@ -42,13 +43,14 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from env.t1_counterfactual import CounterfactualConfig, T1CounterfactualEnv
 from env.t1_gstar import GSTAR_VERSION
-from env.t1_gym import OBSERVATION_NAMES, T1GStarEnv, T1GymConfig
+from env.t1_gym import GYM_INTERFACE_VERSION, OBSERVATION_NAMES, T1GStarEnv, T1GymConfig
 from train.t1_m1 import M1SAC
 from train.train_hybrid import _code_provenance
 
 #: M1 candidate values (design 2026-10-12 sec. 5.4); frozen only on the user's approval
 M1_LAMBDA = 0.5
-M1_WARMUP_FRACTION = 0.15
+M1_WARMUP_FRACTION = 0.15  # superseded by the absolute warm-up below
+M1_WARMUP_DECISIONS = 3000
 COUNTERFACTUAL = CounterfactualConfig()
 
 
@@ -61,7 +63,9 @@ class T1SACConfig:
     tau: float = 0.001
     gamma: float = 0.999
     train_freq: int = 1
-    gradient_steps: int = 1
+    #: gradient updates per collected transition (round-1 seed 0 ran 1; an update costs
+    #: 20-40 ms against ~2 s of simulation per decision, so 4 is nearly free)
+    updates_per_transition: int = 4
     ent_coef: float = 0.005
     target_entropy: float = -2.0
     target_update_interval: int = 1
@@ -71,8 +75,9 @@ class T1SACConfig:
 T1_SAC = T1SACConfig()
 
 
-def model_kwargs(config: T1SACConfig, net_arch: list[int] | None = None) -> dict[str, Any]:
+def model_kwargs(config: T1SACConfig, net_arch: list[int] | None = None, n_envs: int = 1) -> dict[str, Any]:
     values = asdict(config)
+    values["gradient_steps"] = values.pop("updates_per_transition") * n_envs
     arch = net_arch or list(values.pop("net_arch"))
     values.pop("net_arch", None)
     values["policy_kwargs"] = {"net_arch": arch, "activation_fn": nn.ReLU}
@@ -93,39 +98,46 @@ class EpisodeLog(BaseCallback):
         super().__init__()
         self.path = path
         self._decisions = decisions_path.open("a")
-        self._counts: dict[str, float] = {}
-        self._k = 0
+        self._counts: dict[int, dict[str, float]] = {}
+        self._k: dict[int, int] = {}
 
     def _on_training_end(self) -> None:
         self._decisions.close()
 
     def _on_step(self) -> bool:
-        info = self.locals["infos"][0]
+        infos = self.locals["infos"]
+        actions = np.asarray(self.locals["actions"], dtype=float).reshape(len(infos), -1)
+        rewards = np.asarray(self.locals["rewards"], dtype=float).reshape(-1)
+        for e, info in enumerate(infos):
+            self._one(e, info, actions[e], float(rewards[e]))
+        return True
+
+    def _one(self, e: int, info: dict, action: np.ndarray, reward: float) -> None:
         execution = info.get("execution", {})
         cf = info.get("counterfactual")
-        action = np.asarray(self.locals["actions"][0], dtype=float)
+        k = self._k.get(e, 0)
         line = {
-            "t": int(self.num_timesteps), "k": self._k, "a": [round(float(v), 5) for v in action],
+            "t": int(self.num_timesteps), "env": e, "k": k, "a": [round(float(v), 5) for v in action],
             "tau_req": round(float(execution.get("tau_request_s", np.nan)), 3),
             "tau_eff": round(float(execution.get("tau_effective_s", np.nan)), 3),
             "status": execution.get("plan_status"), "slip": execution.get("slip_s"),
             "kappa": round(float(info.get("kappa", np.nan)), 4),
-            "r": round(float(self.locals["rewards"][0]), 6), "event": info.get("event"),
+            "r": round(reward, 6), "event": info.get("event"),
         }
         if cf is not None:
             line["cf"] = {"kind": cf["kind"], "w": int(cf["w"]), "reasons": cf["reasons"],
                           "e": None if cf["errors_real"] is None else
-                          {k: round(float(v), 6) for k, v in cf["errors_real"].items()},
+                          {key: round(float(v), 6) for key, v in cf["errors_real"].items()},
                           "tau_eff_alt": cf["tau_effective_alt_s"], "alt_status": cf["alt_status"]}
         self._decisions.write(json.dumps(line, default=float) + "\n")
-        self._k += 1
-        c = self._counts
+        self._k[e] = k + 1
+        c = self._counts.setdefault(e, {})
         c["decisions"] = c.get("decisions", 0) + 1
         c["new_plans"] = c.get("new_plans", 0) + int(execution.get("new_plan", False))
         c["slips"] = c.get("slips", 0) + int(execution.get("slip_s", 0.0) > 0.0)
         c["holds"] = c.get("holds", 0) + int(str(execution.get("plan_status", "")).startswith("hold"))
+        c["keeps"] = c.get("keeps", 0) + int(str(execution.get("plan_status", "")).startswith("kept"))
         c["plan_wall_s"] = c.get("plan_wall_s", 0.0) + execution.get("plan_wall_s", 0.0)
-        cf = info.get("counterfactual")
         if cf is not None:
             c["cf_valid"] = c.get("cf_valid", 0) + int(cf["w"])
             for reason in cf["reasons"]:
@@ -137,31 +149,39 @@ class EpisodeLog(BaseCallback):
             # opening, end phase and violations come from the env's own terminal record:
             # by now the vectorised wrapper has already reset the environment.
             record = {
-                "num_timesteps": int(self.num_timesteps),
+                "num_timesteps": int(self.num_timesteps), "env": e,
                 **info["episode_summary"],
                 "numerical_error": info.get("numerical_error"),
-                **self._counts,
+                **c,
             }
             with self.path.open("a") as handle:
                 handle.write(json.dumps(record, default=float) + "\n")
             self._decisions.flush()
-            self._counts = {}
-            self._k = 0
-        return True
+            self._counts[e] = {}
+            self._k[e] = 0
 
 
 class Checkpoint(BaseCallback):
-    """Checkpoints every ``every`` decisions, a heartbeat every 100, and a technical stop
-    (``ABORTED.json``, training ends) if any network parameter becomes non-finite."""
+    """Checkpoints each time the decision count crosses a multiple of ``every`` (saved under
+    that multiple), a heartbeat at every multiple of 100 crossed, a technical stop
+    (``ABORTED.json``) if any network parameter becomes non-finite, and a clean stop when
+    ``STOP_REQUESTED`` exists in the run directory (the plateau rule of the run order)."""
 
     def __init__(self, every: int, directory: Path, prefix: str, run_dir: Path) -> None:
         super().__init__()
         self.every, self.directory, self.prefix, self.run_dir = every, directory, prefix, run_dir
         self.started = perf_counter()
+        self._last_n = 0
+
+    def _on_training_start(self) -> None:
+        # the untrained policy is the zero point of the development curve: under interface v2 its
+        # deterministic action (a0 ~ 0) keeps the plan, so learning is read against it, not against 0
+        self.model.save(self.directory / f"{self.prefix}_0_decisions")
 
     def _on_step(self) -> bool:
-        n = self.num_timesteps
-        if n % 100 == 0:
+        n, last = self.num_timesteps, self._last_n
+        self._last_n = n
+        if n // 100 > last // 100:
             finite = all(bool(torch.isfinite(p).all()) for p in self.model.policy.parameters())
             (self.run_dir / "heartbeat.json").write_text(json.dumps({
                 "decisions": n, "wall_s": perf_counter() - self.started,
@@ -170,11 +190,22 @@ class Checkpoint(BaseCallback):
                 (self.run_dir / "ABORTED.json").write_text(json.dumps(
                     {"reason": "non-finite network parameters", "decisions": n}))
                 return False
-        if n % self.every == 0:
-            self.model.save(self.directory / f"{self.prefix}_{n}_decisions")
+        for mark in range((last // self.every + 1) * self.every, n + 1, self.every):
+            self.model.save(self.directory / f"{self.prefix}_{mark}_decisions")
             if hasattr(self.model, "cf_stats"):
-                (self.directory / f"{self.prefix}_{n}_cf_stats.json").write_text(json.dumps(self.model.cf_stats))
+                (self.directory / f"{self.prefix}_{mark}_cf_stats.json").write_text(json.dumps(self.model.cf_stats))
+        if (self.run_dir / "STOP_REQUESTED").exists():
+            (self.run_dir / "stopped.json").write_text(json.dumps({
+                "decisions": n, "utc": datetime.now(timezone.utc).isoformat(),
+                "request": (self.run_dir / "STOP_REQUESTED").read_text()}))
+            return False
         return True
+
+
+def _make_env(method: str, gym_config: T1GymConfig):
+    if method == "m1":
+        return T1CounterfactualEnv(gym_config, counterfactual=COUNTERFACTUAL)
+    return T1GStarEnv(gym_config)
 
 
 def _environment_record() -> dict[str, Any]:
@@ -207,7 +238,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--checkpoint-freq", type=int, default=5_000)
     parser.add_argument("--learning-starts", type=int, default=None, help="smoke tests only")
     parser.add_argument("--net-arch", default=None, help="smoke tests only, e.g. 16,16")
+    parser.add_argument("--cf-warmup", type=int, default=None, help="smoke tests only: M1 warm-up decisions")
     parser.add_argument("--save-replay", action="store_true", help="development checks only")
+    parser.add_argument("--n-envs", type=int, default=1,
+                        help="parallel training environments (one process each); env i uses openings "
+                             "seed_base + i * 100000 + episode")
     parser.add_argument("--allow-dirty", action="store_true", help="development checks only")
     return parser.parse_args(argv)
 
@@ -223,16 +258,26 @@ def main(argv: list[str] | None = None) -> None:
         raise FileExistsError(log_dir)
     (log_dir / "checkpoints").mkdir(parents=True)
     gym_config = T1GymConfig(seed_base=1_000_000 * (args.seed + 1))
-    if args.method == "m1":
-        env = T1CounterfactualEnv(gym_config, counterfactual=COUNTERFACTUAL)
+    if args.n_envs == 1:
+        env = _make_env(args.method, gym_config)
     else:
-        env = T1GStarEnv(gym_config)
-    kwargs = model_kwargs(T1_SAC, [int(x) for x in args.net_arch.split(",")] if args.net_arch else None)
+        from functools import partial
+
+        from stable_baselines3.common.vec_env import SubprocVecEnv
+
+        env = SubprocVecEnv(
+            [partial(_make_env, args.method, replace(gym_config, seed_base=gym_config.seed_base + i * 100_000))
+             for i in range(args.n_envs)],
+            start_method="spawn",
+        )
+    kwargs = model_kwargs(T1_SAC, [int(x) for x in args.net_arch.split(",")] if args.net_arch else None,
+                          n_envs=args.n_envs)
     if args.learning_starts is not None:
         kwargs["learning_starts"] = args.learning_starts
+    warmup = M1_WARMUP_DECISIONS if args.cf_warmup is None else args.cf_warmup
     if args.method == "m1":
         model = M1SAC("MlpPolicy", env, seed=args.seed, device="cpu", verbose=0,
-                      cf_lambda=M1_LAMBDA, cf_warmup_fraction=M1_WARMUP_FRACTION, **kwargs)
+                      cf_lambda=M1_LAMBDA, cf_warmup_decisions=warmup, **kwargs)
     else:
         model = SAC("MlpPolicy", env, seed=args.seed, device="cpu", verbose=0, **kwargs)
     manifest = {
@@ -243,9 +288,11 @@ def main(argv: list[str] | None = None) -> None:
         "gym": asdict(gym_config),
         "observation": list(OBSERVATION_NAMES),
         "gstar_version": GSTAR_VERSION,
-        "training_openings": f"{gym_config.seed_base} + episode index",
+        "training_openings": f"{gym_config.seed_base} + env_index * 100000 + episode index",
+        "n_envs": args.n_envs, "gradient_steps_per_vector_step": kwargs["gradient_steps"],
+        "gym_interface_version": GYM_INTERFACE_VERSION,
         "environment": _environment_record(),
-        **({"m1": {"lambda": M1_LAMBDA, "warmup_fraction": M1_WARMUP_FRACTION,
+        **({"m1": {"lambda": M1_LAMBDA, "warmup_decisions": warmup,
                    "counterfactual": asdict(COUNTERFACTUAL)}} if args.method == "m1" else {}),
         **provenance,
     }
@@ -264,7 +311,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.save_replay:
         model.save_replay_buffer(log_dir / "replay_buffer")
     (log_dir / "finished.json").write_text(json.dumps({"finished_utc": datetime.now(timezone.utc).isoformat(),
-                                                       "decisions": int(model.num_timesteps)}))
+                                                       "decisions": int(model.num_timesteps),
+                                                       "stopped_on_request": (log_dir / "stopped.json").exists()}))
+    env.close()
 
 
 if __name__ == "__main__":
