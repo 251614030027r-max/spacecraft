@@ -1,3 +1,5 @@
+最新：[T1根因诊断第一阶段回执](handoffs/t1_rootcause_20261013/RECEIPT.md)，只执行事实与证据，不训练、不做第二阶段。
+
 最新：[T1 v2种子0完整开发验证](handoffs/t1_v2_seed0_20261013/REPORT.md)，30k平台规则触发、32088步干净结束，全部112回合齐全，已停止跟进。
 
 最新：[T1 v2种子0本机准入](handoffs/t1_v2_seed0_20261013/ADMISSION.md)，A–D通过，等待用户独立PowerShell启动；旧轮接续作废。
