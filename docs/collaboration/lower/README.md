@@ -1,11 +1,9 @@
 最新：[T1 v2种子0本机准入](handoffs/t1_v2_seed0_20261013/ADMISSION.md)，A–D通过，等待用户独立PowerShell启动；旧轮接续作废。
 
 <!-- T1 interrupted 2026-10-13 -->
-临时审查（数据不足，审查后可删除）：[T1种子0中断核查](handoffs/t1_round1_20261012/INTERRUPTION_REVIEW.md)，两条未完成，自动跟进暂停，等待核查后从零重训。
 
 # 下层交付入口
 
-**当前T1首轮（2026-10-13）：** [本机准入与完整证据](handoffs/t1_round1_20261012/ADMISSION.md)。A–E通过，资源并发N=2，种子0的M0/M1各20k及开发评估watch已启动；[5k工程健康检查](handoffs/t1_round1_20261012/HEALTH_5K_SEED0.md)已全部通过，种子1、2等待N=2空位成对排队。F01材料及旧执行单仅作历史。
 
 当前共用交接：[HANDOFF](../HANDOFF.md)（重点见第6、10节）；最新下层完整交接：[窗口交接](handoffs/window_handoff_20261009/WINDOW_HANDOFF_20261009.md)（2026-10-09快照）。三个种子均已完成60k，F01三模型官方METHOD_DOES_NOT_HOLD，现有650个评估已收口归档、缺118不补跑；最新工程已回到DRL2，整体审查待新计划。
 
@@ -43,3 +41,5 @@ Git整理第1–3步完成：[标签、分支及流水线去重回执](handoffs/
 - [F01最终数据记录与三模型判读](handoffs/F01_closed_records_20261010/README.md)：271000完整，METHOD_DOES_NOT_HOLD；272000缺118，用户取消补跑；最新工程已回到DRL2。
 
 - [最新工程DRL2整理回执与资产索引](handoffs/DRL2_return_20261010/README.md)：4795910科学分支Git干净，环境与模型SHA不变，354通过/3预期失败；无新增正式仿真。
+
+旧中断训练数据已按用户要求删除：[删除记录](handoffs/t1_round1_20261012/DELETION.md)；旧准入/规则/资源探针仅作历史参照。

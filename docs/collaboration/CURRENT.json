@@ -19,26 +19,11 @@
   "launch_script": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1v2种子0验证_20261013\\脚本\\启动T1v2.ps1",
   "local_topic": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1v2种子0验证_20261013",
   "previous_phase_snapshot": {
-    "schema": "spacecraft_collaboration_v1",
     "topic": "t1_round1",
-    "phase": "seed0_interrupted_pending_upper_review_manual_clean_restart",
+    "phase": "interrupted_training_data_deleted_by_user",
     "scientific_commit": "f36ac77bc2dd328bcc6ec08bfa86e684f8e9ed8c",
     "run_order": "upper/run_orders/T1_ROUND1_M0M1_20261012.md",
-    "admission": "lower/handoffs/t1_round1_20261012/ADMISSION.md",
-    "t1_worktree": "D:\\py\\DRL2_T1",
-    "selected_workers": 2,
-    "training_started": true,
-    "training_seeds": [
-      0,
-      1,
-      2
-    ],
-    "methods": [
-      "m0",
-      "m1"
-    ],
-    "outer_decisions_each": 20000,
-    "formal_evaluation_authorized": false,
+    "deletion_note": "lower/handoffs/t1_round1_20261012/DELETION.md",
     "previous_phase_snapshot": {
       "schema": "spacecraft_collaboration_v1",
       "verified_date_jst": "2026-10-10",
@@ -158,106 +143,7 @@
         "new_simulations": false
       },
       "training_active": false
-    },
-    "updated_utc": "2026-10-13T02:12:50.382874+00:00",
-    "launched_seeds": [
-      0
-    ],
-    "queued_seeds": [
-      1,
-      2
-    ],
-    "seed0_launch_receipt": "lower/handoffs/t1_round1_20261012/SEED0_LAUNCH_RECEIPT.json",
-    "seed0_processes": [
-      {
-        "kind": "training",
-        "method": "m0",
-        "seed": 0,
-        "pid": 14552,
-        "command": [
-          "D:/py/DRL2/.venv/Scripts/python.exe",
-          "-B",
-          "-m",
-          "train.train_t1",
-          "--method",
-          "m0",
-          "--steps",
-          "20000",
-          "--seed",
-          "0",
-          "--run-name",
-          "t1_m0_s0",
-          "--log-root",
-          "logs/t1"
-        ],
-        "utc": "2026-10-12T17:44:30.616166+00:00"
-      },
-      {
-        "kind": "training",
-        "method": "m1",
-        "seed": 0,
-        "pid": 6696,
-        "command": [
-          "D:/py/DRL2/.venv/Scripts/python.exe",
-          "-B",
-          "-m",
-          "train.train_t1",
-          "--method",
-          "m1",
-          "--steps",
-          "20000",
-          "--seed",
-          "0",
-          "--run-name",
-          "t1_m1_s0",
-          "--log-root",
-          "logs/t1"
-        ],
-        "utc": "2026-10-12T17:44:30.634337+00:00"
-      },
-      {
-        "kind": "evaluation_watch",
-        "method": "m0",
-        "seed": 0,
-        "pid": 23640,
-        "command": [
-          "D:/py/DRL2/.venv/Scripts/python.exe",
-          "-B",
-          "-m",
-          "experiments.t1_dev_eval",
-          "--watch",
-          "logs/t1/t1_m0_s0",
-          "--openings",
-          "experiments/t1_dev_openings_295000.json"
-        ],
-        "utc": "2026-10-12T17:44:40.650000+00:00"
-      },
-      {
-        "kind": "evaluation_watch",
-        "method": "m1",
-        "seed": 0,
-        "pid": 26608,
-        "command": [
-          "D:/py/DRL2/.venv/Scripts/python.exe",
-          "-B",
-          "-m",
-          "experiments.t1_dev_eval",
-          "--watch",
-          "logs/t1/t1_m1_s0",
-          "--openings",
-          "experiments/t1_dev_openings_295000.json"
-        ],
-        "utc": "2026-10-12T17:44:40.650000+00:00"
-      }
-    ],
-    "health_5k_seed0": "PASS",
-    "automatic_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1首轮_20261012\\记录",
-    "health_5k_handoff": "lower/handoffs/t1_round1_20261012/HEALTH_5K_SEED0.md",
-    "training_active": false,
-    "automatic_followup": "PAUSED",
-    "interruption_review": "lower/handoffs/t1_round1_20261012/INTERRUPTION_REVIEW.md",
-    "interruption_review_status": "TEMPORARY_REVIEW_ONLY_INSUFFICIENT_DATA",
-    "interruption_review_delete_after_upper_review": true
+    }
   },
   "updated_utc": "2026-10-13T04:26:57.666320+00:00"
 }
