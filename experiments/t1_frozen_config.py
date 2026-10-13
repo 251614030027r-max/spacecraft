@@ -38,7 +38,7 @@ def frozen() -> dict:
         "m1": {"lambda": M1_LAMBDA, "warmup_decisions": M1_WARMUP_DECISIONS,
                "loss_normalisation": "full minibatch B", "gate": asdict(COUNTERFACTUAL)},
         "round": {"stage": "development validation (method iteration 1): M1 seed 0 only",
-                  "decisions": "at least 20000, continue while the development curve still rises, at most 60000",
+                  "decisions": "at least 20000, at most 60000; stop by t1_dev_eval.plateau_reached (after 20000, two marks in a row neither beat the best earlier return by > 2.0 nor the best earlier capture count)",
                   "checkpoints": "0 (untrained policy, the zero point) and every 5000 decisions", "n_envs": 6, "updates_per_transition": T1_SAC.updates_per_transition,
                   "training_openings": "1_000_000 * (seed + 1) + env_index * 100000 + episode index"},
         "development_evaluation": {

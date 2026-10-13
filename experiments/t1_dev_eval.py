@@ -101,11 +101,30 @@ def evaluate(policy_arg: str, openings: Path, output_dir: Path, workers: int = 1
                  f"--workers={workers}"])
 
 
-def watch(run_dir: Path, openings: Path, poll_s: float = 60.0, checkpoints=CHECKPOINTS, workers: int = 1) -> None:
+def plateau_reached(summaries: dict[int, dict], minimum: int = 20_000, margin: float = 2.0,
+                    patience: int = 2) -> bool:
+    """Pre-registered stop rule: after ``minimum`` decisions, a mark improves when its mean
+    discounted return exceeds the best of all earlier marks by more than ``margin`` or its
+    captures exceed the best earlier count; ``patience`` non-improving marks in a row stop."""
+    marks = sorted(summaries)
+    misses = 0
+    for i, n in enumerate(marks):
+        if n <= minimum or i == 0:
+            continue
+        earlier = [summaries[m] for m in marks[:i]]
+        better = (summaries[n]["mean_discounted_return"] > max(e["mean_discounted_return"] for e in earlier) + margin
+                  or summaries[n]["clean_capture"] > max(e["clean_capture"] for e in earlier))
+        misses = 0 if better else misses + 1
+    return misses >= patience
+
+
+def watch(run_dir: Path, openings: Path, poll_s: float = 60.0, checkpoints=CHECKPOINTS, workers: int = 1,
+          stop_on_plateau: bool = False) -> None:
     import time
 
     CHECKPOINTS = tuple(checkpoints)  # noqa: N806 -- the marks this watcher follows
     done = set()
+    summaries: dict[int, dict] = {}
     while len(done) < len(CHECKPOINTS):
         if (run_dir / "finished.json").exists() and not any(
                 (run_dir / "checkpoints").glob(f"*_{n}_decisions.zip") for n in CHECKPOINTS if n not in done):
@@ -118,8 +137,14 @@ def watch(run_dir: Path, openings: Path, poll_s: float = 60.0, checkpoints=CHECK
             zips = sorted((run_dir / "checkpoints").glob(f"*_{n}_decisions.zip"))
             if n not in done and zips:
                 time.sleep(5.0)  # let the save finish
-                evaluate(str(zips[0]), openings, run_dir / "dev_eval" / str(n), workers)
+                summaries[n] = evaluate(str(zips[0]), openings, run_dir / "dev_eval" / str(n), workers)
                 done.add(n)
+                if stop_on_plateau and plateau_reached(summaries) and not (run_dir / "STOP_REQUESTED").exists():
+                    (run_dir / "STOP_REQUESTED").write_text(json.dumps({
+                        "rule": "plateau (minimum 20000, margin 2.0, patience 2)", "at_mark": n,
+                        "summaries": {m: {k: summaries[m][k] for k in ("clean_capture", "mean_discounted_return")}
+                                      for m in sorted(summaries)}}))
+                    print(f"plateau reached at {n}: STOP_REQUESTED written", flush=True)
         if len(done) < len(CHECKPOINTS):
             time.sleep(poll_s)
 
@@ -132,10 +157,13 @@ def main(argv: list[str] | None = None) -> dict:
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--workers", type=int, default=1, help="episodes evaluated in parallel processes")
     parser.add_argument("--checkpoints", default=None, help="with --watch: comma-separated decision marks")
+    parser.add_argument("--stop-on-plateau", action="store_true",
+                        help="with --watch: write STOP_REQUESTED when plateau_reached (the run order's rule)")
     args = parser.parse_args(argv)
     if args.watch is not None:
         marks = tuple(int(x) for x in args.checkpoints.split(",")) if args.checkpoints else CHECKPOINTS
-        watch(args.watch, args.openings, checkpoints=marks, workers=args.workers)
+        watch(args.watch, args.openings, checkpoints=marks, workers=args.workers,
+              stop_on_plateau=args.stop_on_plateau)
         return {}
     if args.output_dir is None or args.policy is None:
         parser.error("--policy and --output-dir are required without --watch")

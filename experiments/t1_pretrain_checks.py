@@ -26,7 +26,14 @@ import numpy as np
 
 
 def _lines(path: Path) -> list[dict]:
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    """Complete lines only: a log still being written may end in a partial line."""
+    if not path.exists():
+        return []
+    text = path.read_text()
+    lines = text.splitlines()
+    if lines and not text.endswith("\n"):
+        lines = lines[:-1]
+    return [json.loads(line) for line in lines if line.strip()]
 
 
 def stats(run: Path) -> dict:
@@ -178,7 +185,8 @@ def reload(run: Path) -> dict:
     env = T1GStarEnv(openings=[9_100_000])
     obs, _ = env.reset()
     out = {}
-    for path in sorted((run / "checkpoints").glob("*.zip")) + [run / "final.zip"]:
+    final = [run / "final.zip"] if (run / "final.zip").exists() else []
+    for path in sorted((run / "checkpoints").glob("*.zip")) + final:
         cls = M1SAC if "m1" in path.name or (run / "cf_stats.json").exists() else SAC
         model = cls.load(path, device="cpu")
         action, _ = model.predict(obs, deterministic=True)
