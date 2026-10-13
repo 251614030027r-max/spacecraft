@@ -1,0 +1,149 @@
+{
+ "code_commit": "78eb63c22615c9672c43338be4cec54da713812c",
+ "code_dirty": false,
+ "gstar_version": "0.4",
+ "task": {
+  "max_time_s": 300.0,
+  "dt_s": 0.1,
+  "decision_steps": 20,
+  "max_force_per_axis_n": 2.0,
+  "max_torque_per_axis_nm": 0.6,
+  "max_distance_m": 30.0
+ },
+ "reward": {
+  "time_cost_per_s": 0.05,
+  "delta_v_cost_per_m_s": 5.0,
+  "capture_reward": 100.0,
+  "timeout_penalty": 100.0,
+  "unsafe_penalty": 150.0,
+  "gamma": 0.999
+ },
+ "mpc": {
+  "horizon_steps": 35,
+  "solver": "CLARABEL",
+  "outer_iterations": 1
+ },
+ "gym": {
+  "tau_max_s": 160.0,
+  "tau_shift_s": 30.0,
+  "keep_tolerance_s": 3.0,
+  "keep_band": 0.5,
+  "kappa_min": 0.3,
+  "kappa_max": 1.0,
+  "seed_base": 1000000,
+  "observation": [
+   "range_10m",
+   "sin_latitude",
+   "cos_latitude",
+   "sin_phase",
+   "cos_phase",
+   "rho_perp_10m",
+   "port_los_180deg",
+   "port_latitude_90deg",
+   "omega_2p7deg_s",
+   "fov_margin_50deg",
+   "time_300s",
+   "radial_closing_0p3m_s",
+   "tangential_speed_0p5m_s",
+   "in_cone",
+   "mouth_region",
+   "has_plan",
+   "remaining_160s",
+   "tau_effective_160s",
+   "tau_request_160s",
+   "descent",
+   "hold",
+   "kappa"
+  ],
+  "action": "interface v2: a0 -> tau (with a live plan: keep for |a0| <= keep_band, else shift linearly to +-tau_shift_s; without: absolute 0..160 s, <= 2 s earliest), a1 -> kappa 0.3..1.0"
+ },
+ "sac": {
+  "learning_rate": 0.0001,
+  "buffer_size": 300000,
+  "learning_starts": 1000,
+  "batch_size": 256,
+  "tau": 0.001,
+  "gamma": 0.999,
+  "train_freq": 1,
+  "updates_per_transition": 4,
+  "ent_coef": 0.005,
+  "target_entropy": -2.0,
+  "target_update_interval": 1,
+  "net_arch": [
+   256,
+   256,
+   256
+  ],
+  "replay_buffer_kwargs": {
+   "handle_timeout_termination": true
+  }
+ },
+ "gym_interface_version": "2",
+ "m1": {
+  "lambda": 0.5,
+  "warmup_decisions": 3000,
+  "loss_normalisation": "full minibatch B",
+  "gate": {
+   "shift_s": 15.0,
+   "min_tau_difference_s": 4.0,
+   "max_predicted_saturation": 0.5,
+   "end_margin_s": 4.0,
+   "max_solve_slack": 0.001,
+   "max_reward_error": 0.06,
+   "max_position_error_m": 0.02,
+   "max_observation_error": 0.07
+  }
+ },
+ "round": {
+  "stage": "development validation (method iteration 1): M1 seed 0 only",
+  "decisions": "at least 20000, at most 60000; stop by t1_dev_eval.plateau_reached (after 20000, two marks in a row neither beat the best earlier return by > 2.0 nor the best earlier capture count)",
+  "checkpoints": "0 (untrained policy, the zero point) and every 5000 decisions",
+  "n_envs": 6,
+  "updates_per_transition": 4,
+  "training_openings": "1_000_000 * (seed + 1) + env_index * 100000 + episode index"
+ },
+ "development_evaluation": {
+  "openings_file": "experiments\\t1_dev_openings_295000.json",
+  "sha256": "97f4d8f1f2ffdc952f0d90cb6fe95c5ae607d8281f0969935a97cfa2c9230b5f",
+  "seeds": [
+   295000,
+   295001,
+   295002,
+   295003,
+   295004,
+   295005,
+   295007,
+   295009,
+   295010,
+   295013,
+   295015,
+   295017,
+   295019,
+   295027,
+   295033,
+   295054
+  ],
+  "primary": "mean discounted return (gamma 0.999 per decision), deterministic policy, plain env, serial",
+  "auc": "trapezoid over 5k/10k/15k/20k / 15000",
+  "rule_level": 81.08945807364475,
+  "rule_level_evidence": "evidence/T1_dev_rule_295000"
+ },
+ "isolation": {
+  "training": ">= 1_000_000",
+  "development_evaluation": "295000-295054",
+  "R0": "290000-290003 (not used)",
+  "R1": "291000-291066 (not used)",
+  "formal_test": ">= 300000, < 1_000_000: not accessed in this round"
+ },
+ "failure_kinds_recorded": [
+  "collision",
+  "operation_sphere_cone",
+  "fov",
+  "radial_envelope",
+  "total_speed",
+  "axial_envelope",
+  "distance",
+  "timeout",
+  "numerical_failure"
+ ]
+}

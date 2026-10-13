@@ -1,3 +1,5 @@
+最新：[T1 v2种子0本机准入](handoffs/t1_v2_seed0_20261013/ADMISSION.md)，A–D通过，等待用户独立PowerShell启动；旧轮接续作废。
+
 <!-- T1 interrupted 2026-10-13 -->
 临时审查（数据不足，审查后可删除）：[T1种子0中断核查](handoffs/t1_round1_20261012/INTERRUPTION_REVIEW.md)，两条未完成，自动跟进暂停，等待核查后从零重训。
 
