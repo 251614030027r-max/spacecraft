@@ -1,3 +1,6 @@
+<!-- T1 interrupted 2026-10-13 -->
+最新：[T1种子0中断核查](handoffs/t1_round1_20261012/INTERRUPTION_REVIEW.md)，两条未完成，自动跟进暂停，等待核查后从零重训。
+
 # 下层交付入口
 
 **当前T1首轮（2026-10-13）：** [本机准入与完整证据](handoffs/t1_round1_20261012/ADMISSION.md)。A–E通过，资源并发N=2，种子0的M0/M1各20k及开发评估watch已启动；[5k工程健康检查](handoffs/t1_round1_20261012/HEALTH_5K_SEED0.md)已全部通过，种子1、2等待N=2空位成对排队。F01材料及旧执行单仅作历史。
