@@ -11,7 +11,8 @@ is an exploration bound only.
 Verdict (one of three):
   not_executable    the baseline (E) succeeds on fewer than 6 of 8 openings
   near_equivalent   on fewer than 2 openings does any option beat the opening's
-                    second-best option by more than 1.0 return point
+                    second-best option by more than 1.0 return point (openings that every
+                    option fails are excluded: a margin among failures is not a decision value)
   decision_value    otherwise; reported with whether the frozen rule beats the frozen best
                     uniform option on the confirmation openings by >= 1.0 with no added failure
 """
@@ -42,6 +43,19 @@ def load(directory: Path) -> dict:
     return runs
 
 
+def truncate(r: dict, deadline_s: float, gamma: float = 0.999) -> dict:
+    """The same episode under a shorter deadline, exactly: fixed policies and G* do not see the
+    deadline, so the trajectory is identical until it; the env checks success before timeout
+    inside each control step, and the deadline is a decision boundary (2 s grid)."""
+
+    if r["time_s"] <= deadline_s + 1e-9:
+        return r
+    log = [d for d in r["decision_log"] if d["t_s"] < deadline_s - 1e-9]
+    ret = sum(gamma**k * d["reward"] for k, d in enumerate(log)) - gamma ** (len(log) - 1) * 100.0
+    return dict(r, event="timeout", discounted_return=ret, time_s=deadline_s,
+                delta_v_m_s=float(sum(d["delta_v_m_s"] for d in log)))
+
+
 def mean(runs, name, openings):
     return float(np.mean([runs[(name, o)]["discounted_return"] for o in openings]))
 
@@ -50,8 +64,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--deadline", type=float, default=None, help="offline re-scoring under a shorter deadline")
     args = parser.parse_args()
     runs = load(args.runs)
+    if args.deadline is not None:
+        runs = {key: truncate(r, args.deadline) for key, r in runs.items()}
     names = [n for n in OPTIONS if all((n, o) in runs for o in SCREEN + CONFIRM)]
     table = {n: {o: {k: runs[(n, o)][k] for k in ("event", "discounted_return", "time_s", "delta_v_m_s",
                                                   "first_tau_request_s", "first_tau_effective_s", "triggers",
@@ -89,14 +106,15 @@ def main() -> None:
         r = sorted(((runs[(n, o)]["discounted_return"], n) for n in names), reverse=True)
         gaps[o] = {"best": r[0][1], "margin_over_second": r[0][0] - r[1][0], "spread": r[0][0] - r[-1][0]}
     baseline_success = sum(runs[("E", o)]["event"] == "success" for o in SCREEN + CONFIRM)
-    decisive = sum(g["margin_over_second"] > 1.0 for g in gaps.values())
-    winners = {g["best"] for g in gaps.values() if g["margin_over_second"] > 1.0}
+    all_fail = [o for o in SCREEN + CONFIRM if all(runs[(n, o)]["event"] != "success" for n in names)]
+    decisive = sum(g["margin_over_second"] > 1.0 for o, g in gaps.items() if o not in all_fail)
+    winners = {g["best"] for o, g in gaps.items() if g["margin_over_second"] > 1.0 and o not in all_fail}
     verdict = ("not_executable" if baseline_success < 6 else "near_equivalent" if decisive < 2 else "decision_value")
     out = {"options": names, "table": table,
            "means": {n: {"screen": mean(runs, n, SCREEN), "confirm": mean(runs, n, CONFIRM), "all": mean(runs, n, SCREEN + CONFIRM)} for n in names},
            "success": {n: sum(runs[(n, o)]["event"] == "success" for o in SCREEN + CONFIRM) for n in names},
            "frozen_on_screen": {"best_uniform": best_uniform, "rule": rule}, "confirmation": confirm,
-           "rule_added_failures": added, "per_opening_gaps": gaps, "decisive_openings": decisive,
+           "rule_added_failures": added, "per_opening_gaps": gaps, "openings_failed_by_every_option": all_fail, "decisive_openings": decisive,
            "decisive_winners": sorted(winners), "baseline_success": baseline_success, "verdict": verdict,
            "rule_beats_uniform_on_confirmation": bool(confirm["rule_minus_best_uniform"] >= 1.0 and not added)}
     args.output.write_text(json.dumps(out, indent=1))
