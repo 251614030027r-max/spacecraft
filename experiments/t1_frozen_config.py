@@ -14,7 +14,7 @@ from pathlib import Path
 
 def frozen() -> dict:
     from env.t1_env import T1EnvConfig, T1Reward, t1_mpc_config
-    from env.t1_gstar import GSTAR_VERSION
+    from env.t1_gstar import GSTAR_VERSION, GStarRendezvous
     from env.t1_gym import GYM_INTERFACE_VERSION, OBSERVATION_NAMES, T1GymConfig
     from experiments import t1_dev_eval, t1_learning_readout
     from train.train_t1 import COUNTERFACTUAL, M1_LAMBDA, M1_WARMUP_DECISIONS, T1_SAC, model_kwargs
@@ -27,19 +27,22 @@ def frozen() -> dict:
     return {
         **_code_provenance(),
         "gstar_version": GSTAR_VERSION,
+        "gstar_deadline_margin_s": GStarRendezvous.deadline_margin_s,
         "task": {"max_time_s": env.max_time_s, "dt_s": env.dt_s, "decision_steps": env.decision_steps,
                  "max_force_per_axis_n": env.max_force_per_axis_n, "max_torque_per_axis_nm": env.max_torque_per_axis_nm,
                  "max_distance_m": env.task.max_distance_m},
         "reward": asdict(T1Reward()),
         "mpc": {"horizon_steps": mpc.horizon_steps, "solver": mpc.solver, "outer_iterations": mpc.outer_iterations},
-        "gym": asdict(T1GymConfig()) | {"observation": list(OBSERVATION_NAMES), "action": "interface v2: a0 -> tau (with a live plan: keep for |a0| <= keep_band, else shift linearly to +-tau_shift_s; without: absolute 0..160 s, <= 2 s earliest), a1 -> kappa 0.3..1.0"},
+        "gym": asdict(T1GymConfig()) | {"observation": list(OBSERVATION_NAMES), "action": "interface v2 action semantics (gym interface v3 = v2 action + 2 tracking-error observations): a0 -> tau (with a live plan: keep for |a0| <= keep_band, else shift linearly to +-tau_shift_s; without: absolute 0..160 s, <= 2 s earliest), a1 -> kappa 0.3..1.0"},
         "sac": asdict(T1_SAC) | {"replay_buffer_kwargs": kwargs["replay_buffer_kwargs"]},
         "gym_interface_version": GYM_INTERFACE_VERSION,
         "m1": {"lambda": M1_LAMBDA, "warmup_decisions": M1_WARMUP_DECISIONS,
                "loss_normalisation": "full minibatch B", "gate": asdict(COUNTERFACTUAL)},
-        "round": {"stage": "development validation (method iteration 1): M1 seed 0 only",
-                  "decisions": "at least 20000, at most 60000; stop by t1_dev_eval.plateau_reached (after 20000, two marks in a row neither beat the best earlier return by > 2.0 nor the best earlier capture count)",
-                  "checkpoints": "0 (untrained policy, the zero point) and every 5000 decisions", "n_envs": 6, "updates_per_transition": T1_SAC.updates_per_transition,
+        "critic_fixes": {"mc_delta": 10.0, "mc_window": 10_000, "lambda_mc_lambda_eq": "frozen by experiments.t1_fix_calibration on the 2k M0 calibration run; recorded in each run manifest (critic_fixes)",
+                         "shared_class": "train.t1_m1.M1SAC for M0 (lam_cf = 0, no counterfactual env) and M2"},
+        "round": {"stage": "learnability-fix first training pair (task book 2026-10-15): M0 and M2, seed 0",
+                  "decisions": "10000, continued to 20000 unless the run order's stop rule fires",
+                  "checkpoints": "0 (untrained policy) and every 1000 decisions; dev evaluation at 0, 2000, 5000, 10000, 15000, 20000", "n_envs": 6, "updates_per_transition": T1_SAC.updates_per_transition,
                   "training_openings": "1_000_000 * (seed + 1) + env_index * 100000 + episode index"},
         "development_evaluation": {
             "openings_file": str(openings), "sha256": hashlib.sha256(openings.read_bytes()).hexdigest(),

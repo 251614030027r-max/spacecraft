@@ -17,12 +17,14 @@ Every finished episode appends one JSON line to ``episodes.jsonl`` (opening,
 outcome, time, delta-v, return, how the G* plan was used). That is behaviour-
 policy statistics (Trap 11), never a gate.
 
-M1 (``train/t1_m1.py``, ``env/t1_counterfactual.py``) differs only in the
-critic loss and in the cached counterfactual it stores; its environment
-transitions are bitwise those of M0 for the same actions.
+M2 (``train/t1_m1.py``, ``env/t1_counterfactual.py``; ``m1`` is kept as an alias) differs
+only in the critic loss and in the cached counterfactual it stores; its environment
+transitions are bitwise those of M0 for the same actions. Since the 2026-10-15 learnability
+fixes M0 and M2 are the *same* class (``M1SAC``) with the same critic fixes (``--lambda-mc``,
+``--lambda-eq``); M0 has ``lam_cf = 0`` and an env without counterfactual.
 
-    python -B -m train.train_t1 --method m0 --steps 20000 --seed 0 --run-name t1_m0_s0
-    python -B -m train.train_t1 --method m1 --steps 20000 --seed 0 --run-name t1_m1_s0
+    python -B -m train.train_t1 --method m0 --steps 20000 --seed 0 --run-name t1_m0_s0 --lambda-mc L --lambda-eq L
+    python -B -m train.train_t1 --method m2 --steps 20000 --seed 0 --run-name t1_m2_s0 --lambda-mc L --lambda-eq L
 """
 
 from __future__ import annotations
@@ -38,7 +40,6 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn as nn
-from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import BaseCallback
 
 from env.t1_counterfactual import CounterfactualConfig, T1CounterfactualEnv
@@ -123,6 +124,9 @@ class EpisodeLog(BaseCallback):
             "status": execution.get("plan_status"), "slip": execution.get("slip_s"),
             "kappa": round(float(info.get("kappa", np.nan)), 4),
             "r": round(reward, 6), "event": info.get("event"),
+            "req": execution.get("request_kind"), "trig": execution.get("new_plan_trigger"),
+            "deadline": execution.get("deadline"),
+            "dev": None if execution.get("deviation_before_m") is None else round(float(execution["deviation_before_m"]), 4),
         }
         if cf is not None:
             line["cf"] = {"kind": cf["kind"], "w": int(cf["w"]), "reasons": cf["reasons"],
@@ -138,6 +142,11 @@ class EpisodeLog(BaseCallback):
         c["holds"] = c.get("holds", 0) + int(str(execution.get("plan_status", "")).startswith("hold"))
         c["keeps"] = c.get("keeps", 0) + int(str(execution.get("plan_status", "")).startswith("kept"))
         c["plan_wall_s"] = c.get("plan_wall_s", 0.0) + execution.get("plan_wall_s", 0.0)
+        for name in ("keep", "later", "earlier", "no_plan"):
+            c[f"req_{name}"] = c.get(f"req_{name}", 0) + int(execution.get("request_kind") == name)
+        for name in ("no_plan", "deviation", "deadline", "request"):
+            c[f"replan_{name}"] = c.get(f"replan_{name}", 0) + int(execution.get("new_plan_trigger") == name)
+        c["deadline_clamped"] = c.get("deadline_clamped", 0) + int(execution.get("deadline") == "clamped")
         if cf is not None:
             c["cf_valid"] = c.get("cf_valid", 0) + int(cf["w"])
             for reason in cf["reasons"]:
@@ -194,6 +203,8 @@ class Checkpoint(BaseCallback):
             self.model.save(self.directory / f"{self.prefix}_{mark}_decisions")
             if hasattr(self.model, "cf_stats"):
                 (self.directory / f"{self.prefix}_{mark}_cf_stats.json").write_text(json.dumps(self.model.cf_stats))
+            if hasattr(self.model, "fix_stats"):
+                (self.directory / f"{self.prefix}_{mark}_fix_stats.json").write_text(json.dumps(self.model.fix_stats))
         if (self.run_dir / "STOP_REQUESTED").exists():
             (self.run_dir / "stopped.json").write_text(json.dumps({
                 "decisions": n, "utc": datetime.now(timezone.utc).isoformat(),
@@ -203,7 +214,7 @@ class Checkpoint(BaseCallback):
 
 
 def _make_env(method: str, gym_config: T1GymConfig):
-    if method == "m1":
+    if method in ("m1", "m2"):
         return T1CounterfactualEnv(gym_config, counterfactual=COUNTERFACTUAL)
     return T1GStarEnv(gym_config)
 
@@ -230,7 +241,7 @@ def _environment_record() -> dict[str, Any]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--method", choices=("m0", "m1"), required=True)
+    parser.add_argument("--method", choices=("m0", "m1", "m2"), required=True, help="m1 = m2 (alias)")
     parser.add_argument("--steps", type=int, required=True, help="2 s decisions")
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--run-name", required=True)
@@ -243,6 +254,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--n-envs", type=int, default=1,
                         help="parallel training environments (one process each); env i uses openings "
                              "seed_base + i * 100000 + episode")
+    parser.add_argument("--lambda-mc", type=float, default=0.0, help="critic fix: Monte-Carlo return weight")
+    parser.add_argument("--lambda-eq", type=float, default=0.0, help="critic fix: keep-band equivalence weight")
+    parser.add_argument("--mc-window", type=int, default=10_000, help="MC labels only for the last n transitions")
+    parser.add_argument("--grad-probe-every", type=int, default=0,
+                        help="calibration: unweighted aux gradient norms every n updates (read-only)")
+    parser.add_argument("--audit-every", type=int, default=0, help="critic audits every n updates (read-only)")
     parser.add_argument("--allow-dirty", action="store_true", help="development checks only")
     return parser.parse_args(argv)
 
@@ -275,11 +292,11 @@ def main(argv: list[str] | None = None) -> None:
     if args.learning_starts is not None:
         kwargs["learning_starts"] = args.learning_starts
     warmup = M1_WARMUP_DECISIONS if args.cf_warmup is None else args.cf_warmup
-    if args.method == "m1":
-        model = M1SAC("MlpPolicy", env, seed=args.seed, device="cpu", verbose=0,
-                      cf_lambda=M1_LAMBDA, cf_warmup_decisions=warmup, **kwargs)
-    else:
-        model = SAC("MlpPolicy", env, seed=args.seed, device="cpu", verbose=0, **kwargs)
+    counterfactual = args.method in ("m1", "m2")
+    fixes = {"mc_lambda": args.lambda_mc, "eq_lambda": args.lambda_eq, "mc_window": args.mc_window,
+             "mc_delta": 10.0, "grad_probe_every": args.grad_probe_every, "audit_every": args.audit_every}
+    model = M1SAC("MlpPolicy", env, seed=args.seed, device="cpu", verbose=0,
+                  cf_lambda=M1_LAMBDA if counterfactual else 0.0, cf_warmup_decisions=warmup, **fixes, **kwargs)
     manifest = {
         "method": args.method,
         "started_utc": datetime.now(timezone.utc).isoformat(),
@@ -291,9 +308,10 @@ def main(argv: list[str] | None = None) -> None:
         "training_openings": f"{gym_config.seed_base} + env_index * 100000 + episode index",
         "n_envs": args.n_envs, "gradient_steps_per_vector_step": kwargs["gradient_steps"],
         "gym_interface_version": GYM_INTERFACE_VERSION,
+        "critic_fixes": fixes, "algorithm_class": "train.t1_m1.M1SAC",
         "environment": _environment_record(),
         **({"m1": {"lambda": M1_LAMBDA, "warmup_decisions": warmup,
-                   "counterfactual": asdict(COUNTERFACTUAL)}} if args.method == "m1" else {}),
+                   "counterfactual": asdict(COUNTERFACTUAL)}} if counterfactual else {}),
         **provenance,
     }
     manifest["sac"]["policy_kwargs"] = {"net_arch": kwargs["policy_kwargs"]["net_arch"], "activation_fn": "ReLU"}
@@ -308,6 +326,7 @@ def main(argv: list[str] | None = None) -> None:
     model.save(log_dir / "final")
     if hasattr(model, "cf_stats"):
         (log_dir / "cf_stats.json").write_text(json.dumps(model.cf_stats))
+        (log_dir / "fix_stats.json").write_text(json.dumps(model.fix_stats))
     if args.save_replay:
         model.save_replay_buffer(log_dir / "replay_buffer")
     (log_dir / "finished.json").write_text(json.dumps({"finished_utc": datetime.now(timezone.utc).isoformat(),

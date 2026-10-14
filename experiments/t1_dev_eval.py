@@ -12,6 +12,7 @@ was used (first tau request, kappa, new plans / keeps / slips / holds).
     python -B -m experiments.t1_dev_eval --policy logs/t1/t1_m0_s0/checkpoints/m0_5000_decisions.zip \
         --openings eval/t1/dev_openings.json --output-dir eval/t1/dev/m0_s0/5000
     python -B -m experiments.t1_dev_eval --policy rule:earliest --openings ... --output-dir eval/t1/dev/rule
+    python -B -m experiments.t1_dev_eval --policy rule:earliest_k10 --openings ... --output-dir eval/t1/dev/rule_k10
     python -B -m experiments.t1_dev_eval --watch logs/t1/t1_m1_s0 --openings experiments/t1_dev_openings_295000.json
 
 ``--watch RUN_DIR`` evaluates each frozen checkpoint (5k/10k/15k/20k decisions) of a
@@ -30,14 +31,44 @@ import numpy as np
 from env.t1_gym import T1GStarEnv
 
 KAPPA_RULE = 0.7
+#: fixed rules: earliest feasible arrival then keep, at a fixed kappa
+RULES = {"rule:earliest": 0.7, "rule:earliest_k07": 0.7, "rule:earliest_k10": 1.0}
 
 
-def rule_action(env: T1GStarEnv) -> np.ndarray:
+class Rule:
+    def __init__(self, kappa: float) -> None:
+        self.kappa = float(kappa)
+
+
+def rule_action(env: T1GStarEnv, kappa: float = KAPPA_RULE) -> np.ndarray:
     """Earliest feasible arrival, then keep the plan; kappa 0.7 (the R1 rv:0 row in gym terms)."""
 
     c = env.config
-    a1 = 2.0 * (KAPPA_RULE - c.kappa_min) / (c.kappa_max - c.kappa_min) - 1.0
+    a1 = 2.0 * (kappa - c.kappa_min) / (c.kappa_max - c.kappa_min) - 1.0
     return np.array([-1.0 if env.generator.remaining_s(env.env) <= 0.0 else 0.0, a1])
+
+
+def critic_values(policy, env: T1GStarEnv, obs: np.ndarray, action: np.ndarray) -> dict | None:
+    """min_j Q_j of the taken action and, with a live plan, of keep / earlier 15 s / later 15 s
+    (same a1). Read-only; the critic-calibration curve compares q_taken with the realised
+    discounted return-to-go of the deterministic episode."""
+
+    critic = getattr(getattr(policy, "policy", None), "critic", None)
+    if critic is None:
+        return None
+    import torch as th
+
+    actions = {"taken": np.asarray(action, dtype=np.float32)}
+    if env.generator.remaining_s(env.env) > 0.0:
+        a1 = float(action[1])
+        actions |= {"keep": np.array([0.0, a1], np.float32),
+                    "earlier15": np.array([env.action_for_shift(-15.0), a1], np.float32),
+                    "later15": np.array([env.action_for_shift(15.0), a1], np.float32)}
+    with th.no_grad():
+        o = th.as_tensor(np.repeat(obs[None].astype(np.float32), len(actions), axis=0))
+        a = th.as_tensor(np.stack(list(actions.values())))
+        q = th.min(th.cat(critic(o, a), dim=1), dim=1)[0].numpy()
+    return {name: float(v) for name, v in zip(actions, q)}
 
 
 def run_episode(env: T1GStarEnv, opening: int, policy) -> dict:
@@ -45,12 +76,20 @@ def run_episode(env: T1GStarEnv, opening: int, policy) -> dict:
     gamma = env.env.config.reward.gamma
     ret, k, log = 0.0, 0, []
     while True:
-        action = rule_action(env) if policy is None else np.asarray(policy.predict(obs, deterministic=True)[0])
+        if policy is None or isinstance(policy, Rule):
+            action = rule_action(env, KAPPA_RULE if policy is None else policy.kappa)
+        else:
+            action = np.asarray(policy.predict(obs, deterministic=True)[0])
         tau, kappa = env.intent(action)
+        q = None if policy is None or isinstance(policy, Rule) else critic_values(policy, env, obs, action)
+        descent = bool(obs[19] > 0.5)  # descent flag of the state the action was taken in
         obs, reward, terminated, truncated, info = env.step(action)
         x = info["execution"]
         log.append({"tau_request_s": tau, "kappa": kappa, "status": x["plan_status"], "slip_s": x["slip_s"],
-                    "tau_effective_s": x["tau_effective_s"]})
+                    "tau_effective_s": x["tau_effective_s"], "request_kind": x.get("request_kind"),
+                    "trigger": x.get("new_plan_trigger"), "deadline": x.get("deadline"),
+                    "deviation_before_m": x.get("deviation_before_m"), "a": [float(v) for v in action],
+                    "descent": descent, "r": float(reward), "q": q})
         ret += gamma**k * reward
         k += 1
         if terminated or truncated:
@@ -63,11 +102,15 @@ def run_episode(env: T1GStarEnv, opening: int, policy) -> dict:
         "new_plans": sum(s.startswith(("optimal", "recovery")) for s in statuses),
         "kept": sum(s.startswith("kept") for s in statuses),
         "holds": sum(s.startswith("hold") for s in statuses), "slips": sum(s["slip_s"] > 0 for s in log),
+        "first_tau_effective_s": next((s["tau_effective_s"] for s in log if s["status"].startswith(("optimal", "recovery"))), None),
+        **{f"req_{k}": sum(s["request_kind"] == k for s in log) for k in ("keep", "later", "earlier", "no_plan")},
+        **{f"replan_{k}": sum(s["trigger"] == k for s in log) for k in ("no_plan", "deviation", "deadline", "request")},
+        "deadline_clamped": sum(s["deadline"] == "clamped" for s in log),
         "decision_log": log,
     }
 
 
-CHECKPOINTS = (5_000, 10_000, 15_000, 20_000)
+CHECKPOINTS = (0, 2_000, 5_000, 10_000, 15_000, 20_000)
 
 
 def _write_row(output_dir: Path, opening: int, row: dict) -> None:
@@ -77,8 +120,8 @@ def _write_row(output_dir: Path, opening: int, row: dict) -> None:
 
 
 def _load_policy(policy_arg: str):
-    if policy_arg == "rule:earliest":
-        return None
+    if policy_arg in RULES:
+        return Rule(RULES[policy_arg])
     from stable_baselines3 import SAC
 
     from train.t1_m1 import M1SAC
@@ -156,6 +199,7 @@ def main(argv: list[str] | None = None) -> dict:
     parser.add_argument("--openings", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--workers", type=int, default=1, help="episodes evaluated in parallel processes")
+    parser.add_argument("--first", type=int, default=None, help="only the first n openings of the block")
     parser.add_argument("--checkpoints", default=None, help="with --watch: comma-separated decision marks")
     parser.add_argument("--stop-on-plateau", action="store_true",
                         help="with --watch: write STOP_REQUESTED when plateau_reached (the run order's rule)")
@@ -169,6 +213,8 @@ def main(argv: list[str] | None = None) -> dict:
         parser.error("--policy and --output-dir are required without --watch")
     policy = _load_policy(args.policy) if args.workers <= 1 else None
     seeds = json.loads(args.openings.read_text())["seeds"]
+    if args.first is not None:
+        seeds = seeds[: args.first]
     args.output_dir.mkdir(parents=True, exist_ok=True)
     todo = [o for o in seeds if not (args.output_dir / f"{o}.json").exists()]
     if args.workers > 1 and todo:

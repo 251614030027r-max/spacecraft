@@ -187,7 +187,9 @@ def reload(run: Path) -> dict:
     out = {}
     final = [run / "final.zip"] if (run / "final.zip").exists() else []
     for path in sorted((run / "checkpoints").glob("*.zip")) + final:
-        cls = M1SAC if "m1" in path.name or (run / "cf_stats.json").exists() else SAC
+        manifest = json.loads((run / "manifest.json").read_text()) if (run / "manifest.json").exists() else {}
+        shared = manifest.get("algorithm_class") == "train.t1_m1.M1SAC"  # M0 and M2 since the 2026-10-15 fixes
+        cls = M1SAC if shared or "m1" in path.name or (run / "cf_stats.json").exists() else SAC
         model = cls.load(path, device="cpu")
         action, _ = model.predict(obs, deterministic=True)
         out[path.name] = {"action": np.asarray(action).round(4).tolist(), "finite": bool(np.all(np.isfinite(action)))}
