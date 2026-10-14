@@ -1,0 +1,69 @@
+{
+ "stage": "T1_BETA_B012 B1, authorised by the user 2026-10-14; run in the upper sandbox (same code and deterministic evaluation as the run order's lower execution)",
+ "code": "science bd29796 (diagnostics) at HEAD 531b0e9; env/controllers/train identical to 78eb63c",
+ "openings": [
+  295001,
+  295002,
+  295010,
+  295015,
+  295019,
+  295000,
+  295003,
+  295004
+ ],
+ "betas": [
+  0,
+  0.3,
+  1,
+  3
+ ],
+ "beta0_bitwise_equals_same_machine_frozen_rule": {
+  "295001": true,
+  "295002": true,
+  "295010": true,
+  "295015": true,
+  "295019": true,
+  "295000": true,
+  "295003": true,
+  "295004": true
+ },
+ "frozen_rule_reference": "sandbox rule:earliest results (16 openings) shown bitwise equal to the B0 rule run on 295003/295004 (evidence/T1_BETA_B0)",
+ "summary_by_beta": {
+  "0.0": {
+   "success": 8,
+   "mean_return": 80.08525164364198,
+   "mean_delta_v": 1.4763054770304769,
+   "mean_far_field_dv": 0.9705351217974794,
+   "deviation_replans_total": 25,
+   "mean_time_s": 132.5
+  },
+  "0.3": {
+   "success": 8,
+   "mean_return": 80.11641802964658,
+   "mean_delta_v": 1.473487608557908,
+   "mean_far_field_dv": 0.9683868660119361,
+   "deviation_replans_total": 25,
+   "mean_time_s": 132.375
+  },
+  "1.0": {
+   "success": 8,
+   "mean_return": 80.12271592015811,
+   "mean_delta_v": 1.4705281012120974,
+   "mean_far_field_dv": 0.9699232150850692,
+   "deviation_replans_total": 23,
+   "mean_time_s": 132.3
+  },
+  "3.0": {
+   "success": 8,
+   "mean_return": 80.16704761487718,
+   "mean_delta_v": 1.4581795744149395,
+   "mean_far_field_dv": 0.9548753888614055,
+   "deviation_replans_total": 23,
+   "mean_time_s": 132.6625
+  }
+ },
+ "verdict": "B1 NO-GO by the pre-registered effect criterion: no beta changes both the first accepted plan (> 0.1 m) and the episode delta-v (> 0.02 m/s) on >= 4 of 8 openings (beta 0.3: 0/8, 1: 0/8, 3: 3/8); every beta safe. B2 not run.",
+ "cpu_hours_b1": 1.25,
+ "cpu_hours_b0_plus_b1": 1.489,
+ "budget_cpu_hours": 4.0
+}
