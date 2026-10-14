@@ -70,6 +70,8 @@ class RecordingPlanner:
             record["smooth_sum_n2"] = float(np.sum(np.linalg.norm(f[1:] - f[:-1], axis=1) ** 2))
             record["j_smooth_m_s"] = 0.0 if coefficient is None else float(coefficient.value) * record["smooth_sum_n2"]
             record["j_range_m_s"] = float(result["delta_v_m_s"] - record["delta_v_plan_m_s"] - record["j_smooth_m_s"])
+            if not self.records:  # the first plan's nodes, for the reference-difference criterion
+                record["q_nodes"] = np.asarray(result["q"]).tolist()
         self.records.append(record)
         return result
 
