@@ -11,7 +11,7 @@
 | 已完成 | R0、R1（两遍，均 REVIEW_EXECUTOR，开发块）；M1 验收 A/B/C；训练前最终核查 P0/P1/P2；开发块规则基准 81.0895（16/16）。证据见下表 |
 | 已完成（待研究层决定方向） | `T1_V2_SEED0_VALIDATION_20261013`：M1 种子 0 在 32088 步按平台期规则停止；无检查点超过未训练零点（16/16、81.02），25k/30k 因到达时刻反复推迟而超时。进展说明 `upper/T1_STATUS_BRIEF_20261013.md`，上层审查 `reviews/T1_V2_S0_UPPER_REVIEW_20261013.md`，证据 `evidence/T1_V2_S0`（科学 `818fcd8`）：到达择时相对规则的可学增益约 0.7 回报，远小于 critic TD 误差（约 4） |
 | 已完成（待研究层复核） | 根因诊断第一阶段（collab `a5395ef`；证据 `evidence/T1_ROOTCAUSE_S1`，科学 `09d6406`）；完整报告 `reviews/T1_ROOTCAUSE_DIAG_REPORT_20261013.md`：30k 的失败通道是途中推迟（强制保持即 8/8）；30k critic 7/10 状态认为推迟优于保持（真值 3/10），对自身失败状态的 Q 为 91–100，而实际回报为 −105 到 −111；M1 目标继承同一高估。两项修正建议待决定；第二阶段未授权 |
-| 待用户决定 | 执行权衡 η 的阶段 A 审查 `reviews/T1_EXEC_TRADEOFF_STAGE_A_REVIEW_20261014.md`：仅 ηᵤ 不训练辨识为有条件 GO（需用户以辨识为目的重开 DEAD_ENDS D16、批准约 4 CPU·h）；η 作为创新点当前 NO-GO（上海交大 NCMPC 已覆盖）；诊断代码已备（科学 `diagnostics/t1_eta`，未运行） |
+| 待用户决定 | 参考整形 β 单候选 + Critic 单修复：`reviews/T1_BETA_PATH_REVIEW_20261014.md`（认可最小路径；η HOLD、D16 维持关闭；只读重建 `evidence/T1_PLAN_EXEC_GAP_R1`：R1 规则回合中重规划 ≥4 次的 16/32 回合实际远场 Δv 为计划的 1.84 倍）。B0/B1/B2 执行单草案与 Critic 修复接口草图待批准；诊断代码已备（科学 `diagnostics/t1_beta`，未运行）。η 的阶段 A 审查 `reviews/T1_EXEC_TRADEOFF_STAGE_A_REVIEW_20261014.md` 保留为记录 |
 | 已停止 | 第一轮 `T1_ROUND1_M0M1_20261012.md`：种子 0 成对训练在 13.1k/10.7k 被误中断（collab `709a3ec`），不续训；种子 1、2 未启动且不再按该单执行 |
 | 开发块参照 | Pure MPC 11/16、平均折扣回报 0.91（`evidence/T1_dev_pure_295000`）；规则 16/16、81.0895（`evidence/T1_dev_rule_295000`） |
 | 未授权 | 独立正式评估（正式块 300000 起）；M0 新训练；种子 1、2；任何奖励、任务、Pure MPC 或共享 MPC 的改动 |
