@@ -50,7 +50,7 @@ from env.t1_task import T1Metrics, _slerp_deterministic
 #: v0.3 (R1 pass 2, e80b476) + v0.3.1 range cap (83f035a) + v0.3.2 fresh solves (acc3366)
 #: + v0.4 plan stability (an unmeetable earlier request or an infeasible request keeps a
 #: usable plan; no usable plan -> full-force earliest-arrival recovery before the hold).
-GSTAR_VERSION = "0.4"
+GSTAR_VERSION = "0.5"
 
 
 @dataclass
@@ -363,8 +363,18 @@ class GStarRendezvous:
     slips_s: tuple[float, ...] = (0.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0)
     earliest_grid_s: tuple[float, ...] = (8.0, 12.0, 16.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0, 80.0, 100.0,
                                           130.0, 160.0, 200.0)
+    #: v0.5 task-deadline consistency: no plan may arrive later than
+    #: ``max_time_s - deadline_margin_s`` (60 s ~ the 90th percentile of the time from the
+    #: last planned arrival to capture in the rule runs of evidence/T1_BETA_B1 and
+    #: evidence/T1_S1_SCREEN; no successful rule episode there planned an arrival past it)
+    deadline_margin_s: float = 60.0
     tau_s: float = 0.0
     tau_effective_s: float = 0.0
+    #: what the deadline did in the last decision: "none", "clamped" (a later request cut to
+    #: the latest admissible arrival), "plan_beyond" (a live plan arriving too late was
+    #: re-planned), "infeasible_within" (no plan within the deadline; the earliest feasible
+    #: arrival beyond it was taken and is reported)
+    last_deadline: str = "none"
     plan: dict[str, Any] | None = None
     plan_start_s: float = 0.0
     hold_position: np.ndarray | None = None
@@ -390,6 +400,7 @@ class GStarRendezvous:
         from time import perf_counter
 
         self.tau_s = float(tau_s)
+        self.last_deadline = "none"
         self._descent = GStarPlan(tau_s=0.0, kappa=self.kappa)
         if self._descending(env, env.metrics()):
             self.plan, self.last_status, self.tau_effective_s = None, "descent", 0.0
@@ -402,11 +413,19 @@ class GStarRendezvous:
         q0 = chaser.position - target.position
         v0 = chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
         remaining = self.remaining_s(env)
+        # v0.5: the latest admissible arrival, measured from now
+        horizon = float(env.config.max_time_s) - self.deadline_margin_s - float(env.time_s)
+        if self.tau_s > self.tau_min_s and self.tau_s > horizon:
+            self.tau_s = max(horizon, 0.0)  # a later request is cut to the deadline (reported)
+            self.last_deadline = "clamped"
         usable_plan = False
         if self.plan is not None:
             elapsed = env.time_s - self.plan_start_s
             deviation = float(np.linalg.norm(_plan_position(self.plan, elapsed, self.planner.mass) - q0))
             usable_plan = deviation <= self.replan_deviation_m and remaining > 0.0
+            if usable_plan and remaining > horizon + self.replan_tau_tolerance_s:
+                usable_plan = False  # a live plan arriving past the deadline is not kept
+                self.last_deadline = "plan_beyond"
             agrees = (
                 abs(self.tau_s - remaining) <= self.replan_tau_tolerance_s
                 or (self.tau_s <= self.tau_min_s and remaining > 0.0)
@@ -414,27 +433,42 @@ class GStarRendezvous:
             if agrees and usable_plan:
                 self.last_status = "kept"
                 return
+        # v0.5: a request (and its slips) is planned only up to the deadline. When the deadline
+        # cut slips and no usable plan is live, the earliest feasible arrival follows (as an
+        # earliest request would); with a usable plan an infeasible request keeps it (v0.4).
+        # An arrival past the deadline is reported, never asked for. When the deadline cuts
+        # nothing, and on the earliest-request path (the rule), the search is v0.4's.
+        stages = [list(self.earliest_grid_s)]
         if self.tau_s > self.tau_min_s:
-            candidates = [self.tau_s + slip for slip in self.slips_s]
-        else:
-            candidates = list(self.earliest_grid_s)
+            slips = [self.tau_s + slip for slip in self.slips_s]
+            requested = [tau for tau in slips if tau <= horizon + 1e-9]
+            if len(requested) == len(slips) or (requested and usable_plan):
+                stages = [requested]
+            elif requested:
+                stages = [requested, list(self.earliest_grid_s)]
         history = free_body_rotations(
-            target.rotation, target.omega, env.target_parameters.inertia, max(candidates) + 1.0
+            target.rotation, target.omega, env.target_parameters.inertia,
+            max(max(stage) for stage in stages) + 1.0,
         )
         result: dict[str, Any] = {"feasible": False, "status": "not_solved"}
-        for tau in candidates:
-            guess = None
-            if self.plan is not None:
-                n, shift = self.planner.nodes, env.time_s - self.plan_start_s
-                guess = np.array([
-                    _plan_position(self.plan, shift + k * tau / n, self.planner.mass) for k in range(n + 1)
-                ])
-                guess[0] = q0
-            result = self.planner.solve(q0, v0, tau, history, guess)
-            if not result["feasible"] and guess is not None:
-                result = self.planner.solve(q0, v0, tau, history, None)
+        for candidates in stages:
+            for tau in candidates:
+                guess = None
+                if self.plan is not None:
+                    n, shift = self.planner.nodes, env.time_s - self.plan_start_s
+                    guess = np.array([
+                        _plan_position(self.plan, shift + k * tau / n, self.planner.mass) for k in range(n + 1)
+                    ])
+                    guess[0] = q0
+                result = self.planner.solve(q0, v0, tau, history, guess)
+                if not result["feasible"] and guess is not None:
+                    result = self.planner.solve(q0, v0, tau, history, None)
+                if result["feasible"]:
+                    break
             if result["feasible"]:
                 break
+        if result["feasible"] and float(result["tau_s"]) > horizon + 1e-9:
+            self.last_deadline = "infeasible_within"
         # v0.4 plan stability. A usable plan is not replaced by one that fails the request
         # it was asked for: an earlier arrival that is not achievable (the new plan would
         # arrive no earlier than the current one), or a request with no feasible plan at all.

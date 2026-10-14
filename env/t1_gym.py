@@ -19,7 +19,9 @@ Observation (``OBSERVATION_NAMES``): geometry and rates of the current truth
 state as an onboard estimate would give them, plus the generator memory that
 makes the decision process (approximately) Markov: whether a plan is live,
 its remaining time, the last effective and requested arrival times, descent
-and hold flags, and the last kappa.
+and hold flags, and the last kappa. Interface v3 appends the current tracking error
+against the live plan (position / 1 m, velocity / 0.3 m/s; 0 without a live plan), so the
+policy and the critic can see whether a plan is being flown or about to be re-planned.
 
 Episode end: ``success`` / ``unsafe`` / ``timeout`` are terminal (the 300 s
 horizon is part of the task, time is observed, the timeout penalty is a real
@@ -48,7 +50,21 @@ OBSERVATION_NAMES = (
     "port_los_180deg", "port_latitude_90deg", "omega_2p7deg_s", "fov_margin_50deg", "time_300s",
     "radial_closing_0p3m_s", "tangential_speed_0p5m_s", "in_cone", "mouth_region",
     "has_plan", "remaining_160s", "tau_effective_160s", "tau_request_160s", "descent", "hold", "kappa",
+    # interface v3 (appended, earlier indices unchanged): the current state against the live
+    # G* plan at the current time, ECI relative frame; 0 without a live plan
+    "track_position_error_1m", "track_velocity_error_0p3m_s",
 )
+
+
+def _plan_velocity(plan: dict[str, Any], s: float, mass: float) -> np.ndarray:
+    """Plan velocity ``s`` seconds after its start (piecewise-constant force)."""
+
+    v, f, dt = plan["v"], plan["f"], plan["dt"]
+    n = len(f)
+    if s >= n * dt:
+        return np.asarray(v[-1], dtype=np.float64)
+    i = int(np.clip(np.floor(max(s, 0.0) / dt), 0, n - 1))
+    return v[i] + f[i] / mass * (max(s, 0.0) - i * dt)
 
 
 def end_phase(m) -> str:
@@ -152,14 +168,41 @@ class T1GStarEnv(gym.Env):
         kappa = self.config.kappa_min + (self.config.kappa_max - self.config.kappa_min) * 0.5 * (a[1] + 1.0)
         return float(tau), float(kappa)
 
+    def _tracking_errors(self) -> tuple[float, float]:
+        """Position and velocity error of the current state against the live plan (ECI relative)."""
+
+        e, g = self.env, self.generator
+        assert g is not None
+        if g.plan is None or g.remaining_s(e) <= 0.0:
+            return 0.0, 0.0
+        s = e.time_s - g.plan_start_s
+        q = e.chaser_state.position - e.target_state.position
+        v = e.chaser_state.rotation @ e.chaser_state.velocity - e.target_state.rotation @ e.target_state.velocity
+        return (float(np.linalg.norm(_plan_position(g.plan, s, g.planner.mass) - q)),
+                float(np.linalg.norm(_plan_velocity(g.plan, s, g.planner.mass) - v)))
+
     def step(self, action: np.ndarray):
         assert self.generator is not None
         g = self.generator
         tau, kappa = self.intent(action)
+        # effective-action diagnostics (before the decision; read-only)
+        remaining_before = g.remaining_s(self.env)
+        deviation_before, _ = self._tracking_errors()
+        usable_before = remaining_before > 0.0 and deviation_before <= g.replan_deviation_m
+        if remaining_before <= 0.0:
+            request_kind = "no_plan"
+        else:
+            shift = tau - remaining_before
+            request_kind = ("keep" if abs(shift) <= g.replan_tau_tolerance_s
+                            else "later" if shift > 0.0 else "earlier")
         g.kappa = kappa
         walls_before = len(g.plan_wall_s)
         g.decide(self.env, tau)
         new_plan = g.last_status.startswith("optimal")
+        trigger = None
+        if g.last_status.startswith(("optimal", "recovery")):
+            trigger = ("no_plan" if remaining_before <= 0.0 else "deviation" if not usable_before
+                       else "deadline" if g.last_deadline == "plan_beyond" else "request")
         slip = max(g.tau_effective_s - tau, 0.0) if new_plan else 0.0
         self._last_request, self._last_kappa = tau, kappa
         self._step_log = []
@@ -182,6 +225,10 @@ class T1GStarEnv(gym.Env):
             "force_saturated_fraction": float(np.mean([s for _, s, _, _ in self._step_log])) if self._step_log else 0.0,
             "zero_fallbacks": int(sum(f for _, _, f, _ in self._step_log)),
             "plan_wall_s": float(sum(g.plan_wall_s[walls_before:])),
+            "request_kind": request_kind,
+            "deviation_before_m": deviation_before,
+            "new_plan_trigger": trigger,
+            "deadline": g.last_deadline,
         }
         info["kappa"] = kappa
         if terminated or truncated:
@@ -216,12 +263,14 @@ class T1GStarEnv(gym.Env):
             self._last_request / 160.0, float(status == "descent"), float(status.startswith("hold")),
             self._last_kappa,
         ]
+        position_error, velocity_error = self._tracking_errors()  # interface v3 (appended)
+        values += [position_error / 1.0, velocity_error / 0.3]
         obs = np.asarray(values, dtype=np.float32)
         if not np.all(np.isfinite(obs)):
             raise FloatingPointError(f"non-finite observation {obs}")
         return obs
 
 
-GYM_INTERFACE_VERSION = "2"
+GYM_INTERFACE_VERSION = "3"
 
 __all__ = ["GYM_INTERFACE_VERSION", "OBSERVATION_NAMES", "T1GStarEnv", "T1GymConfig", "end_phase"]
