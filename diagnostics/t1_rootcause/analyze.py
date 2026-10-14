@@ -93,7 +93,42 @@ def p2(probe: Path) -> dict:
                     "replay_match": r["replay_check"]["match"], "time_s": r["time_s"], "remaining_s": r["remaining_s"],
                     "traj_action": r["traj_action"], "realized": realized, "best_realized": best_true,
                     "critics": critics, "verify_branch": r.get("verify_branch")})
-    return {"states": out}
+    return {"states": out, "summary": p2_summary(out)}
+
+
+def p2_summary(states: list[dict]) -> dict:
+    """Report numbers: later-vs-keep ranking against the rule-follow-up closed loop, the
+    critic's within-band artifact range, own-policy calibration, and the M1 target."""
+
+    out = {}
+    truth = {s["state"]: s["realized"]["rule"]["later15"] - s["realized"]["rule"]["keep"] for s in states}
+    out["rule_truth_later_minus_keep"] = truth
+    out["rule_truth_later_better_count"] = sum(v > 0 for v in truth.values())
+    out["rule_truth_abs_median"] = float(np.median([abs(v) for v in truth.values()]))
+    for label in sorted({c for s in states for c in s["critics"]}):
+        dq = {s["state"]: s["critics"][label]["q_min"]["later15"] - s["critics"][label]["q_min"]["keep"] for s in states}
+        dy = {s["state"]: s["critics"][label]["m1_y_cf"]["later15"] - s["critics"][label]["m1_y_cf"]["keep"] for s in states}
+        scored = [k for k, v in truth.items() if abs(v) > 0.05]
+        out[label] = {
+            "q_later_minus_keep": dq, "y_cf_later_minus_keep": dy,
+            "q_prefers_later_count": sum(v > 0 for v in dq.values()),
+            "q_sign_agreement": f"{sum(np.sign(dq[k]) == np.sign(truth[k]) for k in scored)}/{len(scored)}",
+            "y_cf_sign_agreement": f"{sum(np.sign(dy[k]) == np.sign(truth[k]) for k in scored)}/{len(scored)}",
+            "within_band_q_range_median": float(np.median([s["critics"][label]["q_range_inside_band"] for s in states])),
+            "abs_q_later_minus_keep_median": float(np.median([abs(v) for v in dq.values()])),
+            "own_a0": {s["state"]: s["critics"][label]["own_a0"] for s in states},
+            "dq_da0_at_own": {s["state"]: s["critics"][label]["dq_da0_at_own"] for s in states},
+            "y_cf_minus_q_keep": {s["state"]: s["critics"][label]["m1_y_cf"]["keep"] - s["critics"][label]["q_min"]["keep"]
+                                  for s in states},
+            "r_hat_abs_later_minus_keep_max": float(max(abs(s["critics"][label]["m1_r_hat"]["later15"]
+                                                            - s["critics"][label]["m1_r_hat"]["keep"]) for s in states)),
+        }
+    out["own_policy_calibration"] = {
+        s["state"]: {"q_own_keep": s["critics"][s["traj"]]["q_min"]["keep"],
+                     "y_cf_own_keep": s["critics"][s["traj"]]["m1_y_cf"]["keep"],
+                     "realized_own_det_keep": s["realized"]["traj_det"]["keep"],
+                     "realized_rule_keep": s["realized"]["rule"]["keep"]} for s in states}
+    return out
 
 
 def main() -> None:

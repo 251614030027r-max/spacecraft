@@ -1,0 +1,8 @@
+{"experiment": "T1_ROOTCAUSE_DIAG stage 1: P1 policy interventions (0k/20k/30k, 8 development openings) and P2/P3 critic ranking and M1 targets at 10 pre-registered states, on frozen T1_V2_S0 checkpoints; no training",
+ "source": "lower delivery collab a5395ef, lower/handoffs/t1_rootcause_20261013/T1_ROOTCAUSE_DIAG_STAGE1_20261013.zip (sha256 4ed365df93dbb02f7e3bbc52cedc5f2ee1f7170c4a6b649244a65cf5bdee2364)",
+ "code": "science ca82c63 (diagnostics/t1_rootcause); env/train identical to 78eb63c",
+ "files": {"p1.jsonl.gz": "59 intervention episodes (field _file = original file name)", "p2.jsonl.gz": "10 probe states",
+           "diag_readout_lower.json": "analyze.py output as delivered (ca82c63)",
+           "diag_readout.json": "analyze.py after ca82c63 (adds p2.summary; p1 identical); reproduce with the package: python -B -m diagnostics.t1_rootcause.analyze --interventions _diag/p1 --dev-eval reused_A --rule reused_E --probe _diag/p2 --output diag_readout.json",
+           "model_sha.txt": "checkpoint hashes (models not published)"},
+ "status": "research diagnosis, development openings only"}
