@@ -3,8 +3,10 @@
     python -B -m diagnostics.t1_beta.analyze_beta --b1 <dir> --b2 <dir> --output <json>
 
 B1 (8 openings x beta in {0, 0.3, 1, 3}):
-  safety       a beta fails if it adds an unsafe or numerical-failure episode, or a planner
-               failure, relative to beta = 0 on the same opening; margins are reported as
+  safety       a beta is vetoed if, on any opening and relative to beta = 0 there, it adds a task
+               failure (unsafe or timeout), a numerical failure, a decision ending with no usable
+               plan (G* hold) or a solver exception. Infeasible candidates inside G*'s normal
+               search (earliest grid, slips) are reported, not vetoed. Margins are reported as
                absolute minima and differences (no percentage when the base is near 0).
   effect       per opening: the accepted first plans of beta and beta = 0 differ by more than
                0.1 m somewhere on their common 1 s time grid AND the episode delta-v differs by
@@ -20,7 +22,10 @@ B2 (the other 8 openings, all four betas): no fitting. Rows: beta = 0, the B1 be
   the B1 rule (each opening's return taken from its fixed-beta episode: one choice at the
   opening, beta fixed for the episode -- not a dynamic SAC choice), and the per-opening
   oracle (observation only, an upper bound with selection bias).
-Recommendation threshold: rule - best fixed >= 1.0 mean return on B2 with no added failure.
+Recommendation threshold: rule - best fixed >= 1.0 mean return on B2, and the rule adds no task
+failure, numerical failure, final planning failure or solver exception relative to either the
+best fixed beta or beta = 0 on any opening; every truth margin is reported per row with its
+change against both.
 """
 
 from __future__ import annotations
@@ -57,6 +62,20 @@ def _failed(r: dict) -> bool:
     return r["event"] != "success"
 
 
+def _added_hard(r: dict, base: dict) -> bool:
+    """Numerical failure, a decision with no usable plan, or a solver exception, beyond base."""
+
+    return bool((r["numerical_failure"] and not base["numerical_failure"])
+                or r["final_plan_failures"] > base["final_plan_failures"]
+                or r["solver_exceptions"] > base["solver_exceptions"])
+
+
+def _margins(per: dict) -> dict:
+    keys = sorted({k for r in per.values() for k in r["min_margins"]})
+    return {k: {"min": float(min(r["min_margins"][k] for r in per.values())),
+                "mean": float(np.mean([r["min_margins"][k] for r in per.values()]))} for k in keys}
+
+
 def b1_checks(runs: dict, openings: list[int]) -> dict:
     out = {}
     for beta in BETAS[1:]:
@@ -71,12 +90,12 @@ def b1_checks(runs: dict, openings: list[int]) -> dict:
                 "deviation_replans": (r["new_plan_triggers"]["deviation"], base["new_plan_triggers"]["deviation"]),
                 "far_field_delta_v": (r["far_field_delta_v_m_s"], base["far_field_delta_v_m_s"]),
                 "added_failure": _failed(r) and not _failed(base),
-                "added_numerical_or_planner_failure": (r["numerical_failure"] and not base["numerical_failure"])
-                or r["planner_failures"] > base["planner_failures"],
+                "added_hard_failure": _added_hard(r, base),
+                "candidate_infeasible": (r["candidate_infeasible"], base["candidate_infeasible"]),
                 "min_margins": {k: (r["min_margins"].get(k), base["min_margins"].get(k)) for k in base["min_margins"]},
             }
         acts = sum(p["reference_max_diff_m"] > REF_DIFF_M and abs(p["delta_v_diff_m_s"]) > DV_DIFF_M_S for p in per.values())
-        safe = not any(p["added_failure"] or p["added_numerical_or_planner_failure"] for p in per.values())
+        safe = not any(p["added_failure"] or p["added_hard_failure"] for p in per.values())
         out[beta] = {"per_opening": per, "acts_on": acts, "acts": acts >= ACTS_MIN, "safe": safe}
     return out
 
@@ -129,9 +148,21 @@ def b2_validate(runs: dict, openings: list[int], frozen: dict) -> dict:
                     "mean_time_s": float(np.mean([r["time_s"] for r in per.values()])),
                     "mean_delta_v_m_s": float(np.mean([r["delta_v_m_s"] for r in per.values()])),
                     "beta_used": {o: r["beta"] for o, r in per.items()}} for name, per in rows.items()}
+    for name, per in rows.items():
+        table[name]["margins"] = _margins(per)
+    safety = {}
+    for ref in ("best_fixed", "beta_0"):
+        safety[ref] = {
+            "added_task_failure": [o for o in openings if _failed(rows["state_rule"][o]) and not _failed(rows[ref][o])],
+            "added_hard_failure": [o for o in openings if _added_hard(rows["state_rule"][o], rows[ref][o])],
+            "margin_change": {k: {o: rows["state_rule"][o]["min_margins"][k] - rows[ref][o]["min_margins"][k]
+                                  for o in openings} for k in rows[ref][openings[0]]["min_margins"]},
+        }
     gain = table["state_rule"]["mean_return"] - table["best_fixed"]["mean_return"]
-    added = any(_failed(rows["state_rule"][o]) and not _failed(rows["best_fixed"][o]) for o in openings)
-    return {"table": table, "rule_minus_best_fixed": gain, "rule_added_failure": added,
+    added = any(safety[ref]["added_task_failure"] or safety[ref]["added_hard_failure"] for ref in safety)
+    return {"table": table, "rule_minus_best_fixed": gain, "rule_minus_beta_0":
+            table["state_rule"]["mean_return"] - table["beta_0"]["mean_return"],
+            "rule_safety": safety, "rule_added_failure": added,
             "recommend_sac_beta_design": bool(gain >= GAIN_MIN and not added)}
 
 

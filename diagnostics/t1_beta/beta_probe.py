@@ -162,7 +162,11 @@ def episode(beta: float, opening: int, output_dir: str) -> None:
         "far_field_duration_s": 2.0 * len(far), "new_plan_triggers": triggers,
         "slips": sum(d["slip_s"] > 0 for d in log), "holds": sum(d["status"].startswith("hold") for d in log),
         "numerical_failure": info["event"] == "numerical_failure",
-        "planner_failures": sum(not r["feasible"] for r in g.planner.records),
+        # veto-relevant: a decision that ends with no usable plan at all (G* holds), and solver
+        # exceptions; an infeasible candidate inside G*'s normal search is reported only
+        "final_plan_failures": sum(d["status"].startswith("hold") for d in log),
+        "solver_exceptions": sum(str(r["status"]).startswith("solver_error") for r in g.planner.records),
+        "candidate_infeasible": sum(not r["feasible"] for r in g.planner.records),
         "accepted_plans": accepted, "attempted_solves": g.planner.records, "decision_log": log,
         "wall_s": perf_counter() - started,
     }

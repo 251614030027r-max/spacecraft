@@ -24,7 +24,8 @@ def _run(beta, opening, ret, x0, event="success", dv=1.0, shift=0.0):
     grid = [[shift * t, 0.0, 0.0] for t in range(5)]
     return {"beta": beta, "opening": opening, "discounted_return": ret, "event": event, "time_s": 100.0,
             "delta_v_m_s": dv, "initial_observation": [x0] + [0.0] * 21, "numerical_failure": False,
-            "planner_failures": 0, "min_margins": {"fov_margin_deg": 5.0},
+            "final_plan_failures": 0, "solver_exceptions": 0, "candidate_infeasible": 0,
+            "min_margins": {"fov_margin_deg": 5.0},
             "new_plan_triggers": {"first": 1, "deviation": 0, "expired": 0, "other": 0},
             "far_field_delta_v_m_s": dv, "accepted_plans": [{"tau_s": 4.0, "position_on_grid_m": grid}]}
 
@@ -55,3 +56,28 @@ def test_no_state_rule_when_nothing_beats_the_best_fixed_beta():
     runs = {(b, o): _run(b, o, 80.0 + (1.0 if b == 1.0 else 0.0), float(o)) for b in BETAS for o in range(8)}
     frozen = fit_rule(runs, list(range(8)), list(BETAS))
     assert frozen["best_fixed_beta"] == 1.0 and frozen["rule"]["kind"] == "fixed"
+
+
+def test_candidate_infeasibility_is_reported_but_only_final_failures_veto():
+    from diagnostics.t1_beta.analyze_beta import BETAS, b1_checks
+
+    runs = {(b, o): _run(b, o, 80.0, float(o), dv=1.0 + 0.01 * b, shift=0.1 * b) for b in BETAS for o in range(8)}
+    for o in range(8):
+        runs[(3.0, o)]["candidate_infeasible"] = 5  # normal earliest-grid search: not a veto
+    runs[(1.0, 2)]["final_plan_failures"] = 1   # a decision with no usable plan: veto
+    checks = b1_checks(runs, list(range(8)))
+    assert checks[3.0]["safe"] and checks[3.0]["per_opening"][0]["candidate_infeasible"] == (5, 0)
+    assert not checks[1.0]["safe"]
+
+
+def test_b2_rule_is_checked_against_both_best_fixed_and_beta_zero():
+    from diagnostics.t1_beta.analyze_beta import BETAS, b2_validate
+
+    runs = {(b, o): _run(b, o, 80.0 + (2.0 if b == 3.0 else 0.0), 1.0 if o < 4 else 2.0) for b in BETAS for o in range(8)}
+    runs[(3.0, 1)]["event"] = "timeout"  # the rule's beta fails where beta = 0 succeeds
+    frozen = {"best_fixed_beta": 1.0, "rule": {"kind": "rule", "feature_index": 0, "feature": "range_10m",
+                                               "threshold": 1.5, "beta_low": 3.0, "beta_high": 1.0}}
+    out = b2_validate(runs, list(range(8)), frozen)
+    assert out["rule_safety"]["beta_0"]["added_task_failure"] == [1]
+    assert out["rule_added_failure"] and not out["recommend_sac_beta_design"]
+    assert set(out["table"]["state_rule"]["margins"]) == {"fov_margin_deg"}
