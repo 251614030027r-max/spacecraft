@@ -1,4 +1,8 @@
-{"what": "Planned vs executed far-field delta-v of the earliest-feasible G* rule on the 32 R1 pass-2 development openings (exploratory; planner re-solves only, no closed-loop simulation)",
+{
+ "what": "Planned vs executed far-field delta-v of the earliest-feasible G* rule on the 32 R1 pass-2 development openings (exploratory; planner re-solves only, no closed-loop simulation)",
  "command": "python -B -m diagnostics.t1_beta.plan_gap --episodes evidence/T1_R1_pass2/episodes.jsonl.gz --output evidence/T1_PLAN_EXEC_GAP_R1/plan_gap.json",
  "code": "env/G* as in 78eb63c (G* v0.4); R1 pass 2 was run at e80b476 with G* v0.3.2: the first plan of an episode is the same solve (checked: tau of every re-solved first plan equals the logged one)",
- "use": "motivation check for the reference-shaping candidate beta (collab reviews/T1_BETA_PATH_REVIEW_20261014.md); not a result about learning"}
+ "use": "motivation check for the reference-shaping candidate beta (collab reviews/T1_BETA_PATH_REVIEW_20261014.md); not a result about learning",
+ "plan_gap_v2.json": "same reconstruction with the trigger of every far-field new plan (first / deviation > 1 m / expired; exact under the R1 code e80b476) and the terminal-reward audit; 87 far-field re-plans, all deviation-driven, none expired; plan_gap.json kept unchanged",
+ "interval_note": "the executed far-field interval is not the plan interval: far-field duration / first-plan tau has median 0.92 (single-plan episodes), 0.96 (2-3), 1.08 (>=4); B1 records per-decision delta-v exactly"
+}
