@@ -1,21 +1,15 @@
 # Spacecraft 上下层协作入口
 
-> **所有新窗口必须先读两份文件：** [HANDOFF.md](HANDOFF.md)（T1 当前背景、R0/R1 状态、窗口分工、执行纪律）以及 [研究演进与耦合设计专题分析](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md)（研究历史、用户论文诉求、理论与耦合设计取舍）。两份由协作窗口按用户要求同步维护；方法方向和新训练仍须用户批准。
+新窗口必读：[HANDOFF.md](HANDOFF.md)（当前研究及版本）与[研究演进](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md)（长期研究逻辑）；工程事实按需核验[PROJECT_STATE](PROJECT_STATE.md)与[CURRENT](CURRENT.json)。**运行实验只用有效执行单指定的冻结科学提交，不能用`collab/spacecraft`上的旧代码。**
 
-固定分支：`collab/spacecraft`。本目录是任务交换与交付索引，正式实验只用各执行单冻结的科学提交；同步本分支不会同步实验工程。
+| 用途 | 入口 |
+|---|---|
+| 两份研究交接 | [HANDOFF](HANDOFF.md) · [研究演进](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md) |
+| 上层科学及工程状态 | [PROJECT_STATE](PROJECT_STATE.md) · [upper](upper/README.md) |
+| 下层真实现场与交付 | [CURRENT](CURRENT.json) · [lower](lower/README.md) |
+| 协作纪律 | [WORKFLOW](WORKFLOW.md) |
+| 历史实验与审查 | [registry](registry/README.md) · [reviews](reviews/README.md) |
 
-|用途|入口|主要维护者|
-|---|---|---|
-|**项目当前状态（唯一入口，只记事实）**|[PROJECT_STATE.md](PROJECT_STATE.md)|上层|
-|实验总账（全部实验的状态、证据、论文角色）|[registry/](registry/README.md)|上层预填，下层补本地列|
-|当前阶段、代码版本与停止边界|[CURRENT.json](CURRENT.json)|下层核验后更新|
-|上层执行单、预注册与审批记录|[upper/README.md](upper/README.md)|上层|
-|下层已完成工作、交付与证据|[lower/README.md](lower/README.md)|下层|
-|已完成结果的审查|[reviews/README.md](reviews/README.md)|上下层分别写署名报告|
-|协作规则、接续方式|[WORKFLOW.md](WORKFLOW.md)|用户决策优先|
+**当前T1：**科学`1d432c8`，唯一有效[T1 v4第2.1版执行单](upper/run_orders/T1_FIX_FIRST_TRAIN_20261015.md)。真实阶段以CURRENT与下层交付为准，准入中不等于正式训练已启动。
 
-**项目研究主线与当前协作快照优先阅读上述两份必读文件；工程现场由上层同步 [PROJECT_STATE.md](PROJECT_STATE.md)、下层同步 [CURRENT.json](CURRENT.json)。** PROJECT_STATE 与 CURRENT 截至 2026-10-12 可能仍含 F01 旧快照，未刷新之前不得据其“主线停止”等旧表述覆盖 T1。实验总账见 [registry/](registry/README.md)。本段之下的旧描述与历史执行单仅作历史资料。
-
-上层以后把执行单提交到本目录upper，下层把完成状态与交付入口提交到lower并更新CURRENT；每次工作先同步这个分支。用户只需指示“读协作入口并推进已授权任务”，无需转发长文或下载再上传结果。
-
-完整大ZIP、模型和日志原件在本地，Git上传够审查的报告、结构化结果、必要逐开局证据与哈希。历史审查使用固定提交链接，不重复复制，不改写已冻结报告。
+**推进方式：**研究层定方向与授权；上层做必要实现、测试和冻结；下层完整训练、评估与交付；上层集中审查。技术正确性要检查，研究效果不要求训练前证明；旧方案筛选不能反复阻断已授权主线。细则见WORKFLOW。
