@@ -1,49 +1,18 @@
-最新：[T1根因诊断第一阶段回执](handoffs/t1_rootcause_20261013/RECEIPT.md)，只执行事实与证据，不训练、不做第二阶段。
+# 下层执行与交付入口（2026-10-15）
 
-最新：[T1 v2种子0完整开发验证](handoffs/t1_v2_seed0_20261013/REPORT.md)，30k平台规则触发、32088步干净结束，全部112回合齐全，已停止跟进。
+**当前T1主线：**[T1 v4第2.1版执行单](../upper/run_orders/T1_FIX_FIRST_TRAIN_20261015.md)，科学`1d432c8aa0e26e31354b8d43771e2a45c8d1caf5`。在本机按单连续完成必要准入、六套强固定规则、2k校准、M0/M2各40k训练、确定性开发评估、20k只读快照和最终交付；**不因阶段性成绩下降停训或重复请示**。技术停机条件仍以执行单为准。
 
-最新：[T1 v2种子0本机准入](handoffs/t1_v2_seed0_20261013/ADMISSION.md)，A–D通过，等待用户独立PowerShell启动；旧轮接续作废。
+**最新核对现场：**[CURRENT.json](../CURRENT.json)截至2026-10-15 05:03 UTC为`t1_v4_admission_r21_continuing`、`training_active=false`，不能推断40k已开跑。后续状态以CURRENT和机器进程为准。待完成后交付目录`handoffs/t1_v4_s0_20261015/`（尚非已发布结果）。
 
-<!-- T1 interrupted 2026-10-13 -->
+**下层职责：**执行本机版本确认、训练/评估/监控/结果读出、检查点与失败样本保存、文件SHA及真实异常记录；常规进程、日志、路径问题按执行单自行解决。上层负责结果审查，**不把下层执行转回上层反复预筛选**；不擅自修改科学方法、场景或预算。参见[WORKFLOW](../WORKFLOW.md)。
 
-# 下层交付入口
+## 历史证据入口
 
+- [T1根因诊断](handoffs/t1_rootcause_20261013/RECEIPT.md)：旧M1失败机制。
+- [T1 v2种子0结果](handoffs/t1_v2_seed0_20261013/REPORT.md)：32,088决策、开发块负结果。
+- [T1 v2准入](handoffs/t1_v2_seed0_20261013/ADMISSION.md)：旧接口技术记录。
+- [旧中断删除记录](handoffs/t1_round1_20261012/DELETION.md)：不复用。
+- [F01已收口](handoffs/F01_closed_records_20261010/README.md)：METHOD_DOES_NOT_HOLD，历史。
+- [历史窗口交接](handoffs/window_handoff_20261009/WINDOW_HANDOFF_20261009.md)及[DRL2整理回执](handoffs/DRL2_return_20261010/README.md)：旧阶段资料。
 
-当前共用交接：[HANDOFF](../HANDOFF.md)（重点见第6、10节）；最新下层完整交接：[窗口交接](handoffs/window_handoff_20261009/WINDOW_HANDOFF_20261009.md)（2026-10-09快照）。三个种子均已完成60k，F01三模型官方METHOD_DOES_NOT_HOLD，现有650个评估已收口归档、缺118不补跑；最新工程已回到DRL2，整体审查待新计划。
-
-历史：[停止头正式轮完成交接](handoffs/stopping_20261006.md)。逐开局证据保存在固定版本，见交接内链接；不复制旧证据到每轮新交付。
-
-新交接写入handoffs/<主题>_<日期>.md，并更新本索引和../CURRENT.json。完整原始ZIP在Spacecraft上层交付/最新，模型仅给路径和SHA；公开材料按当轮授权。
-
-最新价值检验：[交接](handoffs/value_check_20261006.md)。
-
-最新最终主线：[下层交接](handoffs/final_mainline_20261006.md)。
-
-269000筛选已完成；[两份官方readout与SHA](handoffs/final_mainline_screen_20261007/README.md)已提前提供上层机制核对。选定w2.36_r15，三种子正式训练已自动启动。
-
-最新重训准备：[交接](handoffs/final_rerun_20261007.md)，等待用户手动启动。
-
-
-**旧临时资产（已被阶段基准图替代，仅历史引用）：** [交接](handoffs/ppt_temporary_20261009.md) · [图表及证据](handoffs/ppt_temporary_20261009/README.md)。不是正式交付或论文性能；含不利训练诊断和全部本轮复核数据。
-
-
-**最新阶段基准图（2026-10-09，待审查，可替换）：** [交接](handoffs/figures_interim_20261009.md) · [五项七张图及独立证据](handoffs/figures_interim_20261009/README.md)。按85bc7a8执行；当前训练出图搁置，无新仿真，正文不用混合训练图。
-
-
-只读盘点A段（实际2026-10-09，主题20261010）：[LOCAL_ASSET_MAP](handoffs/cleanup_inventory_20261010/LOCAL_ASSET_MAP.md)。含未入Git代码候选、历史尝试/探针、原位目录与哈希。B/C未执行，活动实验不动。
-
-
-Git整理第1–3步完成：[标签、分支及流水线去重回执](handoffs/cleanup_b123_20261010/README.md)；[流水线INDEX](pipeline_scripts/INDEX.csv)。第5步等待实验交付，目标60d768a；本地未整理。
-
-
-当前实验阶段审查（不等262461）：[PHASE_REVIEW](handoffs/final_rerun_271000_early_20261009/PHASE_REVIEW.md)。完整192回合，最终三模型判读待齐；现有评估继续。
-
-- [本地整理阶段交付](handoffs/cleanup_local_20261010/README.md)：新干净副本、历史复制与SHA、最新交付入口；活动评估保留，测试/行为验收与离线备份尚待完成。
-
-- [本窗口唯一完整交接（已合并开场提示）](handoffs/window_handoff_20261009/WINDOW_HANDOFF_20261009.md)：研究停止，等待用户新计划；残余记录任务与整理验收分开。
-
-- [F01最终数据记录与三模型判读](handoffs/F01_closed_records_20261010/README.md)：271000完整，METHOD_DOES_NOT_HOLD；272000缺118，用户取消补跑；最新工程已回到DRL2。
-
-- [最新工程DRL2整理回执与资产索引](handoffs/DRL2_return_20261010/README.md)：4795910科学分支Git干净，环境与模型SHA不变，354通过/3预期失败；无新增正式仿真。
-
-旧中断训练数据已按用户要求删除：[删除记录](handoffs/t1_round1_20261012/DELETION.md)；旧准入/规则/资源探针仅作历史参照。
+新交付放`lower/handoffs/<主题>_<日期>/`并更新本索引、CURRENT；大ZIP和模型可以留本机，登记SHA、路径和结构化审查证据。不得只提交最优检查点。
