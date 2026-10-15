@@ -1,27 +1,18 @@
-# 上层执行单索引
+# 上层执行与审查入口（2026-10-15）
 
-## 进行中
+**上层职责：**方法代码实现、必要的单元/回归和短冒烟、真实动作生效检查、冻结SHA和下层执行单；下层交付后集中审查。**不默认由上层承担大量固定规则筛选、40k长训、开发评估或反复证明方法一定优于基线。**细则见[WORKFLOW](../WORKFLOW.md)。
 
-| 执行单 | 状态 |
-|---|---|
-| [T1_ROUND1_M0M1_20261012](run_orders/T1_ROUND1_M0M1_20261012.md) | **已授权待执行**（用户 2026-10-12）。T1 第一轮 M0/M1 × 3 种子 × 20k 与开发评估，科学提交 `f36ac77`。审批记录 [T1_ROUND1_PRETRAIN_GO_NO_GO_20261012](T1_ROUND1_PRETRAIN_GO_NO_GO_20261012.md)。独立正式评估未授权 |
-| [FINAL_RERUN_20261007](run_orders/FINAL_RERUN_20261007.md) | F01 训练、F03–F05 评估进行中（代码 `f2f8169`）。F02 结构检查已通过 |
-| [CLEANUP_B_LOWER_20261010](run_orders/CLEANUP_B_LOWER_20261010.md) | 第 1–3 步已完成：7 个标签、删除 6 个分支、流水线脚本入库。第 5 步验证等评估结束 |
-| [PROJECT_CLEANUP_20261010](run_orders/PROJECT_CLEANUP_20261010.md) | A 段、B 段已完成；C 段本地归档等验证通过并经用户确认 |
+## 当前唯一有效T1执行单
 
-## 已完成
+[T1_FIX_FIRST_TRAIN_20261015.md](run_orders/T1_FIX_FIRST_TRAIN_20261015.md) **第2.1版**：科学`1d432c8`，G★ v0.6、接口v4（3维动作/25维观测），M0/M2各40k及2k校准，无成绩止损，20k只读快照。2.1版仅将零动作兼容判据从跨机证据改为本机旧版逐值比较；通过的检查可复用，不得重复启动。最新运行状态见[CURRENT](../CURRENT.json)，本入口不宣称训练已完成。旧第1版科学`1282464`未启动、已作废。
 
-| 执行单 | 结果 |
-|---|---|
-| [FIGURES_INTERIM_20261009](run_orders/FIGURES_INTERIM_20261009.md) | 阶段汇报图，交付在 `lower/handoffs/figures_interim_20261009/` |
-| [STOPPING_VALUE_RULE_CHECK_20261006](run_orders/STOPPING_VALUE_RULE_CHECK_20261006.md) | 268000，VALUE_RULE_DOES_NOT_HOLD |
+## 历史，不能替代当前执行单
 
-## 已被取代（不得照单执行）
+- [T1_BETA_B012](run_orders/T1_BETA_B012_20261014.md)：B1 NO-GO，B2停止。
+- [T1_ROOTCAUSE_DIAG](run_orders/T1_ROOTCAUSE_DIAG_20261013.md)：根因第一阶段已完成。
+- [T1_V2_SEED0_VALIDATION](run_orders/T1_V2_SEED0_VALIDATION_20261013.md)：M1 32,088决策的历史单种子负结果。
+- [T1_ROUND1_M0M1](run_orders/T1_ROUND1_M0M1_20261012.md)：旧接口中断，其余被取代。
+- [FINAL_RERUN](run_orders/FINAL_RERUN_20261007.md)：旧F01已结束，METHOD_DOES_NOT_HOLD。
+- [run_orders索引](run_orders/README.md)：其余旧单及历史记录。
 
-- `FINAL_MAINLINE_20261006`：269000 筛选结果与正式判据被沿用，其余由 FINAL_RERUN 取代。
-- `FINAL_EVIDENCE_20261007`：已并入 FINAL_RERUN。
-- `ASSET_INVENTORY_20261007`：从未执行，由 PROJECT_CLEANUP 取代。
-
-更早的执行单在科学分支的 `docs/archive/<阶段>/` 下，以及标签 `archive/pre-cleanup-20261010` 中。
-
-新执行单放在 `run_orders/<主题>_<日期>.md`，按 [TASK_TEMPLATE.md](TASK_TEMPLATE.md) 填写，并更新本索引。只写已授权、要执行的内容；设想和讨论不写进来。
+新执行单使用[精简模板](TASK_TEMPLATE.md)，明确授权范围、科学SHA、必要测试、训练评估和交付；不增加无依据的前置性能门槛。
