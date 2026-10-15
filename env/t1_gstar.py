@@ -49,8 +49,10 @@ from env.t1_task import T1Metrics, _slerp_deterministic
 #: Version of the G* reference generator used by M0/M1 training (frozen):
 #: v0.3 (R1 pass 2, e80b476) + v0.3.1 range cap (83f035a) + v0.3.2 fresh solves (acc3366)
 #: + v0.4 plan stability (an unmeetable earlier request or an infeasible request keeps a
-#: usable plan; no usable plan -> full-force earliest-arrival recovery before the hold).
-GSTAR_VERSION = "0.5"
+#: usable plan; no usable plan -> full-force earliest-arrival recovery before the hold)
+#: + v0.5 task deadline (bbe7ad1) + v0.6 entry speed: the inward speed at the entry point is
+#: an input of each new plan (``entry_speed_m_s``), stored with it; a kept plan keeps its own.
+GSTAR_VERSION = "0.6"
 
 
 @dataclass
@@ -252,7 +254,8 @@ class RendezvousPlanner:
         )
 
     def solve(self, q0: np.ndarray, v0: np.ndarray, tau_s: float, history,
-              guess: np.ndarray | None = None, iterations: int = 4) -> dict[str, Any]:
+              guess: np.ndarray | None = None, iterations: int = 4,
+              entry_speed_m_s: float | None = None) -> dict[str, Any]:
         # Every plan is solved from a freshly built solver: CVXPY otherwise
         # updates the cached CLARABEL object in place and the result depends
         # on earlier solves at ~1e-5 (v0.3.2). A plan must be a function of
@@ -264,7 +267,9 @@ class RendezvousPlanner:
         dt = tau_s / n
         rotation, omega_inertial = _rotation_at(history, tau_s)
         entry = rotation @ (self.entry_radius_m * self.task.approach_axis)
-        entry_velocity = np.cross(omega_inertial, entry) - self.entry_inward_speed_m_s * entry / np.linalg.norm(entry)
+        # v0.6: the inward entry speed is an input of the plan (default: the planner's 0.06 m/s)
+        inward = self.entry_inward_speed_m_s if entry_speed_m_s is None else float(entry_speed_m_s)
+        entry_velocity = np.cross(omega_inertial, entry) - inward * entry / np.linalg.norm(entry)
         if guess is None:
             u0, ue = q0 / np.linalg.norm(q0), entry / np.linalg.norm(entry)
             r0 = float(np.linalg.norm(q0))
@@ -300,7 +305,7 @@ class RendezvousPlanner:
                 break
         ok = status in ("optimal", "optimal_inaccurate")
         return {
-            "status": status, "feasible": ok, "tau_s": tau_s, "dt": dt,
+            "status": status, "feasible": ok, "tau_s": tau_s, "dt": dt, "entry_speed_m_s": inward,
             "delta_v_m_s": cost if ok else None,
             "q": guess if ok else None,
             "v": np.asarray(self.v.value) if ok else None,
@@ -375,6 +380,10 @@ class GStarRendezvous:
     #: re-planned), "infeasible_within" (no plan within the deadline; the earliest feasible
     #: arrival beyond it was taken and is reported)
     last_deadline: str = "none"
+    #: v0.6: inward entry speed (m/s) asked for the next *new* plan (initial plan, re-plan,
+    #: recovery). A kept plan keeps the entry speed it was planned with; the request never
+    #: forces a re-plan. ``None`` = the planner's own default (0.06 m/s).
+    entry_speed_m_s: float | None = None
     plan: dict[str, Any] | None = None
     plan_start_s: float = 0.0
     hold_position: np.ndarray | None = None
@@ -460,9 +469,9 @@ class GStarRendezvous:
                         _plan_position(self.plan, shift + k * tau / n, self.planner.mass) for k in range(n + 1)
                     ])
                     guess[0] = q0
-                result = self.planner.solve(q0, v0, tau, history, guess)
+                result = self.planner.solve(q0, v0, tau, history, guess, entry_speed_m_s=self.entry_speed_m_s)
                 if not result["feasible"] and guess is not None:
-                    result = self.planner.solve(q0, v0, tau, history, None)
+                    result = self.planner.solve(q0, v0, tau, history, None, entry_speed_m_s=self.entry_speed_m_s)
                 if result["feasible"]:
                     break
             if result["feasible"]:
@@ -487,7 +496,7 @@ class GStarRendezvous:
             for tau in self.earliest_grid_s:
                 history = free_body_rotations(
                     target.rotation, target.omega, env.target_parameters.inertia, tau + 1.0)
-                result = self.recovery_planner.solve(q0, v0, tau, history, None)
+                result = self.recovery_planner.solve(q0, v0, tau, history, None, entry_speed_m_s=self.entry_speed_m_s)
                 if result["feasible"]:
                     result["status"] = f"recovery:{result['status']}"
                     break

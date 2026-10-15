@@ -4,7 +4,7 @@ One ``step`` is one 2 s decision: the action becomes a G* request, the
 generator decides (keep / re-plan / descent / hold), then 20 MPC control
 steps of 0.1 s run under RK45 truth (``T1Env.step``).
 
-Action ``a`` in [-1, 1]^2:
+Action ``a`` in [-1, 1]^3 (interface v4; a 2-D action is read with a[2] = 0):
   a[0] -> arrival-time request. With a live plan the request is relative:
           tau = remaining + shift(a[0]). Interface v2: |a[0]| <= ``keep_band``
           (0.5) asks to keep the plan (shift 0); beyond it the shift grows
@@ -14,6 +14,10 @@ Action ``a`` in [-1, 1]^2:
           Without a plan it is absolute: tau = ``tau_max_s`` (a[0] + 1) / 2,
           and tau <= 2 s asks for the earliest feasible arrival.
   a[1] -> descent pace kappa = kappa_min + (kappa_max - kappa_min)(a[1] + 1)/2.
+  a[2] -> inward entry speed of the *next new* G* plan, v_in = 0.06 + 0.04 a[2] m/s
+          (0.02..0.10; a terminal equality constraint of the planner). Applied only when a
+          plan is actually (re)planned or recovered; a kept plan keeps its own v_in, and a
+          different request never forces a re-plan. a[2] = 0 is G*'s former fixed 0.06.
 
 Observation (``OBSERVATION_NAMES``): geometry and rates of the current truth
 state as an onboard estimate would give them, plus the generator memory that
@@ -22,6 +26,7 @@ its remaining time, the last effective and requested arrival times, descent
 and hold flags, and the last kappa. Interface v3 appends the current tracking error
 against the live plan (position / 1 m, velocity / 0.3 m/s; 0 without a live plan), so the
 policy and the critic can see whether a plan is being flown or about to be re-planned.
+Interface v4 appends the live plan's entry speed ((v_in - 0.06) / 0.04, 0 without a plan).
 
 Episode end: ``success`` / ``unsafe`` / ``timeout`` are terminal (the 300 s
 horizon is part of the task, time is observed, the timeout penalty is a real
@@ -53,6 +58,9 @@ OBSERVATION_NAMES = (
     # interface v3 (appended, earlier indices unchanged): the current state against the live
     # G* plan at the current time, ECI relative frame; 0 without a live plan
     "track_position_error_1m", "track_velocity_error_0p3m_s",
+    # interface v4 (appended): inward entry speed of the live plan, (v_in - 0.06) / 0.04; 0
+    # without a plan (has_plan tells the two apart)
+    "plan_entry_speed",
 )
 
 
@@ -86,6 +94,10 @@ class T1GymConfig:
     keep_band: float = 0.5
     kappa_min: float = 0.3
     kappa_max: float = 1.0
+    #: interface v4: a[2] -> inward entry speed of a new G* plan, v_in = nominal + span * a[2]
+    #: (0.02..0.10 m/s; a[2] = 0 is G*'s fixed 0.06 m/s)
+    entry_speed_nominal_m_s: float = 0.06
+    entry_speed_span_m_s: float = 0.04
     #: training openings: seed_base + episode index (disjoint from R0 2900xx,
     #: R1 2910xx and the formal block >= 300000 when seed_base >= 1e6)
     seed_base: int = 1_000_000
@@ -99,7 +111,7 @@ class T1GStarEnv(gym.Env):
         self.config = config or T1GymConfig()
         self.env = T1Env(env_config or T1EnvConfig())
         self.openings = openings
-        self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
+        self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(3,), dtype=np.float32)
         self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(len(OBSERVATION_NAMES),), dtype=np.float32)
         self.episode = 0
         self.current_opening: int | None = None
@@ -168,6 +180,30 @@ class T1GStarEnv(gym.Env):
         kappa = self.config.kappa_min + (self.config.kappa_max - self.config.kappa_min) * 0.5 * (a[1] + 1.0)
         return float(tau), float(kappa)
 
+    def entry_speed_of(self, action: np.ndarray) -> float:
+        """Inward entry speed (m/s) asked by a[2] for a new plan (a 2-D action asks the nominal)."""
+
+        a = np.clip(np.asarray(action, dtype=np.float64).reshape(-1), -1.0, 1.0)
+        a2 = float(a[2]) if a.size > 2 else 0.0
+        return float(self.config.entry_speed_nominal_m_s + self.config.entry_speed_span_m_s * a2)
+
+    def apply_intent(self, action: np.ndarray) -> tuple[float, float, float]:
+        """Set kappa and the entry-speed request on G* for this decision; (tau, kappa, v_in)."""
+
+        assert self.generator is not None
+        tau, kappa = self.intent(action)
+        v_in = self.entry_speed_of(action)
+        self.generator.kappa = kappa
+        self.generator.entry_speed_m_s = v_in
+        return tau, kappa, v_in
+
+    def _plan_entry_speed(self) -> float | None:
+        g = self.generator
+        assert g is not None
+        if g.plan is None:
+            return None
+        return float(g.plan.get("entry_speed_m_s", self.config.entry_speed_nominal_m_s))
+
     def _tracking_errors(self) -> tuple[float, float]:
         """Position and velocity error of the current state against the live plan (ECI relative)."""
 
@@ -184,7 +220,7 @@ class T1GStarEnv(gym.Env):
     def step(self, action: np.ndarray):
         assert self.generator is not None
         g = self.generator
-        tau, kappa = self.intent(action)
+        tau, kappa, v_in = self.apply_intent(action)
         # effective-action diagnostics (before the decision; read-only)
         remaining_before = g.remaining_s(self.env)
         deviation_before, _ = self._tracking_errors()
@@ -195,7 +231,6 @@ class T1GStarEnv(gym.Env):
             shift = tau - remaining_before
             request_kind = ("keep" if abs(shift) <= g.replan_tau_tolerance_s
                             else "later" if shift > 0.0 else "earlier")
-        g.kappa = kappa
         walls_before = len(g.plan_wall_s)
         g.decide(self.env, tau)
         new_plan = g.last_status.startswith("optimal")
@@ -229,6 +264,10 @@ class T1GStarEnv(gym.Env):
             "deviation_before_m": deviation_before,
             "new_plan_trigger": trigger,
             "deadline": g.last_deadline,
+            # interface v4: the entry speed asked, whether a new plan took it, and the live plan's
+            "entry_speed_request_m_s": v_in,
+            "entry_speed_applied": bool(g.last_status.startswith(("optimal", "recovery"))),
+            "entry_speed_plan_m_s": self._plan_entry_speed(),
         }
         info["kappa"] = kappa
         if terminated or truncated:
@@ -265,12 +304,15 @@ class T1GStarEnv(gym.Env):
         ]
         position_error, velocity_error = self._tracking_errors()  # interface v3 (appended)
         values += [position_error / 1.0, velocity_error / 0.3]
+        v_plan = self._plan_entry_speed()  # interface v4 (appended)
+        c = self.config
+        values += [0.0 if v_plan is None else (v_plan - c.entry_speed_nominal_m_s) / c.entry_speed_span_m_s]
         obs = np.asarray(values, dtype=np.float32)
         if not np.all(np.isfinite(obs)):
             raise FloatingPointError(f"non-finite observation {obs}")
         return obs
 
 
-GYM_INTERFACE_VERSION = "3"
+GYM_INTERFACE_VERSION = "4"
 
 __all__ = ["GYM_INTERFACE_VERSION", "OBSERVATION_NAMES", "T1GStarEnv", "T1GymConfig", "end_phase"]

@@ -12,20 +12,20 @@ equal first QP (checked bitwise in the tests).
 
 Per decision k (real action a_k, alternative a~_k):
 
-* ``predict(a)``: G* decides for ``a`` in the shadow, one MPC solve at the
+* ``predict(a)``: G* decides for ``a`` (tau, kappa and, interface v4, the entry speed) in the shadow, one MPC solve at the
   current state, then the solve's nominal open-loop prediction over the first
   20 control steps (the controller's own ``_rollout`` of its nominal controls,
   read only). Predicted reward with the real metering
   ``-0.05 * 2 - 5 * sum 0.1/106 |clip(F_i)|``; predicted target from the
   MPC's own target model (20 x 0.1 s); the chaser reconstructed from the
-  predicted relative state; the 22-D observation built by the *same*
+  predicted relative state; the observation built by the *same*
   ``T1GStarEnv._observation`` of the shadow after its memory and clock have
   been advanced for ``a`` (so ``tau_request`` and ``kappa`` are those of
   ``a``, never of the real action).
 * the real branch runs unchanged (20 MPC steps, RK45 truth);
 * errors of the real action's own nominal prediction against what happened:
   ``e_r = |r^ - r|``, ``e_p = |p^' - p'|`` (relative ECI position),
-  ``e_o = |z^' - z'|_2`` (22-D normalised observation);
+  ``e_o = |z^' - z'|_2`` (normalised observation, all dims of the interface);
 * the gate ``w`` in {0, 1} with the reasons it was closed.
 
 This is a one-QP open-loop prediction, not 20 receding solves: it can be wrong
@@ -59,6 +59,7 @@ _CONTROLLER_FIELDS = (
 _GENERATOR_FIELDS = (
     "kappa", "pure_approach", "tau_min_s", "descent_radius_m", "replan_tau_tolerance_s", "replan_deviation_m",
     "slips_s", "earliest_grid_s", "tau_s", "tau_effective_s", "plan_start_s", "last_status",
+    "deadline_margin_s", "last_deadline", "entry_speed_m_s",
 )
 _TRACKING = ("optimal", "optimal_inaccurate", "kept")
 
@@ -69,6 +70,11 @@ class CounterfactualConfig:
 
     shift_s: float = 15.0
     min_tau_difference_s: float = 4.0
+    #: entry-speed counterfactual (interface v4): the alternative moves a[2] by this much
+    #: (towards the other half of the range: +1 if a[2] < 0 else -1, i.e. 0.04 m/s), and the
+    #: two accepted plans must differ in entry speed by at least ``min_entry_speed_difference``
+    entry_speed_shift: float = 1.0
+    min_entry_speed_difference_m_s: float = 0.02
     max_predicted_saturation: float = 0.5
     end_margin_s: float = 4.0
     max_solve_slack: float = 1.0e-3
@@ -188,8 +194,7 @@ class CounterfactualPredictor:
         c = e.config
         if targets is None:
             targets = self.target_window()
-        tau, kappa = sh.intent(action)
-        g.kappa = kappa
+        tau, kappa, _ = sh.apply_intent(action)
         g.decide(e, tau)
         sh._last_request, sh._last_kappa = tau, kappa
         m = e.metrics()
@@ -229,6 +234,8 @@ class CounterfactualPredictor:
             end_mouth_or_cone=bool(m_end.mouth_region or m_end.in_cone),
             end_violation=bool(m_end.hard_violation or m_end.range_m > c.task.max_distance_m),
             max_range_m=max(ranges), wall_s=perf_counter() - started, **window,
+            extra={"entry_speed_plan_m_s": None if g.plan is None else float(g.plan.get("entry_speed_m_s", 0.06)),
+                   "new_plan": g.last_status.startswith(("optimal", "recovery"))},
         )
 
     def closed_loop(self, action: np.ndarray) -> dict[str, Any]:
@@ -251,29 +258,45 @@ class CounterfactualPredictor:
         if g._descending(real.env, real.env.metrics()):
             return None, "descent_mode"
         a = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+        if a.size < 3:
+            a = np.concatenate([a, np.zeros(3 - a.size)])
         cfg, gym = self.config, real.config
+        # interface v4: where the real action makes a new plan, every other decision (fixed
+        # parity of episode + decision index) asks the single alternative to differ only in the
+        # entry speed (same tau, kappa); everywhere else the tau alternative of the design table
+        if real_prediction.extra.get("new_plan") and (real.episode + real.env.decision) % 2 == 0:
+            alt = a.copy()
+            alt[2] = a[2] + (cfg.entry_speed_shift if a[2] < 0.0 else -cfg.entry_speed_shift)
+            return alt, "entry_speed"
         remaining = g.remaining_s(real.env)
         if remaining > 0.0:
             keeps = abs(real.shift_of(float(a[0]))) <= gym.keep_tolerance_s
             if not keeps:
-                return np.array([0.0, a[1]]), "replan_vs_keep"
+                return np.array([0.0, a[1], a[2]]), "replan_vs_keep"
             sign = 1.0 if real.env.decision % 2 == 0 else -1.0
             if remaining - cfg.shift_s <= g.tau_min_s:
                 sign = 1.0
-            return np.array([real.action_for_shift(sign * cfg.shift_s), a[1]]), "keep_vs_shift"
+            return np.array([real.action_for_shift(sign * cfg.shift_s), a[1], a[2]]), "keep_vs_shift"
         tau = gym.tau_max_s * 0.5 * (a[0] + 1.0)
         if tau > g.tau_min_s:
-            return np.array([-1.0, a[1]]), "request_vs_earliest"
+            return np.array([-1.0, a[1], a[2]]), "request_vs_earliest"
         later = real_prediction.tau_effective_s + cfg.shift_s
         a0 = 2.0 * later / gym.tau_max_s - 1.0
         if a0 > 1.0:
             return None, "not_representable"
-        return np.array([a0, a[1]]), "earliest_vs_later"
+        return np.array([a0, a[1], a[2]]), "earliest_vs_later"
 
-    def gate(self, real: T1GStarEnv, p_real: Prediction, p_alt: Prediction, errors: dict[str, float]) -> tuple[int, list[str]]:
+    def gate(self, real: T1GStarEnv, p_real: Prediction, p_alt: Prediction, errors: dict[str, float],
+             kind: str = "") -> tuple[int, list[str]]:
         cfg = self.config
         reasons = []
-        if abs(p_alt.tau_effective_s - p_real.tau_effective_s) < cfg.min_tau_difference_s:
+        if kind == "entry_speed":
+            # physically distinct: both actions made a new plan, with entry speeds that differ
+            v_real, v_alt = p_real.extra.get("entry_speed_plan_m_s"), p_alt.extra.get("entry_speed_plan_m_s")
+            if (not p_alt.extra.get("new_plan") or v_real is None or v_alt is None
+                    or abs(v_alt - v_real) < cfg.min_entry_speed_difference_m_s):
+                reasons.append("same_entry_speed")
+        elif abs(p_alt.tau_effective_s - p_real.tau_effective_s) < cfg.min_tau_difference_s:
             reasons.append("same_effective_tau")
         for name, p in (("alt", p_alt), ("real", p_real)):
             if p.plan_status not in _TRACKING:
@@ -393,7 +416,7 @@ class T1CounterfactualEnv(T1GStarEnv):
         if p_alt is None or terminated or truncated:
             w, reasons = 0, [kind if p_alt is None else "real_terminated"]
         else:
-            w, reasons = pred.gate(self, p_real, p_alt, errors)
+            w, reasons = pred.gate(self, p_real, p_alt, errors, kind)
         info["counterfactual"] = {
             "kind": kind,
             "a_tilde": None if alt is None else alt.astype(np.float32),
@@ -407,6 +430,8 @@ class T1CounterfactualEnv(T1GStarEnv):
             "tau_effective_alt_s": None if p_alt is None else p_alt.tau_effective_s,
             "alt_status": None if p_alt is None else p_alt.plan_status,
             "alt_saturation": None if p_alt is None else p_alt.saturation,
+            "entry_speed_real_plan_m_s": p_real.extra.get("entry_speed_plan_m_s"),
+            "entry_speed_alt_plan_m_s": None if p_alt is None else p_alt.extra.get("entry_speed_plan_m_s"),
             "overhead_wall_s": overhead,
         }
         return obs, reward, terminated, truncated, info
