@@ -1,0 +1,186 @@
+{
+ "decisions": 32088,
+ "episodes": 346,
+ "opening_timing": {
+  "a0": [
+   -1.0,
+   -0.984,
+   -0.292,
+   0.697,
+   1.0
+  ],
+  "tau_request_s": [
+   0.0,
+   1.3,
+   56.7,
+   135.8,
+   160.0
+  ],
+  "tau_effective_s": [
+   38.0,
+   71.5,
+   95.4,
+   138.9,
+   160.5
+  ],
+  "distinct_effective_tau": 90,
+  "earliest_requests": 95
+ },
+ "plan_status_share": {
+  "kept": 0.474975068561456,
+  "descent": 0.2858077786088257,
+  "optimal": 0.23469832959361756,
+  "hold": 0.003957865868860633,
+  "recovery": 0.0004674644727000748,
+  "optimal_inaccurate": 9.349289454001496e-05
+ },
+ "slip_share": 0.040731737721266516,
+ "action_saturation_share": 0.32644602343555224,
+ "gate_by_kind": {
+  "request_vs_earliest": {
+   "n": 365,
+   "open": 55,
+   "open_share": 0.1506849315068493,
+   "reasons": {
+    "alt_saturation": 238,
+    "e_p": 119,
+    "same_effective_tau": 115,
+    "alt_not_tracking": 78,
+    "e_o": 77,
+    "real_not_tracking": 74,
+    "e_r": 72,
+    "alt_mode_switch": 12,
+    "real_mode_switch": 12,
+    "real_terminated": 3,
+    "alt_slack": 2,
+    "real_slack": 2,
+    "alt_predicted_violation": 1,
+    "real_predicted_violation": 1
+   }
+  },
+  "replan_vs_keep": {
+   "n": 13415,
+   "open": 4923,
+   "open_share": 0.36697726425642935,
+   "reasons": {
+    "same_effective_tau": 7468,
+    "real_not_tracking": 5346,
+    "alt_mode_switch": 2013,
+    "real_mode_switch": 2008,
+    "alt_saturation": 1446,
+    "e_r": 1226,
+    "e_o": 871,
+    "e_p": 698,
+    "alt_slack": 37,
+    "real_slack": 36,
+    "near_horizon": 25,
+    "alt_not_tracking": 25,
+    "real_terminated": 22
+   }
+  },
+  "keep_vs_shift": {
+   "n": 8998,
+   "open": 5042,
+   "open_share": 0.5603467437208268,
+   "reasons": {
+    "same_effective_tau": 2033,
+    "alt_saturation": 1335,
+    "alt_not_tracking": 1268,
+    "real_mode_switch": 956,
+    "alt_mode_switch": 955,
+    "e_r": 867,
+    "e_o": 475,
+    "e_p": 291,
+    "alt_slack": 39,
+    "real_slack": 39,
+    "real_terminated": 19,
+    "near_horizon": 18,
+    "real_not_tracking": 7
+   }
+  },
+  "descent_mode": {
+   "n": 9171,
+   "open": 0,
+   "open_share": 0.0,
+   "reasons": {
+    "descent_mode": 9171
+   }
+  },
+  "earliest_vs_later": {
+   "n": 135,
+   "open": 31,
+   "open_share": 0.22962962962962963,
+   "reasons": {
+    "alt_saturation": 78,
+    "e_p": 52,
+    "e_o": 34,
+    "same_effective_tau": 26,
+    "alt_not_tracking": 26,
+    "real_not_tracking": 26,
+    "e_r": 22,
+    "alt_mode_switch": 15,
+    "real_mode_switch": 15,
+    "real_terminated": 4,
+    "alt_slack": 2,
+    "real_slack": 2
+   }
+  },
+  "not_representable": {
+   "n": 4,
+   "open": 0,
+   "open_share": 0.0,
+   "reasons": {
+    "not_representable": 4
+   }
+  }
+ },
+ "gate_open_share": {
+  "all_decisions": 0.3132323610072301,
+  "policy_keeps_plan": 0.5603467437208268,
+  "policy_changes_or_starts_plan": 0.35997125404240027
+ },
+ "real_prediction_error_quantiles": {
+  "e_r": [
+   0.0184,
+   0.0592,
+   0.1126
+  ],
+  "e_p": [
+   0.0064,
+   0.0161,
+   0.0313
+  ],
+  "e_o": [
+   0.0199,
+   0.058,
+   0.13
+  ]
+ },
+ "outcomes": {
+  "success": 282,
+  "timeout": 57,
+  "unsafe": 7
+ },
+ "failure_kinds": {
+  "distance": 7
+ },
+ "end_phase_by_outcome": {
+  "success": {
+   "near_field": 282
+  },
+  "timeout": {
+   "near_field": 12,
+   "far_field": 40,
+   "entry": 5
+  },
+  "unsafe": {
+   "far_field": 7
+  }
+ },
+ "terminal_rewards_seen": {
+  "capture": 282,
+  "unsafe": 7,
+  "timeout": 57
+ },
+ "episodes_without_plan_ever": 0
+}

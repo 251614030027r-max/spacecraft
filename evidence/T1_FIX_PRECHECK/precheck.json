@@ -1,0 +1,221 @@
+{
+ "what": "upper sandbox pre-training checks of the learnability fixes (science d8b185f; 4-core sandbox, contended, timings are not the user's machine)",
+ "rule_v05_vs_v04_evidence_T1_BETA_B0": {
+  "295003": {
+   "bitwise_outcome": true,
+   "decisions": 49,
+   "same_status_and_tau_eff_every_decision": true,
+   "deadline_values": [
+    "none"
+   ],
+   "discounted_return": 85.76197382088426
+  },
+  "295004": {
+   "bitwise_outcome": true,
+   "decisions": 86,
+   "same_status_and_tau_eff_every_decision": true,
+   "deadline_values": [
+    "none"
+   ],
+   "discounted_return": 72.38487943476535
+  }
+ },
+ "smoke_m0": {
+  "command": [
+   "/home/user/spacecraft/train/train_t1.py",
+   "--method",
+   "m0",
+   "--steps",
+   "300",
+   "--seed",
+   "0",
+   "--run-name",
+   "m0",
+   "--log-root",
+   "/tmp/claude-0/-home-user-spacecraft/ccc14f45-0208-5d61-a364-c44595227073/scratchpad/smoke/runs",
+   "--learning-starts",
+   "100",
+   "--n-envs",
+   "2",
+   "--checkpoint-freq",
+   "100",
+   "--grad-probe-every",
+   "10",
+   "--audit-every",
+   "50",
+   "--allow-dirty"
+  ],
+  "decisions": 300,
+  "wall_s": 477.5057396899999,
+  "parameters_finite": true,
+  "probe_count": 80,
+  "all_probe_values_finite": true,
+  "eq_fraction_median": 0.9765625,
+  "mc_fraction_max": 0.52734375,
+  "episodes": [
+   {
+    "event": "success",
+    "time_s": 279.2,
+    "req_keep": 76,
+    "req_later": 22,
+    "req_earlier": 10,
+    "replan_deviation": 1,
+    "replan_request": 21,
+    "deadline_clamped": 13
+   },
+   {
+    "event": "timeout",
+    "time_s": 300.0,
+    "req_keep": 89,
+    "req_later": 14,
+    "req_earlier": 44,
+    "replan_deviation": 4,
+    "replan_request": 80,
+    "deadline_clamped": 0
+   }
+  ],
+  "deadline_counts": {
+   "none": 224,
+   "clamped": 13,
+   "infeasible_within": 63
+  }
+ },
+ "smoke_m2": {
+  "command": [
+   "/home/user/spacecraft/train/train_t1.py",
+   "--method",
+   "m2",
+   "--steps",
+   "300",
+   "--seed",
+   "0",
+   "--run-name",
+   "m2",
+   "--log-root",
+   "/tmp/claude-0/-home-user-spacecraft/ccc14f45-0208-5d61-a364-c44595227073/scratchpad/smoke/runs",
+   "--learning-starts",
+   "100",
+   "--n-envs",
+   "2",
+   "--checkpoint-freq",
+   "100",
+   "--grad-probe-every",
+   "10",
+   "--audit-every",
+   "50",
+   "--allow-dirty",
+   "--cf-warmup",
+   "150",
+   "--lambda-mc",
+   "0.1",
+   "--lambda-eq",
+   "0.1"
+  ],
+  "decisions": 300,
+  "wall_s": 548.3276087239999,
+  "parameters_finite": true,
+  "probe_count": 80,
+  "all_probe_values_finite": true,
+  "eq_fraction_median": 0.96484375,
+  "mc_fraction_max": 0.9453125,
+  "episodes": [
+   {
+    "event": "success",
+    "time_s": 252.1,
+    "req_keep": 64,
+    "req_later": 15,
+    "req_earlier": 16,
+    "replan_deviation": 3,
+    "replan_request": 21,
+    "deadline_clamped": 0
+   },
+   {
+    "event": "success",
+    "time_s": 278.5,
+    "req_keep": 78,
+    "req_later": 23,
+    "req_earlier": 7,
+    "replan_deviation": 0,
+    "replan_request": 19,
+    "deadline_clamped": 14
+   }
+  ],
+  "deadline_counts": {
+   "none": 282,
+   "clamped": 18
+  },
+  "cf_gate_open_rate": 0.4033333333333333,
+  "cf_closing_reasons": {
+   "same_effective_tau": 87,
+   "e_r": 7,
+   "alt_saturation": 36,
+   "alt_not_tracking": 23,
+   "real_not_tracking": 10,
+   "alt_mode_switch": 9,
+   "real_mode_switch": 9,
+   "descent_mode": 64,
+   "e_p": 2,
+   "e_o": 2
+  },
+  "real_action_prediction_error_p50_p90_p95": {
+   "e_o": [
+    0.01502,
+    0.04687,
+    0.05145
+   ],
+   "e_p": [
+    0.00382,
+    0.00941,
+    0.01113
+   ],
+   "e_r": [
+    0.01207,
+    0.04536,
+    0.05194
+   ]
+  },
+  "validationB_p95_reference_22dim": {
+   "e_r": 0.0585,
+   "e_p": 0.0158,
+   "e_o": 0.0708
+  }
+ },
+ "reload_m0": {
+  "m0_0_decisions.zip": {
+   "action": [
+    0.12710000574588776,
+    -0.062199998646974564
+   ],
+   "finite": true
+  },
+  "m0_100_decisions.zip": {
+   "action": [
+    0.12710000574588776,
+    -0.062199998646974564
+   ],
+   "finite": true
+  },
+  "m0_200_decisions.zip": {
+   "action": [
+    0.19539999961853027,
+    0.48249998688697815
+   ],
+   "finite": true
+  },
+  "m0_300_decisions.zip": {
+   "action": [
+    -0.9480999708175659,
+    -0.8557000160217285
+   ],
+   "finite": true
+  },
+  "final.zip": {
+   "action": [
+    -0.7379999756813049,
+    -0.3644999861717224
+   ],
+   "finite": true
+  }
+ },
+ "readout_pipeline": "experiments.t1_dev_eval (1 opening, 0 and 300 decisions) -> experiments.t1_fix_readout ran end to end (smoke_readout.json)"
+}

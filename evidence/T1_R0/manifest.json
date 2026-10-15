@@ -1,0 +1,9 @@
+{"experiment": "T1-R0 (development block, exploratory)",
+ "openings": [290000, 290001, 290002, 290003],
+ "rows": {
+  "pure": "Pure MPC, code = caa412e (truth-metric fix); 290000 from that run, 290001-290003 likewise",
+  "pf:0.7, rv:T:0.7, rvbest:0.7, rvgeo:0.7": "G* v0.3 as committed in a98f966 (experiments.t1_gstar_probe)",
+  "ocp_<seed>_te<t>_k0.7": "experiments.t1_ocp replay: offline phase-A plan (truth-propagated target attitude) + G* descent, shared MPC, RK45 truth; code as in a98f966"
+ },
+ "readout.json": "experiments.t1_r1_readout run on these four openings as a smoke test only (not a verdict)",
+ "notes": "Results of the linear G* v0.1/v0.2 prototype and of fe49fcc (frame bug) are not included: superseded / invalid."}
