@@ -127,12 +127,16 @@ class EpisodeLog(BaseCallback):
             "req": execution.get("request_kind"), "trig": execution.get("new_plan_trigger"),
             "deadline": execution.get("deadline"),
             "dev": None if execution.get("deviation_before_m") is None else round(float(execution["deviation_before_m"]), 4),
+            "v_req": None if execution.get("entry_speed_request_m_s") is None else round(float(execution["entry_speed_request_m_s"]), 5),
+            "v_applied": execution.get("entry_speed_applied"),
+            "v_plan": None if execution.get("entry_speed_plan_m_s") is None else round(float(execution["entry_speed_plan_m_s"]), 5),
         }
         if cf is not None:
             line["cf"] = {"kind": cf["kind"], "w": int(cf["w"]), "reasons": cf["reasons"],
                           "e": None if cf["errors_real"] is None else
                           {key: round(float(v), 6) for key, v in cf["errors_real"].items()},
-                          "tau_eff_alt": cf["tau_effective_alt_s"], "alt_status": cf["alt_status"]}
+                          "tau_eff_alt": cf["tau_effective_alt_s"], "alt_status": cf["alt_status"],
+                          "v_plan_real": cf.get("entry_speed_real_plan_m_s"), "v_plan_alt": cf.get("entry_speed_alt_plan_m_s")}
         self._decisions.write(json.dumps(line, default=float) + "\n")
         self._k[e] = k + 1
         c = self._counts.setdefault(e, {})
@@ -147,8 +151,11 @@ class EpisodeLog(BaseCallback):
         for name in ("no_plan", "deviation", "deadline", "request"):
             c[f"replan_{name}"] = c.get(f"replan_{name}", 0) + int(execution.get("new_plan_trigger") == name)
         c["deadline_clamped"] = c.get("deadline_clamped", 0) + int(execution.get("deadline") == "clamped")
+        c["entry_speed_applied"] = c.get("entry_speed_applied", 0) + int(bool(execution.get("entry_speed_applied")))
         if cf is not None:
             c["cf_valid"] = c.get("cf_valid", 0) + int(cf["w"])
+            c[f"cf_kind_{cf['kind']}"] = c.get(f"cf_kind_{cf['kind']}", 0) + 1
+            c[f"cf_valid_{cf['kind']}"] = c.get(f"cf_valid_{cf['kind']}", 0) + int(cf["w"])
             for reason in cf["reasons"]:
                 key = "cf_closed_" + reason.split(":")[0]
                 c[key] = c.get(key, 0) + 1
@@ -176,9 +183,11 @@ class Checkpoint(BaseCallback):
     (``ABORTED.json``) if any network parameter becomes non-finite, and a clean stop when
     ``STOP_REQUESTED`` exists in the run directory (the plateau rule of the run order)."""
 
-    def __init__(self, every: int, directory: Path, prefix: str, run_dir: Path) -> None:
+    def __init__(self, every: int, directory: Path, prefix: str, run_dir: Path, extra: tuple[int, ...] = ()) -> None:
         super().__init__()
         self.every, self.directory, self.prefix, self.run_dir = every, directory, prefix, run_dir
+        #: further marks saved once each (e.g. 2000, the early point)
+        self.extra = tuple(sorted(extra))
         self.started = perf_counter()
         self._last_n = 0
 
@@ -199,7 +208,9 @@ class Checkpoint(BaseCallback):
                 (self.run_dir / "ABORTED.json").write_text(json.dumps(
                     {"reason": "non-finite network parameters", "decisions": n}))
                 return False
-        for mark in range((last // self.every + 1) * self.every, n + 1, self.every):
+        marks = set(range((last // self.every + 1) * self.every, n + 1, self.every))
+        marks |= {m for m in self.extra if last < m <= n}
+        for mark in sorted(marks):
             self.model.save(self.directory / f"{self.prefix}_{mark}_decisions")
             if hasattr(self.model, "cf_stats"):
                 (self.directory / f"{self.prefix}_{mark}_cf_stats.json").write_text(json.dumps(self.model.cf_stats))
@@ -247,6 +258,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--run-name", required=True)
     parser.add_argument("--log-root", type=Path, default=Path("logs/t1"))
     parser.add_argument("--checkpoint-freq", type=int, default=5_000)
+    parser.add_argument("--extra-checkpoints", default="", help="comma-separated further marks, e.g. 2000")
     parser.add_argument("--learning-starts", type=int, default=None, help="smoke tests only")
     parser.add_argument("--net-arch", default=None, help="smoke tests only, e.g. 16,16")
     parser.add_argument("--cf-warmup", type=int, default=None, help="smoke tests only: M1 warm-up decisions")
@@ -319,7 +331,8 @@ def main(argv: list[str] | None = None) -> None:
     model.learn(
         total_timesteps=args.steps,
         callback=[EpisodeLog(log_dir / "episodes.jsonl", log_dir / "decisions.jsonl"),
-                  Checkpoint(args.checkpoint_freq, log_dir / "checkpoints", args.method, log_dir)],
+                  Checkpoint(args.checkpoint_freq, log_dir / "checkpoints", args.method, log_dir,
+                             tuple(int(x) for x in args.extra_checkpoints.split(",") if x))],
     )
     if (log_dir / "ABORTED.json").exists():
         raise SystemExit(f"training stopped: {(log_dir / 'ABORTED.json').read_text()}")

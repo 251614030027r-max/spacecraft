@@ -15,8 +15,12 @@ directories (kappa 0.7 and 1.0, same G* version) and the frozen Pure MPC evidenc
    kind (first / keep / later / earlier / new plan / descent / no plan), Q(later 15 s) - Q(keep)
    and Q(earlier 15 s) - Q(keep) with a live plan; and the in-training audits (Q - G by state
    group on the replay MC labels, keep-band Q spread) per 1k window;
-4. M2: gate open rate, closing reasons, CF gradient share, real-vs-alternative tau difference,
-   CPU per decision of both runs.
+4. M2: gate open rate, closing reasons, per counterfactual kind (tau kinds, ``entry_speed``)
+   the candidate / physically distinct / gate-valid counts, CF gradient share, real-vs-alternative
+   tau difference, CPU per decision of both runs.
+
+Curve 2 also carries the entry speed (interface v4): requested, applied by new plans, requested
+without effect (kept plan).
 
 Descriptive only: no number here is a gate unless the run order says so.
 
@@ -85,6 +89,7 @@ def _kind(step: dict) -> str:
 
 def action_stats(rows: dict[int, dict]) -> dict:
     first_req, first_eff, kinds, triggers = [], [], Counter(), Counter()
+    v_requested, v_applied, v_requested_kept = [], [], []
     kappa_in, kappa_out, per_episode = [], [], []
     for r in rows.values():
         log = r.get("decision_log", [])
@@ -97,6 +102,9 @@ def action_stats(rows: dict[int, dict]) -> dict:
             if s.get("trigger"):
                 triggers[s["trigger"]] += 1
             (kappa_in if s.get("descent") else kappa_out).append(s["kappa"])
+            if s.get("entry_speed_request_m_s") is not None:
+                v_requested.append(s["entry_speed_request_m_s"])
+                (v_applied if s.get("entry_speed_applied") else v_requested_kept).append(s["entry_speed_request_m_s"])
         per_episode.append((r.get("kappa_mean", np.nan), r["delta_v_m_s"]))
     plan_decisions = sum(kinds[k] for k in ("keep", "later", "earlier"))
     k = np.asarray(per_episode, dtype=float)
@@ -109,6 +117,10 @@ def action_stats(rows: dict[int, dict]) -> dict:
         "new_plans_by_trigger": dict(triggers),
         "deviation_replans_per_episode": triggers.get("deviation", 0) / max(len(rows), 1),
         "kappa_out_of_descent": _quantiles(kappa_out), "kappa_in_descent": _quantiles(kappa_in),
+        "entry_speed_requested": _quantiles(v_requested),
+        "entry_speed_applied_new_plans": _quantiles(v_applied),
+        "entry_speed_requested_without_effect": _quantiles(v_requested_kept),
+        "entry_speed_applied_share_of_decisions": len(v_applied) / max(len(v_requested), 1),
         "corr_episode_kappa_delta_v": float(np.corrcoef(k[:, 0], k[:, 1])[0, 1])
         if len(k) > 2 and np.std(k[:, 0]) > 0 else None,
     }
@@ -162,7 +174,11 @@ def training_stats(run: Path) -> dict:
     kappa = defaultdict(list)
     cf = defaultdict(Counter)
     tau_diff = defaultdict(list)
+    cf_kind = defaultdict(lambda: defaultdict(Counter))
+    v_applied = defaultdict(list)
     for d in decisions:
+        if d.get("v_applied") and d.get("v_req") is not None:
+            v_applied[int(d["t"] // 1000) * 1000].append(d["v_req"])
         w = int(d["t"] // 1000) * 1000
         by[w][d.get("req") or "unknown"] += 1
         if d.get("trig"):
@@ -172,11 +188,26 @@ def training_stats(run: Path) -> dict:
         if "cf" in d:
             cf[w]["decisions"] += 1
             cf[w]["open"] += int(d["cf"]["w"])
+            k = cf_kind[w][d["cf"]["kind"]]
+            k["candidate"] += int(d["cf"].get("tau_eff_alt") is not None or d["cf"].get("v_plan_alt") is not None)
+            k["physically_distinct"] += int(d["cf"].get("alt_status") is not None and not any(
+                r.startswith(("same_effective_tau", "same_entry_speed")) for r in d["cf"]["reasons"]))
+            k["gate_valid"] += int(d["cf"]["w"])
+            k["decisions"] += 1
             for reason in d["cf"]["reasons"]:
                 cf[w][reason.split(":")[0]] += 1
             if d["cf"]["w"] and d["cf"].get("tau_eff_alt") is not None:
                 tau_diff[w].append(abs(float(d["cf"]["tau_eff_alt"]) - float(d["tau_eff"])))
-    out["behaviour_per_1k"] = {w: {**c, "kappa_mean": float(np.mean(kappa[w]))} for w, c in sorted(by.items())}
+    out["behaviour_per_1k"] = {w: {**c, "kappa_mean": float(np.mean(kappa[w])),
+                                   "entry_speed_applied": _quantiles(v_applied.get(w, []))}
+                               for w, c in sorted(by.items())}
+    if cf_kind:
+        out["cf_by_kind_per_1k"] = {w: {k: dict(c) for k, c in kinds.items()} for w, kinds in sorted(cf_kind.items())}
+        total = defaultdict(Counter)
+        for kinds in cf_kind.values():
+            for k, c in kinds.items():
+                total[k].update(c)
+        out["cf_by_kind_total"] = {k: dict(c) for k, c in total.items()}
     if cf:
         out["cf_gate_per_1k"] = {w: {**c, "open_rate": c["open"] / c["decisions"],
                                      "mean_abs_tau_eff_alt_minus_real": float(np.mean(tau_diff[w])) if tau_diff[w] else None}
@@ -244,7 +275,7 @@ def readout(m0: Path, m2: Path, rules: dict[str, Path], pure: Path | None) -> di
         result["curve2"][method]["training"] = {k: training.get(k) for k in ("behaviour_per_1k", "behaviour_outcomes_per_1k")}
         result["curve3"][method]["training"] = {k: training.get(k) for k in ("critic_audit_per_1k", "grad_probe_per_1k")}
         result["curve4"][method] = {k: training.get(k) for k in (
-            "cf_gate_per_1k", "cf_grad_share", "cf_valid_fraction_in_batches", "wall_s_per_decision", "heartbeat")}
+            "cf_gate_per_1k", "cf_by_kind_per_1k", "cf_by_kind_total", "cf_grad_share", "cf_valid_fraction_in_batches", "wall_s_per_decision", "heartbeat")}
     for name, ref in references.items():
         result["curve2"][f"reference_{name}"] = action_stats(ref) if name != "pure" else None
     return result

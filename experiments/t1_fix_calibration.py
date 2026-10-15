@@ -1,17 +1,20 @@
-"""Pre-registered one-shot weight calibration of the critic fixes (task book 2026-10-15, sec. D).
+"""Pre-registered one-shot weight calibration of the critic fixes (revision 2, 2026-10-15).
 
 Reads ``fix_stats.json`` of a 2k-decision M0 calibration run trained with lam_mc = lam_eq = 0
-and ``--grad-probe-every`` > 0 (the auxiliary terms only measured, never applied). For each term,
-over the probes of decisions [1000, 2000]:
+and ``--grad-probe-every`` > 0 (the auxiliary terms only measured, never applied). Over the
+probes of decisions [1000, 2000]:
 
-    ratio = ||g_aux|| / ||g_TD||   (unweighted, critic parameters)
+* lam_eq = 0.1, fixed (the keep-band equivalence is exact where its mask is 1);
+* lam_mc = the largest of {0.3, 0.1, 0.03} with lam * median(||g_mc|| / ||g_TD||) <= 0.3, the
+  median taken over probes whose batch held MC labels; never below the floor 0.03 (a large
+  early TD gradient does not switch the long-run return anchor off; Huber(10) bounds each
+  label's gradient), and 0.03 when too few labelled probes (< 30) exist;
+* protection: if median(||lam_mc g_mc + lam_eq g_eq|| / ||g_TD||) > 0.5, lam_mc steps down one
+  candidate (not below 0.03);
+* non-finite or zero gradients: a code defect, reported (``defect``), no value is frozen.
 
-and lam is the largest of {0.03, 0.1, 0.3} with lam * median(ratio) in [0.1, 0.3]. If none fits:
-too strong (0.03 * median > 0.3) -> the safe smaller value 0.2 / median; too weak
-(0.3 * median < 0.1) -> 0 (an auxiliary term is not forced on). Too few probes (< 30), too few
-MC labels (mean MC mask fraction < 0.02) or non-finite gradients -> 0. The combined share
-median(||lam_mc g_mc + lam_eq g_eq|| / ||g_TD||) is checked against 0.4; above it both lams are
-scaled down by the same factor. Performance is never read.
+Revision 1 (science d8b185f) could set lam_mc to 0 when the term was weak, or to 0.2/median
+when it was strong; revision 2 replaces it. Performance is never read.
 
     python -B -m experiments.t1_fix_calibration logs/t1/t1_cal_m0_s0/fix_stats.json --output calibration.json
 """
@@ -24,61 +27,63 @@ from pathlib import Path
 
 import numpy as np
 
-CANDIDATES = (0.3, 0.1, 0.03)
-BAND = (0.1, 0.3)
 WINDOW = (1_000, 2_000)
-COMBINED_MAX = 0.4
 MIN_PROBES = 30
-MIN_MC_FRACTION = 0.02
-
-
-def choose(median: float) -> tuple[float, str]:
-    for lam in CANDIDATES:
-        if BAND[0] <= lam * median <= BAND[1]:
-            return lam, "largest candidate in band"
-    if CANDIDATES[-1] * median > BAND[1]:
-        return float(f"{0.2 / median:.2g}"), "too strong at 0.03: safe smaller value 0.2/median"
-    return 0.0, "too weak at 0.3: not forced on"
+LAMBDA_EQ = 0.1
+MC_CANDIDATES = (0.3, 0.1, 0.03)
+MC_SHARE_MAX = 0.3
+MC_FLOOR = 0.03
+COMBINED_SHARE_MAX = 0.5
 
 
 def calibrate(stats: dict) -> dict:
+    """Revision 2 (module docstring)."""
+
     d = np.asarray(stats["probe_decisions"], dtype=float)
     sel = (d >= WINDOW[0]) & (d <= WINDOW[1])
     g_td = np.asarray(stats["g_td"], dtype=float)[sel]
     g_mc = np.asarray(stats["g_mc"], dtype=float)[sel]
     g_eq = np.asarray(stats["g_eq"], dtype=float)[sel]
-    dot = np.asarray(stats.get("g_mc_dot_eq", [np.nan] * len(d)), dtype=float)[sel]
+    dot = np.asarray(stats.get("g_mc_dot_eq", [0.0] * len(d)), dtype=float)[sel]
     mc_fraction = np.asarray(stats["mc_fraction"], dtype=float)[sel]
     eq_fraction = np.asarray(stats["eq_fraction"], dtype=float)[sel]
-    out: dict = {"window_decisions": WINDOW, "probes": int(sel.sum()),
+    out: dict = {"revision": 2, "window_decisions": WINDOW, "probes": int(sel.sum()),
                  "mc_fraction_mean": float(mc_fraction.mean()) if sel.any() else None,
                  "eq_fraction_mean": float(eq_fraction.mean()) if sel.any() else None,
                  "g_td_median": float(np.median(g_td)) if sel.any() else None}
-    finite = bool(np.all(np.isfinite(np.concatenate([g_td, g_mc, g_eq])))) and bool(np.all(g_td > 0))
-    lams = {}
-    for name, g, fraction in (("mc", g_mc, mc_fraction), ("eq", g_eq, eq_fraction)):
-        ratio = g / g_td if sel.any() else np.array([])
-        median = float(np.median(ratio)) if ratio.size else float("nan")
-        entry = {"ratio_median": median,
-                 "ratio_p10_p90": [float(np.percentile(ratio, 10)), float(np.percentile(ratio, 90))] if ratio.size else None}
-        if out["probes"] < MIN_PROBES:
-            lam, why = 0.0, f"too few probes ({out['probes']} < {MIN_PROBES})"
-        elif not finite:
-            lam, why = 0.0, "non-finite or zero gradients"
-        elif float(fraction.mean()) < MIN_MC_FRACTION:
-            lam, why = 0.0, f"too few labelled samples (mean mask fraction {fraction.mean():.4f})"
-        else:
-            lam, why = choose(median)
-        entry.update(lam=lam, reason=why, weighted_share_median=lam * median if np.isfinite(median) else None)
-        out[name] = entry
-        lams[name] = lam
-    combined = np.sqrt(np.maximum(lams["mc"] ** 2 * g_mc ** 2 + lams["eq"] ** 2 * g_eq ** 2
-                                  + 2 * lams["mc"] * lams["eq"] * np.nan_to_num(dot), 0.0)) / g_td
-    share = float(np.median(combined)) if combined.size else 0.0
-    scale = 1.0 if share <= COMBINED_MAX or share == 0.0 else COMBINED_MAX / share
+    finite = sel.any() and bool(np.all(np.isfinite(np.concatenate([g_td, g_mc, g_eq, dot])))) and bool(np.all(g_td > 0))
+    if not finite:
+        out["defect"] = "no probes in the window, or non-finite / zero gradients: report, do not train"
+        return out
+    labelled = mc_fraction > 0.0
+    ratio_mc = g_mc[labelled] / g_td[labelled]
+    ratio_eq = g_eq / g_td
+    out["mc"] = {"labelled_probes": int(labelled.sum()),
+                 "ratio_median": float(np.median(ratio_mc)) if ratio_mc.size else None,
+                 "ratio_p10_p90": [float(np.percentile(ratio_mc, 10)), float(np.percentile(ratio_mc, 90))]
+                 if ratio_mc.size else None}
+    out["eq"] = {"ratio_median": float(np.median(ratio_eq)),
+                 "ratio_p10_p90": [float(np.percentile(ratio_eq, 10)), float(np.percentile(ratio_eq, 90))]}
+    if ratio_mc.size < MIN_PROBES:
+        lam_mc, why = MC_FLOOR, f"too few labelled probes ({ratio_mc.size} < {MIN_PROBES}): floor"
+    else:
+        median = float(np.median(ratio_mc))
+        fits = [lam for lam in MC_CANDIDATES if lam * median <= MC_SHARE_MAX]
+        lam_mc, why = (fits[0], "largest candidate with share <= 0.3") if fits else (MC_FLOOR, "floor (0.03 exceeds 0.3)")
+
+    def combined(lam: float) -> float:
+        value = np.sqrt(np.maximum(lam ** 2 * g_mc ** 2 + LAMBDA_EQ ** 2 * g_eq ** 2 + 2 * lam * LAMBDA_EQ * dot, 0.0)) / g_td
+        return float(np.median(value))
+
+    share = combined(lam_mc)
+    if share > COMBINED_SHARE_MAX and lam_mc > MC_FLOOR:
+        lam_mc = MC_CANDIDATES[MC_CANDIDATES.index(lam_mc) + 1]
+        why += f"; combined share {share:.3f} > {COMBINED_SHARE_MAX}: one step down"
+        share = combined(lam_mc)
+    out["mc"].update(lam=lam_mc, reason=why)
+    out["eq"].update(lam=LAMBDA_EQ, reason="fixed")
     out["combined_share_median"] = share
-    out["combined_scale"] = scale
-    out["frozen"] = {"lambda_mc": float(f"{lams['mc'] * scale:.3g}"), "lambda_eq": float(f"{lams['eq'] * scale:.3g}")}
+    out["frozen"] = {"lambda_mc": lam_mc, "lambda_eq": LAMBDA_EQ}
     return out
 
 

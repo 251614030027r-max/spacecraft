@@ -26,12 +26,13 @@ when that episode ends normally (success / unsafe / timeout; a numerical-failure
 leaves m = 0), used only while the transition is among the last ``mc_window`` collected (an
 off-policy, entropy-free auxiliary label, not the soft Q). e = 1 when the state has a live
 plan (``remaining_160s`` > 0, not descending): there |a0| <= 0.5 requests exactly the remaining time, so
-every such a0 with the same a1 yields the same transition and next observation (the soft Q
-is equal). With lam_mc = lam_eq = 0 and the probe off, no extra computation or random draw
+every such a0 with the same remaining action components (kappa and, interface v4, the entry
+speed, which are never varied here) yields the same transition and next observation (the soft
+Q is equal). With lam_mc = lam_eq = 0 and the probe off, no extra computation or random draw
 happens: the update is the previous one bitwise.
 
 The replay buffer stores, per transition, the cached counterfactual
-``(a~[2], r^[1], z^'[22], w[1])`` written from ``info["counterfactual"]``; no
+``(a~[act_dim], r^[1], z^'[obs_dim], w[1])`` written from ``info["counterfactual"]``; no
 G* or MPC call is made on replay batches.
 """
 

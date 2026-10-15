@@ -207,14 +207,14 @@ def env():
 
 
 def test_tracking_errors_zero_without_plan_and_appended(env):
-    assert OBSERVATION_NAMES[-2:] == ("track_position_error_1m", "track_velocity_error_0p3m_s")
+    assert OBSERVATION_NAMES[22:24] == ("track_position_error_1m", "track_velocity_error_0p3m_s")
     obs, _ = env.reset()
-    assert obs.shape == (24,) and obs[-1] == 0.0 and obs[-2] == 0.0
+    assert obs.shape == (25,) and obs[22] == 0.0 and obs[23] == 0.0
     obs, _, _, _, info = env.step(np.array([0.0, 0.0]))
     x = info["execution"]
     assert x["request_kind"] == "no_plan" and x["new_plan_trigger"] == "no_plan"
     assert x["deviation_before_m"] == 0.0 and x["deadline"] == "none"
-    assert np.isfinite(obs[-2:]).all() and 0.0 <= obs[-2] < 1.0  # flying a fresh plan
+    assert np.isfinite(obs[22:24]).all() and 0.0 <= obs[22] < 1.0  # flying a fresh plan
     _, _, _, _, info = env.step(np.array([0.45, 0.0]))
     assert info["execution"]["request_kind"] == "keep" and info["execution"]["new_plan_trigger"] is None
     _, _, _, _, info = env.step(np.array([1.0, 0.0]))
@@ -269,19 +269,139 @@ def test_earliest_request_search_is_unaffected_by_the_deadline(env):
     assert (g.last_status, g.tau_effective_s) == first
 
 
-def test_calibration_rule():
-    from experiments.t1_fix_calibration import calibrate, choose
+def test_calibration_rule_revision_2():
+    from experiments.t1_fix_calibration import calibrate
 
-    assert choose(1.0) == (0.3, "largest candidate in band")
-    assert choose(2.0)[0] == 0.1 and choose(5.0)[0] == 0.03
-    assert choose(100.0)[0] == pytest.approx(0.002)
-    assert choose(0.1)[0] == 0.0
     n = 200
-    stats = {"probe_decisions": list(np.linspace(0, 2500, n)), "g_td": [1.0] * n, "g_mc": [1.0] * n,
-             "g_eq": [2.0] * n, "g_mc_dot_eq": [0.0] * n, "mc_fraction": [0.3] * n, "eq_fraction": [0.5] * n}
-    out = calibrate(stats)
-    assert out["mc"]["lam"] == 0.3 and out["eq"]["lam"] == 0.1
-    assert out["combined_share_median"] == pytest.approx(np.sqrt(0.09 + 0.04))
-    assert out["frozen"] == {"lambda_mc": 0.3, "lambda_eq": 0.1}
-    stats["mc_fraction"] = [0.0] * n
-    assert calibrate(stats)["mc"]["lam"] == 0.0
+
+    def stats(mc, eq=1.0, fraction=0.3):
+        return {"probe_decisions": list(np.linspace(0, 2500, n)), "g_td": [1.0] * n, "g_mc": [mc] * n,
+                "g_eq": [eq] * n, "g_mc_dot_eq": [0.0] * n, "mc_fraction": [fraction] * n, "eq_fraction": [0.5] * n}
+
+    assert calibrate(stats(1.0))["frozen"] == {"lambda_mc": 0.3, "lambda_eq": 0.1}
+    assert calibrate(stats(2.0))["frozen"]["lambda_mc"] == 0.1
+    assert calibrate(stats(100.0))["frozen"]["lambda_mc"] == 0.03   # strong: floor, never 0
+    assert calibrate(stats(0.01))["frozen"]["lambda_mc"] == 0.3     # weak: capped share, at most 0.3
+    assert calibrate(stats(1.0, fraction=0.0))["frozen"]["lambda_mc"] == 0.03  # no labels yet: floor
+    out = calibrate(stats(1.0, eq=4.0))  # combined sqrt(0.09 + 0.16) = 0.5: not above the limit
+    assert out["frozen"]["lambda_mc"] == 0.3 and out["combined_share_median"] == pytest.approx(0.5)
+    out = calibrate(stats(1.0, eq=5.0))  # combined > 0.5: one step down
+    assert out["frozen"]["lambda_mc"] == 0.1
+    bad = stats(1.0)
+    bad["g_td"] = [float("nan")] * n
+    assert "defect" in calibrate(bad) and "frozen" not in calibrate(bad)
+
+
+# --------------------------------------------------------------------------- interface v4 (entry speed)
+def test_entry_speed_is_applied_only_to_new_plans_and_observed(env):
+    obs, _ = env.reset()
+    assert OBSERVATION_NAMES[24] == "plan_entry_speed" and obs[24] == 0.0
+    assert env.entry_speed_of(np.array([0.0, 0.0])) == 0.06 and env.entry_speed_of(np.array([0, 0, 0.0])) == 0.06
+    obs, _, _, _, info = env.step(np.array([0.0, 0.0, 1.0]))
+    x = info["execution"]
+    assert x["entry_speed_applied"] and x["entry_speed_request_m_s"] == pytest.approx(0.10)
+    assert x["entry_speed_plan_m_s"] == pytest.approx(0.10) and obs[24] == pytest.approx(1.0)
+    plan = env.generator.plan
+    obs, _, _, _, info = env.step(np.array([0.2, 0.0, -1.0]))  # keep band: the plan is kept
+    x = info["execution"]
+    assert x["plan_status"] == "kept" and not x["entry_speed_applied"]
+    assert env.generator.plan is plan and x["entry_speed_plan_m_s"] == pytest.approx(0.10)
+    assert obs[24] == pytest.approx(1.0)
+
+
+def test_planner_terminal_velocity_carries_the_entry_speed(env):
+    from env.t1_gstar import _rotation_at, free_body_rotations
+
+    env.reset()
+    e, g = env.env, env.generator
+    target, chaser = e.target_state, e.chaser_state
+    q0 = chaser.position - target.position
+    v0 = chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
+    tau = 100.0
+    history = free_body_rotations(target.rotation, target.omega, e.target_parameters.inertia, tau + 1.0)
+    rotation, omega = _rotation_at(history, tau)
+    for speed in (0.02, 0.06, 0.10):
+        r = g.planner.solve(q0, v0, tau, history, None, entry_speed_m_s=speed)
+        assert r["feasible"] and r["entry_speed_m_s"] == speed
+        entry = r["q"][-1]
+        inward = -(r["v"][-1] - np.cross(omega, entry)) @ (entry / np.linalg.norm(entry))
+        assert inward == pytest.approx(speed, abs=1e-5)
+    default = g.planner.solve(q0, v0, tau, history, None)
+    assert default["entry_speed_m_s"] == 0.06
+
+
+def test_zero_entry_action_reproduces_the_two_dimensional_action_bitwise():
+    a, b = T1GStarEnv(openings=[1_000_000]), T1GStarEnv(openings=[1_000_000])
+    a.reset(); b.reset()
+    for two in (np.array([-0.4, 0.2]), np.array([0.1, 0.2]), np.array([0.8, -0.3])):
+        oa, ra, *_ = a.step(two)
+        ob, rb, *_ = b.step(np.array([*two, 0.0]))
+        assert np.array_equal(oa, ob) and ra == rb
+
+
+def test_keep_band_equivalence_holds_with_an_entry_speed_component():
+    a, b = T1GStarEnv(openings=[1_000_000]), T1GStarEnv(openings=[1_000_000])
+    for e in (a, b):
+        e.reset()
+        e.step(np.array([0.0, 0.2, 0.5]))
+    oa, ra, *_ = a.step(np.array([0.0, 0.2, -0.7]))
+    ob, rb, *_ = b.step(np.array([0.35, 0.2, -0.7]))
+    assert np.array_equal(oa, ob) and ra == rb
+
+
+def test_entry_speed_counterfactual_alternative_and_gate():
+    from types import SimpleNamespace
+
+    from env.t1_counterfactual import CounterfactualPredictor
+
+    predictor = CounterfactualPredictor()
+    real = T1GStarEnv(openings=[1_000_000])
+    real.reset()  # episode 1, decision 0: odd parity -> tau alternative
+    p_new = SimpleNamespace(extra={"new_plan": True, "entry_speed_plan_m_s": 0.08}, tau_effective_s=50.0)
+    alt, kind = predictor.alternative(real, np.array([0.0, 0.1, 0.5]), p_new)
+    assert kind != "entry_speed"
+    real.episode = 2  # even parity
+    alt, kind = predictor.alternative(real, np.array([0.0, 0.1, 0.5]), p_new)
+    assert kind == "entry_speed" and np.allclose(alt, [0.0, 0.1, -0.5])
+    alt, _ = predictor.alternative(real, np.array([0.0, 0.1, -0.2]), p_new)
+    assert np.allclose(alt, [0.0, 0.1, 0.8])
+    p_kept = SimpleNamespace(extra={"new_plan": False}, tau_effective_s=50.0)
+    assert predictor.alternative(real, np.array([0.0, 0.1, 0.5]), p_kept)[1] != "entry_speed"
+
+    def pred(v, new=True):
+        return SimpleNamespace(extra={"new_plan": new, "entry_speed_plan_m_s": v}, tau_effective_s=50.0,
+                               plan_status="optimal", solved=True, solve_slack=0.0, window_mode_switch=False,
+                               window_violation=False, window_violation_kinds=[], saturation=0.0)
+
+    errors = {"e_r": 0.0, "e_p": 0.0, "e_o": 0.0}
+    w, reasons = predictor.gate(real, pred(0.08), pred(0.04), errors, "entry_speed")
+    assert w == 1 and reasons == []  # same tau, different entry speed: physically distinct
+    w, reasons = predictor.gate(real, pred(0.08), pred(0.07), errors, "entry_speed")
+    assert w == 0 and "same_entry_speed" in reasons
+    w, reasons = predictor.gate(real, pred(0.08), pred(0.04), errors, "keep_vs_shift")
+    assert "same_effective_tau" in reasons
+
+
+def test_shadow_predicts_the_entry_speed_and_leaves_the_real_branch_alone():
+    from env.t1_counterfactual import CounterfactualPredictor, T1CounterfactualEnv
+
+    plain = T1GStarEnv(openings=[1_000_000])
+    cf = T1CounterfactualEnv(openings=[1_000_000])
+    plain.reset(); cf.reset()
+    for action in (np.array([0.0, 0.1, 1.0]), np.array([0.0, 0.1, -1.0]), np.array([0.7, 0.1, -1.0])):
+        o1, r1, *_ = plain.step(action)
+        o2, r2, _, _, info = cf.step(action)
+        assert np.array_equal(o1, o2) and r1 == r2
+        assert info["counterfactual"]["entry_speed_real_plan_m_s"] == plain._plan_entry_speed()
+    predictor = CounterfactualPredictor()
+    real = T1GStarEnv(openings=[1_000_001])
+    real.reset()
+    action = np.array([0.0, 0.0, -1.0])
+    predictor.sync(real)
+    p = predictor.predict(action)
+    predictor.sync(real)
+    shadow = predictor.closed_loop(action)
+    obs, reward, *_ = real.step(action)
+    assert np.array_equal(shadow["observation"], obs) and shadow["reward"] == reward
+    assert p.extra["new_plan"] and p.extra["entry_speed_plan_m_s"] == pytest.approx(0.02)
+    assert p.observation[24] == pytest.approx(-1.0) and obs[24] == pytest.approx(-1.0)

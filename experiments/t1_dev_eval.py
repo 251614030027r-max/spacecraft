@@ -13,6 +13,7 @@ was used (first tau request, kappa, new plans / keeps / slips / holds).
         --openings eval/t1/dev_openings.json --output-dir eval/t1/dev/m0_s0/5000
     python -B -m experiments.t1_dev_eval --policy rule:earliest --openings ... --output-dir eval/t1/dev/rule
     python -B -m experiments.t1_dev_eval --policy rule:earliest_k10 --openings ... --output-dir eval/t1/dev/rule_k10
+    python -B -m experiments.t1_dev_eval --policy rule:earliest_k1.0_v0.10 --openings ... --output-dir eval/t1/dev/rule_k10_v10
     python -B -m experiments.t1_dev_eval --watch logs/t1/t1_m1_s0 --openings experiments/t1_dev_openings_295000.json
 
 ``--watch RUN_DIR`` evaluates each frozen checkpoint (5k/10k/15k/20k decisions) of a
@@ -31,21 +32,35 @@ import numpy as np
 from env.t1_gym import T1GStarEnv
 
 KAPPA_RULE = 0.7
-#: fixed rules: earliest feasible arrival then keep, at a fixed kappa
-RULES = {"rule:earliest": 0.7, "rule:earliest_k07": 0.7, "rule:earliest_k10": 1.0}
+ENTRY_SPEED_RULE = 0.06
+#: fixed rules: earliest feasible arrival then keep, at a fixed kappa (and entry speed, m/s);
+#: any ``rule:earliest_k<kappa>_v<entry speed>`` (e.g. rule:earliest_k1.0_v0.10) is parsed too
+RULES = {"rule:earliest": (0.7, ENTRY_SPEED_RULE), "rule:earliest_k07": (0.7, ENTRY_SPEED_RULE),
+         "rule:earliest_k10": (1.0, ENTRY_SPEED_RULE)}
 
 
 class Rule:
-    def __init__(self, kappa: float) -> None:
-        self.kappa = float(kappa)
+    def __init__(self, kappa: float, entry_speed_m_s: float = ENTRY_SPEED_RULE) -> None:
+        self.kappa, self.entry_speed_m_s = float(kappa), float(entry_speed_m_s)
 
 
-def rule_action(env: T1GStarEnv, kappa: float = KAPPA_RULE) -> np.ndarray:
-    """Earliest feasible arrival, then keep the plan; kappa 0.7 (the R1 rv:0 row in gym terms)."""
+def parse_rule(policy_arg: str) -> Rule | None:
+    if policy_arg in RULES:
+        return Rule(*RULES[policy_arg])
+    if policy_arg.startswith("rule:earliest_k") and "_v" in policy_arg:
+        kappa, speed = policy_arg[len("rule:earliest_k"):].split("_v")
+        return Rule(float(kappa), float(speed))
+    return None
+
+
+def rule_action(env: T1GStarEnv, kappa: float = KAPPA_RULE, entry_speed_m_s: float = ENTRY_SPEED_RULE) -> np.ndarray:
+    """Earliest feasible arrival, then keep the plan; kappa 0.7 (the R1 rv:0 row in gym terms) and
+    G*'s nominal entry speed 0.06 m/s unless given."""
 
     c = env.config
     a1 = 2.0 * (kappa - c.kappa_min) / (c.kappa_max - c.kappa_min) - 1.0
-    return np.array([-1.0 if env.generator.remaining_s(env.env) <= 0.0 else 0.0, a1])
+    a2 = (entry_speed_m_s - c.entry_speed_nominal_m_s) / c.entry_speed_span_m_s
+    return np.array([-1.0 if env.generator.remaining_s(env.env) <= 0.0 else 0.0, a1, a2])
 
 
 def critic_values(policy, env: T1GStarEnv, obs: np.ndarray, action: np.ndarray) -> dict | None:
@@ -60,10 +75,10 @@ def critic_values(policy, env: T1GStarEnv, obs: np.ndarray, action: np.ndarray) 
 
     actions = {"taken": np.asarray(action, dtype=np.float32)}
     if env.generator.remaining_s(env.env) > 0.0:
-        a1 = float(action[1])
-        actions |= {"keep": np.array([0.0, a1], np.float32),
-                    "earlier15": np.array([env.action_for_shift(-15.0), a1], np.float32),
-                    "later15": np.array([env.action_for_shift(15.0), a1], np.float32)}
+        rest = [float(v) for v in np.asarray(action).reshape(-1)[1:]]
+        actions |= {"keep": np.array([0.0, *rest], np.float32),
+                    "earlier15": np.array([env.action_for_shift(-15.0), *rest], np.float32),
+                    "later15": np.array([env.action_for_shift(15.0), *rest], np.float32)}
     with th.no_grad():
         o = th.as_tensor(np.repeat(obs[None].astype(np.float32), len(actions), axis=0))
         a = th.as_tensor(np.stack(list(actions.values())))
@@ -77,7 +92,8 @@ def run_episode(env: T1GStarEnv, opening: int, policy) -> dict:
     ret, k, log = 0.0, 0, []
     while True:
         if policy is None or isinstance(policy, Rule):
-            action = rule_action(env, KAPPA_RULE if policy is None else policy.kappa)
+            action = (rule_action(env) if policy is None
+                      else rule_action(env, policy.kappa, policy.entry_speed_m_s))
         else:
             action = np.asarray(policy.predict(obs, deterministic=True)[0])
         tau, kappa = env.intent(action)
@@ -89,7 +105,10 @@ def run_episode(env: T1GStarEnv, opening: int, policy) -> dict:
                     "tau_effective_s": x["tau_effective_s"], "request_kind": x.get("request_kind"),
                     "trigger": x.get("new_plan_trigger"), "deadline": x.get("deadline"),
                     "deviation_before_m": x.get("deviation_before_m"), "a": [float(v) for v in action],
-                    "descent": descent, "r": float(reward), "q": q})
+                    "descent": descent, "r": float(reward), "q": q,
+                    "entry_speed_request_m_s": x.get("entry_speed_request_m_s"),
+                    "entry_speed_applied": x.get("entry_speed_applied"),
+                    "entry_speed_plan_m_s": x.get("entry_speed_plan_m_s")})
         ret += gamma**k * reward
         k += 1
         if terminated or truncated:
@@ -106,11 +125,12 @@ def run_episode(env: T1GStarEnv, opening: int, policy) -> dict:
         **{f"req_{k}": sum(s["request_kind"] == k for s in log) for k in ("keep", "later", "earlier", "no_plan")},
         **{f"replan_{k}": sum(s["trigger"] == k for s in log) for k in ("no_plan", "deviation", "deadline", "request")},
         "deadline_clamped": sum(s["deadline"] == "clamped" for s in log),
+        "entry_speed_applied": [s["entry_speed_request_m_s"] for s in log if s.get("entry_speed_applied")],
         "decision_log": log,
     }
 
 
-CHECKPOINTS = (0, 2_000, 5_000, 10_000, 15_000, 20_000)
+CHECKPOINTS = (0, 2_000, 5_000, 10_000, 15_000, 20_000, 25_000, 30_000, 35_000, 40_000)
 
 
 def _write_row(output_dir: Path, opening: int, row: dict) -> None:
@@ -120,8 +140,9 @@ def _write_row(output_dir: Path, opening: int, row: dict) -> None:
 
 
 def _load_policy(policy_arg: str):
-    if policy_arg in RULES:
-        return Rule(RULES[policy_arg])
+    rule = parse_rule(policy_arg)
+    if rule is not None:
+        return rule
     from stable_baselines3 import SAC
 
     from train.t1_m1 import M1SAC
