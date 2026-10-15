@@ -1,5 +1,5 @@
 {
-  "phase": "STARTED_PENDING_MANIFEST_VERIFICATION",
+  "phase": "THREE_ARM_TRAINING_AND_EVAL_VERIFIED",
   "scientific_commit": "166244bd4d08713473e17354626f10e40b496e01",
   "arms": [
     {
@@ -30,5 +30,280 @@
       "shell_pid": 26208
     }
   ],
-  "utc": "2026-10-15T18:54:03.4642001Z"
+  "utc": "2026-10-15T18:54:03.4642001Z",
+  "real_processes": [
+    {
+      "pid": 3244,
+      "ppid": 26208,
+      "cmd": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "train.train_t1_option",
+        "--arm",
+        "ndelta",
+        "--steps",
+        "40000",
+        "--seed",
+        "0",
+        "--run-name",
+        "ndelta_s0",
+        "--log-root",
+        "logs/t1_l_option_20261015",
+        "--n-envs",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 4349952
+    },
+    {
+      "pid": 8340,
+      "ppid": 11904,
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "train.train_t1_option",
+        "--arm",
+        "n0",
+        "--steps",
+        "40000",
+        "--seed",
+        "0",
+        "--run-name",
+        "n0_s0",
+        "--log-root",
+        "logs/t1_l_option_20261015",
+        "--n-envs",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 721797120
+    },
+    {
+      "pid": 11904,
+      "ppid": 17684,
+      "cmd": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "train.train_t1_option",
+        "--arm",
+        "n0",
+        "--steps",
+        "40000",
+        "--seed",
+        "0",
+        "--run-name",
+        "n0_s0",
+        "--log-root",
+        "logs/t1_l_option_20261015",
+        "--n-envs",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 4337664
+    },
+    {
+      "pid": 16532,
+      "ppid": 3244,
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "train.train_t1_option",
+        "--arm",
+        "ndelta",
+        "--steps",
+        "40000",
+        "--seed",
+        "0",
+        "--run-name",
+        "ndelta_s0",
+        "--log-root",
+        "logs/t1_l_option_20261015",
+        "--n-envs",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 738615296
+    },
+    {
+      "pid": 25972,
+      "ppid": 26064,
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "train.train_t1_option",
+        "--arm",
+        "b2",
+        "--steps",
+        "40000",
+        "--seed",
+        "0",
+        "--run-name",
+        "b2_s0",
+        "--log-root",
+        "logs/t1_l_option_20261015",
+        "--n-envs",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 720973824
+    },
+    {
+      "pid": 26064,
+      "ppid": 24836,
+      "cmd": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "train.train_t1_option",
+        "--arm",
+        "b2",
+        "--steps",
+        "40000",
+        "--seed",
+        "0",
+        "--run-name",
+        "b2_s0",
+        "--log-root",
+        "logs/t1_l_option_20261015",
+        "--n-envs",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 4341760
+    }
+  ],
+  "manifest_verified": true,
+  "zero_checkpoints": true,
+  "status_published_commit": "c82991d8a36bade501a32f0b39af70973ae4c98b",
+  "watchers_pending_reason": "Prevent import-memory peak while v4M2 nearing40k; launch at next headroom release",
+  "watchers": [
+    {
+      "arm": "b2",
+      "shell_pid": 9596,
+      "utc": "2026-10-15T19:01:46.392101+00:00",
+      "priority": "Idle",
+      "script": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1-L三臂支线_20261015\\脚本\\job_watch_b2.ps1",
+      "command": "D:/py/DRL2/.venv/Scripts/python.exe -B -m experiments.t1_l_eval --watch logs/t1_l_option_20261015/b2_s0 --workers 1"
+    },
+    {
+      "arm": "n0",
+      "shell_pid": 828,
+      "utc": "2026-10-15T19:06:46.427034+00:00",
+      "priority": "Idle",
+      "script": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1-L三臂支线_20261015\\脚本\\job_watch_n0.ps1",
+      "command": "D:/py/DRL2/.venv/Scripts/python.exe -B -m experiments.t1_l_eval --watch logs/t1_l_option_20261015/n0_s0 --workers 1"
+    },
+    {
+      "arm": "ndelta",
+      "shell_pid": 18324,
+      "utc": "2026-10-15T19:08:46.461637+00:00",
+      "priority": "Idle",
+      "script": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1-L三臂支线_20261015\\脚本\\job_watch_ndelta.ps1",
+      "command": "D:/py/DRL2/.venv/Scripts/python.exe -B -m experiments.t1_l_eval --watch logs/t1_l_option_20261015/ndelta_s0 --workers 1"
+    }
+  ],
+  "watch_real_processes": [
+    {
+      "pid": 8676,
+      "ppid": 18240,
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t1_l_eval",
+        "--watch",
+        "logs/t1_l_option_20261015/b2_s0",
+        "--workers",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 702447616
+    },
+    {
+      "pid": 18240,
+      "ppid": 9596,
+      "cmd": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t1_l_eval",
+        "--watch",
+        "logs/t1_l_option_20261015/b2_s0",
+        "--workers",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 4395008
+    },
+    {
+      "pid": 13552,
+      "ppid": 828,
+      "cmd": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t1_l_eval",
+        "--watch",
+        "logs/t1_l_option_20261015/n0_s0",
+        "--workers",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 4399104
+    },
+    {
+      "pid": 20744,
+      "ppid": 13552,
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t1_l_eval",
+        "--watch",
+        "logs/t1_l_option_20261015/n0_s0",
+        "--workers",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 713203712
+    },
+    {
+      "pid": 5524,
+      "ppid": 6556,
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t1_l_eval",
+        "--watch",
+        "logs/t1_l_option_20261015/ndelta_s0",
+        "--workers",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 709459968
+    },
+    {
+      "pid": 6556,
+      "ppid": 18324,
+      "cmd": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t1_l_eval",
+        "--watch",
+        "logs/t1_l_option_20261015/ndelta_s0",
+        "--workers",
+        "1"
+      ],
+      "priority": 64,
+      "rss": 4411392
+    }
+  ],
+  "verified_utc": "2026-10-15T19:22:36.095633+00:00"
 }
