@@ -1,0 +1,8 @@
+{
+  "stage": "EXCEPTION",
+  "status": "STOPPED_ERROR",
+  "pid": 18200,
+  "utc": "2026-10-15T04:52:46.220383+00:00",
+  "error": "Admission C: value difference without deadline event; preserve all data and report",
+  "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1v4首轮配对训练_20261015\\脚本\\pipeline.py\", line 187, in main\n    lm,le,strong=admission();run_pair(lm,le,strong)\n                 ^^^^^^^^^^^\n  File \"C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1v4首轮配对训练_20261015\\脚本\\pipeline.py\", line 90, in admission\n    if any(not d['deadline'] for d in diffs):raise RuntimeError('Admission C: value difference without deadline event; preserve all data and report')\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: Admission C: value difference without deadline event; preserve all data and report\n"
+}
