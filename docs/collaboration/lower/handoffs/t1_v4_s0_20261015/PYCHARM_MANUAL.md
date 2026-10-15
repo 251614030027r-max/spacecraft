@@ -1,26 +1,18 @@
-> **校准重做已获用户授权并在独立隐藏PowerShell中运行；原1104决策中断数据已归档。正式M0/M2尚未启动，须等本次校准完成且无defect后再执行训练命令。**
+> **准入及校准已通过：λ_mc=0.03，λ_eq=0.1，校准2004决策正常结束。正式M0/M2尚未启动；直接从下面终端一、终端二开始，不要再次训练校准。**
 
 # T1 v4：PyCharm手动启动与滚动监视
 
 执行单第2.1版875c39c；科学提交1d432c8aa0e26e31354b8d43771e2a45c8d1caf5。已删除本轮自动编排脚本及定时跟进。正式M0/M2尚未启动，所有命令由用户在PyCharm现有PowerShell终端手动执行，不创建外部窗口。
 
-六套规则全部完成、96/96捕获；强固定参照κ1.0、入口速度0.02，回报82.469507625659、Δv1.300345495748704、时间116.1125秒。指定71测试、配置、同机C通过。2k校准由下层原生命令运行；先确认下节成功再开正式训练，绝不猜λ。
+六套规则全部完成、96/96捕获；强固定参照κ1.0、入口速度0.02，回报82.469507625659、Δv1.300345495748704、时间116.1125秒。指定71测试、配置、同机C通过。2k校准已正常完成，冻结λ如上。
 
-## 0. 校准完成后，先在任一终端执行
+## 0. 校准已完成，无需重做
 
-看到`t1v4_cal_m0_s0/finished.json`后才能执行（不存在就等，不重启校准）。
+401个有效MC探针；MC/TD梯度比中位3.7789574629，按预注册选择λ_mc=0.03，λ_eq固定0.1，组合占比0.1125878182。2004决策为6环境跨过2000的正常计数。原1104中断数据已归档，本次重做由用户明确授权。
+
+开训前可在任一终端执行防睡眠设置：
 
 ```powershell
-Set-Location D:\py\DRL2_T1
-$env:OMP_NUM_THREADS='1'; $env:MKL_NUM_THREADS='1'; $env:OPENBLAS_NUM_THREADS='1'
-$py='D:\py\DRL2\.venv\Scripts\python.exe'
-if (!(Test-Path 'logs\t1\t1v4_cal_m0_s0\finished.json')) { throw '2k校准尚未完成，不启动正式训练' }
-& $py -B -m experiments.t1_fix_calibration logs/t1/t1v4_cal_m0_s0/fix_stats.json --output logs/t1/_v4/calibration.json
-if ($LASTEXITCODE -ne 0) { throw '校准读出失败' }
-$c=Get-Content 'logs\t1\_v4\calibration.json' -Raw | ConvertFrom-Json
-if ($c.PSObject.Properties.Name -contains 'defect') { throw $c.defect }
-if ($c.frozen.lambda_mc -notin @(0.03,0.1,0.3) -or $c.frozen.lambda_eq -ne 0.1) { throw '冻结λ不符合第2.1版' }
-$c.frozen
 powercfg /change standby-timeout-ac 0
 powercfg /change hibernate-timeout-ac 0
 ```

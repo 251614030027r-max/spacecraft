@@ -16,3 +16,5 @@
 - [历史窗口交接](handoffs/window_handoff_20261009/WINDOW_HANDOFF_20261009.md)及[DRL2整理回执](handoffs/DRL2_return_20261010/README.md)：旧阶段资料。
 
 新交付放`lower/handoffs/<主题>_<日期>/`并更新本索引、CURRENT；大ZIP和模型可以留本机，登记SHA、路径和结构化审查证据。不得只提交最优检查点。
+
+T1 v4第2.1版准入和校准通过：λ_mc=0.03、λ_eq=0.1，正式训练由用户PyCharm手动启动；[准入回执](handoffs/t1_v4_s0_20261015/admission/ADMISSION.md)、[手动命令](handoffs/t1_v4_s0_20261015/admission/PyCharm手动启动.md)。
