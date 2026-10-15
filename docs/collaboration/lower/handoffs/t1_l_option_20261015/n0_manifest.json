@@ -1,0 +1,181 @@
+{
+  "experiment": "T1-L three-arm (plan 2026-10-15)",
+  "arm": "n0",
+  "arm_spec": {
+    "review_period_steps": 3,
+    "delta_lambda": 0.0,
+    "counterfactual": false
+  },
+  "started_utc": "2026-10-15T18:54:22.127669+00:00",
+  "argv": {
+    "arm": "n0",
+    "steps": 40000,
+    "seed": 0,
+    "run_name": "n0_s0",
+    "log_root": "logs\\t1_l_option_20261015",
+    "n_envs": 1,
+    "checkpoint_freq": 5000,
+    "extra_checkpoints": "2000",
+    "audit_every": 100,
+    "learning_starts": null,
+    "net_arch": null,
+    "delta_warmup": null,
+    "delta_calibration_steps": 500,
+    "allow_dirty": false
+  },
+  "task": {
+    "profile": "t1l",
+    "range_m": [
+      12.0,
+      18.0
+    ],
+    "initial": {
+      "tumble_rate_deg_s": [
+        2.1,
+        2.7
+      ],
+      "tumble_offset_from_z_deg": [
+        10.0,
+        20.0
+      ],
+      "range_m": [
+        12.0,
+        18.0
+      ],
+      "inertial_speed_max_m_s": 0.1,
+      "pointing_error_max_deg": 15.0,
+      "chaser_omega_component_max_rad_s": 0.005
+    }
+  },
+  "interface": "t1l-review-1",
+  "gstar_version": "0.6",
+  "observation": [
+    "range_10m",
+    "sin_latitude",
+    "cos_latitude",
+    "sin_phase",
+    "cos_phase",
+    "rho_perp_10m",
+    "port_los_180deg",
+    "port_latitude_90deg",
+    "omega_2p7deg_s",
+    "fov_margin_50deg",
+    "time_300s",
+    "radial_closing_0p3m_s",
+    "tangential_speed_0p5m_s",
+    "in_cone",
+    "mouth_region",
+    "has_plan",
+    "remaining_160s",
+    "tau_effective_160s",
+    "tau_request_160s",
+    "descent",
+    "hold",
+    "kappa",
+    "track_position_error_1m",
+    "track_velocity_error_0p3m_s",
+    "plan_entry_speed",
+    "review_due",
+    "review_gap_3",
+    "deadline_slack_160s",
+    "plan_error_x_1m",
+    "plan_error_y_1m",
+    "plan_error_z_1m",
+    "plan_velocity_error_x_0p3",
+    "plan_velocity_error_y_0p3",
+    "plan_velocity_error_z_0p3"
+  ],
+  "gym": {
+    "tau_max_s": 160.0,
+    "tau_shift_s": 30.0,
+    "keep_tolerance_s": 3.0,
+    "keep_band": 0.5,
+    "kappa_min": 0.3,
+    "kappa_max": 1.0,
+    "entry_speed_nominal_m_s": 0.06,
+    "entry_speed_span_m_s": 0.04,
+    "seed_base": 1000000
+  },
+  "sac": {
+    "learning_rate": 0.0001,
+    "buffer_size": 300000,
+    "learning_starts": 1000,
+    "batch_size": 256,
+    "tau": 0.001,
+    "gamma": 0.999,
+    "train_freq": 1,
+    "updates_per_transition": 4,
+    "ent_coef": 0.005,
+    "target_entropy": -2.0,
+    "target_update_interval": 1,
+    "net_arch": [
+      256,
+      256,
+      256
+    ],
+    "policy_kwargs": {
+      "net_arch": [
+        256,
+        256,
+        256
+      ],
+      "activation_fn": "ReLU"
+    }
+  },
+  "learner": {
+    "class": "train.t1_option_sac.OptionSAC",
+    "lambda_mc": 0.03,
+    "lambda_eq": 0.1,
+    "delta_lambda_fixed": 0.0,
+    "delta_target_share": null,
+    "delta_cap_share": null,
+    "delta_calibration_steps": 500,
+    "delta_probe_every_updates": 5,
+    "delta_min_probes": 30,
+    "delta_warmup_steps": 3000,
+    "delta_huber": 10.0,
+    "alpha": "0.005 x review gap (2 s steps closed by the review)",
+    "absolute_cf_lambda": 0.0
+  },
+  "training_openings": "1000000 + env_index * 100000 + episode index",
+  "n_envs": 1,
+  "gradient_steps_per_vector_step": 4,
+  "environment": {
+    "python": "3.12.6 (tags/v3.12.6:a4a2d2b, Sep  6 2024, 20:11:23) [MSC v.1940 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cpu_count": 12,
+    "packages": {
+      "numpy": "2.3.4",
+      "scipy": "1.16.3",
+      "cvxpy": "1.9.1",
+      "clarabel": "0.11.1",
+      "osqp": "1.1.3",
+      "torch": "2.9.1+cu128",
+      "stable-baselines3": "2.7.1",
+      "gymnasium": "1.2.2"
+    },
+    "torch_threads": 1,
+    "thread_env": {
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1"
+    },
+    "command": [
+      "D:\\py\\DRL2_T1_L\\train\\train_t1_option.py",
+      "--arm",
+      "n0",
+      "--steps",
+      "40000",
+      "--seed",
+      "0",
+      "--run-name",
+      "n0_s0",
+      "--log-root",
+      "logs/t1_l_option_20261015",
+      "--n-envs",
+      "1"
+    ]
+  },
+  "code_commit": "166244bd4d08713473e17354626f10e40b496e01",
+  "code_dirty": false
+}

@@ -1,0 +1,34 @@
+{
+  "phase": "STARTED_PENDING_MANIFEST_VERIFICATION",
+  "scientific_commit": "166244bd4d08713473e17354626f10e40b496e01",
+  "arms": [
+    {
+      "arm": "b2",
+      "script": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1-L三臂支线_20261015\\脚本\\job_train_b2.ps1",
+      "name": "train_b2",
+      "priority": "Idle",
+      "utc": "2026-10-15T18:54:03.3012857Z",
+      "command": "D:/py/DRL2/.venv/Scripts/python.exe -B -m train.train_t1_option --arm b2 --steps 40000 --seed 0 --run-name b2_s0 --log-root logs/t1_l_option_20261015 --n-envs 1",
+      "shell_pid": 24836
+    },
+    {
+      "arm": "n0",
+      "script": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1-L三臂支线_20261015\\脚本\\job_train_n0.ps1",
+      "name": "train_n0",
+      "priority": "Idle",
+      "utc": "2026-10-15T18:54:03.4058154Z",
+      "command": "D:/py/DRL2/.venv/Scripts/python.exe -B -m train.train_t1_option --arm n0 --steps 40000 --seed 0 --run-name n0_s0 --log-root logs/t1_l_option_20261015 --n-envs 1",
+      "shell_pid": 17684
+    },
+    {
+      "arm": "ndelta",
+      "script": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1-L三臂支线_20261015\\脚本\\job_train_ndelta.ps1",
+      "name": "train_ndelta",
+      "priority": "Idle",
+      "utc": "2026-10-15T18:54:03.4589952Z",
+      "command": "D:/py/DRL2/.venv/Scripts/python.exe -B -m train.train_t1_option --arm ndelta --steps 40000 --seed 0 --run-name ndelta_s0 --log-root logs/t1_l_option_20261015 --n-envs 1",
+      "shell_pid": 26208
+    }
+  ],
+  "utc": "2026-10-15T18:54:03.4642001Z"
+}
