@@ -182,7 +182,13 @@ def reload(run: Path) -> dict:
     from env.t1_gym import T1GStarEnv
     from train.t1_m1 import M1SAC
 
-    env = T1GStarEnv(openings=[9_100_000])
+    manifest = json.loads((run / "manifest.json").read_text()) if (run / "manifest.json").exists() else {}
+    if manifest.get("interface", "").startswith("t1l-review"):
+        from env.t1_task_review import T1LReviewEnv
+
+        env = T1LReviewEnv(openings=[9_100_000], review_period_steps=manifest["arm_spec"]["review_period_steps"])
+    else:
+        env = T1GStarEnv(openings=[9_100_000])
     obs, _ = env.reset()
     out = {}
     final = [run / "final.zip"] if (run / "final.zip").exists() else []
@@ -190,6 +196,10 @@ def reload(run: Path) -> dict:
         manifest = json.loads((run / "manifest.json").read_text()) if (run / "manifest.json").exists() else {}
         shared = manifest.get("algorithm_class") == "train.t1_m1.M1SAC"  # M0 and M2 since the 2026-10-15 fixes
         cls = M1SAC if shared or "m1" in path.name or (run / "cf_stats.json").exists() else SAC
+        if manifest.get("learner", {}).get("class") == "train.t1_option_sac.OptionSAC":  # T1-L arms
+            from train.t1_option_sac import OptionSAC
+
+            cls = OptionSAC
         model = cls.load(path, device="cpu")
         action, _ = model.predict(obs, deterministic=True)
         out[path.name] = {"action": np.asarray(action).round(4).tolist(), "finite": bool(np.all(np.isfinite(action)))}
