@@ -136,7 +136,10 @@ class EpisodeLog(BaseCallback):
                           "e": None if cf["errors_real"] is None else
                           {key: round(float(v), 6) for key, v in cf["errors_real"].items()},
                           "tau_eff_alt": cf["tau_effective_alt_s"], "alt_status": cf["alt_status"],
-                          "v_plan_real": cf.get("entry_speed_real_plan_m_s"), "v_plan_alt": cf.get("entry_speed_alt_plan_m_s")}
+                          "v_plan_real": cf.get("entry_speed_real_plan_m_s"), "v_plan_alt": cf.get("entry_speed_alt_plan_m_s"),
+                          **{key: None if cf.get(name) is None else round(float(cf[name]), 6) for key, name in (
+                              ("du0", "alt_first_wrench_diff"), ("du_max", "alt_controls_diff_max"),
+                              ("dr", "alt_reward_diff"), ("dz", "alt_observation_diff"))}}
         self._decisions.write(json.dumps(line, default=float) + "\n")
         self._k[e] = k + 1
         c = self._counts.setdefault(e, {})

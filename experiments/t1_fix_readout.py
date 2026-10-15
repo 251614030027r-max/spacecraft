@@ -52,7 +52,10 @@ def _jsonl(path: Path):
     with opener(path, "rt") as handle:
         for line in handle:
             if line.strip():
-                yield json.loads(line)
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:  # a half-written last line of a running job
+                    return
 
 
 def _rows_dir(directory: Path) -> dict[int, dict]:
@@ -175,6 +178,7 @@ def training_stats(run: Path) -> dict:
     cf = defaultdict(Counter)
     tau_diff = defaultdict(list)
     cf_kind = defaultdict(lambda: defaultdict(Counter))
+    cf_diff = defaultdict(lambda: defaultdict(list))
     v_applied = defaultdict(list)
     for d in decisions:
         if d.get("v_applied") and d.get("v_req") is not None:
@@ -194,6 +198,15 @@ def training_stats(run: Path) -> dict:
                 r.startswith(("same_effective_tau", "same_entry_speed")) for r in d["cf"]["reasons"]))
             k["gate_valid"] += int(d["cf"]["w"])
             k["decisions"] += 1
+            if d["cf"]["w"]:
+                for key in ("du0", "du_max", "dr", "dz"):
+                    if d["cf"].get(key) is not None:
+                        cf_diff[d["cf"]["kind"]][key].append(abs(d["cf"][key]))
+                if d["cf"].get("v_plan_real") is not None and d["cf"].get("v_plan_alt") is not None:
+                    cf_diff[d["cf"]["kind"]]["dv_in"].append(abs(d["cf"]["v_plan_alt"] - d["cf"]["v_plan_real"]))
+                if d["cf"].get("e"):
+                    for key in ("e_o", "e_p", "e_r"):
+                        cf_diff[d["cf"]["kind"]][key].append(d["cf"]["e"][key])
             for reason in d["cf"]["reasons"]:
                 cf[w][reason.split(":")[0]] += 1
             if d["cf"]["w"] and d["cf"].get("tau_eff_alt") is not None:
@@ -208,6 +221,10 @@ def training_stats(run: Path) -> dict:
             for k, c in kinds.items():
                 total[k].update(c)
         out["cf_by_kind_total"] = {k: dict(c) for k, c in total.items()}
+        # gate-valid samples: |real - alternative| of the predicted first control, of the 20
+        # controls (max), of the reward and observation, the plans' entry-speed difference,
+        # and the real action's prediction errors
+        out["cf_valid_differences_by_kind"] = {k: {key: _quantiles(v) for key, v in d.items()} for k, d in cf_diff.items()}
     if cf:
         out["cf_gate_per_1k"] = {w: {**c, "open_rate": c["open"] / c["decisions"],
                                      "mean_abs_tau_eff_alt_minus_real": float(np.mean(tau_diff[w])) if tau_diff[w] else None}
@@ -275,7 +292,7 @@ def readout(m0: Path, m2: Path, rules: dict[str, Path], pure: Path | None) -> di
         result["curve2"][method]["training"] = {k: training.get(k) for k in ("behaviour_per_1k", "behaviour_outcomes_per_1k")}
         result["curve3"][method]["training"] = {k: training.get(k) for k in ("critic_audit_per_1k", "grad_probe_per_1k")}
         result["curve4"][method] = {k: training.get(k) for k in (
-            "cf_gate_per_1k", "cf_by_kind_per_1k", "cf_by_kind_total", "cf_grad_share", "cf_valid_fraction_in_batches", "wall_s_per_decision", "heartbeat")}
+            "cf_gate_per_1k", "cf_by_kind_per_1k", "cf_by_kind_total", "cf_valid_differences_by_kind", "cf_grad_share", "cf_valid_fraction_in_batches", "wall_s_per_decision", "heartbeat")}
     for name, ref in references.items():
         result["curve2"][f"reference_{name}"] = action_stats(ref) if name != "pure" else None
     return result

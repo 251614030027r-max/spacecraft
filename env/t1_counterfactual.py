@@ -235,7 +235,9 @@ class CounterfactualPredictor:
             end_violation=bool(m_end.hard_violation or m_end.range_m > c.task.max_distance_m),
             max_range_m=max(ranges), wall_s=perf_counter() - started, **window,
             extra={"entry_speed_plan_m_s": None if g.plan is None else float(g.plan.get("entry_speed_m_s", 0.06)),
-                   "new_plan": g.last_status.startswith(("optimal", "recovery"))},
+                   "new_plan": g.last_status.startswith(("optimal", "recovery")),
+                   # the 20 clipped nominal controls of the decision (for real-vs-alternative differences)
+                   "controls": controls.copy()},
         )
 
     def closed_loop(self, action: np.ndarray) -> dict[str, Any]:
@@ -432,6 +434,12 @@ class T1CounterfactualEnv(T1GStarEnv):
             "alt_saturation": None if p_alt is None else p_alt.saturation,
             "entry_speed_real_plan_m_s": p_real.extra.get("entry_speed_plan_m_s"),
             "entry_speed_alt_plan_m_s": None if p_alt is None else p_alt.extra.get("entry_speed_plan_m_s"),
+            # how different the alternative's predicted execution is from the real action's
+            "alt_first_wrench_diff": None if p_alt is None else float(np.linalg.norm(p_alt.first_wrench - p_real.first_wrench)),
+            "alt_controls_diff_max": None if p_alt is None else float(np.max(np.linalg.norm(
+                p_alt.extra["controls"] - p_real.extra["controls"], axis=1))),
+            "alt_reward_diff": None if p_alt is None else float(p_alt.reward - p_real.reward),
+            "alt_observation_diff": None if p_alt is None else float(np.linalg.norm(p_alt.observation - p_real.observation)),
             "overhead_wall_s": overhead,
         }
         return obs, reward, terminated, truncated, info
