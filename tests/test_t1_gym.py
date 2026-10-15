@@ -17,11 +17,13 @@ def test_reset_observation_and_action_space(env):
     obs, info = env.reset()
     assert obs.shape == (len(OBSERVATION_NAMES),) and np.all(np.isfinite(obs))
     assert info["opening"] == 1_000_000
-    assert env.action_space.shape == (2,)
+    assert env.action_space.shape == (3,)  # interface v4: tau, kappa, entry speed
     # no plan yet: the request is absolute, and kappa spans its range
     c = T1GymConfig()
     assert env.intent(np.array([-1.0, -1.0])) == pytest.approx((0.0, c.kappa_min))
     assert env.intent(np.array([1.0, 1.0])) == pytest.approx((c.tau_max_s, c.kappa_max))
+    assert env.entry_speed_of(np.array([0.0, 0.0, -1.0])) == pytest.approx(0.02)
+    assert env.entry_speed_of(np.array([0.0, 0.0, 1.0])) == pytest.approx(0.10)
 
 
 def test_step_plans_then_a_small_shift_keeps_the_plan(env):
