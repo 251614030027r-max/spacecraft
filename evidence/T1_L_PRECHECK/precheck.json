@@ -1,0 +1,220 @@
+{
+ "what": "upper sandbox smoke of the T1-L three arms (300 real steps each, n_envs 1, full 256x3 network, learning starts 100, NDelta warm-up 150 for the smoke only; 4-core contended sandbox, 5 processes)",
+ "b2": {
+  "decisions": 300,
+  "wall_s": 573.8549500030001,
+  "wall_s_per_step": 1.9128498333433337,
+  "parameters_finite": true,
+  "reviews": 300,
+  "plan_events": 3,
+  "first_review": {
+   "due": 1,
+   "gap": 1,
+   "event": 0,
+   "tmin": 100.0,
+   "delay": 38.21770191192627,
+   "a_exec": [
+    0.27392,
+    -0.46043,
+    -0.91805
+   ]
+  },
+  "audits": 40,
+  "audit_values_finite": true
+ },
+ "n0": {
+  "decisions": 300,
+  "wall_s": 565.440725274,
+  "wall_s_per_step": 1.88480241758,
+  "parameters_finite": true,
+  "reviews": 100,
+  "plan_events": 0,
+  "first_review": {
+   "due": 1,
+   "gap": 3,
+   "event": 0,
+   "tmin": 100.0,
+   "delay": 38.21770191192627,
+   "a_exec": [
+    0.27392,
+    -0.46043,
+    -0.91805
+   ]
+  },
+  "audits": 40,
+  "audit_values_finite": true
+ },
+ "ndelta": {
+  "decisions": 300,
+  "wall_s": 601.5693283590001,
+  "wall_s_per_step": 2.0052310945300005,
+  "parameters_finite": true,
+  "reviews": 101,
+  "plan_events": 0,
+  "first_review": {
+   "due": 1,
+   "gap": 3,
+   "event": 0,
+   "tmin": 100.0,
+   "delay": 38.21770191192627,
+   "a_exec": [
+    0.27392,
+    -0.46043,
+    -0.91805
+   ]
+  },
+  "audits": 40,
+  "audit_values_finite": true,
+  "cf_kinds": {
+   "entry_speed": 36,
+   "replan_vs_keep": 22,
+   "keep_vs_shift": 13,
+   "descent_mode": 29,
+   "delay_shift": 1
+  },
+  "cf_valid": 23,
+  "cf_closing_reasons": {
+   "same_entry_speed": 22,
+   "e_o": 26,
+   "alt_saturation": 15,
+   "e_r": 8,
+   "same_effective_tau": 17,
+   "alt_not_tracking": 4,
+   "alt_slack": 1,
+   "alt_mode_switch": 3,
+   "real_not_tracking": 7,
+   "real_slack": 1,
+   "real_mode_switch": 3,
+   "descent_mode": 29,
+   "e_p": 1
+  },
+  "real_prediction_error_p50_p95": {
+   "e_o": [
+    0.051,
+    0.1284
+   ],
+   "e_p": [
+    0.0077,
+    0.0185
+   ],
+   "e_r": [
+    0.0223,
+    0.0665
+   ]
+  },
+  "delta_stats": {
+   "update": [
+    200.0,
+    250.0,
+    300.0,
+    350.0,
+    400.0,
+    450.0,
+    500.0,
+    550.0,
+    600.0,
+    650.0,
+    700.0,
+    750.0
+   ],
+   "decisions": [
+    151.0,
+    163.0,
+    176.0,
+    188.0,
+    201.0,
+    213.0,
+    226.0,
+    238.0,
+    251.0,
+    263.0,
+    276.0,
+    288.0
+   ],
+   "valid_fraction": [
+    0.105469,
+    0.101562,
+    0.121094,
+    0.09375,
+    0.089844,
+    0.113281,
+    0.070312,
+    0.082031,
+    0.070312,
+    0.113281,
+    0.089844,
+    0.082031
+   ],
+   "loss": [
+    7.5e-05,
+    0.000258,
+    0.000456,
+    0.000263,
+    0.000374,
+    0.000401,
+    0.000258,
+    0.000301,
+    0.000204,
+    0.00472,
+    0.002822,
+    0.003433
+   ],
+   "g_td": [
+    3.287382,
+    4.11455,
+    7.613323,
+    37.661373,
+    23.033453,
+    15.919607,
+    30.848196,
+    104.778221,
+    36.883823,
+    46.173714,
+    35.733681,
+    67.606964
+   ],
+   "g_delta": [
+    0.000487,
+    0.002946,
+    0.006211,
+    0.003408,
+    0.005172,
+    0.009435,
+    0.006084,
+    0.011792,
+    0.00604,
+    0.073736,
+    0.046612,
+    0.054861
+   ],
+   "abs_target_mean": [
+    0.026607,
+    0.02467,
+    0.028547,
+    0.038199,
+    0.038022,
+    0.036565,
+    0.033416,
+    0.028093,
+    0.04314,
+    0.048982,
+    0.04542,
+    0.045584
+   ],
+   "abs_dq_mean": [
+    0.007404,
+    0.042836,
+    0.077162,
+    0.051776,
+    0.068341,
+    0.096145,
+    0.049142,
+    0.069612,
+    0.063317,
+    0.335466,
+    0.24216,
+    0.296697
+   ]
+  }
+ }
+}
