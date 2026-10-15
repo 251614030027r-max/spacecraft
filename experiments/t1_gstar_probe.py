@@ -140,8 +140,11 @@ def main() -> None:
     parser.add_argument("--row", required=True)
     parser.add_argument("--seeds", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--task", default="t1", choices=("t1", "t1l"), help="t1l: initial range 12-18 m")
     args = parser.parse_args()
-    env = T1Env(T1EnvConfig())
+    from env.t1_l_task import task_env_config
+
+    env = T1Env(task_env_config(args.task))
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
     tag = args.row.replace(":", "_")

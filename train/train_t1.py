@@ -131,6 +131,12 @@ class EpisodeLog(BaseCallback):
             "v_applied": execution.get("entry_speed_applied"),
             "v_plan": None if execution.get("entry_speed_plan_m_s") is None else round(float(execution["entry_speed_plan_m_s"]), 5),
         }
+        review = info.get("review")
+        if review is not None:  # T1-L review interface (absent in T1 v4 runs)
+            line["rv"] = {"due": int(bool(review["reviewed"])), "gap": review["gap_steps"],
+                          "event": int(bool(review["plan_event"])),
+                          "tmin": review.get("tau_min_feasible_s"), "delay": review.get("delay_s"),
+                          "a_exec": [round(float(v), 5) for v in info.get("executed_action", [])]}
         if cf is not None:
             line["cf"] = {"kind": cf["kind"], "w": int(cf["w"]), "reasons": cf["reasons"],
                           "e": None if cf["errors_real"] is None else
@@ -155,6 +161,9 @@ class EpisodeLog(BaseCallback):
             c[f"replan_{name}"] = c.get(f"replan_{name}", 0) + int(execution.get("new_plan_trigger") == name)
         c["deadline_clamped"] = c.get("deadline_clamped", 0) + int(execution.get("deadline") == "clamped")
         c["entry_speed_applied"] = c.get("entry_speed_applied", 0) + int(bool(execution.get("entry_speed_applied")))
+        if review is not None:
+            c["reviews"] = c.get("reviews", 0) + int(bool(review["reviewed"]))
+            c["plan_events"] = c.get("plan_events", 0) + int(bool(review["plan_event"]))
         if cf is not None:
             c["cf_valid"] = c.get("cf_valid", 0) + int(cf["w"])
             c[f"cf_kind_{cf['kind']}"] = c.get(f"cf_kind_{cf['kind']}", 0) + 1
@@ -219,6 +228,8 @@ class Checkpoint(BaseCallback):
                 (self.directory / f"{self.prefix}_{mark}_cf_stats.json").write_text(json.dumps(self.model.cf_stats))
             if hasattr(self.model, "fix_stats"):
                 (self.directory / f"{self.prefix}_{mark}_fix_stats.json").write_text(json.dumps(self.model.fix_stats))
+            if hasattr(self.model, "delta_stats"):
+                (self.directory / f"{self.prefix}_{mark}_delta_stats.json").write_text(json.dumps(self.model.delta_stats))
         if (self.run_dir / "STOP_REQUESTED").exists():
             (self.run_dir / "stopped.json").write_text(json.dumps({
                 "decisions": n, "utc": datetime.now(timezone.utc).isoformat(),

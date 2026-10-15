@@ -514,6 +514,26 @@ class GStarRendezvous:
             if self.hold_position is None:
                 self.hold_position = q0.copy()
 
+    def earliest_feasible(self, env, entry_speed_m_s: float | None = None) -> tuple[float | None, dict[str, Any] | None]:
+        """Earliest feasible arrival (s from now) on ``earliest_grid_s`` for this entry speed.
+
+        The same planner (force bound, sphere, envelope, range cap), the same ascending grid
+        and the same fresh solves as an earliest request in ``decide``; read-only (no plan is
+        adopted, nothing else changes). ``(None, None)`` when no grid point is feasible. Used
+        by the T1-L task interface as the anchor of a requested delay (T1-L plan, module B).
+        """
+
+        target, chaser = env.target_state, env.chaser_state
+        q0 = chaser.position - target.position
+        v0 = chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
+        history = free_body_rotations(target.rotation, target.omega, env.target_parameters.inertia,
+                                      max(self.earliest_grid_s) + 1.0)
+        for tau in self.earliest_grid_s:
+            result = self.planner.solve(q0, v0, tau, history, None, entry_speed_m_s=entry_speed_m_s)
+            if result["feasible"]:
+                return float(tau), result
+        return None, None
+
     def __call__(self, env, metrics: T1Metrics) -> tuple[np.ndarray, np.ndarray | None]:
         if self._descending(env, metrics):
             assert self._descent is not None

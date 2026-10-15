@@ -149,8 +149,10 @@ def copy_generator_state(src, dst) -> None:
 
 class CounterfactualPredictor:
     def __init__(self, gym_config: T1GymConfig | None = None, env_config: T1EnvConfig | None = None,
-                 config: CounterfactualConfig | None = None) -> None:
-        self.shadow = T1GStarEnv(gym_config, env_config)
+                 config: CounterfactualConfig | None = None, shadow_factory=None) -> None:
+        #: the shadow wrapper; ``shadow_factory`` builds one of the real wrapper's own class
+        #: (e.g. the T1-L review wrapper), so the prediction runs the same interface code
+        self.shadow = shadow_factory() if shadow_factory is not None else T1GStarEnv(gym_config, env_config)
         self.config = config or CounterfactualConfig()
 
     # ------------------------------------------------------------------ #
@@ -167,6 +169,8 @@ class CounterfactualPredictor:
         copy_generator_state(r.generator, s.generator)
         s._last_request, s._last_kappa = r._last_request, r._last_kappa
         s.current_opening, s.episode = r.current_opening, r.episode
+        if hasattr(r, "review_state"):  # T1-L review wrapper: clock, due flag, committed kappa / v_in
+            s.set_review_state(r.review_state())
 
     def target_window(self) -> list:
         """Predicted target states over the next 2 s from the (synced) shadow's current target.
@@ -194,7 +198,9 @@ class CounterfactualPredictor:
         c = e.config
         if targets is None:
             targets = self.target_window()
-        tau, kappa, _ = sh.apply_intent(action)
+        if hasattr(sh, "review_state"):
+            sh._continuing = False  # a prediction is always of a review decision
+        tau, kappa, v_in = sh.apply_intent(action)
         g.decide(e, tau)
         sh._last_request, sh._last_kappa = tau, kappa
         m = e.metrics()
@@ -222,6 +228,8 @@ class CounterfactualPredictor:
         chaser = model.reconstruct_chaser(target, states[steps])
         e.target_state, e.chaser_state = target, chaser
         e.time_s = round(e.time_s + steps * c.dt_s, 10)
+        if hasattr(sh, "advance_review"):  # the review clock and due flag of the predicted successor
+            sh.advance_review(True, kappa, v_in)
         observation = sh._observation()
         m_end = e.metrics()
         return Prediction(

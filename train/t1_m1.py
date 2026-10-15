@@ -232,9 +232,14 @@ class M1SAC(SAC):
                          for q in current_q_values)
         return loss, float(mask.mean().item())
 
+    def _eq_mask(self, observations: th.Tensor) -> th.Tensor:
+        """Where the keep band is exactly equivalent (overridden by the T1-L learner: reviews only)."""
+
+        return eq_mask(observations)
+
     def _eq_loss(self, replay_data) -> tuple[th.Tensor, float]:
         obs, actions = replay_data.observations, replay_data.actions
-        mask = eq_mask(obs)
+        mask = self._eq_mask(obs)
         u = th.rand((actions.shape[0], 1), generator=self._eq_generator(), device=self.device) - 0.5
         a_band = th.cat([u, actions[:, 1:]], dim=1)
         a_zero = th.cat([th.zeros_like(u), actions[:, 1:]], dim=1)
@@ -284,7 +289,7 @@ class M1SAC(SAC):
             q = th.min(th.cat([c.detach() for c in current_q_values], dim=1), dim=1, keepdim=True)[0]
             plan = obs[:, PLAN_REMAINING_INDEX:PLAN_REMAINING_INDEX + 1] > 0.0
             descent = obs[:, DESCENT_INDEX:DESCENT_INDEX + 1] > 0.5
-            band = eq_mask(obs)[:, 0] > 0.0
+            band = self._eq_mask(obs)[:, 0] > 0.0
             groups = {"plan": plan & ~descent, "no_plan": ~plan & ~descent, "descent": descent}
             for name, g in groups.items():
                 m = g.float() * mask

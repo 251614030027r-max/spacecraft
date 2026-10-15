@@ -22,8 +22,10 @@ import numpy as np
 from env.t1_env import T1Env, T1EnvConfig
 
 
-def select(start: int, per_cell: int = 2, bins: int = 4, limit: int = 5000) -> list[dict]:
-    env = T1Env(T1EnvConfig())
+def select(start: int, per_cell: int = 2, bins: int = 4, limit: int = 5000, task: str = "t1") -> list[dict]:
+    from env.t1_l_task import task_env_config
+
+    env = T1Env(task_env_config(task))
     cells: dict[tuple[int, int], list[dict]] = {}
     for seed in range(start, start + limit):
         f = env.reset(seed)["features"]
@@ -44,12 +46,14 @@ def main() -> None:
     parser.add_argument("--start", type=int, default=291000)
     parser.add_argument("--per-cell", type=int, default=2)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--task", default="t1", choices=("t1", "t1l"), help="t1l: initial range 12-18 m")
     args = parser.parse_args()
-    openings = select(args.start, args.per_cell)
+    openings = select(args.start, args.per_cell, task=args.task)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps({
         "rule": __doc__.split("\n\n")[1],
         "start": args.start,
+        "task": args.task,
         "per_cell": args.per_cell,
         "seeds": [o["seed"] for o in openings],
         "openings": openings,
