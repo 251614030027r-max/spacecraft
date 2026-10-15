@@ -230,6 +230,8 @@ class Checkpoint(BaseCallback):
                 (self.directory / f"{self.prefix}_{mark}_fix_stats.json").write_text(json.dumps(self.model.fix_stats))
             if hasattr(self.model, "delta_stats"):
                 (self.directory / f"{self.prefix}_{mark}_delta_stats.json").write_text(json.dumps(self.model.delta_stats))
+                (self.directory / f"{self.prefix}_{mark}_delta_calibration.json").write_text(
+                    json.dumps(self.model.delta_calibration))
         if (self.run_dir / "STOP_REQUESTED").exists():
             (self.run_dir / "stopped.json").write_text(json.dumps({
                 "decisions": n, "utc": datetime.now(timezone.utc).isoformat(),

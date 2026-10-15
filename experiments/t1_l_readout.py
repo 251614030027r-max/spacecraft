@@ -152,10 +152,20 @@ def training(run: Path) -> dict:
             if name == "delta_stats" and s.get("update"):
                 out["delta"] = {"updates_sampled": len(s["update"]), "valid_fraction": _quantiles(s["valid_fraction"]),
                                 "g_delta_over_g_td": _quantiles(list(np.asarray(s["g_delta"]) / np.asarray(s["g_td"]))),
-                                "abs_target": _quantiles(s["abs_target_mean"]), "abs_dq": _quantiles(s["abs_dq_mean"])}
+                                "abs_target": _quantiles(s["abs_target_mean"]), "abs_dq": _quantiles(s["abs_dq_mean"]),
+                                "applied_share_of_td": _quantiles(s.get("applied_share", [])),
+                                "capped_fraction": float(np.mean(s["capped"])) if s.get("capped") else None}
             if name == "fix_stats" and s.get("audit_decisions"):
                 out["critic_audit"] = {k: _quantiles([v for v in s.get(k, []) if v == v]) for k in (
                     "q_minus_g_plan", "q_minus_g_no_plan", "q_minus_g_descent", "band_q_spread")}
+    calibration = run / "delta_calibration.json"
+    if not calibration.exists():
+        marks = sorted(run.glob("checkpoints/*_delta_calibration.json"), key=lambda p: int(p.stem.split("_")[1]))
+        calibration = marks[-1] if marks else calibration
+    if calibration.exists():
+        c = json.loads(calibration.read_text())
+        out["delta_calibration"] = {"probes": len(c.get("ratios", [])), "median_ratio": c.get("median_ratio"),
+                                    "lambda": c.get("lambda"), "frozen_at_decisions": c.get("frozen_at_decisions")}
     hb = run / "heartbeat.json"
     if hb.exists():
         h = json.loads(hb.read_text())

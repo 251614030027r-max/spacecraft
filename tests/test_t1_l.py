@@ -159,8 +159,8 @@ def _params(m):
 
 
 def _train(m, steps=3, timesteps=5000):
+    m._setup_learn(10_000)  # (resets num_timesteps: set the training step count after it)
     m._total_timesteps, m.num_timesteps = 10_000, timesteps
-    m._setup_learn(10_000)
     np.random.seed(3); th.manual_seed(3)
     m.train(gradient_steps=steps, batch_size=32)
 
@@ -266,3 +266,45 @@ def test_cf_env_transitions_equal_the_plain_review_env():
         assert np.array_equal(o1, o2) and r1 == r2
         kinds.append(info["counterfactual"]["kind"])
     assert kinds[1] == kinds[2] == "continue" and kinds[0] != "continue" and kinds[3] != "continue"
+
+
+# --------------------------------------------------------------------------- calibrated relative weight
+def test_calibration_probes_are_read_only_and_n0_never_enters():
+    n0 = _model(delta_lambda=0.0)
+    cal = _model(delta_lambda=0.0, delta_target_share=0.05, delta_warmup_decisions=6000, delta_calibration_steps=2000,
+                 delta_probe_every=1, delta_min_probes=3)
+    assert not n0.delta_enabled() and cal.delta_enabled()
+    for m in (n0, cal):
+        _fill(m.replay_buffer, np.random.default_rng(6))
+    _train(n0, steps=4, timesteps=5000)
+    _train(cal, steps=4, timesteps=5000)
+    assert cal.delta_phase() == "calibrating" and len(cal.delta_calibration["ratios"]) >= 3
+    assert cal.delta_calibration["lambda"] is None
+    assert th.equal(_params(n0), _params(cal))  # probing changes nothing
+
+
+def test_weight_frozen_from_gradient_median_and_capped_per_update():
+    m = _model(delta_lambda=0.0, delta_target_share=0.05, delta_cap_share=0.10, delta_warmup_decisions=3000,
+               delta_min_probes=3, delta_diagnostics_every=1)
+    _fill(m.replay_buffer, np.random.default_rng(7))
+    m.delta_calibration["ratios"] = [0.002, 0.004, 0.006]
+    _train(m, steps=6, timesteps=3000)
+    c = m.delta_calibration
+    assert c["median_ratio"] == pytest.approx(0.004) and c["lambda"] == pytest.approx(0.05 / 0.004)
+    assert c["frozen_at_decisions"] == 3000 and m.delta_phase() == "on"
+    shares = m.delta_stats["applied_share"]
+    assert shares and max(shares) <= 0.10 + 1e-9 and min(m.delta_stats["applied_lambda"]) > 0.0
+    frozen = c["lambda"]
+    _train(m, steps=2, timesteps=9000)
+    assert m.delta_calibration["lambda"] == frozen  # never re-calibrated
+
+
+def test_too_few_probes_keep_the_term_off_after_the_warmup():
+    n0 = _model(delta_lambda=0.0)
+    m = _model(delta_lambda=0.0, delta_target_share=0.05, delta_warmup_decisions=3000, delta_min_probes=1000,
+               delta_probe_every=1)
+    for x in (n0, m):
+        _fill(x.replay_buffer, np.random.default_rng(8))
+    _train(n0, timesteps=3500)
+    _train(m, timesteps=3500)
+    assert m.delta_calibration["lambda"] is None and th.equal(_params(n0), _params(m))

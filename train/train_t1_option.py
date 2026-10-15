@@ -2,7 +2,9 @@
 
     B2      review every 2 s step (review_period 1), no relative MPC term
     N0      review every 3 steps (6 s) and after plan events, no relative MPC term
-    NDelta  as N0, plus the relative MPC term (lambda_delta 0.1, after 3000 real steps)
+    NDelta  as N0, plus the relative MPC term: after a 3000-step warm-up, weight calibrated once
+            from gradients to a 5 % median share of the TD gradient, each update capped at
+            10 % (``train.t1_option_sac``; revision of da9be02 after the collaboration review)
 
 Same task (T1-L, 12-18 m), interface (``env.t1_task_review``), reward, MPC, network, SAC
 settings and budget for the three; ``--steps`` counts real 2 s steps. Shared critic fixes:
@@ -36,7 +38,8 @@ from train.train_t1 import T1_SAC, Checkpoint, EpisodeLog, _environment_record, 
 ARMS: dict[str, dict[str, Any]] = {
     "b2": {"review_period_steps": 1, "delta_lambda": 0.0, "counterfactual": False},
     "n0": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": False},
-    "ndelta": {"review_period_steps": 3, "delta_lambda": 0.1, "counterfactual": True},
+    "ndelta": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": True,
+               "delta_target_share": 0.05, "delta_cap_share": 0.10},
 }
 LAMBDA_MC = 0.03
 LAMBDA_EQ = 0.1
@@ -65,6 +68,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--learning-starts", type=int, default=None, help="smoke tests only")
     parser.add_argument("--net-arch", default=None, help="smoke tests only, e.g. 16,16")
     parser.add_argument("--delta-warmup", type=int, default=None, help="smoke tests only")
+    parser.add_argument("--delta-calibration-steps", type=int, default=500, help="smoke tests only")
     parser.add_argument("--allow-dirty", action="store_true", help="development checks only")
     return parser.parse_args(argv)
 
@@ -97,7 +101,9 @@ def main(argv: list[str] | None = None) -> None:
     warmup = DELTA_WARMUP if args.delta_warmup is None else args.delta_warmup
     model = OptionSAC("MlpPolicy", env, seed=args.seed, device="cpu", verbose=0,
                       mc_lambda=LAMBDA_MC, eq_lambda=LAMBDA_EQ, audit_every=args.audit_every,
-                      delta_lambda=spec["delta_lambda"], delta_warmup_decisions=warmup, **kwargs)
+                      delta_lambda=spec["delta_lambda"], delta_warmup_decisions=warmup,
+                      delta_target_share=spec.get("delta_target_share"), delta_cap_share=spec.get("delta_cap_share", 0.10),
+                      delta_calibration_steps=args.delta_calibration_steps, **kwargs)
     manifest = {
         "experiment": "T1-L three-arm (plan 2026-10-15)", "arm": args.arm, "arm_spec": spec,
         "started_utc": datetime.now(timezone.utc).isoformat(),
@@ -107,7 +113,10 @@ def main(argv: list[str] | None = None) -> None:
         "observation": list(REVIEW_OBSERVATION_NAMES), "gym": asdict(gym_config),
         "sac": asdict(T1_SAC) | {k: v for k, v in kwargs.items() if k in ("learning_starts",)},
         "learner": {"class": "train.t1_option_sac.OptionSAC", "lambda_mc": LAMBDA_MC, "lambda_eq": LAMBDA_EQ,
-                    "delta_lambda": spec["delta_lambda"], "delta_warmup_steps": warmup, "delta_huber": 10.0,
+                    "delta_lambda_fixed": spec["delta_lambda"], "delta_target_share": spec.get("delta_target_share"),
+                    "delta_cap_share": spec.get("delta_cap_share"), "delta_calibration_steps": args.delta_calibration_steps,
+                    "delta_probe_every_updates": 5, "delta_min_probes": 30,
+                    "delta_warmup_steps": warmup, "delta_huber": 10.0,
                     "alpha": "0.005 x review gap (2 s steps closed by the review)", "absolute_cf_lambda": 0.0},
         **({"counterfactual": asdict(COUNTERFACTUAL)} if spec["counterfactual"] else {}),
         "training_openings": f"{gym_config.seed_base} + env_index * 100000 + episode index",
@@ -124,7 +133,7 @@ def main(argv: list[str] | None = None) -> None:
     if (log_dir / "ABORTED.json").exists():
         raise SystemExit(f"training stopped: {(log_dir / 'ABORTED.json').read_text()}")
     model.save(log_dir / "final")
-    for name in ("fix_stats", "delta_stats"):
+    for name in ("fix_stats", "delta_stats", "delta_calibration"):
         (log_dir / f"{name}.json").write_text(json.dumps(getattr(model, name)))
     (log_dir / "finished.json").write_text(json.dumps({"finished_utc": datetime.now(timezone.utc).isoformat(),
                                                        "decisions": int(model.num_timesteps),
