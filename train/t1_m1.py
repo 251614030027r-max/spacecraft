@@ -298,7 +298,7 @@ class M1SAC(SAC):
                 s, a1 = obs[rows], actions[rows, 1:]
                 values = []
                 for a0 in np.linspace(-0.5, 0.5, 11):
-                    a = th.cat([th.full_like(a1, float(a0)), a1], dim=1)
+                    a = th.cat([th.full_like(a1[:, :1], float(a0)), a1], dim=1)
                     values.append(th.min(th.cat(self.critic(s, a), dim=1), dim=1, keepdim=True)[0])
                 v = th.cat(values, dim=1)
                 spread = float((v.max(dim=1)[0] - v.min(dim=1)[0]).mean().item())

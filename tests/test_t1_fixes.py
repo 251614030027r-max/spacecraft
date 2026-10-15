@@ -177,6 +177,25 @@ def test_lambda_zero_is_plain_sac_bitwise_even_with_probe_and_audit(probe):
         assert len(s["band_q_spread"]) == 4 and len(s["q_minus_g_plan"]) == 4
 
 
+class _Stub3(_Stub):
+    action_space = gym.spaces.Box(-1.0, 1.0, shape=(3,), dtype=np.float32)
+
+
+def test_probe_and_audit_with_a_three_dimensional_action():
+    th.manual_seed(0)
+    m = M1SAC("MlpPolicy", _Stub3(), seed=0, device="cpu", buffer_size=500, learning_starts=0, batch_size=32,
+              ent_coef=0.005, gamma=GAMMA, policy_kwargs={"net_arch": [16, 16]}, cf_lambda=0.0,
+              mc_lambda=0.1, eq_lambda=0.1, grad_probe_every=1, audit_every=1)
+    rng = np.random.default_rng(6)
+    for _ in range(200):
+        obs, nxt = rng.normal(size=OBS).astype(np.float32), rng.normal(size=OBS).astype(np.float32)
+        m.replay_buffer.add(obs[None], nxt[None], rng.uniform(-1, 1, (1, 3)).astype(np.float32),
+                            np.array([rng.normal()]), np.array([rng.uniform() < 0.1]), [{"TimeLimit.truncated": False}])
+    _train(m, steps=2)
+    assert len(m.fix_stats["band_q_spread"]) == 2 and np.isfinite(m.fix_stats["band_q_spread"]).all()
+    assert np.isfinite(m.fix_stats["g_eq"]).all()
+
+
 @pytest.mark.parametrize("which", ["mc_lambda", "eq_lambda"])
 def test_each_fix_moves_the_critic(which):
     m0 = _model(M1SAC, cf_lambda=0.0)
