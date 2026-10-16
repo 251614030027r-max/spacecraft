@@ -200,6 +200,10 @@ def reload(run: Path) -> dict:
             from train.t1_option_sac import OptionSAC
 
             cls = OptionSAC
+        if manifest.get("learner", {}).get("class") == "train.t1_tcpf.TCPFSAC":  # T1-L-S arms
+            from train.t1_tcpf import TCPFSAC
+
+            cls = TCPFSAC
         model = cls.load(path, device="cpu")
         action, _ = model.predict(obs, deterministic=True)
         out[path.name] = {"action": np.asarray(action).round(4).tolist(), "finite": bool(np.all(np.isfinite(action)))}
