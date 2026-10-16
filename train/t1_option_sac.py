@@ -174,6 +174,26 @@ class OptionSAC(M1SAC):
         return self.delta_lambda if self.delta_target_share is None else float(self.delta_calibration["lambda"])
 
     # ------------------------------------------------------------------ #
+    # hooks (the T1-L-S learner overrides them; these defaults are the 166244b update exactly)
+    def _td_targets(self, data, v_next: th.Tensor) -> tuple[th.Tensor, th.Tensor | None]:
+        """One-step target for every sample; no mask."""
+
+        return data.rewards + (1 - data.dones) * self.gamma * v_next, None
+
+    @staticmethod
+    def _td_loss(current_q, target: th.Tensor, mask: th.Tensor | None) -> th.Tensor:
+        if mask is None:
+            return 0.5 * sum(F.mse_loss(q, target) for q in current_q)
+        count = th.clamp(mask.sum(), min=1.0)
+        return 0.5 * sum((mask * (q - target) ** 2).sum() / count for q in current_q)
+
+    def _actor_update_due(self, gradient_step: int, gradient_steps: int) -> bool:
+        return True
+
+    def _review_batch(self, batch_size: int) -> th.Tensor | None:
+        return self.replay_buffer.sample_due(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
+
+    # ------------------------------------------------------------------ #
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         self.policy.set_training_mode(True)
         self._update_learning_rate([self.actor.optimizer, self.critic.optimizer])
@@ -189,9 +209,9 @@ class OptionSAC(M1SAC):
             data = buffer.sample(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
             cf = buffer.counterfactual()  # type: ignore[union-attr]
             v_next = self.target_value(data.next_observations)
-            target = data.rewards + (1 - data.dones) * self.gamma * v_next
+            target, td_mask = self._td_targets(data, v_next)
             current_q = self.critic(data.observations, data.actions)
-            td = 0.5 * sum(F.mse_loss(q, target) for q in current_q)
+            td = self._td_loss(current_q, target, td_mask)
             loss = self._fix_terms(td, data, current_q)
             valid = float(cf.weights.sum().item())
             n = self._n_updates_in_call
@@ -242,7 +262,8 @@ class OptionSAC(M1SAC):
             loss.backward()
             self.critic.optimizer.step()
 
-            review = buffer.sample_due(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
+            review = (self._review_batch(batch_size)
+                      if self._actor_update_due(gradient_step, gradient_steps) else None)
             if review is not None:
                 actions_pi, log_prob = self.actor.action_log_prob(review)
                 q_pi = th.min(th.cat(self.critic(review, actions_pi), dim=1), dim=1, keepdim=True)[0]

@@ -24,6 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
+from env.t1_l_task import task_env_config
 from env.t1_task_review import T1LReviewEnv
 
 OPENINGS = Path("experiments/t1l_dev_openings_297000.json")
@@ -126,14 +127,24 @@ def load_policy(policy: str):
         return rule
     from train.t1_option_sac import OptionSAC
 
+    manifest = Path(policy).resolve().parent.parent / "manifest.json"
+    learner = json.loads(manifest.read_text()).get("learner", {}).get("class", "") if manifest.exists() else ""
+    if learner == "train.t1_tcpf.TCPFSAC":
+        from train.t1_tcpf import TCPFSAC
+
+        return TCPFSAC.load(policy, device="cpu")
     return OptionSAC.load(policy, device="cpu")
 
 
-def _evaluate_one(policy: str, period: int, opening: int, output_dir: str) -> None:
+def make_env(task: str, period: int) -> T1LReviewEnv:
+    return T1LReviewEnv(env_config=task_env_config(task), review_period_steps=period)
+
+
+def _evaluate_one(policy: str, period: int, opening: int, output_dir: str, task: str = "t1l") -> None:
     import torch
 
     torch.set_num_threads(1)
-    _write(Path(output_dir), opening, run_episode(T1LReviewEnv(review_period_steps=period), opening, load_policy(policy)))
+    _write(Path(output_dir), opening, run_episode(make_env(task, period), opening, load_policy(policy)))
 
 
 def _write(output_dir: Path, opening: int, row: dict) -> None:
@@ -160,7 +171,8 @@ def summarise(rows: list[dict], policy: str, openings: Path) -> dict:
     return out
 
 
-def evaluate(policy: str, period: int, openings: Path, output_dir: Path, workers: int = 1, first: int | None = None) -> dict:
+def evaluate(policy: str, period: int, openings: Path, output_dir: Path, workers: int = 1, first: int | None = None,
+             task: str = "t1l") -> dict:
     seeds = json.loads(openings.read_text())["seeds"]
     seeds = seeds[:first] if first else seeds
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -169,13 +181,13 @@ def evaluate(policy: str, period: int, openings: Path, output_dir: Path, workers
         import multiprocessing as mp
 
         with mp.get_context("spawn").Pool(min(workers, len(todo))) as pool:
-            pool.starmap(_evaluate_one, [(policy, period, o, str(output_dir)) for o in todo])
+            pool.starmap(_evaluate_one, [(policy, period, o, str(output_dir), task) for o in todo])
     elif todo:
-        model, env = load_policy(policy), T1LReviewEnv(review_period_steps=period)
+        model, env = load_policy(policy), make_env(task, period)
         for o in todo:
             _write(output_dir, o, run_episode(env, o, model))
     rows = [json.loads((output_dir / f"{o}.json").read_text()) for o in seeds]
-    summary = summarise(rows, policy, openings) | {"review_period_steps": period}
+    summary = summarise(rows, policy, openings) | {"review_period_steps": period, "task": task}
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=1))
     print(json.dumps(summary))
     return summary
@@ -210,6 +222,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--watch", type=Path)
     parser.add_argument("--review-period", type=int, default=None, help="checkpoint policies without --watch")
     parser.add_argument("--openings", type=Path, default=OPENINGS)
+    parser.add_argument("--task", default="t1l", choices=("t1l", "t1r"), help="t1r: evaluation-only robustness profile")
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--first", type=int, default=None)
@@ -227,7 +240,7 @@ def main(argv: list[str] | None = None) -> None:
         period = args.review_period
     else:
         parser.error("--review-period is required for a checkpoint outside --watch")
-    evaluate(args.policy, period, args.openings, args.output_dir, args.workers, args.first)
+    evaluate(args.policy, period, args.openings, args.output_dir, args.workers, args.first, args.task)
 
 
 if __name__ == "__main__":

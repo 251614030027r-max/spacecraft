@@ -228,6 +228,8 @@ class Checkpoint(BaseCallback):
                 (self.directory / f"{self.prefix}_{mark}_cf_stats.json").write_text(json.dumps(self.model.cf_stats))
             if hasattr(self.model, "fix_stats"):
                 (self.directory / f"{self.prefix}_{mark}_fix_stats.json").write_text(json.dumps(self.model.fix_stats))
+            if hasattr(self.model, "tcpf_stats"):
+                (self.directory / f"{self.prefix}_{mark}_tcpf_stats.json").write_text(json.dumps(self.model.tcpf_stats))
             if hasattr(self.model, "delta_stats"):
                 (self.directory / f"{self.prefix}_{mark}_delta_stats.json").write_text(json.dumps(self.model.delta_stats))
                 (self.directory / f"{self.prefix}_{mark}_delta_calibration.json").write_text(

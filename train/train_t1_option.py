@@ -1,4 +1,12 @@
-"""Train one arm of the T1-L three-arm experiment (plan 2026-10-15, section 3) from zero.
+"""Train one arm of the T1-L three-arm experiment (plan 2026-10-15, section 3) or of the T1-L-S
+three-arm experiment (plan 2026-10-16) from zero.
+
+T1-L-S arms (``sb2`` / ``sn0`` / ``sndelta``): the same task, interface, reward, MPC, network and
+budget, review-interval targets (``train.t1_tcpf``) and one of two trainer configurations
+(``--trainer``, chosen by the run order's pre-registered rule): A = the 166244b trainer (UTD 4,
+an actor update per critic update, constant 1e-4); B = one critic update per real transition,
+one actor update per 3 real transitions on the global transition clock, cosine 1e-4 -> 1e-5.
+With ``--n-envs`` N the critic updates per vector step are UTD x N for either trainer.
 
     B2      review every 2 s step (review_period 1), no relative MPC term
     N0      review every 3 steps (6 s) and after plan events, no relative MPC term
@@ -32,6 +40,7 @@ from env.t1_l_task import T1L_RANGE_M, t1l_env_config
 from env.t1_option_cf import T1LReviewCFEnv
 from env.t1_task_review import INTERFACE_VERSION, REVIEW_OBSERVATION_NAMES, T1LReviewEnv
 from train.t1_option_sac import OptionSAC
+from train.t1_tcpf import CosineLearningRate, TCPFSAC
 from train.train_hybrid import _code_provenance
 from train.train_t1 import T1_SAC, Checkpoint, EpisodeLog, _environment_record, model_kwargs
 
@@ -40,6 +49,15 @@ ARMS: dict[str, dict[str, Any]] = {
     "n0": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": False},
     "ndelta": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": True,
                "delta_target_share": 0.05, "delta_cap_share": 0.10},
+    # T1-L-S (plan 2026-10-16): the same three arms with review-interval targets
+    "sb2": {"review_period_steps": 1, "delta_lambda": 0.0, "counterfactual": False, "interval_bellman": True},
+    "sn0": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": False, "interval_bellman": True},
+    "sndelta": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": True, "interval_bellman": True,
+                "delta_target_share": 0.05, "delta_cap_share": 0.10},
+}
+TRAINERS: dict[str, dict[str, Any]] = {
+    "A": {"updates_per_transition": 4, "actor_every_transitions": None, "learning_rate": "constant 1e-4"},
+    "B": {"updates_per_transition": 1, "actor_every_transitions": 3, "learning_rate": "cosine 1e-4 -> 1e-5 over real transitions"},
 }
 LAMBDA_MC = 0.03
 LAMBDA_EQ = 0.1
@@ -60,7 +78,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--steps", type=int, required=True, help="real 2 s steps")
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--run-name", required=True)
-    parser.add_argument("--log-root", type=Path, default=Path("logs/t1_l_option_20261015"))
+    parser.add_argument("--log-root", type=Path, default=None,
+                        help="default logs/t1_l_option_20261015 (T1-L arms) or logs/t1_l_s_tcpf_20261016 (T1-L-S arms)")
+    parser.add_argument("--trainer", choices=sorted(TRAINERS), default=None,
+                        help="T1-L-S arms only (required there): A or B, per the run order's frozen rule")
     parser.add_argument("--n-envs", type=int, default=1)
     parser.add_argument("--checkpoint-freq", type=int, default=5_000)
     parser.add_argument("--extra-checkpoints", default="2000")
@@ -76,6 +97,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     torch.set_num_threads(1)
+    spec = ARMS[args.arm]
+    interval = bool(spec.get("interval_bellman", False))
+    if interval and args.trainer is None:
+        raise SystemExit("T1-L-S arms need --trainer A or B (run order)")
+    if not interval and args.trainer not in (None, "A"):
+        raise SystemExit("the T1-L arms (b2 / n0 / ndelta) use the 166244b trainer only")
+    if args.log_root is None:
+        args.log_root = Path("logs/t1_l_s_tcpf_20261016" if interval else "logs/t1_l_option_20261015")
     provenance = _code_provenance()
     if provenance["code_dirty"] is not False and not args.allow_dirty:
         raise SystemExit(f"refusing to train from a modified or unknown checkout: {provenance}")
@@ -83,7 +112,6 @@ def main(argv: list[str] | None = None) -> None:
     if log_dir.exists():
         raise FileExistsError(log_dir)
     (log_dir / "checkpoints").mkdir(parents=True)
-    spec = ARMS[args.arm]
     gym_config = T1GymConfig(seed_base=1_000_000 * (args.seed + 1))
     if args.n_envs == 1:
         env = make_env(args.arm, gym_config)
@@ -99,20 +127,34 @@ def main(argv: list[str] | None = None) -> None:
     if args.learning_starts is not None:
         kwargs["learning_starts"] = args.learning_starts
     warmup = DELTA_WARMUP if args.delta_warmup is None else args.delta_warmup
-    model = OptionSAC("MlpPolicy", env, seed=args.seed, device="cpu", verbose=0,
-                      mc_lambda=LAMBDA_MC, eq_lambda=LAMBDA_EQ, audit_every=args.audit_every,
-                      delta_lambda=spec["delta_lambda"], delta_warmup_decisions=warmup,
-                      delta_target_share=spec.get("delta_target_share"), delta_cap_share=spec.get("delta_cap_share", 0.10),
-                      delta_calibration_steps=args.delta_calibration_steps, **kwargs)
+    common = dict(seed=args.seed, device="cpu", verbose=0,
+                  mc_lambda=LAMBDA_MC, eq_lambda=LAMBDA_EQ, audit_every=args.audit_every,
+                  delta_lambda=spec["delta_lambda"], delta_warmup_decisions=warmup,
+                  delta_target_share=spec.get("delta_target_share"), delta_cap_share=spec.get("delta_cap_share", 0.10),
+                  delta_calibration_steps=args.delta_calibration_steps)
+    trainer = TRAINERS[args.trainer] if interval else None
+    if interval:
+        kwargs["gradient_steps"] = trainer["updates_per_transition"] * args.n_envs
+        if args.trainer == "B":
+            kwargs["learning_rate"] = CosineLearningRate(1e-4, 1e-5)
+        model = TCPFSAC("MlpPolicy", env, interval_bellman=True,
+                        actor_every_transitions=trainer["actor_every_transitions"], **common, **kwargs)
+    else:
+        model = OptionSAC("MlpPolicy", env, **common, **kwargs)
     manifest = {
-        "experiment": "T1-L three-arm (plan 2026-10-15)", "arm": args.arm, "arm_spec": spec,
+        "experiment": "T1-L-S three-arm (plan 2026-10-16)" if interval else "T1-L three-arm (plan 2026-10-15)",
+        "arm": args.arm, "arm_spec": spec,
+        "trainer": None if not interval else {"name": args.trainer, **trainer,
+                                              "critic_updates_per_vector_step": kwargs["gradient_steps"],
+                                              "actor_clock": "global real transitions (num_timesteps) minus learning_starts"},
         "started_utc": datetime.now(timezone.utc).isoformat(),
         "argv": vars(args) | {"log_root": str(args.log_root)},
         "task": {"profile": "t1l", "range_m": T1L_RANGE_M, "initial": asdict(t1l_env_config().initial)},
         "interface": INTERFACE_VERSION, "gstar_version": GSTAR_VERSION,
         "observation": list(REVIEW_OBSERVATION_NAMES), "gym": asdict(gym_config),
         "sac": asdict(T1_SAC) | {k: v for k, v in kwargs.items() if k in ("learning_starts",)},
-        "learner": {"class": "train.t1_option_sac.OptionSAC", "lambda_mc": LAMBDA_MC, "lambda_eq": LAMBDA_EQ,
+        "learner": {"class": "train.t1_tcpf.TCPFSAC" if interval else "train.t1_option_sac.OptionSAC",
+                    "interval_bellman": interval, "lambda_mc": LAMBDA_MC, "lambda_eq": LAMBDA_EQ,
                     "delta_lambda_fixed": spec["delta_lambda"], "delta_target_share": spec.get("delta_target_share"),
                     "delta_cap_share": spec.get("delta_cap_share"), "delta_calibration_steps": args.delta_calibration_steps,
                     "delta_probe_every_updates": 5, "delta_min_probes": 30,
@@ -133,8 +175,14 @@ def main(argv: list[str] | None = None) -> None:
     if (log_dir / "ABORTED.json").exists():
         raise SystemExit(f"training stopped: {(log_dir / 'ABORTED.json').read_text()}")
     model.save(log_dir / "final")
-    for name in ("fix_stats", "delta_stats", "delta_calibration"):
-        (log_dir / f"{name}.json").write_text(json.dumps(getattr(model, name)))
+    for name in ("fix_stats", "delta_stats", "delta_calibration", "tcpf_stats"):
+        if hasattr(model, name):
+            (log_dir / f"{name}.json").write_text(json.dumps(getattr(model, name)))
+    if interval:
+        buffer = model.replay_buffer
+        (log_dir / "interval_audit.json").write_text(json.dumps({
+            "counts": buffer.interval_counts, "lengths": {str(k): v for k, v in sorted(buffer.interval_lengths.items())},
+            "actor_updates": model.actor_updates, "critic_updates": model._n_updates}))
     (log_dir / "finished.json").write_text(json.dumps({"finished_utc": datetime.now(timezone.utc).isoformat(),
                                                        "decisions": int(model.num_timesteps),
                                                        "stopped_on_request": (log_dir / "stopped.json").exists()}))

@@ -51,8 +51,18 @@ def paired(a: dict[int, dict], b: dict[int, dict]) -> dict | None:
         return None
     d = np.array([a[o]["discounted_return"] - b[o]["discounted_return"] for o in common])
     cap = sum(a[o]["event"] == "success" for o in common) - sum(b[o]["event"] == "success" for o in common)
-    return {"openings": len(common), "mean_return_diff": float(d.mean()), "median_return_diff": float(np.median(d)),
-            "openings_better": int((d > 0).sum()), "openings_worse": int((d < 0).sum()), "capture_diff": int(cap)}
+    out = {"openings": len(common), "mean_return_diff": float(d.mean()), "median_return_diff": float(np.median(d)),
+           "openings_better": int((d > 0).sum()), "openings_worse": int((d < 0).sum()), "capture_diff": int(cap)}
+    if len(d) > 1:  # paired t interval over openings (one training seed: between-seed variance not included)
+        from scipy import stats
+
+        sd = float(d.std(ddof=1))
+        half = float(stats.t.ppf(0.975, len(d) - 1) * sd / np.sqrt(len(d)))
+        out |= {"sd_return_diff": sd, "ci95_return_diff": [float(d.mean()) - half, float(d.mean()) + half]}
+        for key in ("delta_v_m_s", "time_s"):
+            dk = np.array([a[o][key] - b[o][key] for o in common])
+            out[f"mean_{key}_diff"] = float(dk.mean())
+    return out
 
 
 def decisions(rows: dict[int, dict]) -> dict:
@@ -166,6 +176,19 @@ def training(run: Path) -> dict:
         c = json.loads(calibration.read_text())
         out["delta_calibration"] = {"probes": len(c.get("ratios", [])), "median_ratio": c.get("median_ratio"),
                                     "lambda": c.get("lambda"), "frozen_at_decisions": c.get("frozen_at_decisions")}
+    audit = run / "interval_audit.json"
+    if audit.exists():
+        out["interval_audit"] = json.loads(audit.read_text())
+    tcpf = run / "tcpf_stats.json"
+    if not tcpf.exists():
+        marks = sorted(run.glob("checkpoints/*_tcpf_stats.json"), key=lambda p: int(p.stem.split("_")[1]))
+        tcpf = marks[-1] if marks else tcpf
+    if tcpf.exists():
+        s = json.loads(tcpf.read_text())
+        if s.get("decisions"):
+            out["tcpf"] = {k: _quantiles(s[k]) for k in ("review_fraction", "interval_ready_fraction", "td_review",
+                                                          "td_continue", "learning_rate")}
+            out["tcpf"]["actor_updates_last"] = s["actor_updates"][-1]
     hb = run / "heartbeat.json"
     if hb.exists():
         h = json.loads(hb.read_text())
@@ -174,7 +197,8 @@ def training(run: Path) -> dict:
     return out
 
 
-def readout(runs: dict[str, Path], rules_root: Path | None, strong: str | None, pure: Path | None) -> dict:
+def readout(runs: dict[str, Path], rules_root: Path | None, strong: str | None, pure: Path | None,
+            eval_subdir: str = "dev_eval") -> dict:
     refs: dict[str, dict[int, dict]] = {}
     if rules_root is not None:
         for d in sorted(p for p in rules_root.iterdir() if p.is_dir()):
@@ -186,8 +210,8 @@ def readout(runs: dict[str, Path], rules_root: Path | None, strong: str | None, 
                     "references": {k: outcome_table(v) for k, v in refs.items()}, "arms": {}, "between_arms": {}}
     marks_rows: dict[str, dict[int, dict[int, dict]]] = {}
     for arm, run in runs.items():
-        marks = sorted(int(p.name) for p in (run / "dev_eval").glob("*") if p.name.isdigit())
-        rows = {n: rows_of(run / "dev_eval" / str(n)) for n in marks}
+        marks = sorted(int(p.name) for p in (run / eval_subdir).glob("*") if p.name.isdigit())
+        rows = {n: rows_of(run / eval_subdir / str(n)) for n in marks}
         marks_rows[arm] = rows
         per = {}
         for n in marks:
@@ -195,7 +219,7 @@ def readout(runs: dict[str, Path], rules_root: Path | None, strong: str | None, 
                       **{f"vs_{k}": paired(rows[n], v) for k, v in refs.items() if k in (strong_key, "pure")},
                       "decisions": decisions(rows[n]), "critic": critic(rows[n])}
         result["arms"][arm] = {"marks": per, "training": training(run)}
-    for a, b in (("n0", "b2"), ("ndelta", "n0"), ("ndelta", "b2")):
+    for a, b in (("n0", "b2"), ("ndelta", "n0"), ("ndelta", "b2"), ("sn0", "sb2"), ("sndelta", "sn0"), ("sndelta", "sb2")):
         if a in marks_rows and b in marks_rows:
             result["between_arms"][f"{a}-{b}"] = {n: paired(marks_rows[a][n], marks_rows[b][n])
                                                   for n in sorted(set(marks_rows[a]) & set(marks_rows[b]))}
@@ -208,10 +232,13 @@ def main(argv: list[str] | None = None) -> dict:
     parser.add_argument("--rules", type=Path, default=None, help="directory holding one sub-directory per rule")
     parser.add_argument("--strong", default=None, help="the frozen strong fixed reference, e.g. rule:earliest_k1.0_v0.02")
     parser.add_argument("--pure", type=Path, default=None)
+    parser.add_argument("--eval-subdir", default="dev_eval",
+                        help="dev_eval (16 openings, every mark), dev_eval64 (64 openings), t1r_eval (T1-R)")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     runs = {k: Path(v) for k, v in (x.split("=", 1) for x in args.runs.split(",") if x)}
-    result = readout(runs, args.rules, args.strong, args.pure)
+    result = readout(runs, args.rules, args.strong, args.pure, args.eval_subdir)
+    result["eval_subdir"] = args.eval_subdir
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=1, default=float))
     for arm, r in result["arms"].items():

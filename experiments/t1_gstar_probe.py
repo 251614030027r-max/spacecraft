@@ -140,7 +140,7 @@ def main() -> None:
     parser.add_argument("--row", required=True)
     parser.add_argument("--seeds", required=True)
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--task", default="t1", choices=("t1", "t1l"), help="t1l: initial range 12-18 m")
+    parser.add_argument("--task", default="t1", choices=("t1", "t1l", "t1r"), help="t1l: 12-18 m; t1r: 15-19 m, 2.4-3.0 deg/s")
     args = parser.parse_args()
     from env.t1_l_task import task_env_config
 

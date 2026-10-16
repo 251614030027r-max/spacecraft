@@ -46,7 +46,7 @@ def main() -> None:
     parser.add_argument("--start", type=int, default=291000)
     parser.add_argument("--per-cell", type=int, default=2)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--task", default="t1", choices=("t1", "t1l"), help="t1l: initial range 12-18 m")
+    parser.add_argument("--task", default="t1", choices=("t1", "t1l", "t1r"), help="t1l: 12-18 m; t1r: 15-19 m, 2.4-3.0 deg/s")
     args = parser.parse_args()
     openings = select(args.start, args.per_cell, task=args.task)
     args.output.parent.mkdir(parents=True, exist_ok=True)
