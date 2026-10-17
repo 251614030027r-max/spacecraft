@@ -1,0 +1,66 @@
+{
+ "fuel_weight": 20.0,
+ "outcomes": {
+  "uniform": {
+   "success": 31,
+   "unsafe": 0,
+   "timeout": 1
+  },
+  "state_rule": {
+   "success": 31,
+   "unsafe": 0,
+   "timeout": 1
+  },
+  "gstar_rule": {
+   "success": 30,
+   "unsafe": 1,
+   "timeout": 1
+  },
+  "A0": {
+   "success": 31,
+   "unsafe": 0,
+   "timeout": 1
+  }
+ },
+ "mean_return": {
+  "uniform": 51.96389045501348,
+  "state_rule": 53.17733723052007,
+  "gstar_rule": 42.67968224157862,
+  "A0": 53.20661355495858
+ },
+ "state_rule_minus_uniform": {
+  "n": 32,
+  "mean": 1.2134467755065852,
+  "sd": 3.3366384270747496,
+  "ci95": [
+   0.01046033858493911,
+   2.416433212428231
+  ],
+  "better": 8,
+  "worse": 4
+ },
+ "gstar_rule_minus_uniform": {
+  "n": 32,
+  "mean": -9.284208213434855,
+  "sd": 38.955466443904996,
+  "ci95": [
+   -23.32915158989144,
+   4.76073516302173
+  ],
+  "better": 10,
+  "worse": 14
+ },
+ "state_rule_minus_gstar_rule": {
+  "n": 32,
+  "mean": 10.49765498894144,
+  "sd": 38.986600228548554,
+  "ci95": [
+   -3.55851331388185,
+   24.55382329176473
+  ],
+  "better": 16,
+  "worse": 7
+ },
+ "gstar_planning_cpu_s_mean": 1.43359375,
+ "pass": false
+}

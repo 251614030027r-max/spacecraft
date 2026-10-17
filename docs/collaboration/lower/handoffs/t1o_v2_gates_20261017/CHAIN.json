@@ -1,0 +1,93 @@
+{
+ "stages": [
+  {
+   "stage": "A",
+   "pass": true,
+   "utc": "2026-10-17T07:58:10.195455+00:00",
+   "verdict": "PASS",
+   "fuel_weight": 20.0
+  },
+  {
+   "stage": "B",
+   "pass": true,
+   "utc": "2026-10-17T08:46:20.552338+00:00",
+   "uniform": "A15",
+   "in_flight": {
+    "states": 16,
+    "real_effects": 11,
+    "preferences": {
+     "keep": 10,
+     "shift": 1
+    },
+    "repeatability_max": 0.0006437373054595241
+   },
+   "near_field_abs_dJ_ge_1": 10
+  },
+  {
+   "stage": "C",
+   "pass": false,
+   "utc": "2026-10-17T09:49:22.118567+00:00",
+   "outcomes": {
+    "uniform": {
+     "success": 31,
+     "unsafe": 0,
+     "timeout": 1
+    },
+    "state_rule": {
+     "success": 31,
+     "unsafe": 0,
+     "timeout": 1
+    },
+    "gstar_rule": {
+     "success": 30,
+     "unsafe": 1,
+     "timeout": 1
+    },
+    "A0": {
+     "success": 31,
+     "unsafe": 0,
+     "timeout": 1
+    }
+   },
+   "mean_return": {
+    "uniform": 51.96389045501348,
+    "state_rule": 53.17733723052007,
+    "gstar_rule": 42.67968224157862,
+    "A0": 53.20661355495858
+   },
+   "state_rule_minus_uniform": {
+    "n": 32,
+    "mean": 1.2134467755065852,
+    "sd": 3.3366384270747496,
+    "ci95": [
+     0.01046033858493911,
+     2.416433212428231
+    ],
+    "better": 8,
+    "worse": 4
+   },
+   "gstar_rule_minus_uniform": {
+    "n": 32,
+    "mean": -9.284208213434855,
+    "sd": 38.955466443904996,
+    "ci95": [
+     -23.32915158989144,
+     4.76073516302173
+    ],
+    "better": 10,
+    "worse": 14
+   },
+   "state_rule_minus_gstar_rule": {
+    "n": 32,
+    "mean": 10.49765498894144,
+    "sd": 38.986600228548554,
+    "ci95": [
+     -3.55851331388185,
+     24.55382329176473
+    ],
+    "better": 16,
+    "worse": 7
+   }
+  }
+ ]
+}
