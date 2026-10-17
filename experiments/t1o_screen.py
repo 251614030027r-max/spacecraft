@@ -253,6 +253,44 @@ def verdict(profile: str, openings_path: Path, root: Path) -> dict:
     return out
 
 
+TABLE_FIELDS = (
+    "policy", "opening", "latitude_deg", "phase_deg", "omega_deg_s", "range0_m", "event", "violations", "end_phase",
+    "time_s", "delta_v_m_s", "J_5", "J_10", "J_15", "J_20", "saturation_mean", "force_saturated_fraction",
+    "tracking_error_mean_m", "tracking_error_max_m", "new_plans", "deviation_replans", "recoveries", "hold_steps",
+    "hold_max_outward_speed_m_s", "max_outward_speed_m_s", "max_range_m", "min_collision_clearance_m",
+    "min_union_margin_m", "min_fov_margin_deg", "min_radial_envelope_margin_m_s", "min_axial_envelope_margin_m_s",
+    "first_tau_min_feasible_s", "first_delay_s", "first_tau_request_s", "first_tau_effective_s",
+    "first_entry_speed_plan_m_s", "qp_zero_fallback_steps")
+
+
+def table(openings_path: Path, root: Path) -> list[dict]:
+    doc = json.loads(openings_path.read_text())
+    feats = {o["seed"]: o["features"] for o in doc["openings"]}
+    out = []
+    for name in sorted(p.name for p in root.iterdir() if p.is_dir() and p.name in CANDIDATES):
+        for f in sorted((root / name).glob("*.json")):
+            r = json.loads(f.read_text())
+            m, fp, ft = r["min_margins"], r["first_plan"] or {}, feats[r["opening"]]
+            out.append({
+                "policy": name, "opening": r["opening"], "latitude_deg": ft["latitude_deg"], "phase_deg": ft["phase_deg"],
+                "omega_deg_s": ft["omega_deg_s"], "range0_m": ft["range_m"], "event": r["event"],
+                "violations": ";".join(f"{k}={v:.4g}" for k, v in r["violations"].items()), "end_phase": r["end_phase"],
+                "time_s": r["time_s"], "delta_v_m_s": r["delta_v_m_s"],
+                **{f"J_{int(l)}": r["discounted_return_by_fuel_weight"][str(l)] for l in FUEL_WEIGHTS},
+                **{k: r[k] for k in ("saturation_mean", "force_saturated_fraction", "tracking_error_mean_m",
+                                     "tracking_error_max_m", "new_plans", "deviation_replans", "recoveries", "hold_steps",
+                                     "hold_max_outward_speed_m_s", "max_outward_speed_m_s", "max_range_m",
+                                     "first_tau_min_feasible_s", "first_delay_s", "first_tau_request_s",
+                                     "qp_zero_fallback_steps")},
+                "min_collision_clearance_m": m.get("collision_clearance_m"), "min_union_margin_m": m.get("union_margin_m"),
+                "min_fov_margin_deg": m.get("fov_margin_deg"),
+                "min_radial_envelope_margin_m_s": m.get("radial_envelope_margin_m_s"),
+                "min_axial_envelope_margin_m_s": m.get("axial_envelope_margin_m_s"),
+                "first_tau_effective_s": fp.get("tau_effective_s"), "first_entry_speed_plan_m_s": fp.get("entry_speed_plan_m_s"),
+            })
+    return out
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -271,7 +309,21 @@ def main(argv: list[str] | None = None) -> None:
     v.add_argument("--openings", type=Path, required=True)
     v.add_argument("--root", type=Path, required=True)
     v.add_argument("--output", type=Path, default=None)
+    t = sub.add_parser("table")
+    t.add_argument("--openings", type=Path, required=True)
+    t.add_argument("--root", type=Path, required=True)
+    t.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.command == "table":
+        import csv
+
+        rows = table(args.openings, args.root)
+        with args.output.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=TABLE_FIELDS)
+            writer.writeheader()
+            writer.writerows(rows)
+        print(len(rows), "rows")
+        return
     if args.command == "openings":
         openings = select_openings(args.profile, SCREEN_START[args.profile])
         doc = {"rule": __doc__.split("\n\n")[3], "profile": args.profile, "profile_spec": T1O_PROFILES[args.profile],
