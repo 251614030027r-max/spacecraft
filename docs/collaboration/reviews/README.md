@@ -13,3 +13,4 @@
 |上层价值检验结果|2336a3e|[结果记录](https://github.com/251614030027r-max/spacecraft/blob/2336a3e/docs/STOPPING_VALUE_RULE_RESULT_20261006.md)|确认 VALUE_RULE_DOES_NOT_HOLD；名义工况下交接线收口|
 
 - [F01_271000_UPPER_REVIEW_20261010](F01_271000_UPPER_REVIEW_20261010.md)：F01 在 271000 上两模型阶段的独立重算与失败分解（上层，2026-10-10）。
+- [T1_L_S0_UPPER_REVIEW_20261017](T1_L_S0_UPPER_REVIEW_20261017.md)：T1-L 三臂种子 0 40k（collab `68680eb`，科学 `166244b`）上层审查：N0/NΔ 相对 0k 学习成立、未超过强规则，NΔ − N0 未证明，B2 为 v4 型退化；预注册训练器规则在交付包上给出 A（上层，2026-10-17）。
