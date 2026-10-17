@@ -1,4 +1,6 @@
-# 执行单：T1_O_V2_GATES_LOCAL_20261017（第 1 版；下层本机执行；跑完交上层核实）
+# 执行单：T1_O_V2_GATES_LOCAL_20261017（第 2 版，唯一有效；下层本机执行；跑完交上层核实）
+
+**第 2 版修订（用户 2026-10-17："跳过，改成第二版给下层立即推进"）：** 只改一处——不在本机重跑 Gate A，直接使用上层已存档的 Gate A 数据（`evidence/T1O_V2/gate_a/`），见第 4 节；其余一字不变。第 1 版（collab `dd1fcfe`）未执行，作废。
 
 **授权：** 用户 2026-10-17 指令：
 > 写执行指令给下层，后续测试都本地跑然后让你核实结果，确认后本地最终跑训练。确保下层理解我们当前任务状态。
@@ -8,7 +10,7 @@
 - 全部判据在 `89b779a` 中预注册：`experiments/t1o_v2.py` 的模块说明。本单只按冻结规则机械执行，不得修改任何判据或参数。
 
 **本单内容：**
-- 在本机复现 Gate A；
+- 使用已存档的 Gate A 数据（不重跑）；
 - 依次跑 Gate B、Gate C（含零步检查）、Gate E；
 - 遇到第一个 FAIL 即停；
 - 交上层核实。
@@ -99,14 +101,21 @@ Get-FileHash experiments\t1o_p2_discovery_openings.json, experiments\t1o_p2_conf
 
 ## 4. 执行（一条命令，按顺序，遇到第一个 FAIL 即停）
 
+先把上层存档的 Gate A 数据放进本机（160 个回合与判定，不重跑）：
+
 ```powershell
-python -B -m experiments.t1o_v2_chain --root logs/t1o_v2 --workers W --reproduce-gate-a *> logs\t1o_v2_chain.log
+mkdir logs\t1o_v2 -ErrorAction SilentlyContinue
+Get-FileHash evidence\T1O_V2\gate_a\episodes.tar.gz -Algorithm SHA256   # 必须与 evidence\T1O_V2\gate_a\SHA256SUMS 中的一致
+tar -xzf evidence\T1O_V2\gate_a\episodes.tar.gz -C logs\t1o_v2
+Copy-Item evidence\T1O_V2\gate_a\gate_a.json logs\t1o_v2\gate_a.json
+(Get-ChildItem logs\t1o_v2\gate_a -Recurse -Filter *.json).Count            # 必须是 160
+python -B -m experiments.t1o_v2_chain --root logs/t1o_v2 --workers W *> logs\t1o_v2_chain.log
 ```
 
 | 阶段 | 内容 | 粗估（12 核） |
 |---|---|---|
-| A_reproduction | 本机重跑 Gate A 的 160 个回合并判定。判定、λ、U 必须与上层 `evidence/T1O_V2/gate_a/gate_a.json` 一致，否则停止。逐回合逐值相同的比例只记录，不作门槛 | 约 30 min |
-| 状态规则 | 在本机 Gate A 数据上按冻结规则拟合：最多 2 个观测特征，深度 ≤ 2，叶节点 ≥ 3 | 数秒 |
+| A | 读取存档判定：PASS，λ_f = 20，U = A15（不重跑） | — |
+| 状态规则 | 在存档的 Gate A 数据上按冻结规则拟合：最多 2 个观测特征，深度 ≤ 2，叶节点 ≥ 3 | 数秒 |
 | B | 每个发现开局取在途快照：keep 与 +15 s 两分支各飞到底；再取近场快照：κ 1.0 与 0.7 两分支各飞到底。两分支都从同一快照、用新建求解器出发；keep 分支与原轨迹之差记为数值重复性 | 约 15 min |
 | C | 确认集 32 开局上跑 U、状态规则、G★ 预测代价规则、A0；做配对读出 | 约 20 min |
 | C_zero_step | 生成未训练的 O-R3 模型（`train.train_t1_option --arm or3 --steps 1`，learning_starts 1000，所以不更新），与状态规则一起在 dev32 上评估 | 约 15 min |
@@ -114,7 +123,7 @@ python -B -m experiments.t1o_v2_chain --root logs/t1o_v2 --workers W --reproduce
 
 - **记录：** 每个阶段写入 `logs\t1o_v2\CHAIN.json`（通过与否加关键数），以及各自的 JSON。
 - **中断：** 若机器中断，重跑同一条命令。已写出 JSON 的回合会自动跳过，因为评估是确定性的，不是训练。如实记入 `RESULT.md`。
-- **不得添加：** `--through-d`，或任何其他参数。
+- **不得添加：** `--reproduce-gate-a`、`--through-d`，或任何其他参数。
 
 ## 5. 交付（链条停止后，无论 PASS 还是 FAIL）
 
@@ -122,7 +131,7 @@ python -B -m experiments.t1o_v2_chain --root logs/t1o_v2 --workers W --reproduce
 
 | 来源 | 文件 |
 |---|---|
-| `logs\t1o_v2\` | `CHAIN.json`、`ADMISSION.md`、`SCHEDULE.md`、`gate_a_reproduction.json`、`gate_a.json`、`gate_a\**`、`state_rule.json`、`gate_b.json`、`gate_c.json`、`gate_c\**`（含 `assignments.json`）、`zero_step.json`、`zero_step\**`、`gate_e_calibration.json`、`gate_e_calibrate.json`、`gate_e_validation.json`、`gate_e.json`（实际产生了哪些就交哪些） |
+| `logs\t1o_v2\` | `CHAIN.json`、`ADMISSION.md`、`SCHEDULE.md`、`state_rule.json`、`gate_b.json`、`gate_c.json`、`gate_c\**`（含 `assignments.json`）、`zero_step.json`、`zero_step\**`、`gate_e_calibration.json`、`gate_e_calibrate.json`、`gate_e_validation.json`、`gate_e.json`（实际产生了哪些就交哪些） |
 | 其他 | `logs\t1o_v2_chain.log`、`logs\t1_o_tcpf_20261017\or3_zero\manifest.json` |
 | 包外 | 逐文件 `SHA256SUMS.txt` |
 
@@ -133,7 +142,6 @@ python -B -m experiments.t1o_v2_chain --root logs/t1o_v2 --workers W --reproduce
 **`RESULT.md` 只写事实：**
 - 各阶段 PASS / FAIL 与 `CHAIN.json` 中的关键数；
 - 停在哪一阶段；
-- 本机逐回合逐值相同的比例；
 - 墙钟、中断与偏离。
 
 **CURRENT.json：** 增加支线字段：
@@ -144,7 +152,7 @@ python -B -m experiments.t1o_v2_chain --root logs/t1o_v2 --workers W --reproduce
 
 ## 6. 之后
 
-1. 上层核实本单交付：复现一致性、各阶段数值，必要时抽查重算。
+1. 上层核实本单交付：各阶段数值，必要时抽查重算。
 2. 研究层决定：是否接受 Gate A 的单开局敏感性；动作维度是否保留 κ / v_in。
 3. 动作空间冻结后，另出执行单跑 Gate D（12k 单臂试学），仍在本机执行，仍由上层核实。
 4. 全部通过、研究层 GO 后，再出正式四臂 40k 执行单，在本机训练。
