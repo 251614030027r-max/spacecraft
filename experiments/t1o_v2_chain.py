@@ -3,7 +3,9 @@
 Every decision is the mechanical rule of ``experiments.t1o_v2`` (frozen in 89b779a); this file
 only sequences the commands and records each stage in ``<root>/CHAIN.json``.
 
-    python -B -m experiments.t1o_v2_chain --root logs/t1o_v2 --workers 4
+    python -B -m experiments.t1o_v2_chain --root logs/t1o_v2 --workers 4 [--reproduce-gate-a] [--through-d]
+
+Default: stops before the Gate D pilot (the pilot needs the action space frozen first).
 """
 
 from __future__ import annotations
@@ -73,11 +75,49 @@ def zero_step(root: Path, lam: float, rule: dict, workers: int) -> dict:
             "pass": bool(np.mean(d) >= 3.0 or cap_r - cap_z >= 3)}
 
 
-def gate_d(root: Path, lam: float, workers: int) -> dict:
+GATE_A_CANDIDATES = ("A0", "A15", "A30", "A45", "A60", "K0", "K30", "V0", "V30", "Vmax")
+UPPER_GATE_A = Path("evidence/T1O_V2/gate_a/gate_a.json")
+
+
+def reproduce_gate_a(root: Path, workers: int) -> dict:
+    """Run Gate A on this machine (the 160 discovery episodes) and compare it with the upper's
+    committed result: the verdict, the fuel weight and the uniform candidate must agree; the
+    share of bit-identical episode outcomes is reported (cross-machine numerics)."""
+
+    import tarfile
+
+    from experiments.t1o_screen import run as run_candidates
+
+    seeds = json.loads(Path(DISC).read_text())["seeds"]
+    for c in GATE_A_CANDIDATES:
+        run_candidates("p2", c, seeds, root / "gate_a" / c, workers)
+    sh("experiments.t1o_v2", "gate-a", "--openings", DISC, "--root", str(root / "gate_a"),
+       "--output", str(root / "gate_a.json"))
+    mine, upper = json.loads((root / "gate_a.json").read_text()), json.loads(UPPER_GATE_A.read_text())
+    lam_m, lam_u = mine["fuel_weight"], upper["fuel_weight"]
+    same = {"verdict": mine["verdict"] == upper["verdict"], "fuel_weight": lam_m == lam_u,
+            "uniform": (lam_m is not None and lam_u is not None and
+                        mine["per_weight"][str(lam_m)]["uniform_best"] == upper["per_weight"][str(lam_u)]["uniform_best"])}
+    equal = total = 0
+    with tarfile.open("evidence/T1O_V2/gate_a/episodes.tar.gz") as tar:
+        for member in tar.getmembers():
+            parts = Path(member.name).parts
+            if len(parts) == 3 and parts[0] == "gate_a" and parts[2].endswith(".json"):
+                theirs = json.loads(tar.extractfile(member).read())
+                ours = json.loads((root / "gate_a" / parts[1] / parts[2]).read_text())
+                total += 1
+                equal += all(ours[k] == theirs[k] for k in ("event", "time_s", "delta_v_m_s",
+                                                            "discounted_return_by_fuel_weight"))
+    return {"local": {"verdict": mine["verdict"], "fuel_weight": lam_m}, "upper": {"verdict": upper["verdict"],
+            "fuel_weight": lam_u}, "agree": same, "episodes_bit_identical": f"{equal}/{total}",
+            "pass": all(same.values())}
+
+
+def gate_d(root: Path, lam: float, n_envs: int, workers: int) -> dict:
     run = Path("logs/t1_o_tcpf_20261017/or3_pilot_s0")
     if not (run / "finished.json").exists():
         sh("train.train_t1_option", "--arm", "or3", "--profile", "p2", "--fuel-cost", str(lam), "--steps", "12000",
-           "--seed", "0", "--run-name", "or3_pilot_s0", "--n-envs", str(workers), "--checkpoint-freq", "3000",
+           "--seed", "0", "--run-name", "or3_pilot_s0", "--n-envs", str(n_envs), "--checkpoint-freq", "3000",
            "--extra-checkpoints", "")
     from experiments.t1o_gates import dev_subset
 
@@ -107,9 +147,20 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path("logs/t1o_v2"))
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--reproduce-gate-a", action="store_true",
+                        help="run Gate A here first and require agreement with the upper's result")
+    parser.add_argument("--through-d", action="store_true",
+                        help="also run the Gate D pilot (only once the action space is confirmed frozen)")
+    parser.add_argument("--pilot-n-envs", type=int, default=4)
     args = parser.parse_args(argv)
     root, w = args.root, args.workers
+    root.mkdir(parents=True, exist_ok=True)
     chain = {"stages": []}
+    if args.reproduce_gate_a:
+        rep = reproduce_gate_a(root, w)
+        (root / "gate_a_reproduction.json").write_text(json.dumps(rep, indent=1, default=float))
+        if not stage(root, chain, "A_reproduction", rep, rep["pass"]):
+            return
     a = json.loads((root / "gate_a.json").read_text())
     if not stage(root, chain, "A", {"verdict": a["verdict"], "fuel_weight": a["fuel_weight"]}, a["verdict"] == "PASS"):
         return
@@ -146,7 +197,10 @@ def main(argv: list[str] | None = None) -> None:
     e = json.loads((root / "gate_e.json").read_text())
     if not stage(root, chain, "E", {k: v for k, v in e.items() if k != "funnel"} | {"funnel": e["funnel"]}, e["pass"]):
         return
-    d = gate_d(root, lam, w)
+    if not args.through_d:
+        stage(root, chain, "D_not_run", {"reason": "stopped before the pilot (--through-d not given)"}, True)
+        return
+    d = gate_d(root, lam, args.pilot_n_envs, w)
     (root / "gate_d.json").write_text(json.dumps(d, indent=1, default=float))
     stage(root, chain, "D", d, d["pass"])
 
