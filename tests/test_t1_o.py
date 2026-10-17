@@ -104,7 +104,7 @@ def test_fixed_candidate_delay_applies_to_the_first_plan_only():
     assert f3.first_done
     env.generator.plan = None  # no live plan any more: the uniform rule asks for the earliest
     assert f3.action(env)[0] == -1.0
-    assert set(CANDIDATES) == {f"F{i}" for i in range(1, 9)}
+    assert {f"F{i}" for i in range(1, 9)} <= set(CANDIDATES)
 
 
 # --------------------------------------------------------------------------- 2 x 2 sample eligibility
@@ -251,3 +251,52 @@ def test_branches_from_one_snapshot_are_bitwise_equal_and_close_to_the_real_cont
         for x, y in zip(_state(branches[0].shadow), _state(branches[1].shadow)):
             assert np.array_equal(np.asarray(x), np.asarray(y)), k
         assert abs(r1 - r_r) < 1e-6 and float(np.max(np.abs(o1 - o_r))) < 1e-5
+
+
+# --------------------------------------------------------------------------- V2 Gate A and the state rule
+from experiments.t1o_v2 import GATE_A, STATE_FEATURES, apply_state_rule, fit_state_rule, gate_a  # noqa: E402
+
+
+def _row(event="success", t=100.0, dv=1.0, j=80.0, obs=None):
+    from env.t1_task_review import REVIEW_OBSERVATION_NAMES
+
+    return {"event": event, "time_s": t, "delta_v_m_s": dv, "end_phase": "near_field", "hold_steps": 0,
+            "discounted_return_by_fuel_weight": {str(l): j - (l - 5.0) * dv for l in (5.0, 10.0, 15.0, 20.0)},
+            "decision_log": [{"deadline": "none"}],
+            "initial_observation": obs if obs is not None else [0.0] * len(REVIEW_OBSERVATION_NAMES)}
+
+
+def _synthetic(n=16):
+    from env.t1_task_review import REVIEW_OBSERVATION_NAMES
+
+    i = REVIEW_OBSERVATION_NAMES.index("sin_phase")
+    rows = {c: {} for c in GATE_A}
+    for s in range(n):
+        obs = [0.0] * len(REVIEW_OBSERVATION_NAMES)
+        obs[i] = -1.0 + 2.0 * s / (n - 1)
+        wait_good = obs[i] < 0.0  # waiting pays where sin(phase) < 0: slower but cheaper
+        for c in GATE_A:
+            rows[c][s] = _row(t=100.0, dv=1.5, j=80.0, obs=obs)
+        rows["A30"][s] = _row(t=130.0, dv=0.8 if wait_good else 1.6, j=90.0 if wait_good else 75.0, obs=obs)
+        rows["K0"][s] = _row(t=110.0, dv=1.5, j=78.0 if s % 2 else 82.0, obs=obs)
+    return rows
+
+
+def test_gate_a_recognises_a_state_dependent_tradeoff_and_the_state_rule_recovers_it():
+    rows, seeds = _synthetic(), list(range(16))
+    result = gate_a(rows, seeds)
+    assert result["A1"]["pass"] and len(result["pareto_openings"]) >= 4
+    w = result["per_weight"]["5.0"]
+    assert w["checks"]["A3_i"] and w["checks"]["A3_iii_gap"] and w["checks"]["A4_dimension"]
+    rule = fit_state_rule(rows, seeds, 5.0)
+    assert rule["form"] != "constant" and "sin_phase" in (rule.get("feature"), rule.get("feature2"))
+    obs_wait = rows["A30"][0]["initial_observation"]
+    assert apply_state_rule(rule, obs_wait) == "A30"
+    assert all(f in STATE_FEATURES for f in (rule.get("feature"), rule.get("feature2")) if f)
+
+
+def test_gate_a_without_opportunity_is_no_go_and_leaves_respect_the_minimum_size():
+    rows = {c: {s: _row() for s in range(16)} for c in GATE_A}
+    result = gate_a(rows, list(range(16)))
+    assert result["verdict"] == "LEARNING_SPACE_NO_GO"
+    assert fit_state_rule(rows, list(range(16)), 5.0)["form"] == "constant"

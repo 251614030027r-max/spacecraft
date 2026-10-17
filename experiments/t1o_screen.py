@@ -57,6 +57,10 @@ from env.t1_o_task import T1O_DELAY_MAX_S, T1O_PROFILES, t1o_env_config, t1o_rev
 CANDIDATES: dict[str, tuple[float, float, float]] = {
     "F1": (0.0, 1.0, 0.02), "F2": (30.0, 1.0, 0.02), "F3": (60.0, 1.0, 0.02), "F4": (90.0, 1.0, 0.02),
     "F5": (0.0, 0.7, 0.02), "F6": (60.0, 0.7, 0.02), "F7": (0.0, 1.0, 0.06), "F8": (60.0, 1.0, 0.06),
+    # T1-O V2 Gate A (research plan 2026-10-17 V2, sec. 3)
+    "A0": (0.0, 1.0, 0.02), "A15": (15.0, 1.0, 0.02), "A30": (30.0, 1.0, 0.02), "A45": (45.0, 1.0, 0.02),
+    "A60": (60.0, 1.0, 0.02), "K0": (0.0, 0.7, 0.02), "K30": (30.0, 0.7, 0.02), "V0": (0.0, 1.0, 0.06),
+    "V30": (30.0, 1.0, 0.06), "Vmax": (30.0, 1.0, 0.10),
 }
 SCREEN_START = {"p1": 299_500, "p2": 299_700}
 FUEL_WEIGHTS = (5.0, 10.0, 15.0, 20.0)
@@ -126,7 +130,7 @@ def radial_speed(env) -> float:
 def run_episode(profile: str, policy_name: str, opening: int) -> dict:
     env = t1o_review_env(profile, BASE_FUEL)
     policy = FixedCandidate(policy_name)
-    env.reset(options={"opening": opening})
+    obs0, _ = env.reset(options={"opening": opening})
     gamma = env.env.config.reward.gamma
     log, k = [], 0
     while True:
@@ -183,6 +187,7 @@ def run_episode(profile: str, policy_name: str, opening: int) -> dict:
         "tracking_error_max_m": float(np.max([st["deviation_before_m"] for st in live])) if live else None,
         "saturation_mean": float(np.mean([st["force_saturated_fraction"] for st in log])),
         "max_outward_speed_m_s": float(max(st["radial_speed_m_s"] for st in log)),
+        "initial_observation": [float(v) for v in obs0],
         "decision_log": log,
     }
 
