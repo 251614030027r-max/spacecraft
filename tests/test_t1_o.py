@@ -300,3 +300,50 @@ def test_gate_a_without_opportunity_is_no_go_and_leaves_respect_the_minimum_size
     result = gate_a(rows, list(range(16)))
     assert result["verdict"] == "LEARNING_SPACE_NO_GO"
     assert fit_state_rule(rows, list(range(16)), 5.0)["form"] == "constant"
+
+
+# --------------------------------------------------------------------------- Gates B, C, E readouts
+def _branch(event="success", t=120.0, dv=1.4, j=70.0):
+    return {"event": event, "time_s": t, "delta_v_m_s": dv, "return_to_go": {"15.0": j}}
+
+
+def test_gate_b_counts_real_effects_against_the_repeatability_and_needs_both_directions():
+    from experiments.t1o_gates import summarise_b
+
+    rows = {"in_flight": [], "near_field": []}
+    for k in range(10):
+        better = k % 2 == 0
+        rows["in_flight"].append({"opening": k, "keep": _branch(j=70.0), "original": _branch(j=70.0 + 1e-9),
+                                  "shift": _branch(t=135.0, dv=1.2, j=72.0 if better else 68.0)})
+    s = summarise_b(rows, 15.0)["in_flight"]
+    assert s["real_effects"] == 10 and s["pass"]
+    for r in rows["in_flight"]:
+        r["shift"] = _branch(t=135.0, dv=1.2, j=72.0)  # one direction everywhere
+    assert not summarise_b(rows, 15.0)["in_flight"]["pass"]
+    rows["in_flight"][0]["original"] = _branch(j=70.5)  # repeatability 0.5: an effect of 2 is not > 10 x 0.5
+    assert summarise_b(rows, 15.0)["in_flight"]["effects"][0]["real_effect"] is False
+
+
+def test_dev_subsets_take_the_first_openings_of_every_cell():
+    from experiments.t1o_gates import dev_subset
+
+    doc = json.loads((ROOT / "experiments/t1o_p2_development_openings.json").read_text())
+    d16, d32 = dev_subset(doc, 1), dev_subset(doc, 2)
+    assert len(d16) == 16 and len(d32) == 32 and set(d16) <= set(d32) <= set(doc["seeds"])
+
+
+def test_gate_e_validation_uses_only_accepted_pairs_with_a_resolvable_true_difference():
+    from experiments.t1o_cf_check import validate
+
+    def rec(kind, pred, true, rep=0.0, reasons=(), e_r=0.05):
+        return {"kind": kind, "reasons": list(reasons), "errors_real": {"e_r": e_r}, "pred_reward_diff": pred,
+                "true_reward_diff": true, "repeatability": rep}
+
+    recs = [rec("delay_shift", 0.3, 0.25) for _ in range(18)] + [rec("delay_shift", -0.3, 0.25) for _ in range(2)]
+    recs += [rec("near_kappa", 0.2, 0.2) for _ in range(20)]
+    recs += [rec("delay_shift", 0.3, 0.25, reasons=("e_r",), e_r=0.5)]  # rejected by the new tolerance
+    recs += [rec("delay_shift", 0.3, 0.25, reasons=("alt_saturation",))]  # another gate closed
+    recs += [rec("delay_shift", 0.3, 0.05)]  # true difference below 0.10: accepted, not a signal pair
+    v = validate(recs, e_r_tol=0.1)
+    assert v["accepted"] == 41 and v["signal_pairs"] == 40 and v["sign_accuracy"] == pytest.approx(38 / 40)
+    assert v["near_field_kappa_accepted"] == 20 and v["pass"]
