@@ -248,6 +248,7 @@ class T1Env:
         reward = 0.0
         event = None
         info: dict[str, Any] = {}
+        delta_v_step = 0.0  # this decision's delta-v (m/s): any fuel weight can be re-scored exactly
         for _ in range(c.decision_steps):
             m_before = self.metrics()
             if reference is not None:
@@ -293,6 +294,7 @@ class T1Env:
             force = wrench[3:]
             dv = float(np.linalg.norm(force)) * c.dt_s / self.chaser_parameters.mass
             self._delta_v += dv
+            delta_v_step += dv
             self._saturated_steps += int(np.max(np.abs(force)) >= 0.99 * c.max_force_per_axis_n)
             reward -= c.reward.time_cost_per_s * c.dt_s + c.reward.delta_v_cost_per_m_s * dv
             m = self.metrics()
@@ -323,7 +325,7 @@ class T1Env:
             reward -= c.reward.timeout_penalty
         terminated = event in {"success", "unsafe"}
         truncated = event in {"timeout", "numerical_failure"}
-        info.update(event=event, latitude=latitude, sigma=sigma)
+        info.update(event=event, latitude=latitude, sigma=sigma, delta_v_step_m_s=delta_v_step)
         return float(reward), terminated, truncated, info
 
     def summary(self) -> dict[str, Any]:

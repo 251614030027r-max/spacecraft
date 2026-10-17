@@ -75,9 +75,12 @@ def gap_steps(obs: np.ndarray) -> int:
 
 class T1LReviewEnv(T1GStarEnv):
     def __init__(self, config: T1GymConfig | None = None, env_config: T1EnvConfig | None = None,
-                 openings: list[int] | None = None, review_period_steps: int = 3) -> None:
+                 openings: list[int] | None = None, review_period_steps: int = 3,
+                 delay_max_s: float = DELAY_MAX_S) -> None:
         super().__init__(config, env_config or t1l_env_config(), openings)
         self.review_period_steps = int(review_period_steps)
+        #: first-plan delay range [0, delay_max_s] after the feasible anchor (T1-L: 60 s)
+        self.delay_max_s = float(delay_max_s)
         self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(len(REVIEW_OBSERVATION_NAMES),),
                                                 dtype=np.float32)
         self._init_review_state()
@@ -136,7 +139,7 @@ class T1LReviewEnv(T1GStarEnv):
                 tau = 0.0  # G* is in its descent mode; the arrival request has no effect
             else:
                 tau_min, _ = g.earliest_feasible(e, v_in)
-                delay = 0.5 * DELAY_MAX_S * (a[0] + 1.0)
+                delay = 0.5 * self.delay_max_s * (a[0] + 1.0)
                 tau = 0.0 if tau_min is None else tau_min + delay
                 self._anchor = {"tau_min_feasible_s": tau_min, "delay_s": float(delay),
                                 "tau_request_s": float(tau), "no_feasible_anchor": tau_min is None}

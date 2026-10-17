@@ -98,6 +98,8 @@ class T1GymConfig:
     #: (0.02..0.10 m/s; a[2] = 0 is G*'s fixed 0.06 m/s)
     entry_speed_nominal_m_s: float = 0.06
     entry_speed_span_m_s: float = 0.04
+    #: scale of the ``omega_2p7deg_s`` observation (deg/s); T1 / T1-L use 2.7
+    omega_scale_deg_s: float = 2.7
     #: training openings: seed_base + episode index (disjoint from R0 2900xx,
     #: R1 2910xx and the formal block >= 300000 when seed_base >= 1e6)
     seed_base: int = 1_000_000
@@ -295,7 +297,7 @@ class T1GStarEnv(gym.Env):
         status = g.last_status
         values = [
             f["range_m"] / 10.0, np.sin(lat), np.cos(lat), np.sin(ph), np.cos(ph), f["rho_perp_m"] / 10.0,
-            f["port_los_angle_deg"] / 180.0, f["port_latitude_deg"] / 90.0, f["omega_deg_s"] / 2.7,
+            f["port_los_angle_deg"] / 180.0, f["port_latitude_deg"] / 90.0, f["omega_deg_s"] / self.config.omega_scale_deg_s,
             f["fov_margin_deg"] / 50.0, f["time_s"] / 300.0,
             float(m.radial_closing_speed_m_s) / 0.3, tangential / 0.5, float(m.in_cone), float(m.mouth_region),
             float(g.plan is not None), g.remaining_s(e) / 160.0, g.tau_effective_s / 160.0,
