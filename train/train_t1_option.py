@@ -54,6 +54,16 @@ ARMS: dict[str, dict[str, Any]] = {
     "sn0": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": False, "interval_bellman": True},
     "sndelta": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": True, "interval_bellman": True,
                 "delta_target_share": 0.05, "delta_cap_share": 0.10},
+    # T1-O 2 x 2 (research decision 2026-10-17): one eligibility for all four arms; factors =
+    # review-interval target (R3 / TCPF) and the relative MPC term (Delta1 / TCPF); trainer A only
+    "or1": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": False, "interval_bellman": False,
+            "uniform_eligibility": True, "task": "t1o"},
+    "or3": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": False, "interval_bellman": True,
+            "uniform_eligibility": True, "task": "t1o"},
+    "od1": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": True, "interval_bellman": False,
+            "uniform_eligibility": True, "task": "t1o", "delta_target_share": 0.05, "delta_cap_share": 0.10},
+    "otcpf": {"review_period_steps": 3, "delta_lambda": 0.0, "counterfactual": True, "interval_bellman": True,
+              "uniform_eligibility": True, "task": "t1o", "delta_target_share": 0.05, "delta_cap_share": 0.10},
 }
 TRAINERS: dict[str, dict[str, Any]] = {
     "A": {"updates_per_transition": 4, "actor_every_transitions": None, "learning_rate": "constant 1e-4"},
@@ -65,11 +75,27 @@ DELTA_WARMUP = 3000
 COUNTERFACTUAL = CounterfactualConfig()
 
 
-def make_env(arm: str, gym_config: T1GymConfig):
+def make_env(arm: str, gym_config: T1GymConfig, profile: str | None = None, fuel_cost: float | None = None):
     spec = ARMS[arm]
     cls = T1LReviewCFEnv if spec["counterfactual"] else T1LReviewEnv
     kwargs = {"counterfactual": COUNTERFACTUAL} if spec["counterfactual"] else {}
+    if spec.get("task") == "t1o":
+        from env.t1_o_task import T1O_DELAY_MAX_S, t1o_env_config
+
+        if spec["counterfactual"]:
+            kwargs["near_field_kappa"] = True
+        return cls(gym_config, t1o_env_config(profile, fuel_cost), review_period_steps=spec["review_period_steps"],
+                   delay_max_s=T1O_DELAY_MAX_S, **kwargs)
     return cls(gym_config, t1l_env_config(), review_period_steps=spec["review_period_steps"], **kwargs)
+
+
+def _t1o_task_record(profile: str, fuel_cost: float) -> dict[str, Any]:
+    from env.t1_o_task import T1O_DELAY_MAX_S, T1O_PROFILES, t1o_env_config
+
+    cfg = t1o_env_config(profile, fuel_cost)
+    return {"profile": f"t1o-{profile}", "spec": T1O_PROFILES[profile], "fuel_cost": fuel_cost,
+            "delay_max_s": T1O_DELAY_MAX_S, "near_field_kappa_counterfactual": True,
+            "initial": asdict(cfg.initial), "reward": asdict(cfg.reward)}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -82,6 +108,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="default logs/t1_l_option_20261015 (T1-L arms) or logs/t1_l_s_tcpf_20261016 (T1-L-S arms)")
     parser.add_argument("--trainer", choices=sorted(TRAINERS), default=None,
                         help="T1-L-S arms only (required there): A or B, per the run order's frozen rule")
+    parser.add_argument("--profile", choices=("p1", "p2"), default=None, help="T1-O arms: physical profile")
+    parser.add_argument("--fuel-cost", type=float, default=None, help="T1-O arms: fuel weight of the reward")
     parser.add_argument("--n-envs", type=int, default=1)
     parser.add_argument("--checkpoint-freq", type=int, default=5_000)
     parser.add_argument("--extra-checkpoints", default="2000")
@@ -98,13 +126,23 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     torch.set_num_threads(1)
     spec = ARMS[args.arm]
-    interval = bool(spec.get("interval_bellman", False))
+    t1o = spec.get("task") == "t1o"
+    interval = bool(spec.get("interval_bellman", False)) or t1o
+    if t1o:
+        if args.profile is None or args.fuel_cost is None:
+            raise SystemExit("T1-O arms need --profile and --fuel-cost (frozen run order)")
+        if args.trainer not in (None, "A"):
+            raise SystemExit("T1-O arms use trainer A only")
+        args.trainer = "A"
+    elif args.profile is not None or args.fuel_cost is not None:
+        raise SystemExit("--profile / --fuel-cost are for the T1-O arms only")
     if interval and args.trainer is None:
         raise SystemExit("T1-L-S arms need --trainer A or B (run order)")
     if not interval and args.trainer not in (None, "A"):
         raise SystemExit("the T1-L arms (b2 / n0 / ndelta) use the 166244b trainer only")
     if args.log_root is None:
-        args.log_root = Path("logs/t1_l_s_tcpf_20261016" if interval else "logs/t1_l_option_20261015")
+        args.log_root = Path("logs/t1_o_tcpf_20261017" if t1o else
+                             "logs/t1_l_s_tcpf_20261016" if interval else "logs/t1_l_option_20261015")
     provenance = _code_provenance()
     if provenance["code_dirty"] is not False and not args.allow_dirty:
         raise SystemExit(f"refusing to train from a modified or unknown checkout: {provenance}")
@@ -114,13 +152,14 @@ def main(argv: list[str] | None = None) -> None:
     (log_dir / "checkpoints").mkdir(parents=True)
     gym_config = T1GymConfig(seed_base=1_000_000 * (args.seed + 1))
     if args.n_envs == 1:
-        env = make_env(args.arm, gym_config)
+        env = make_env(args.arm, gym_config, args.profile, args.fuel_cost)
     else:
         from functools import partial
 
         from stable_baselines3.common.vec_env import SubprocVecEnv
 
-        env = SubprocVecEnv([partial(make_env, args.arm, replace(gym_config, seed_base=gym_config.seed_base + i * 100_000))
+        env = SubprocVecEnv([partial(make_env, args.arm, replace(gym_config, seed_base=gym_config.seed_base + i * 100_000),
+                                     args.profile, args.fuel_cost)
                              for i in range(args.n_envs)], start_method="spawn")
     kwargs = model_kwargs(T1_SAC, [int(x) for x in args.net_arch.split(",")] if args.net_arch else None,
                           n_envs=args.n_envs)
@@ -137,24 +176,29 @@ def main(argv: list[str] | None = None) -> None:
         kwargs["gradient_steps"] = trainer["updates_per_transition"] * args.n_envs
         if args.trainer == "B":
             kwargs["learning_rate"] = CosineLearningRate(1e-4, 1e-5)
-        model = TCPFSAC("MlpPolicy", env, interval_bellman=True,
+        model = TCPFSAC("MlpPolicy", env, interval_bellman=bool(spec.get("interval_bellman", False)),
+                        uniform_eligibility=bool(spec.get("uniform_eligibility", False)),
                         actor_every_transitions=trainer["actor_every_transitions"], **common, **kwargs)
     else:
         model = OptionSAC("MlpPolicy", env, **common, **kwargs)
     manifest = {
-        "experiment": "T1-L-S three-arm (plan 2026-10-16)" if interval else "T1-L three-arm (plan 2026-10-15)",
+        "experiment": ("T1-O 2x2 (research decision 2026-10-17)" if t1o else
+                       "T1-L-S three-arm (plan 2026-10-16)" if interval else "T1-L three-arm (plan 2026-10-15)"),
         "arm": args.arm, "arm_spec": spec,
         "trainer": None if not interval else {"name": args.trainer, **trainer,
                                               "critic_updates_per_vector_step": kwargs["gradient_steps"],
                                               "actor_clock": "global real transitions (num_timesteps) minus learning_starts"},
         "started_utc": datetime.now(timezone.utc).isoformat(),
         "argv": vars(args) | {"log_root": str(args.log_root)},
-        "task": {"profile": "t1l", "range_m": T1L_RANGE_M, "initial": asdict(t1l_env_config().initial)},
+        "task": (_t1o_task_record(args.profile, args.fuel_cost) if t1o else
+                 {"profile": "t1l", "range_m": T1L_RANGE_M, "initial": asdict(t1l_env_config().initial)}),
         "interface": INTERFACE_VERSION, "gstar_version": GSTAR_VERSION,
         "observation": list(REVIEW_OBSERVATION_NAMES), "gym": asdict(gym_config),
         "sac": asdict(T1_SAC) | {k: v for k, v in kwargs.items() if k in ("learning_starts",)},
         "learner": {"class": "train.t1_tcpf.TCPFSAC" if interval else "train.t1_option_sac.OptionSAC",
-                    "interval_bellman": interval, "lambda_mc": LAMBDA_MC, "lambda_eq": LAMBDA_EQ,
+                    "interval_bellman": bool(spec.get("interval_bellman", False)),
+                    "uniform_eligibility": bool(spec.get("uniform_eligibility", False)),
+                    "lambda_mc": LAMBDA_MC, "lambda_eq": LAMBDA_EQ,
                     "delta_lambda_fixed": spec["delta_lambda"], "delta_target_share": spec.get("delta_target_share"),
                     "delta_cap_share": spec.get("delta_cap_share"), "delta_calibration_steps": args.delta_calibration_steps,
                     "delta_probe_every_updates": 5, "delta_min_probes": 30,

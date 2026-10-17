@@ -156,7 +156,14 @@ class CounterfactualPredictor:
         self.config = config or CounterfactualConfig()
 
     # ------------------------------------------------------------------ #
-    def sync(self, real: T1GStarEnv) -> None:
+    def sync(self, real: T1GStarEnv, fresh_solvers: bool = False) -> None:
+        """Copy the real wrapper's state into the shadow. ``fresh_solvers`` (T1-O branching)
+        also drops the shadow MPC's solver cache: a cached CLARABEL object carries numerical
+        state from its own solve history (~1e-8 after many solves), so a clone cannot be made
+        bitwise equal to a long-running real branch; branches started from the same synced
+        state with fresh solvers are bitwise equal to each other, and their difference to the
+        real continuation is the measured numerical repeatability."""
+
         s, r = self.shadow, real
         if s.generator is None:
             s.reset(options={"opening": r.current_opening if r.current_opening is not None else 0})
@@ -165,6 +172,10 @@ class CounterfactualPredictor:
         for name in _ENV_FIELDS:
             setattr(s.env, name, deepcopy(getattr(r.env, name)))
         copy_controller_state(r.env.controller, s.env.controller)
+        if fresh_solvers:
+            cache = getattr(s.env.controller._problem, "_solver_cache", None)
+            if cache is not None:
+                cache.clear()
         assert r.generator is not None and s.generator is not None
         copy_generator_state(r.generator, s.generator)
         s._last_request, s._last_kappa = r._last_request, r._last_kappa
@@ -225,6 +236,7 @@ class CounterfactualPredictor:
         model = controller.reference_model
         target = targets[steps]
         window = check_predicted_window(e, g, targets, states)
+        near = near_field_window(e, g, targets, states, m)
         chaser = model.reconstruct_chaser(target, states[steps])
         e.target_state, e.chaser_state = target, chaser
         e.time_s = round(e.time_s + steps * c.dt_s, 10)
@@ -245,7 +257,7 @@ class CounterfactualPredictor:
             extra={"entry_speed_plan_m_s": None if g.plan is None else float(g.plan.get("entry_speed_m_s", 0.06)),
                    "new_plan": g.last_status.startswith(("optimal", "recovery")),
                    # the 20 clipped nominal controls of the decision (for real-vs-alternative differences)
-                   "controls": controls.copy()},
+                   "controls": controls.copy(), **near},
         )
 
     def closed_loop(self, action: np.ndarray) -> dict[str, Any]:
@@ -376,6 +388,31 @@ def check_predicted_window(env, generator, targets: list, states: list) -> dict[
     }
 
 
+def near_field_window(env, generator, targets: list, states: list, start_metrics) -> dict[str, Any]:
+    """Mode changes of a predicted 2 s window that starts in G*'s descent mode (T1-O near-field
+    kappa counterfactual). ``check_predicted_window`` counts every step in the cone or in the
+    descent region as a switch, which is right for the far field but rejects every descent
+    window; here a switch is a change against the window's start: entering or leaving the
+    mouth region, or leaving the descent region. Read only."""
+
+    from env.t1_task import compute_t1_metrics
+
+    task = env.config.task
+    model = env.controller.reference_model
+    start_mouth = bool(start_metrics.mouth_region)
+    first = None
+    for i in range(1, len(states)):
+        x = np.asarray(states[i], dtype=np.float64)
+        if not np.all(np.isfinite(x)):
+            first = i
+            break
+        m = compute_t1_metrics(targets[i], model.reconstruct_chaser(targets[i], x), task)
+        if bool(m.mouth_region) != start_mouth or not generator._descending(env, m):
+            first = i
+            break
+    return {"near_mode_switch": first is not None, "near_first_mode_switch_step": first}
+
+
 def prediction_errors(p: Prediction, reward: float, observation: np.ndarray, relative_position_eci_m: np.ndarray) -> dict[str, float]:
     return {
         "e_r": abs(p.reward - float(reward)),
@@ -455,5 +492,5 @@ class T1CounterfactualEnv(T1GStarEnv):
 
 __all__ = [
     "CounterfactualConfig", "CounterfactualPredictor", "Prediction", "T1CounterfactualEnv",
-    "check_predicted_window", "copy_controller_state", "copy_generator_state", "mirror_solver_cache", "prediction_errors", "OBSERVATION_NAMES",
+    "check_predicted_window", "copy_controller_state", "near_field_window", "copy_generator_state", "mirror_solver_cache", "prediction_errors", "OBSERVATION_NAMES",
 ]

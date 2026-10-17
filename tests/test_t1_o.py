@@ -105,3 +105,149 @@ def test_fixed_candidate_delay_applies_to_the_first_plan_only():
     env.generator.plan = None  # no live plan any more: the uniform rule asks for the earliest
     assert f3.action(env)[0] == -1.0
     assert set(CANDIDATES) == {f"F{i}" for i in range(1, 9)}
+
+
+# --------------------------------------------------------------------------- 2 x 2 sample eligibility
+from types import SimpleNamespace  # noqa: E402
+
+import torch as th  # noqa: E402
+
+from env.t1_counterfactual import CounterfactualConfig  # noqa: E402
+from env.t1_option_cf import near_kappa_alternative, near_kappa_gate  # noqa: E402
+from env.t1_task_review import DUE_INDEX  # noqa: E402
+from tests.test_t1_l_s import G, _fill, _model  # noqa: E402
+
+
+def _batch(m, seed=0):
+    np.random.seed(seed)
+    data = m.replay_buffer.sample(64)
+    return data, m._td_targets(data, data.rewards * 0 + 7.0)
+
+
+def test_r1_and_r3_share_one_eligibility_and_differ_only_in_the_review_target():
+    r1 = _model(interval_bellman=False, uniform_eligibility=True)
+    r3 = _model(interval_bellman=True, uniform_eligibility=True)
+    for m in (r1, r3):
+        _fill(m.replay_buffer, np.random.default_rng(2), n=60)
+        m.target_value = lambda obs: obs[:, 1:2] * 0 + 7.0
+    d1, (t1, k1) = _batch(r1)
+    d3, (t3, k3) = _batch(r3)
+    assert th.equal(d1.observations, d3.observations) and th.equal(k1, k3)
+    assert th.equal(r1._eligible, k1) and th.equal(r3._eligible, k3)
+    ready, ret, disc, _, done = r3.replay_buffer.interval()
+    review = d3.observations[:, DUE_INDEX] > 0.5
+    one = d3.rewards + (1 - d3.dones) * G * 7.0
+    assert th.allclose(t1, one)  # R1: one-step everywhere
+    eligible_review = review & (ready[:, 0] > 0)
+    assert eligible_review.any() and th.allclose(t3[eligible_review], (ret + disc * (1 - done) * 7.0)[eligible_review])
+    assert th.allclose(t3[~review], one[~review])
+    assert th.all(k1[review & (ready[:, 0] == 0)] == 0.0) and th.all(k1[~review] == 1.0)
+
+
+def test_eligibility_masks_the_mc_equivalence_and_relative_terms():
+    m = _model(interval_bellman=False, uniform_eligibility=True)
+    _fill(m.replay_buffer, np.random.default_rng(3), n=90)
+    data, _ = _batch(m, seed=1)
+    q = m.critic(data.observations, data.actions)
+    m._eligible = th.zeros_like(m._eligible)
+    assert m._mc_loss(data, q)[0].item() == 0.0
+    assert m._eq_loss(data)[0].item() == 0.0
+    cf = SimpleNamespace(weights=th.ones_like(m._eligible))
+    assert float(m._cf_weights(cf).sum()) == 0.0
+    off = _model()  # T1-L-S default: no uniform eligibility, the 672ba79 behaviour
+    _fill(off.replay_buffer, np.random.default_rng(3), n=90)
+    _batch(off, seed=1)
+    assert off._eligible is None and off._cf_weights(cf) is cf.weights
+
+
+def test_r1_actor_samples_closed_reviews_only():
+    m = _model(interval_bellman=False, uniform_eligibility=True)
+    _fill(m.replay_buffer, np.random.default_rng(4))
+    np.random.seed(0)
+    batch = m._review_batch(64)
+    assert th.all(batch[:, DUE_INDEX] == 1.0) and m.actor_updates == 1
+    closed = m.replay_buffer.due & m.replay_buffer.interval_ready
+    assert closed.sum() < m.replay_buffer.due[: m.replay_buffer.pos].sum()  # the open latest review is excluded
+
+
+# --------------------------------------------------------------------------- near-field kappa counterfactual
+@pytest.mark.parametrize("kappa, alt", [(1.0, 0.8), (0.7, 0.5), (0.65, 0.85), (0.3, 0.5)])
+def test_near_kappa_alternative_moves_kappa_by_0p2_towards_the_middle(kappa, alt):
+    env = t1o_review_env("p1")
+    c = env.config
+    a1 = 2.0 * (kappa - c.kappa_min) / (c.kappa_max - c.kappa_min) - 1.0
+    a = near_kappa_alternative(env, np.array([0.2, a1, -0.5]))
+    assert c.kappa_min + (c.kappa_max - c.kappa_min) * 0.5 * (a[1] + 1.0) == pytest.approx(alt)
+    assert a[0] == pytest.approx(0.2) and a[2] == pytest.approx(-0.5)
+
+
+def _pred(controls, status="descent", switch=False):
+    return SimpleNamespace(extra={"controls": np.asarray(controls, float), "near_mode_switch": switch},
+                           plan_status=status, solved=True, solve_slack=0.0, window_violation=False,
+                           window_violation_kinds=[], saturation=0.0)
+
+
+def test_near_kappa_gate_requires_distinct_execution_descent_mode_and_no_mode_change():
+    env = t1o_review_env("p1")
+    env.reset(options={"opening": 299990})
+    cfg, errors = CounterfactualConfig(), {"e_r": 0.0, "e_p": 0.0, "e_o": 0.0}
+    base = np.zeros((20, 6))
+    moved = base.copy()
+    moved[:, 3] = 0.01
+    assert near_kappa_gate(env, cfg, _pred(base), _pred(moved), errors) == (1, [])
+    assert "same_execution" in near_kappa_gate(env, cfg, _pred(base), _pred(base), errors)[1]
+    assert "alt_mode_switch" in near_kappa_gate(env, cfg, _pred(base), _pred(moved, switch=True), errors)[1]
+    assert "real_not_descent:kept" in near_kappa_gate(env, cfg, _pred(base, "kept"), _pred(moved), errors)[1]
+
+
+def test_delay_counterfactual_step_is_15_s_of_the_90_s_range():
+    from env.t1_option_cf import T1LReviewCFEnv
+
+    env = T1LReviewCFEnv(env_config=t1o_env_config("p1"), delay_max_s=T1O_DELAY_MAX_S, near_field_kappa=True)
+    env.reset(options={"opening": 299990})
+    assert env.predictor.shadow.delay_max_s == T1O_DELAY_MAX_S
+    alt, kind = env.predictor.alternative(env, np.array([0.0, 1.0, -1.0]), None)
+    if kind == "delay_shift":
+        assert alt[0] == pytest.approx(1.0 / 3.0)
+    else:  # the parity picked the entry-speed alternative; the other parity gives the delay
+        env._review_index += 1
+        alt, kind = env.predictor.alternative(env, np.array([0.0, 1.0, -1.0]), None)
+        assert kind == "delay_shift" and alt[0] == pytest.approx(1.0 / 3.0)
+
+
+# --------------------------------------------------------------------------- snapshot / restore
+def _state(env):
+    e = env.env
+    return (e.target_state.position.copy(), e.target_state.rotation.copy(), e.chaser_state.position.copy(),
+            e.chaser_state.rotation.copy(), e.chaser_state.velocity.copy(), e.chaser_state.omega.copy(), e.time_s,
+            e._delta_v, env.generator.last_status, env.generator.tau_effective_s)
+
+
+def test_branches_from_one_snapshot_are_bitwise_equal_and_close_to_the_real_continuation():
+    """Gate 1b / Gate 3 branching: two shadows synced from the same real state with fresh
+    solvers give the same closed loop bit for bit under the same actions (state, clocks, G*
+    plan memory, MPC warm start, review clock are all cloned); the real continuation differs
+    only by the solver-cache numerics (measured, ~1e-8), which is the repeatability error."""
+
+    from env.t1_option_cf import ReviewCounterfactualPredictor
+
+    cfg = t1o_env_config("p1")
+    real = t1o_review_env("p1")
+    real.reset(options={"opening": 299990})
+    policy = FixedCandidate("F3")
+    for _ in range(2):  # advance into a live plan, with a solver cache in the real MPC
+        a = policy.action(real)
+        _, _, _, _, info = real.step(a)
+        policy.executed(real, info)
+    branches = [ReviewCounterfactualPredictor(None, cfg, None, shadow_factory=lambda: t1o_review_env("p1"))
+                for _ in range(2)]
+    for b in branches:
+        b.sync(real, fresh_solvers=True)
+    for k in range(3):
+        a = policy.action(real)
+        o_r, r_r, *_ = real.step(a)
+        (o1, r1, *_), (o2, r2, *_) = (b.shadow.step(a) for b in branches)
+        assert r1 == r2 and np.array_equal(o1, o2), k
+        for x, y in zip(_state(branches[0].shadow), _state(branches[1].shadow)):
+            assert np.array_equal(np.asarray(x), np.asarray(y)), k
+        assert abs(r1 - r_r) < 1e-6 and float(np.max(np.abs(o1 - o_r))) < 1e-5

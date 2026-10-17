@@ -193,6 +193,11 @@ class OptionSAC(M1SAC):
     def _review_batch(self, batch_size: int) -> th.Tensor | None:
         return self.replay_buffer.sample_due(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
 
+    def _cf_weights(self, cf) -> th.Tensor:
+        """Weights of the relative MPC term (T1-O: also masked by the sample eligibility)."""
+
+        return cf.weights
+
     # ------------------------------------------------------------------ #
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         self.policy.set_training_mode(True)
@@ -213,7 +218,8 @@ class OptionSAC(M1SAC):
             current_q = self.critic(data.observations, data.actions)
             td = self._td_loss(current_q, target, td_mask)
             loss = self._fix_terms(td, data, current_q)
-            valid = float(cf.weights.sum().item())
+            cf_weights = self._cf_weights(cf)
+            valid = float(cf_weights.sum().item())
             n = self._n_updates_in_call
             probe = phase == "calibrating" and n % self.delta_probe_every == 0
             if valid > 0.0 and ((phase == "on" and lam > 0.0) or probe):
@@ -223,7 +229,7 @@ class OptionSAC(M1SAC):
                     v_hat = self.target_value(cf.next_observations)
                     delta = (cf.rewards - data.rewards) + self.gamma * (v_hat - v_next)
                 alt_q = self.critic(data.observations, cf.actions)
-                rel = 0.5 * sum((cf.weights * F.huber_loss(qa - qr, delta, reduction="none", delta=self.delta_huber)).mean()
+                rel = 0.5 * sum((cf_weights * F.huber_loss(qa - qr, delta, reduction="none", delta=self.delta_huber)).mean()
                                 for qa, qr in zip(alt_q, current_q))
                 diagnose = bool(self.delta_diagnostics_every) and n % self.delta_diagnostics_every == 0
                 g_td = g_rel = None
@@ -249,7 +255,7 @@ class OptionSAC(M1SAC):
                     s["loss"].append(float(rel.item()))
                     s["g_td"].append(g_td)
                     s["g_delta"].append(g_rel)
-                    w = cf.weights[:, 0] > 0
+                    w = cf_weights[:, 0] > 0
                     s["abs_target_mean"].append(float(delta[w].abs().mean().item()))
                     s["abs_dq_mean"].append(float((alt_q[0] - current_q[0]).detach()[w].abs().mean().item()))
                     s["applied_lambda"].append(float(applied))

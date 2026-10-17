@@ -43,6 +43,7 @@ from typing import Any
 
 import numpy as np
 import torch as th
+import torch.nn.functional as F
 
 from env.t1_task_review import DUE_INDEX
 from train.t1_option_sac import OptionReplayBuffer, OptionSAC
@@ -142,9 +143,19 @@ class IntervalReplayBuffer(OptionReplayBuffer):
 
 
 class TCPFSAC(OptionSAC):
+    """``uniform_eligibility`` (T1-O 2 x 2 arms): every arm, interval target or not, trains only
+    on *eligible* samples -- continue samples and review samples whose interval has closed --
+    in the TD term, the MC label term, the keep-band equivalence term and the relative MPC
+    term, and its actor samples only closed reviews. The arms then differ only in the target
+    of an eligible review sample (one-step vs. the closed interval). Off (default): the
+    T1-L-S behaviour of 672ba79 exactly."""
+
     def __init__(self, *args: Any, interval_bellman: bool = True, actor_every_transitions: int | None = None,
-                 **kwargs: Any) -> None:
+                 uniform_eligibility: bool = False, **kwargs: Any) -> None:
         self.interval_bellman = bool(interval_bellman)
+        self.uniform_eligibility = bool(uniform_eligibility)
+        #: eligibility mask of the current batch (uniform_eligibility only), set by _td_targets
+        self._eligible: th.Tensor | None = None
         #: None: one actor update per critic update (trainer A); k: one per k real transitions (B)
         self.actor_every_transitions = actor_every_transitions
         self.actor_updates = 0
@@ -161,16 +172,49 @@ class TCPFSAC(OptionSAC):
     # -- TD targets ---------------------------------------------------------- #
     def _td_targets(self, data, v_next: th.Tensor) -> tuple[th.Tensor, th.Tensor | None]:
         one_step = data.rewards + (1 - data.dones) * self.gamma * v_next
-        if not self.interval_bellman:
+        self._eligible = None
+        if not (self.interval_bellman or self.uniform_eligibility):
             return one_step, None
         ready, ret, discount, end_obs, done = self.replay_buffer.interval()  # type: ignore[union-attr]
         review = (data.observations[:, DUE_INDEX:DUE_INDEX + 1] > 0.5).float()
-        v_end = self.target_value(end_obs)
-        folded = ret + discount * (1 - done) * v_end
-        target = review * folded + (1 - review) * one_step
+        if self.interval_bellman:
+            v_end = self.target_value(end_obs)
+            folded = ret + discount * (1 - done) * v_end
+            target = review * folded + (1 - review) * one_step
+        else:
+            folded, target = None, one_step
         mask = (1 - review) + review * ready  # a review with an open interval is not trained on
+        if self.uniform_eligibility:
+            self._eligible = mask
         self._last_target_parts = (review, ready, folded, one_step)
         return target, mask
+
+    # -- the auxiliary terms under the same eligibility (uniform_eligibility only) -------- #
+    def _mc_loss(self, replay_data, current_q_values):
+        if self._eligible is None:
+            return super()._mc_loss(replay_data, current_q_values)
+        returns, mask = self.replay_buffer.monte_carlo()  # type: ignore[union-attr]
+        mask = mask * self._eligible
+        loss = 0.5 * sum((mask * F.huber_loss(q, returns, reduction="none", delta=self.mc_delta)).mean()
+                         for q in current_q_values)
+        return loss, float(mask.mean().item())
+
+    def _eq_loss(self, replay_data):
+        if self._eligible is None:
+            return super()._eq_loss(replay_data)
+        obs, actions = replay_data.observations, replay_data.actions
+        mask = self._eq_mask(obs) * self._eligible
+        u = th.rand((actions.shape[0], 1), generator=self._eq_generator(), device=self.device) - 0.5
+        a_band = th.cat([u, actions[:, 1:]], dim=1)
+        a_zero = th.cat([th.zeros_like(u), actions[:, 1:]], dim=1)
+        with th.no_grad():
+            anchor = self.critic(obs, a_zero)
+        moved = self.critic(obs, a_band)
+        loss = 0.5 * sum((mask * (q - a.detach()) ** 2).mean() for q, a in zip(moved, anchor))
+        return loss, float(mask.mean().item())
+
+    def _cf_weights(self, cf) -> th.Tensor:
+        return cf.weights if self._eligible is None else cf.weights * self._eligible
 
     def _td_loss(self, current_q, target, mask):
         loss = OptionSAC._td_loss(current_q, target, mask)
@@ -205,8 +249,9 @@ class TCPFSAC(OptionSAC):
 
     def _review_batch(self, batch_size: int) -> th.Tensor | None:
         buffer = self.replay_buffer
+        closed = self.interval_bellman or self.uniform_eligibility
         batch = (buffer.sample_closed_review(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
-                 if self.interval_bellman else super()._review_batch(batch_size))
+                 if closed else super()._review_batch(batch_size))
         if batch is not None:
             self.actor_updates += 1
         return batch
