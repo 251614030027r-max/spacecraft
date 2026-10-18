@@ -24,7 +24,7 @@
 | `experiment/t1_l_s_tcpf_20261016` | `672ba79` | T1-L-S：区间 Bellman、训练器 A / B，`evidence/T1_L_S_PRECHECK` | 正式训练取消 |
 | `experiment/t1_o_tcpf_20261017` | `d3902a9` | T1-O：档案、物理筛选、V2 Gate A–E 工具与证据 | 停于 Gate C |
 
-**远端删除：** 由下层在本机执行（沙盒代理不允许删除远端分支）：
+**远端删除：** 由下层在本机执行（沙盒代理不允许删除远端分支），2026-10-18 已执行并核验只剩三条分支：
 
 ```powershell
 git push origin --delete experiment/t1_l_option_relative_20261015 experiment/t1_l_s_tcpf_20261016 experiment/t1_o_tcpf_20261017
@@ -87,13 +87,17 @@ foreach ($b in "t1_l_option_relative_20261015","t1_l_s_tcpf_20261016","t1_o_tcpf
 
 | 位置 | 内容 |
 |---|---|
-| `D:\py\DRL2` | F01 线工作树（`4795910`）与日志 |
-| `D:\py\DRL2_T1` | T1 R0 / R1、v2、v4 工作树与训练产物 |
-| `D:\py\DRL2_T1_L` | T1-L 三臂（`166244b`）的模型与日志 |
-| `D:\py\DRL2_T1_O` | T1-O V2 本机门控（`d3902a9`）日志 |
-| `C:\Users\35884\Documents\Spacecraft\过程文件\` | 各轮交付包与过程记录 |
+2026-10-18 下层完成本机资产归并：只保留一个科学工程，旧克隆保全后退役。
 
-本地资产地图见 collab `lower/handoffs/cleanup_inventory_20261010/`（2026-10-10 版）。模型 zip 一律只记 SHA，不上传。
+| 位置 | 内容 |
+|---|---|
+| `D:/py/DRL2` | 唯一科学工程，检出 `4795910`（不是权威科学头 `7c2d513`；下一轮按新冻结 SHA 同步）；模型与日志在 `logs/`、评估在 `eval/`（T1 v4 在 `logs/t1/`，T1-L 在 `logs/t1_l_option_20261015/`，T1-O V2 在 `logs/t1o_v2/`） |
+| `D:/py/DRL2/local_artifacts/资产归并_20261018/` | 版本保全库：源码快照、Git 元数据、定位索引（不是另一套运行工程） |
+| `D:/py/DRL2_T1`、`DRL2_T1_L`、`DRL2_T1_L_S`、`DRL2_T1_O` 等 | 已保全后退役，不要重建 |
+| `D:/py/DRL` | 第一篇论文的独立工程，不动 |
+| `C:/Users/35884/Documents/Spacecraft/过程文件/` | 过程记录；归并映射在 `资产归并_20261018/记录/`；交付在 `Spacecraft/上层交付/` |
+
+本地资产地图：collab `lower/handoffs/cleanup_inventory_20261018/LOCAL_ASSET_MAP.md`（`4f3d305`）；2026-10-10 版在 `cleanup_inventory_20261010/`。历史证据里的旧路径不是现址，按映射查找并核验 SHA。模型 zip 一律只记 SHA，不上传。
 
 ## 6. 引用过的关键科学提交（都在科学分支上可达）
 

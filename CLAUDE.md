@@ -16,9 +16,11 @@ finished and archived (`docs/archive/06_f01_value_stopping/`).
 
 ## Start here
 
-**First read the shared three-window handoff:** branch `collab/spacecraft`,
-`docs/collaboration/HANDOFF.md` (background, current state, each window's role
-and discipline). Then this file and the pages below.
+**First read the shared three-window documents** on branch `collab/spacecraft`:
+`docs/collaboration/HANDOFF.md` (research question, scenario problem, user's
+requirements, assets, current state, each window's discipline) and
+`docs/collaboration/RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md` (how the
+thinking and experiments evolved, pitfalls). Then this file and the pages below.
 
 | What | Where |
 |---|---|
@@ -38,8 +40,9 @@ and discipline). Then this file and the pages below.
   success criteria. The upper window reviews, writes run orders and code; it
   may question but not redefine them. Claim-breaking issues are reported as:
   what, which claim, why not a limitation, minimal check, method change needed.
-- The lower window runs long jobs on the user's machine (one independent clone
-  per line: `D:\py\DRL2`, `DRL2_T1`, `DRL2_T1_L`, `DRL2_T1_O`), never
+- The lower window runs long jobs on the user's machine in the single science
+  checkout `D:/py/DRL2` (the old `DRL2_T1*` clones are retired; local assets are
+  mapped in collab `lower/handoffs/cleanup_inventory_20261018/`), never
   switches branches or pulls in a working tree while a job runs.
 - **Exactly three branches** (user, 2026-10-18):
   `claude/sac-mpc-coupling-design-ns7g6i` holds all science code and evidence;
