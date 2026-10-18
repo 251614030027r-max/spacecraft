@@ -74,7 +74,12 @@ class Record(BaseCallback):
                 heartbeat['auxiliary_lambda_frozen']=self.model.delta_calibration.get('lambda')
                 shares=self.model.delta_stats.get('applied_share',[])
                 heartbeat['last_auxiliary_gradient_share']=float(shares[-1]) if shares and np.isfinite(shares[-1]) else None
-            tmp=self.out/"heartbeat.tmp";tmp.write_text(json.dumps(heartbeat));tmp.replace(self.out/"heartbeat.json")
+            tmp=self.out/"heartbeat.tmp";tmp.write_text(json.dumps(heartbeat))
+            for attempt in range(10):
+                try:tmp.replace(self.out/'heartbeat.json');break
+                except PermissionError:
+                    if attempt==9:raise
+                    time.sleep(.02)
             self.handle.flush()
             if not finite:
                 (self.out/"ABORTED.json").write_text(json.dumps(heartbeat|{"reason":"nonfinite"}))
@@ -149,6 +154,8 @@ def main():
     (out/"manifest.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
     marks=[min(a.steps,200),500,2000,5000,10000,a.steps] if a.dev_smoke else [500,2000,5000,10000,a.steps]
     model.learn(total_timesteps=a.steps,callback=Record(out,[m for m in marks if m<=a.steps]))
+    if not all(bool(torch.isfinite(p).all()) for p in model.policy.parameters()):
+        if not (out/'ABORTED.json').exists():(out/'ABORTED.json').write_text(json.dumps({'reason':'nonfinite_final_parameters','steps':int(model.num_timesteps)}))
     model.save(out/"final")
     for key in ("delta_stats","delta_calibration","tcpf_stats","fix_stats"):
         (out/f"{key}.json").write_text(json.dumps(getattr(model,key),default=json_default))

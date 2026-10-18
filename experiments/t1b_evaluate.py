@@ -11,6 +11,18 @@ def tree_choice(spec,obs):
         node=spec['children_left'][node] if obs[spec['feature'][node]]<=spec['threshold'][node] else spec['children_right'][node]
     return spec['classes'][spec['class_index'][node]]
 
+def load_policy_checkpoint(path):
+    from zipfile import ZipFile
+    from train.t1_b_sac import T1BSAC
+    checkpoint=Path(path)
+    if not checkpoint.exists():checkpoint=checkpoint.with_suffix('.zip')
+    with ZipFile(checkpoint) as archive:metadata=json.loads(archive.read('data'))
+    if metadata.get('interval_feedback_method',False):
+        from train.t1_b_interval_sac import T1BIntervalSAC
+        cls=T1BIntervalSAC
+    else:cls=T1BSAC
+    return cls.load(checkpoint,device='cpu')
+
 def run(job):
     row,opening,out,profile,seed,save_zero=job
     from env.t1_b_task import T1BReviewEnv,MissionDistribution
@@ -32,7 +44,7 @@ def run(job):
                 learning_starts=2000,policy_kwargs={'net_arch':[128,128]},ent_coef=.005,
                 mc_lambda=0.,eq_lambda=.1,delta_lambda=0.,verbose=0)
             if save_zero:model.save(Path(out)/f'zero_seed_{seed}')
-        else:model=T1BSAC.load(row.split(':',1)[1],device='cpu')
+        else:model=load_policy_checkpoint(row.split(':',1)[1])
         weight_hash=hashlib.sha256(b''.join(p.detach().cpu().numpy().tobytes() for p in model.policy.parameters())).hexdigest()
     elif row.startswith('tree:'):
         spec=json.loads(Path(row.split(':',1)[1]).read_text(encoding='utf-8'))
