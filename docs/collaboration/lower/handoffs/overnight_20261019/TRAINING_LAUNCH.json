@@ -1,0 +1,77 @@
+{
+  "utc_start": "2026-10-18T20:16:21.616455+00:00",
+  "science_commit": "27e8095cd3f5e53b069b083b4df581fb1f0ecbf4",
+  "engineering_receipt_sha256": "c7557b90ec404c640cb1da7e8886128c02af28a26b51fc1ded69d265c42079df",
+  "protocol_sha256": "2937d8eafc15033c69dd2bc74214f184ec73d7d4d9962b6f0508245a241f57e3",
+  "parent_pid": 25996,
+  "arms": {
+    "r3": {
+      "pid": 11244,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "train.train_t1_b",
+        "--arm",
+        "r3",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019\\\u7ed3\u679c\\TRAIN_r3_seed0",
+        "--seed",
+        "0",
+        "--steps",
+        "10000",
+        "--n-envs",
+        "4",
+        "--feedback-kind",
+        "interval",
+        "--profile",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019\\\u8bb0\u5f55\\profile_mission_v3.json",
+        "--ready-receipt",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019\\\u8bb0\u5f55\\READY_RECEIPT.json"
+      ],
+      "output": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019\\\u7ed3\u679c\\TRAIN_r3_seed0"
+    },
+    "tcpf": {
+      "pid": 26852,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "train.train_t1_b",
+        "--arm",
+        "tcpf",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019\\\u7ed3\u679c\\TRAIN_tcpf_seed0",
+        "--seed",
+        "0",
+        "--steps",
+        "10000",
+        "--n-envs",
+        "4",
+        "--feedback-kind",
+        "interval",
+        "--profile",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019\\\u8bb0\u5f55\\profile_mission_v3.json",
+        "--ready-receipt",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019\\\u8bb0\u5f55\\READY_RECEIPT.json"
+      ],
+      "output": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019\\\u7ed3\u679c\\TRAIN_tcpf_seed0"
+    }
+  },
+  "evaluation": {
+    "pid": 7928,
+    "command": [
+      "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+      "-B",
+      "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019\\\u811a\u672c\\checkpoint_evaluation_pipeline.py",
+      "--root",
+      "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019",
+      "--profile",
+      "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019\\\u8bb0\u5f55\\profile_mission_v3.json",
+      "--ready-receipt",
+      "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\\u901a\u5bb5\u7814\u7a76_20261019\\\u8bb0\u5f55\\READY_RECEIPT.json",
+      "--workers",
+      "4"
+    ]
+  }
+}
