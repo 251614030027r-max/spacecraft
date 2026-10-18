@@ -1,12 +1,17 @@
-# 上层执行与审查入口（2026-10-15）
+# 上层执行与审查入口（2026-10-18）
 
 **上层职责：**方法代码实现、必要的单元/回归和短冒烟、真实动作生效检查、冻结SHA和下层执行单；下层交付后集中审查。**不默认由上层承担大量固定规则筛选、40k长训、开发评估或反复证明方法一定优于基线。**细则见[WORKFLOW](../WORKFLOW.md)。
 
-## 当前唯一有效T1执行单
+## 当前执行单
 
-[T1_FIX_FIRST_TRAIN_20261015.md](run_orders/T1_FIX_FIRST_TRAIN_20261015.md) **第2.1版**：科学`1d432c8`，G★ v0.6、接口v4（3维动作/25维观测），M0/M2各40k及2k校准，无成绩止损，20k只读快照。2.1版仅将零动作兼容判据从跨机证据改为本机旧版逐值比较；通过的检查可复用，不得重复启动。最新运行状态见[CURRENT](../CURRENT.json)，本入口不宣称训练已完成。旧第1版科学`1282464`未启动、已作废。
+**无。** 最近一份 [T1_O_V2_GATES_LOCAL_20261017.md](run_orders/T1_O_V2_GATES_LOCAL_20261017.md)（第 2 版，科学 `d3902a9`）已执行完毕，按规则停于 Gate C（审查 [T1O_V2_GATES_UPPER_REVIEW_20261017](../reviews/T1O_V2_GATES_UPPER_REVIEW_20261017.md)）。下一份执行单待研究层确定新任务版本后再写。
 
 ## 历史，不能替代当前执行单
+
+- [T1_O_V2_GATES_LOCAL](run_orders/T1_O_V2_GATES_LOCAL_20261017.md)：第 2 版已执行，停于 Gate C；第 1 版未执行。
+- [T1_L_S_TCPF](run_orders/T1_L_S_TCPF_20261016.md)：取消，未启动。
+- [T1_L_OPTION_THREE_ARM](run_orders/T1_L_OPTION_THREE_ARM_20261015.md)：已完成（交付 `68680eb`，审查 `71d6b82`）。
+- [T1_FIX_FIRST_TRAIN](run_orders/T1_FIX_FIRST_TRAIN_20261015.md)：第 2.1 版已完成（交付 `2242f1b`，审查 `110ce61`）。
 
 - [T1_BETA_B012](run_orders/T1_BETA_B012_20261014.md)：B1 NO-GO，B2停止。
 - [T1_ROOTCAUSE_DIAG](run_orders/T1_ROOTCAUSE_DIAG_20261013.md)：根因第一阶段已完成。

@@ -10,6 +10,6 @@
 | 协作纪律 | [WORKFLOW](WORKFLOW.md) |
 | 历史实验与审查 | [registry](registry/README.md) · [reviews](reviews/README.md) |
 
-**当前T1：**科学`1d432c8`，唯一有效[T1 v4第2.1版执行单](upper/run_orders/T1_FIX_FIRST_TRAIN_20261015.md)。真实阶段以CURRENT与下层交付为准，准入中不等于正式训练已启动。
+**当前（2026-10-18）：** 没有有效执行单在运行。T1-O V2 本机门控已停于 Gate C（审查 [reviews/T1O_V2_GATES_UPPER_REVIEW_20261017.md](reviews/T1O_V2_GATES_UPPER_REVIEW_20261017.md)），下一任务版本由研究层设计。科学代码只在 `claude/sac-mpc-coupling-design-ns7g6i`；全部分支与资产见科学分支 `docs/archive/GIT_ASSETS_20261018.md`。
 
 **推进方式：**研究层定方向与授权；上层做必要实现、测试和冻结；下层完整训练、评估与交付；上层集中审查。技术正确性要检查，研究效果不要求训练前证明；旧方案筛选不能反复阻断已授权主线。细则见WORKFLOW。
