@@ -208,19 +208,40 @@ class T1PReviewEnv(gym.Env):
         return obs
 
 
+RULE_STAGING_RADIUS_M = 8.0
+RULE_GAIN_PER_S = 1.0 / 20.0
+RULE_MAX_SPEED_M_S = 0.15
+
+
 def geometric_rule(env: T1PReviewEnv) -> np.ndarray:
-    """The single pre-declared same-interface rule: the stage goal points at the 6.3 m entry point
-    predicted 24 s ahead (the potential's anchor), scaled by d_max and clipped to the action box;
-    the radial component is halved inside 10 m (conservative braking)."""
+    """The single pre-declared same-interface rule (position error to the future port direction,
+    conservative braking, the existing action scale): the staging point is at 8.0 m (inside the 9 m
+    bridge range, outside the sphere) on the chaser's own longitude about the angular-momentum
+    axis H, at the latitude of the port direction predicted 24 s ahead -- i.e. on the port's sweep
+    band, where the port comes round to the line of sight and the bridge can start. The desired
+    relative velocity points to it with gain 1/20 s^-1 and at most 0.15 m/s; the stage action asks
+    for the velocity change v* - v_coast through the stage map dv = (2 d_max / H) u, clipped to the
+    action box (which also limits the braking per stage)."""
 
-    from env.t1_p_stage import stage_goal
+    from env.t1_p_stage import STAGE_S, stage_goal
 
-    g = stage_goal(env.env, np.zeros(3))
-    delta = mouth_point(env.env) - g["q_coast"]
-    a = np.array([-(delta @ g["basis"][0]), delta @ g["basis"][1], delta @ g["basis"][2]]) / g["d_max"]
-    if env.env.metrics().range_m < 10.0:
-        a[0] *= 0.5
-    return np.clip(a, -1.0, 1.0)
+    e = env.env
+    g = stage_goal(e, np.zeros(3))
+    q, v = relative_inertial(e)
+    h = e.anchor.h_axis
+    los = q / np.linalg.norm(q)
+    meridian = los - float(los @ h) * h
+    meridian = meridian / np.linalg.norm(meridian) if np.linalg.norm(meridian) > 1e-6 else e.anchor.e1
+    port = mouth_point(e) / np.linalg.norm(mouth_point(e))
+    latitude = float(np.arcsin(np.clip(port @ h, -1.0, 1.0)))
+    staging = RULE_STAGING_RADIUS_M * (np.cos(latitude) * meridian + np.sin(latitude) * h)
+    desired = RULE_GAIN_PER_S * (staging - q)
+    speed = float(np.linalg.norm(desired))
+    if speed > RULE_MAX_SPEED_M_S:
+        desired *= RULE_MAX_SPEED_M_S / speed
+    u = (desired - g["v_coast"]) / (2.0 * g["d_max"] / STAGE_S)
+    b = g["basis"]
+    return np.clip(np.array([-(u @ b[0]), u @ b[1], u @ b[2]]), -1.0, 1.0)
 
 
 def t1p_review_env(fuel_cost: float = 20.0, gym_config: T1GymConfig | None = None,

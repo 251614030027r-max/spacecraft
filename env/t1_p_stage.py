@@ -194,8 +194,9 @@ class LocalStagePlanner:
     def solve(self, q0: np.ndarray, v0: np.ndarray, q_goal: np.ndarray, v_goal: np.ndarray,
               iterations: int = 4) -> dict[str, Any]:
         r0 = float(np.linalg.norm(q0))
-        outward = max(float(q0 @ v0) / max(r0, 1e-9), 0.0)
-        stopping = outward ** 2 / (2.0 * self.max_force_n / self.mass)
+        # room to stop the *whole* relative velocity at the plan force (a tangential drift also
+        # grows the range; the radial part alone made far-field stages spuriously infeasible)
+        stopping = float(v0 @ v0) / (2.0 * self.max_force_n / self.mass)
         result: dict[str, Any] = {"feasible": False, "status": "not_solved"}
         for attempt in range(3):
             cache = getattr(self.problem, "_solver_cache", None)
@@ -324,7 +325,8 @@ class T1PGenerator:
         self._enter_hold(env, f"hold:rejected:{result['status']}")
 
     def continue_step(self, env) -> None:
-        """Continue decision at a non-review step (bridge: keep or re-plan the same arrival)."""
+        """Continue decision at a non-review step: a stage plan flies on (re-planned only through a
+        > 1 m deviation event); the bridge keeps or re-plans the same arrival (conditional G*)."""
 
         if self.mode == "bridge":
             self.bridge.decide(env, self.bridge.remaining_s(env))
