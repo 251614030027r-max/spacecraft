@@ -1,0 +1,212 @@
+{
+  "round_id": "overnight_20261019",
+  "engineering_ready": true,
+  "science_commit": "27e8095cd3f5e53b069b083b4df581fb1f0ecbf4",
+  "scientific_verdict": "SCIENTIFIC_REQUIREMENTS_NOT_MET_IN_SEED0_10K; no demonstrated SAC growth or MPC independent task benefit",
+  "decision_text": "初始工程准入已交付后才启动真实匹配训练；本次交付实际曲线、失败类型及仍在运行/已结束的状态，不将工程可运行称作SAC学习或反馈独立收益已达标。",
+  "verified_facts_text": "全新292140–292147确认中，标准deterministic0k为4/8、折扣原回报−34.446131；事前冻结的公开条件规则为7/8、36.971365，配对平均+71.417497。141/145/146三例0k初始请求均被合法采纳，仍分别资源耗尽/超时/资源耗尽；同一初态与D/B下更早意图均完成真实6DoF安全捕获。新规则未用逐开局lookup或未来真实回报；所有版本及正式两臂初始化均实测同政策参数SHA。逐0.1s预算边界最大超支为0，真值安全、捕获保持、力矩/推力、奖励均未放宽。MPC额外执行信息已在独立短窗重复出现，同一critic确实接收可信且有真实短转移价值信息的监督。",
+  "unproven_text": "尚未证明SAC训练后跨状态泛化增长，也尚未证明TCPF相对R3的独立策略收益。最强原全程G★在新确认上7/8、37.436581，略高于条件规则；条件规则相对条件最早仅+0.435971，样本很小，不能宣布统计稳定优势或超越强规划器。局部critic微实验未见状态外推变差的负结果完整保留。后续必须用真实同预算对照，而不是技术通过、模型精度或非零梯度代替科研结论。",
+  "learning_space_interpretation": "292140在当前所测家族中共同资源失败，不计入已证实的学习空间，也不将有限家族外推为全策略不可达。其余7例存在真实捕获路径，正常0k只完成4例，三次可恢复任务失败构成显著增长机会。状态取舍有真实物理结果：急迫141/146更早能避免资源失败；节约142在两者都捕获时110秒比最早多约3.2点折扣回报。选型集292106还显示最早unsafe、110安全捕获的反向情况，但不把它冒称新确认。手工规则和候选oracle均不是SAC已学成绩，后续必须检查神经策略实际长期意图、捕获率及消耗，不能只靠失败时少耗油抬高均值。",
+  "training_plan_text": "两臂各seed0、各10000真实基本步、4环境，从相同标准0k独立开始；网络128×128、γ=.999、α=.005、mc=0、等价正则.1，真实审议区间TD，每真实转移1次critic更新、每3真实转移1次Actor更新。双方共同暖身2000步：无活计划均匀抽意图，采纳后保持选项；不改变deterministic0k。只有TCPF在暖身后启用同critic模型相对Bellman辅助，5%目标梯度份额、10%上限，权重由该轮自身梯度校准，不沿用DEV权重。所有0/500/2k/5k/10k及最终模型原件保存，0/2k权重和真实暖身轨迹核对。统一292120–292127开发曲线及强参照，正式300000–300047不访问。数值故障/非有限参数技术中止，不因中期回报差停训，不挑种子或检查点；进程中断不冒然丢Replay自动续训。正式训练、评估原生队列和时钟在额度暂时中断时继续，真实状态按小时或阶段自动写入交付入口。",
+  "prerequisites": {
+    "true_full_task_capture_paths": true,
+    "meaningful_state_dependent_long_term_decisions": true,
+    "recoverable_standard_0k_failures_on_fresh_openings": true,
+    "same_critic_trustworthy_model_learning_information": true,
+    "formal_policy_learning_gain_already_proven": false,
+    "independent_mpc_policy_gain_already_proven": false
+  },
+  "initial_engineering_decision_text": "当前可以进行冻结的R3/TCPF同seed匹配开发训练，但必须先实际交付本轮工程证据。本判定只确认完整任务、可恢复的正常0k任务错误、真实状态相关选择及可信学习通路成立；绝不宣布论文三项最终结果已成立。",
+  "morning_snapshot_jst": "2026-10-19T08:52:24.502288+09:00",
+  "actual_checkpoint_metrics": {
+    "earliest": {
+      "completed": 8,
+      "events": {
+        "success": 6,
+        "timeout": 1,
+        "resource_exhausted": 1
+      },
+      "mean_discounted_return": 16.215477761063436
+    },
+    "tau110": {
+      "completed": 8,
+      "events": {
+        "success": 6,
+        "resource_exhausted": 1,
+        "timeout": 1
+      },
+      "mean_discounted_return": 16.48009183611589
+    },
+    "tau130": {
+      "completed": 8,
+      "events": {
+        "success": 2,
+        "resource_exhausted": 2,
+        "timeout": 4
+      },
+      "mean_discounted_return": -81.13659683269032
+    },
+    "deadline_rule_110": {
+      "completed": 8,
+      "events": {
+        "success": 6,
+        "timeout": 1,
+        "resource_exhausted": 1
+      },
+      "mean_discounted_return": 16.35413202502054
+    },
+    "pure": {
+      "completed": 8,
+      "events": {
+        "resource_exhausted": 7,
+        "success": 1
+      },
+      "mean_discounted_return": -108.41037883733364
+    },
+    "oldgstar": {
+      "completed": 8,
+      "events": {
+        "success": 7,
+        "resource_exhausted": 1
+      },
+      "mean_discounted_return": 39.961325234723944
+    },
+    "r3_0": {
+      "completed": 8,
+      "events": {
+        "success": 6,
+        "timeout": 1,
+        "resource_exhausted": 1
+      },
+      "mean_discounted_return": 17.132155285736573
+    },
+    "tcpf_0": {
+      "completed": 8,
+      "events": {
+        "success": 6,
+        "timeout": 1,
+        "resource_exhausted": 1
+      },
+      "mean_discounted_return": 17.132155285736573
+    },
+    "r3_2000": {
+      "completed": 8,
+      "events": {
+        "success": 6,
+        "timeout": 1,
+        "resource_exhausted": 1
+      },
+      "mean_discounted_return": 17.132155285736573
+    },
+    "tcpf_2000": {
+      "completed": 8,
+      "events": {
+        "success": 6,
+        "timeout": 1,
+        "resource_exhausted": 1
+      },
+      "mean_discounted_return": 17.132155285736573
+    },
+    "r3_5000": {
+      "completed": 8,
+      "events": {
+        "timeout": 8
+      },
+      "mean_discounted_return": -118.32782012286728
+    },
+    "tcpf_5000": {
+      "completed": 8,
+      "events": {
+        "timeout": 8
+      },
+      "mean_discounted_return": -118.32782012286728
+    },
+    "r3_10000": {
+      "completed": 8,
+      "events": {
+        "timeout": 7,
+        "success": 1
+      },
+      "mean_discounted_return": -95.59536861928939
+    },
+    "tcpf_10000": {
+      "completed": 8,
+      "events": {
+        "timeout": 7,
+        "resource_exhausted": 1
+      },
+      "mean_discounted_return": -120.48171675448984
+    }
+  },
+  "scientific_requirements_met": false,
+  "training_complete": true,
+  "predeclared_development_evaluation_complete": true,
+  "final_matched_metrics": {
+    "r3_0": {
+      "captures": 6,
+      "mean": 17.132155285736573,
+      "events": {
+        "success": 6,
+        "timeout": 1,
+        "resource_exhausted": 1
+      }
+    },
+    "tcpf_0": {
+      "captures": 6,
+      "mean": 17.132155285736573,
+      "events": {
+        "success": 6,
+        "timeout": 1,
+        "resource_exhausted": 1
+      }
+    },
+    "r3_2000": {
+      "captures": 6,
+      "mean": 17.132155285736573,
+      "events": {
+        "success": 6,
+        "timeout": 1,
+        "resource_exhausted": 1
+      }
+    },
+    "tcpf_2000": {
+      "captures": 6,
+      "mean": 17.132155285736573,
+      "events": {
+        "success": 6,
+        "timeout": 1,
+        "resource_exhausted": 1
+      }
+    },
+    "r3_5000": {
+      "captures": 0,
+      "mean": -118.32782012286728,
+      "events": {
+        "timeout": 8
+      }
+    },
+    "tcpf_5000": {
+      "captures": 0,
+      "mean": -118.32782012286728,
+      "events": {
+        "timeout": 8
+      }
+    },
+    "r3_10000": {
+      "captures": 1,
+      "mean": -95.59536861928939,
+      "events": {
+        "timeout": 7,
+        "success": 1
+      }
+    },
+    "tcpf_10000": {
+      "captures": 0,
+      "mean": -120.48171675448984,
+      "events": {
+        "timeout": 7,
+        "resource_exhausted": 1
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "created_utc": "2026-10-18T20:13:43.776561+00:00",
+  "created_utc": "2026-10-18T23:52:29.061108+00:00",
   "datasets": {
     "cf_audit_v0": {
       "openings": [
@@ -1531,6 +1531,564 @@
           "max": 0.10000000000000002
         },
         "valid_fraction_semantics": "Confidence-weighted eligible-batch fraction; distinct from binary valid/closed review intervals and valid/all real transitions. Do not quote a multiplier against historical coverage with a different denominator."
+      }
+    }
+  },
+  "actual_matched_training": {
+    "r3": {
+      "heartbeat": {
+        "steps": 10000,
+        "wall_s": 8315.673391600008,
+        "utc": "2026-10-18T22:35:20.129227+00:00",
+        "finite": true,
+        "pid": 10376,
+        "updates": 7996,
+        "actor_updates": 2665,
+        "episode_events": {
+          "success": 17,
+          "timeout": 63,
+          "resource_exhausted": 31,
+          "unsafe": 1
+        },
+        "model_payload_intervals_closed": 0,
+        "valid_model_intervals": 0,
+        "real_review_intervals_closed": 8270,
+        "auxiliary_lambda_frozen": null,
+        "last_auxiliary_gradient_share": null
+      },
+      "payload_closed_in_line_snapshot": 0,
+      "valid_in_line_snapshot": 0,
+      "valid_over_payload_snapshot": null,
+      "heartbeat_valid_over_all_real_closed": 0.0,
+      "rejection_reason_counts_nonexclusive": {},
+      "snapshot_note": "Heartbeat and line snapshots are independently timed; do not combine their counts as if atomic. Calibration/gradient records are immutable checkpoints, not inferred current totals.",
+      "factual_errors_all": {
+        "return": {
+          "n": 0,
+          "mean": null,
+          "max": null
+        },
+        "position_m": {
+          "n": 0,
+          "mean": null,
+          "max": null
+        },
+        "velocity_m_s": {
+          "n": 0,
+          "mean": null,
+          "max": null
+        },
+        "observation": {
+          "n": 0,
+          "mean": null,
+          "max": null
+        }
+      },
+      "factual_errors_eligible": {
+        "return": {
+          "n": 0,
+          "mean": null,
+          "max": null
+        },
+        "position_m": {
+          "n": 0,
+          "mean": null,
+          "max": null
+        },
+        "velocity_m_s": {
+          "n": 0,
+          "mean": null,
+          "max": null
+        },
+        "observation": {
+          "n": 0,
+          "mean": null,
+          "max": null
+        }
+      },
+      "checkpoints": {
+        "2000": {
+          "delta_stats": {
+            "valid_fraction": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "g_td": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "g_delta": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "applied_lambda": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "applied_share": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            }
+          },
+          "delta_calibration": {
+            "ratios": [],
+            "decisions": [],
+            "median_ratio": null,
+            "lambda": null,
+            "frozen_at_decisions": null
+          },
+          "feedback_audit": {
+            "closed": 0,
+            "valid": 0,
+            "reasons": {}
+          }
+        },
+        "5000": {
+          "delta_stats": {
+            "valid_fraction": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "g_td": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "g_delta": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "applied_lambda": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "applied_share": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            }
+          },
+          "delta_calibration": {
+            "ratios": [],
+            "decisions": [],
+            "median_ratio": null,
+            "lambda": null,
+            "frozen_at_decisions": null
+          },
+          "feedback_audit": {
+            "closed": 0,
+            "valid": 0,
+            "reasons": {}
+          }
+        },
+        "10000": {
+          "delta_stats": {
+            "valid_fraction": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "g_td": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "g_delta": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "applied_lambda": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "applied_share": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            }
+          },
+          "delta_calibration": {
+            "ratios": [],
+            "decisions": [],
+            "median_ratio": null,
+            "lambda": null,
+            "frozen_at_decisions": null
+          },
+          "feedback_audit": {
+            "closed": 0,
+            "valid": 0,
+            "reasons": {}
+          }
+        }
+      }
+    },
+    "tcpf": {
+      "heartbeat": {
+        "steps": 10000,
+        "wall_s": 12389.728933699997,
+        "utc": "2026-10-18T23:43:18.771642+00:00",
+        "finite": true,
+        "pid": 25520,
+        "updates": 7996,
+        "actor_updates": 2665,
+        "episode_events": {
+          "success": 25,
+          "timeout": 56,
+          "resource_exhausted": 36,
+          "unsafe": 1
+        },
+        "model_payload_intervals_closed": 7313,
+        "valid_model_intervals": 624,
+        "real_review_intervals_closed": 7569,
+        "auxiliary_lambda_frozen": 20.476274341213994,
+        "last_auxiliary_gradient_share": 0.1
+      },
+      "payload_closed_in_line_snapshot": 7317,
+      "valid_in_line_snapshot": 624,
+      "valid_over_payload_snapshot": 0.08528085280852808,
+      "heartbeat_valid_over_all_real_closed": 0.08244153785176378,
+      "rejection_reason_counts_nonexclusive": {
+        "intent_not_accepted": 6653,
+        "same_effective_tau": 5872,
+        "no_physical_effect": 5868,
+        "effect_below_factual_error": 5886,
+        "alternative_terminal_not_validated": 106,
+        "return": 7,
+        "velocity_m_s": 10,
+        "observation": 10,
+        "factual_event_mismatch": 5
+      },
+      "snapshot_note": "Heartbeat and line snapshots are independently timed; do not combine their counts as if atomic. Calibration/gradient records are immutable checkpoints, not inferred current totals.",
+      "factual_errors_all": {
+        "return": {
+          "n": 7317,
+          "mean": 0.11716079295089488,
+          "max": 100.10858101465092
+        },
+        "position_m": {
+          "n": 7317,
+          "mean": 0.006865295513215271,
+          "max": 0.1297045648097992
+        },
+        "velocity_m_s": {
+          "n": 7317,
+          "mean": 0.005061913353951175,
+          "max": 0.07371070981025696
+        },
+        "observation": {
+          "n": 7317,
+          "mean": 0.02901146901307474,
+          "max": 2.3371362686157227
+        }
+      },
+      "factual_errors_eligible": {
+        "return": {
+          "n": 624,
+          "mean": 0.051033114344448134,
+          "max": 0.3196082188384852
+        },
+        "position_m": {
+          "n": 624,
+          "mean": 0.017718739235976663,
+          "max": 0.0665588304400444
+        },
+        "velocity_m_s": {
+          "n": 624,
+          "mean": 0.004832324778316177,
+          "max": 0.02355285733938217
+        },
+        "observation": {
+          "n": 624,
+          "mean": 0.03375949330690604,
+          "max": 0.14959433674812317
+        }
+      },
+      "checkpoints": {
+        "2000": {
+          "delta_stats": {
+            "valid_fraction": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "g_td": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "g_delta": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "applied_lambda": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            },
+            "applied_share": {
+              "n": 0,
+              "mean": null,
+              "max": null
+            }
+          },
+          "delta_calibration": {
+            "ratios": [],
+            "decisions": [],
+            "median_ratio": null,
+            "lambda": null,
+            "frozen_at_decisions": null
+          },
+          "feedback_audit": {
+            "closed": 620,
+            "valid": 353,
+            "reasons": {
+              "intent_not_accepted": 243,
+              "same_effective_tau": 210,
+              "no_physical_effect": 208,
+              "effect_below_factual_error": 225,
+              "alternative_terminal_not_validated": 8,
+              "return": 2,
+              "velocity_m_s": 4,
+              "observation": 4
+            }
+          }
+        },
+        "5000": {
+          "delta_stats": {
+            "valid_fraction": {
+              "n": 150,
+              "mean": 0.12668439159790676,
+              "max": 0.18082985281944275
+            },
+            "g_td": {
+              "n": 150,
+              "mean": 28.296583259900412,
+              "max": 79.2358169555664
+            },
+            "g_delta": {
+              "n": 150,
+              "mean": 0.17040635756527384,
+              "max": 0.5180425643920898
+            },
+            "applied_lambda": {
+              "n": 150,
+              "mean": 15.212551253639296,
+              "max": 20.476274341213994
+            },
+            "applied_share": {
+              "n": 150,
+              "mean": 0.07659947022347281,
+              "max": 0.10000000000000002
+            }
+          },
+          "delta_calibration": {
+            "ratios": [
+              0.0038335835321544128,
+              0.009792168688787704,
+              0.0010533604859971663,
+              0.0017639604419321959,
+              0.0016506995578591892,
+              0.002599153662190514,
+              0.0047800951778616835,
+              0.003253860969284979,
+              0.0015518477748769012,
+              0.0033305942073067973,
+              0.0017291130437113382,
+              0.0014062221360851659,
+              0.0028094758862787267,
+              0.0010762705838842583,
+              0.0011042617780012058,
+              0.002203028762728062,
+              0.001019559014966896,
+              0.002812331935995119,
+              0.0017089927524833865,
+              0.0042709962398945695,
+              0.005643760199956407,
+              0.0038129056537475215,
+              0.0013545783879055618,
+              0.0012115190605598602,
+              0.0031031164066237,
+              0.0016293016182079422,
+              0.0022845472657035404,
+              0.005323469496251611,
+              0.003648523459350599,
+              0.003860791549842924
+            ],
+            "decisions": [
+              2004,
+              2008,
+              2012,
+              2016,
+              2024,
+              2028,
+              2032,
+              2036,
+              2044,
+              2048,
+              2052,
+              2056,
+              2064,
+              2068,
+              2072,
+              2076,
+              2084,
+              2088,
+              2092,
+              2096,
+              2104,
+              2108,
+              2112,
+              2116,
+              2124,
+              2128,
+              2132,
+              2136,
+              2144,
+              2148
+            ],
+            "median_ratio": 0.0024418504639470272,
+            "lambda": 20.476274341213994,
+            "frozen_at_decisions": 2152
+          },
+          "feedback_audit": {
+            "closed": 2483,
+            "valid": 599,
+            "reasons": {
+              "intent_not_accepted": 1844,
+              "same_effective_tau": 1512,
+              "no_physical_effect": 1507,
+              "effect_below_factual_error": 1531,
+              "alternative_terminal_not_validated": 27,
+              "return": 2,
+              "velocity_m_s": 8,
+              "observation": 9
+            }
+          }
+        },
+        "10000": {
+          "delta_stats": {
+            "valid_fraction": {
+              "n": 400,
+              "mean": 0.09236965185962617,
+              "max": 0.18082985281944275
+            },
+            "g_td": {
+              "n": 400,
+              "mean": 49.814255893826484,
+              "max": 179.75286865234375
+            },
+            "g_delta": {
+              "n": 400,
+              "mean": 0.7265379897202365,
+              "max": 3.2186434268951416
+            },
+            "applied_lambda": {
+              "n": 400,
+              "mean": 9.930699769921837,
+              "max": 20.476274341213994
+            },
+            "applied_share": {
+              "n": 400,
+              "mean": 0.09098308656986924,
+              "max": 0.10000000000000002
+            }
+          },
+          "delta_calibration": {
+            "ratios": [
+              0.0038335835321544128,
+              0.009792168688787704,
+              0.0010533604859971663,
+              0.0017639604419321959,
+              0.0016506995578591892,
+              0.002599153662190514,
+              0.0047800951778616835,
+              0.003253860969284979,
+              0.0015518477748769012,
+              0.0033305942073067973,
+              0.0017291130437113382,
+              0.0014062221360851659,
+              0.0028094758862787267,
+              0.0010762705838842583,
+              0.0011042617780012058,
+              0.002203028762728062,
+              0.001019559014966896,
+              0.002812331935995119,
+              0.0017089927524833865,
+              0.0042709962398945695,
+              0.005643760199956407,
+              0.0038129056537475215,
+              0.0013545783879055618,
+              0.0012115190605598602,
+              0.0031031164066237,
+              0.0016293016182079422,
+              0.0022845472657035404,
+              0.005323469496251611,
+              0.003648523459350599,
+              0.003860791549842924
+            ],
+            "decisions": [
+              2004,
+              2008,
+              2012,
+              2016,
+              2024,
+              2028,
+              2032,
+              2036,
+              2044,
+              2048,
+              2052,
+              2056,
+              2064,
+              2068,
+              2072,
+              2076,
+              2084,
+              2088,
+              2092,
+              2096,
+              2104,
+              2108,
+              2112,
+              2116,
+              2124,
+              2128,
+              2132,
+              2136,
+              2144,
+              2148
+            ],
+            "median_ratio": 0.0024418504639470272,
+            "lambda": 20.476274341213994,
+            "frozen_at_decisions": 2152
+          },
+          "feedback_audit": {
+            "closed": 7313,
+            "valid": 624,
+            "reasons": {
+              "intent_not_accepted": 6649,
+              "same_effective_tau": 5870,
+              "no_physical_effect": 5866,
+              "effect_below_factual_error": 5884,
+              "alternative_terminal_not_validated": 106,
+              "return": 7,
+              "velocity_m_s": 10,
+              "observation": 10,
+              "factual_event_mismatch": 5
+            }
+          }
+        }
       }
     }
   },
@@ -4363,6 +4921,83 @@
     {
       "path": "\u7ed3\u679c\\mission_v3_cf_prefix\\audit_292063.json",
       "sha256": "fcdae3ef19205f96307763719bd896c51c9a52d6ef3b72804804e8065d959e88"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_r3_seed0\\checkpoints\\step_2000_delta_stats.json",
+      "sha256": "c7cd9311bc9fbbb772f1106f272e42200da67320b4d7206e9f918701d2873f72"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_r3_seed0\\checkpoints\\step_2000_delta_calibration.json",
+      "sha256": "bde39ee77451ccd16315eb9deed06cea5086a2bd0f1e7d87c848784081bc4bdd"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_r3_seed0\\checkpoints\\step_2000_feedback_audit.json",
+      "sha256": "784217d543447f16665d5ec55eaf9e2ba3cdcc2bbc633a225cebb7bdfef2a5bf"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_r3_seed0\\checkpoints\\step_5000_delta_stats.json",
+      "sha256": "c7cd9311bc9fbbb772f1106f272e42200da67320b4d7206e9f918701d2873f72"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_r3_seed0\\checkpoints\\step_5000_delta_calibration.json",
+      "sha256": "bde39ee77451ccd16315eb9deed06cea5086a2bd0f1e7d87c848784081bc4bdd"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_r3_seed0\\checkpoints\\step_5000_feedback_audit.json",
+      "sha256": "784217d543447f16665d5ec55eaf9e2ba3cdcc2bbc633a225cebb7bdfef2a5bf"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_r3_seed0\\checkpoints\\step_10000_delta_stats.json",
+      "sha256": "c7cd9311bc9fbbb772f1106f272e42200da67320b4d7206e9f918701d2873f72"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_r3_seed0\\checkpoints\\step_10000_delta_calibration.json",
+      "sha256": "bde39ee77451ccd16315eb9deed06cea5086a2bd0f1e7d87c848784081bc4bdd"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_r3_seed0\\checkpoints\\step_10000_feedback_audit.json",
+      "sha256": "784217d543447f16665d5ec55eaf9e2ba3cdcc2bbc633a225cebb7bdfef2a5bf"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_tcpf_seed0\\interval_feedback_releases.jsonl",
+      "sha256": "6cb5ab37a17934f95394e74df352c641a8eafd77e3169143eeed90f09ffa2a86",
+      "incomplete_last_lines_excluded": 0
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_tcpf_seed0\\checkpoints\\step_2000_delta_stats.json",
+      "sha256": "c7cd9311bc9fbbb772f1106f272e42200da67320b4d7206e9f918701d2873f72"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_tcpf_seed0\\checkpoints\\step_2000_delta_calibration.json",
+      "sha256": "bde39ee77451ccd16315eb9deed06cea5086a2bd0f1e7d87c848784081bc4bdd"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_tcpf_seed0\\checkpoints\\step_2000_feedback_audit.json",
+      "sha256": "10f7cd3bffd01f9bdbd12e7921ad64b5792870b3d1d09888c99d25b3e4db5eee"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_tcpf_seed0\\checkpoints\\step_5000_delta_stats.json",
+      "sha256": "e3b2321f859f13a3a1b619cd460a4aa95fcb2f8550b910a5650cd418392faf41"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_tcpf_seed0\\checkpoints\\step_5000_delta_calibration.json",
+      "sha256": "d9ad3b2d6833864dd13f6d9f7200bb3c750fb10111c21b1d05f7a763358c294f"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_tcpf_seed0\\checkpoints\\step_5000_feedback_audit.json",
+      "sha256": "eff0575ad0567a78a350a6a79e35321c4b1ac6c06a4c4e71ee63b1a913b50294"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_tcpf_seed0\\checkpoints\\step_10000_delta_stats.json",
+      "sha256": "c88660911e3da00264f180d054bc30e288be28c271a237284f3fdad11cbdccb8"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_tcpf_seed0\\checkpoints\\step_10000_delta_calibration.json",
+      "sha256": "d9ad3b2d6833864dd13f6d9f7200bb3c750fb10111c21b1d05f7a763358c294f"
+    },
+    {
+      "path": "\u7ed3\u679c\\TRAIN_tcpf_seed0\\checkpoints\\step_10000_feedback_audit.json",
+      "sha256": "ac2a0eaa2edb62b1c006b89e352f4748bf94a3921105949d844aac694b256889"
     }
   ],
   "truth_label_semantics": "In the controlled critic micro-experiment, truth means RK45 local rewards and successor states plus one common frozen bootstrap value. It is not full-mission Q truth or an oracle long-term action ranking.",
