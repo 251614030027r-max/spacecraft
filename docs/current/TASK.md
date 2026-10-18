@@ -1,6 +1,6 @@
 # 任务规格：T1 预捕获任务族（2026-10-18）
 
-**当前状态：** 两次学习空间检验都没有找到可学习的状态相关决策价值（T1-L，T1-O V2 停于 Gate C）。研究层的下一版本是 **T1-N**（Research Plan R2，collab `upper/RESEARCH_PLAN_R2_FOR_REVIEW_20261018.md`，`1c6fbd5`），已实现并经上层技术核验，见第 6 节；**尚未冻结、未授权训练**。第 1–5 节描述 T1 任务族的共同部分与旧接口。F01 价值停止任务的规格已移入 `docs/archive/06_f01_value_stopping/`。
+**当前状态：** 两次学习空间检验都没有找到可学习的状态相关决策价值（T1-L，T1-O V2 停于 Gate C）。研究层的下一版本是 **T1-N**（Research Plan R2，collab `upper/RESEARCH_PLAN_R2_FOR_REVIEW_20261018.md`，`1c6fbd5`），已实现、核验并冻结为 Round 1 版本（见 collab 执行单 `T1_N_R2_ROUND1_20261018.md`），见第 6 节；**训练待用户 GO**。第 1–5 节描述 T1 任务族的共同部分与旧接口。F01 价值停止任务的规格已移入 `docs/archive/06_f01_value_stopping/`。
 
 ## 1. 物理与执行（所有 T1 档案共用，`env/t1_env.py`、`env/t1_task.py`）
 

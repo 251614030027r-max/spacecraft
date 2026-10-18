@@ -1,22 +1,22 @@
 """Train one arm of the T1-N 2 x 2 (Research Plan R2 sec. 7-8) from zero.
 
-    R1     review-sample target one step,   no relative MPC term
+    R1     review-sample target one step,   no ranking term
     R3     review-sample target = closed interval (real return over the review interval)
-    D1     one step                       + paired MPC relative term
-    TCPF   closed interval                + paired MPC relative term
+    D1     one step                       + cross-timescale ranking term
+    TCPF   closed interval                + cross-timescale ranking term
 
 Common to the four (frozen with the run order): the T1-N task and interface
 (``env.t1_n_review``, fuel weight 20), conditional G*, the shared MPC, the network (256 x 3),
 fixed entropy 0.005 x review gap, ``uniform_eligibility``, trainer B (one critic update per real
 transition, one actor update per 3 real transitions on the global clock, cosine 1e-4 -> 1e-5),
 the keep-band equivalence term (0.1) and no Monte-Carlo label term (0, see the review), the
-budget ``--steps`` in real 2 s steps and the checkpoints. The relative-term arms use the paired
-rolling shadow (``env.t1_n_cf``, ``--shadow-steps`` frozen by the run order) and the 5 % / 10 %
-gradient-share weight of ``train.t1_option_sac``. Training openings
+budget ``--steps`` in real 2 s steps and the checkpoints. The ranking-term arms use the signal of
+``env.t1_n_cf`` (G* plan value with the MPC 2 s closed-loop correction, confidence-weighted, sign
+only; ``train.t1_n_sac``) and the 5 % / 10 % gradient-share weight of ``train.t1_option_sac``. Training openings
 ``1_000_000 * (seed + 1) + env_index * 100000 + episode``. No resume: an interrupted run is
 restarted from zero.
 
-    python -B -m train.train_t1_n --arm tcpf --steps 40000 --seed 0 --run-name tcpf_s0 --n-envs 4
+    python -B -m train.train_t1_n --arm tcpf --steps 40000 --seed 0 --run-name tcpf_s0
 """
 
 from __future__ import annotations
@@ -56,10 +56,9 @@ DELTA_TARGET_SHARE = 0.05
 DELTA_CAP_SHARE = 0.10
 
 
-def make_env(arm: str, gym_config: T1GymConfig, shadow_steps: int):
+def make_env(arm: str, gym_config: T1GymConfig):
     if ARMS[arm]["relative"]:
-        return T1NReviewCFEnv(gym_config, t1n_env_config(T1N_FUEL_COST),
-                              shadow=T1NShadowConfig(horizon_steps=shadow_steps))
+        return T1NReviewCFEnv(gym_config, t1n_env_config(T1N_FUEL_COST), shadow=T1NShadowConfig())
     return T1NReviewEnv(gym_config, t1n_env_config(T1N_FUEL_COST))
 
 
@@ -71,7 +70,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--run-name", required=True)
     parser.add_argument("--log-root", type=Path, default=Path("logs/t1_n_r2"))
     parser.add_argument("--n-envs", type=int, default=1)
-    parser.add_argument("--shadow-steps", type=int, default=2, help="h of the paired shadow (run order)")
     parser.add_argument("--checkpoint-freq", type=int, default=5_000)
     parser.add_argument("--extra-checkpoints", default="2000")
     parser.add_argument("--audit-every", type=int, default=100)
@@ -96,12 +94,12 @@ def main(argv: list[str] | None = None) -> None:
     (log_dir / "checkpoints").mkdir(parents=True)
     gym_config = T1GymConfig(seed_base=1_000_000 * (args.seed + 1))
     if args.n_envs == 1:
-        env = make_env(args.arm, gym_config, args.shadow_steps)
+        env = make_env(args.arm, gym_config)
     else:
         from stable_baselines3.common.vec_env import SubprocVecEnv
 
-        env = SubprocVecEnv([partial(make_env, args.arm, replace(gym_config, seed_base=gym_config.seed_base + i * 100_000),
-                                     args.shadow_steps) for i in range(args.n_envs)], start_method="spawn")
+        env = SubprocVecEnv([partial(make_env, args.arm, replace(gym_config, seed_base=gym_config.seed_base + i * 100_000))
+                             for i in range(args.n_envs)], start_method="spawn")
     kwargs = model_kwargs(T1_SAC, [int(x) for x in args.net_arch.split(",")] if args.net_arch else None,
                           n_envs=args.n_envs)
     kwargs["gradient_steps"] = TRAINER["updates_per_transition"] * args.n_envs
@@ -127,10 +125,12 @@ def main(argv: list[str] | None = None) -> None:
         "sac": asdict(T1_SAC) | {k: v for k, v in kwargs.items() if k in ("learning_starts",)},
         "learner": {"class": "train.t1_n_sac.T1NSAC", "interval_bellman": spec["interval_bellman"],
                     "uniform_eligibility": True, "lambda_mc": LAMBDA_MC, "lambda_eq": LAMBDA_EQ,
-                    "relative_term": spec["relative"], "delta_target_share": DELTA_TARGET_SHARE if spec["relative"] else None,
-                    "delta_cap_share": DELTA_CAP_SHARE, "delta_warmup_steps": warmup, "delta_huber": 10.0,
+                    "auxiliary": "confidence-weighted ranking (sign of G* plan value + MPC 2 s correction)" if spec["relative"] else None,
+                    "rank_margin": T1NShadowConfig().rank_margin,
+                    "delta_target_share": DELTA_TARGET_SHARE if spec["relative"] else None,
+                    "delta_cap_share": DELTA_CAP_SHARE, "delta_warmup_steps": warmup,
                     "alpha": "0.005 x review gap"},
-        **({"shadow": asdict(T1NShadowConfig(horizon_steps=args.shadow_steps))} if spec["relative"] else {}),
+        **({"shadow": asdict(T1NShadowConfig())} if spec["relative"] else {}),
         "training_openings": f"{gym_config.seed_base} + env_index * 100000 + episode index",
         "n_envs": args.n_envs, "environment": _environment_record(), **provenance,
     }

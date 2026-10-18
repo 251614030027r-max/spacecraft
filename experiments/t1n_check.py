@@ -303,9 +303,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--policies", required=True)
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--output-dir", required=True)
-    p = sub.add_parser("signal")
+    p = sub.add_parser("rank")
     p.add_argument("--first", type=int, default=292100)
-    p.add_argument("--count", type=int, default=8)
+    p.add_argument("--count", type=int, default=20)
     p.add_argument("--seed", type=int, default=7)
     p.add_argument("--reviews", type=int, default=2)
     p.add_argument("--workers", type=int, default=4)
@@ -315,12 +315,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--steps", type=int, default=30)
     p.add_argument("--output", required=True)
     args = parser.parse_args(argv)
-    {"timing": cmd_timing, "openings": cmd_openings, "feasibility": cmd_feasibility, "closed": cmd_closed, "signal": cmd_signal}[args.cmd](args)
+    {"timing": cmd_timing, "openings": cmd_openings, "feasibility": cmd_feasibility, "closed": cmd_closed, "rank": cmd_rank}[args.cmd](args)
 
 
 
 # --------------------------------------------------------------------------- #
-# Learning-signal check (R2 sec. 6.3, 9.4 item 3): paired rolling shadow vs truth branches
+# Ranking-signal diagnostic (research-layer ruling 2026-10-18, item 4.3): G* plan value, G* + MPC
+# 2 s correction, and the long-run truth difference at the same review states
 # --------------------------------------------------------------------------- #
 
 
@@ -333,135 +334,131 @@ def _earliest_continuation(obs, env):
     return np.array([1.0]) if earliest is None else np.array([action_for_tau(earliest, env.env.time_s)])
 
 
-def signal_record(job: tuple[int, int, int, str]) -> dict[str, Any]:
-    """At up to ``reviews`` review states of a random-policy episode: rolling predictions (h = 3,
-    read at 1/2/3) of the executed action and its alternative, truth branches of both for 3 steps
-    and to the end (continuation: keep, earliest feasible at a no-plan review), and the numerical
-    repeatability of a truth branch against the real continuation."""
+def rank_record(job: tuple[int, int, int, str]) -> dict[str, Any]:
+    """At the first ``reviews`` review states (outside the descent) of a random-policy episode:
+    the ranking signal of the executed action and its alternative (``env.t1_n_cf``), and both truth
+    branches flown to the end (continuation: keep; earliest feasible at a no-plan review)."""
 
     opening, seed, reviews, out_dir = job
-    path = Path(out_dir) / f"signal_{opening}_{seed}.json"
+    path = Path(out_dir) / f"rank_{opening}_{seed}.json"
     if path.exists():
         return json.loads(path.read_text())
-    from env.t1_n_cf import RollingPredictor, alternative_action
+    from env.t1_n_cf import RollingPredictor, T1NShadowConfig, alternative_action, rank_signal
     from env.t1_n_review import T1NReviewEnv
-
-    from env.t1_n_review import N_HAS_PLAN_INDEX
 
     env = T1NReviewEnv(openings=[opening])
     obs, _ = env.reset()
-    pred = RollingPredictor(env_config=env.env.config)
-    rng = np.random.default_rng(seed)
-    gamma = env.env.config.reward.gamma
+    cfg = T1NShadowConfig()
+    pred = RollingPredictor(env_config=env.env.config, config=cfg)
+    rng = np.random.default_rng(seed * 1_000_003 + opening)
+    mass = env.env.chaser_parameters.mass
     rows: list[dict[str, Any]] = []
     done = False
-    while not done:
+    while not done and len(rows) < reviews:
+        action = np.zeros(1)
         if env._due:
-            a = rng.uniform(-1.0, 1.0, size=1)
-            alt, kind = alternative_action(env, a)
-            if alt is not None and len(rows) < reviews:
-                row: dict[str, Any] = {"t": env.env.time_s, "kind": kind, "a": float(a[0]), "alt": float(alt[0]),
-                                       "has_plan": bool(obs[N_HAS_PLAN_INDEX] > 0.5), "_real": []}
-                for name, act in (("real", a), ("alt", alt)):
+            action = rng.uniform(-1.0, 1.0, size=1)
+            alt, kind = alternative_action(env, action)
+            if alt is not None:
+                row: dict[str, Any] = {"t": env.env.time_s, "kind": kind, "a": float(action[0]), "alt": float(alt[0])}
+                preds = {}
+                for name, act in (("real", action), ("alt", alt)):
                     pred.sync(env, fresh_solvers=True)
-                    p = pred.rollout(act, 3)
-                    row[f"pred_{name}"] = {"rewards": p["rewards"], "outcome": p["outcome"], "stop": p["stop"],
-                                           "tau_eff": p["tau_effective_s"], "violation": p["violation"],
-                                           "solves": p["solves"], "wall_s": p["wall_s"]}
-                    pred.sync(env, fresh_solvers=True)
-                    started = perf_counter()
-                    tb = pred.truth_branch(act, 3)
-                    row[f"truth3_{name}"] = {"rewards": tb["rewards"], "event": tb["event"],
-                                             "wall_s": perf_counter() - started}
+                    p = pred.rollout(act, 1)
+                    preds[name] = p
                     pred.sync(env, fresh_solvers=True)
                     started = perf_counter()
                     te = pred.truth_branch(act, None, _earliest_continuation)
-                    row[f"truth_end_{name}"] = {"return": te["discounted_return"], "event": te["event"],
-                                                "steps": te["steps"], "wall_s": perf_counter() - started}
+                    row[f"truth_{name}"] = {"return": te["discounted_return"], "first": te["rewards"][0],
+                                            "event": te["event"], "steps": te["steps"], "wall_s": perf_counter() - started}
+                    row[f"pred_{name}"] = {"first": p["rewards"][0] if p["rewards"] else None, "outcome": p["outcome"],
+                                           "tau_eff": p["tau_effective_s"], "violation": p["violation"],
+                                           "wall_s": p["wall_s"]}
+                error = None if preds["real"]["rewards"] == [] else abs(preds["real"]["rewards"][0] - row["truth_real"]["first"])
+                near = env.env.time_s + 2.0 > env.env.config.max_time_s - cfg.end_margin_s
+                r = rank_signal(cfg, preds["real"], preds["alt"], env.env.config, mass, error, near)
+                row.update({"signal": r["signal"], "plan_only": r["plan_only"], "weight": r["weight"],
+                            "reasons": r["reasons"], "mpc_correction_real": r["mpc_correction_real"],
+                            "mpc_correction_alt": r["mpc_correction_alt"], "first_reward_error": error,
+                            "truth_diff": row["truth_alt"]["return"] - row["truth_real"]["return"],
+                            "truth_first_diff": row["truth_alt"]["first"] - row["truth_real"]["first"]})
                 rows.append(row)
-            action = a
-        else:
-            action = np.zeros(1)
         obs, reward, term, trunc, info = env.step(action)
-        for row in rows:
-            if len(row["_real"]) < 3:
-                row["_real"].append(float(reward))
         done = term or trunc
-        if len(rows) >= reviews and all(len(r["_real"]) >= 3 for r in rows):
-            break
-    record = {"opening": opening, "seed": seed, "rows": rows, "gamma": gamma}
+    record = {"opening": opening, "seed": seed, "rows": rows}
     path.write_text(json.dumps(record, default=float))
     return record
 
 
-def cmd_signal(args) -> None:
+def summarise_rank(records: list[dict[str, Any]], min_truth: float = 0.5) -> dict[str, Any]:
+    rows = [r for rec in records for r in rec["rows"]]
+    have = [r for r in rows if r["signal"] is not None]
+    sig = [r for r in have if abs(r["truth_diff"]) > min_truth]
+
+    def agree(key, rs):
+        return int(sum(np.sign(r[key]) == np.sign(r["truth_diff"]) for r in rs))
+
+    weighted = [r for r in sig if r["weight"] > 0.0]
+    flips = [r for r in have if np.sign(r["signal"]) != np.sign(r["plan_only"])]
+    out = {
+        "pairs": len(rows), "pairs_with_both_plans": len(have),
+        "pairs_with_weight": int(sum(r["weight"] > 0.0 for r in rows)),
+        "weight_fraction": float(np.mean([r["weight"] > 0.0 for r in rows])) if rows else None,
+        "weight_mean": float(np.mean([r["weight"] for r in rows])) if rows else None,
+        "reasons": {k: int(sum(any(x.startswith(k) for x in r["reasons"]) for r in rows))
+                    for k in ("alt_", "real_", "no_plan", "same_effective_tau", "e_r1", "small_signal", "near_horizon")},
+        "pairs_truth_identifiable": len(sig),
+        "sign_agreement_plan_only": agree("plan_only", sig), "sign_agreement_combined": agree("signal", sig),
+        "sign_agreement_combined_weighted_pairs": [agree("signal", weighted), len(weighted)],
+        "weighted_agreement_combined": float(sum(r["weight"] * (np.sign(r["signal"]) == np.sign(r["truth_diff"]))
+                                                 for r in weighted) / max(sum(r["weight"] for r in weighted), 1e-12))
+        if weighted else None,
+        "rank_flips_by_mpc_correction": len(flips),
+        "rank_flips_that_match_truth": int(sum(np.sign(r["signal"]) == np.sign(r["truth_diff"]) for r in flips)),
+        "mpc_correction_of_D_abs_median": float(np.median([abs(r["signal"] - r["plan_only"]) for r in have])) if have else None,
+        "plan_only_D_abs_median": float(np.median([abs(r["plan_only"]) for r in have])) if have else None,
+        "corr_plan_only_truth": float(np.corrcoef([r["plan_only"] for r in have], [r["truth_diff"] for r in have])[0, 1])
+        if len(have) > 2 else None,
+        "corr_combined_truth": float(np.corrcoef([r["signal"] for r in have], [r["truth_diff"] for r in have])[0, 1])
+        if len(have) > 2 else None,
+        "abs_error_plan_only_vs_truth_median": float(np.median([abs(r["plan_only"] - r["truth_diff"]) for r in have])) if have else None,
+        "abs_error_combined_vs_truth_median": float(np.median([abs(r["signal"] - r["truth_diff"]) for r in have])) if have else None,
+        "mpc_first_step_error_median": float(np.median([abs(r[f"pred_{b}"]["first"] - r[f"truth_{b}"]["first"])
+                                                        for r in rows for b in ("real", "alt") if r[f"pred_{b}"]["first"] is not None])) if rows else None,
+        "plan_first_step_error_median": float(np.median([abs((r[f"pred_{b}"]["first"] - r[f"mpc_correction_{b}"]) - r[f"truth_{b}"]["first"])
+                                                         for r in have for b in ("real", "alt")])) if have else None,
+        "by_kind": {k: {"n": sum(r["kind"] == k for r in sig),
+                        "plan_only": agree("plan_only", [r for r in sig if r["kind"] == k]),
+                        "combined": agree("signal", [r for r in sig if r["kind"] == k])}
+                    for k in ("request_shift", "keep_vs_shift", "replan_vs_keep")},
+        "truth_abs_diff_median": float(np.median([abs(r["truth_diff"]) for r in rows])) if rows else None,
+        "shadow_wall_per_branch_s": float(np.median([r[f"pred_{b}"]["wall_s"] for r in rows for b in ("real", "alt")])) if rows else None,
+    }
+    return out
+
+
+def cmd_rank(args) -> None:
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
     jobs = [(k, args.seed, args.reviews, str(out)) for k in range(args.first, args.first + args.count)]
     with ProcessPoolExecutor(args.workers) as pool:
-        records = list(pool.map(signal_record, jobs))
-    g = records[0]["gamma"] if records else 0.999
-    out_rows = []
-    for rec in records:
-        for r in rec["rows"]:
-            row = {"opening": rec["opening"], "t": r["t"], "kind": r["kind"]}
-            for h in (1, 2, 3):
-                def disc(xs):
-                    return float(sum(g ** i * x for i, x in enumerate(xs[:h])))
-                pr, pa = r["pred_real"]["rewards"], r["pred_alt"]["rewards"]
-                tr, ta = r["truth3_real"]["rewards"], r["truth3_alt"]["rewards"]
-                ok = len(pr) >= h and len(pa) >= h and len(tr) >= h and len(ta) >= h
-                row[f"h{h}"] = None if not ok else {
-                    "paired_pred": disc(pa) - disc(pr), "truth": disc(ta) - disc(tr),
-                    "mixed": disc(pa) - disc(tr), "err_real": disc(pr) - disc(tr), "err_alt": disc(pa) - disc(ta)}
-            row["truth_end_diff"] = r["truth_end_alt"]["return"] - r["truth_end_real"]["return"]
-            row["alt_outcome"] = r["pred_alt"]["outcome"]
-            row["real_outcome"] = r["pred_real"]["outcome"]
-            row["real_rewards_actual"] = r.get("_real")  # the real (continuing) episode: same as truth3 only while the real policy keeps
-            row["truth3_real_rewards"] = r["truth3_real"]["rewards"]
-            row["wall"] = {"pred_per_step": (r["pred_real"]["wall_s"] / max(len(r["pred_real"]["rewards"]), 1)),
-                           "truth_per_step": r["truth3_real"]["wall_s"] / max(len(r["truth3_real"]["rewards"]), 1)}
-            out_rows.append(row)
-    summary: dict[str, Any] = {"pairs": len(out_rows)}
-    for h in (1, 2, 3):
-        rs = [r[f"h{h}"] for r in out_rows if r[f"h{h}"] is not None and r["alt_outcome"] == "accepted"
-              and r["real_outcome"] == "accepted"]
-        if not rs:
-            continue
-        pp = np.array([x["paired_pred"] for x in rs]); tt = np.array([x["truth"] for x in rs])
-        mx = np.array([x["mixed"] for x in rs])
-        sig = np.abs(tt) > 1e-3
-        summary[f"h{h}"] = {
-            "n": len(rs), "abs_truth_diff_median": float(np.median(np.abs(tt))),
-            "paired_abs_error_median": float(np.median(np.abs(pp - tt))), "paired_abs_error_p95": float(np.percentile(np.abs(pp - tt), 95)),
-            "mixed_abs_error_median": float(np.median(np.abs(mx - tt))), "mixed_abs_error_p95": float(np.percentile(np.abs(mx - tt), 95)),
-            "sign_agreement_paired": float(np.mean(np.sign(pp[sig]) == np.sign(tt[sig]))) if sig.any() else None,
-            "sign_agreement_mixed": float(np.mean(np.sign(mx[sig]) == np.sign(tt[sig]))) if sig.any() else None,
-            "n_nonzero_truth": int(sig.sum()),
-            "share_of_long_run_diff_median": float(np.median([abs(x["truth"]) / max(abs(r["truth_end_diff"]), 1e-9)
-                                                              for x, r in zip(rs, [r for r in out_rows if r[f"h{h}"] is not None and r["alt_outcome"] == "accepted" and r["real_outcome"] == "accepted"])])),
-        }
-    te = np.array([r["truth_end_diff"] for r in out_rows])
-    summary["truth_end_abs_diff_median"] = float(np.median(np.abs(te))) if te.size else None
-    summary["pred_wall_per_step_s"] = float(np.median([r["wall"]["pred_per_step"] for r in out_rows])) if out_rows else None
-    summary["truth_wall_per_step_s"] = float(np.median([r["wall"]["truth_per_step"] for r in out_rows])) if out_rows else None
-    summary["first_step_error_real"] = [abs(r["truth3_real_rewards"][0] - r["real_rewards_actual"][0])
-                                        for r in out_rows if r["real_rewards_actual"]]
-    (out / "signal_summary.json").write_text(json.dumps({"summary": summary, "rows": out_rows}, indent=1, default=float))
+        records = list(pool.map(rank_record, jobs))
+    summary = summarise_rank(records)
+    (out / "rank_summary.json").write_text(json.dumps({"summary": summary,
+                                                       "rows": [dict(opening=rec["opening"], **r) for rec in records
+                                                                for r in rec["rows"]]}, indent=1, default=float))
     print(json.dumps(summary, indent=1, default=float))
 
 
 def cmd_timing(args) -> None:
-    """Serial wall per real 2 s step: plain interface vs the paired shadow at h = 1, 2, 3 (same actions)."""
+    """Serial wall per real 2 s step, plain interface vs the ranking-signal interface (same actions)."""
 
-    from env.t1_n_cf import T1NReviewCFEnv, T1NShadowConfig
+    from env.t1_n_cf import T1NReviewCFEnv
     from env.t1_n_review import T1NReviewEnv
 
     results = {}
     for label, factory in (("plain", lambda: T1NReviewEnv(openings=[args.opening])),
-                           *[(f"shadow_h{h}", (lambda h=h: T1NReviewCFEnv(openings=[args.opening],
-                                                                          shadow=T1NShadowConfig(horizon_steps=h))))
-                             for h in (1, 2, 3)]):
+                           ("rank_signal", lambda: T1NReviewCFEnv(openings=[args.opening]))):
         env = factory()
         env.reset()
         rng = np.random.default_rng(3)
@@ -479,7 +476,7 @@ def cmd_timing(args) -> None:
         results[label] = {"steps": len(walls), "wall_per_step_s": float(np.mean(walls)), "reviews": reviews,
                           "shadow_wall_per_step_s": overhead / len(walls)}
     base = results["plain"]["wall_per_step_s"]
-    for k, v in results.items():
+    for v in results.values():
         v["relative_to_plain"] = v["wall_per_step_s"] / base
     Path(args.output).write_text(json.dumps(results, indent=1))
     print(json.dumps(results, indent=1))

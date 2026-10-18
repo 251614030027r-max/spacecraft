@@ -42,13 +42,14 @@ python -B -m train.train_t1_option --arm or3 --profile p2 --fuel-cost 20 --steps
 ## 4. T1-N（Research Plan R2）
 
 ```bash
-python -B -m pytest -q tests/test_t1_n.py                                  # T1-N 合同（7 项）
+python -B -m pytest -q tests/test_t1_n.py                                  # T1-N 合同（8 项）
 python -B -m experiments.t1n_check openings --first 292000 --count 2000 --output o.json     # 初值统计与 t=0 合法性
 python -B -m experiments.t1n_check feasibility --first 292000 --count 48 --output f.json    # 规划器对中性请求的响应
 python -B -m experiments.t1n_check closed --first 292000 --count 12 --policies earliest:0,random:1,reject,oldgstar --output-dir D
-python -B -m experiments.t1n_check signal --first 292100 --count 12 --output-dir D           # 影子配对信号 vs 真值分支
+python -B -m experiments.t1n_check rank --first 292100 --count 20 --output-dir D             # 排序信号：纯计划 / 计划+MPC 校正 / 真实长期差
 python -B -m experiments.t1n_check timing --output timing.json                               # 串行计时
-python -B -m train.train_t1_n --arm tcpf --steps 40000 --seed 0 --run-name tcpf_s0 --shadow-steps H
+python -B -m train.train_t1_n --arm tcpf --steps 40000 --seed 0 --run-name tcpf_s0 --checkpoint-freq 10000 --extra-checkpoints 2000,5000
+python -B -m experiments.t1n_eval select-rule --root D --output selected_rule.json         # 开发集 292200-292231 上冻结最佳固定规则
 python -B -m experiments.t1n_eval run --row model:<zip> --openings A-B --output-dir D --workers W
 ```
 

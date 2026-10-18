@@ -1,4 +1,5 @@
-"""T1-N learner (Research Plan R2 sec. 6-7): the TCPF learner on the T1-N interface.
+"""T1-N learner (Research Plan R2; research-layer ruling of 2026-10-18): the TCPF learner on the
+T1-N interface with a cross-timescale ranking term.
 
 Same update as ``train.t1_tcpf.TCPFSAC`` with ``uniform_eligibility`` (every arm trains only on
 continue samples and on review samples whose interval has closed; the actor samples closed
@@ -6,81 +7,52 @@ reviews), adapted to the T1-N observation (``env.t1_n_review``) and its one-dime
 
 * the continue action is ``[0]`` (keep); the keep-band equivalence term acts on review states
   with a live plan outside the descent (``|a| <= 0.5`` is executed identically there);
-* the relative MPC term uses the *paired* label of the T1-N shadow (``env.t1_n_cf``):
-      delta = (R^(a~) - R^(a)) + gamma^h [ Vbar(z^'(a~)) - Vbar(z^'(a)) ]
-      L_delta = 0.5 sum_j mean_B[ w Huber_10( (Q_j(z, a~) - Q_j(z, a)) - delta ) ]
-  with both h-step predictions made by the same shadow from the same state (stop-gradient);
-  the weight of the term is calibrated once from gradients (5 % median share of the TD gradient
-  after the warm-up) and capped at 10 % per update, as in ``train.t1_option_sac``.
+* the auxiliary term (arms D1 / TCPF) is a **confidence-weighted ranking constraint** on the
+  same critic, from the cached signal D of ``env.t1_n_cf`` (G* plan value with the MPC 2 s
+  closed-loop correction, alternative minus executed action) and its confidence w:
+      s = sign(D),  L_rank = 0.5 sum_j mean_B[ w max(0, m - s (Q_j(z, a~) - Q_j(z, a))) ],  m = 0.5
+  Only the direction of D is used (a finite margin, never a fit of its magnitude), and nothing
+  is bootstrapped from a predicted state. The real long-horizon Q is learned by the interval
+  (R3 / TCPF) or one-step (R1 / D1) Bellman target; the ranking term's weight is calibrated once
+  from gradients to a 5 % median share of the TD gradient and capped at 10 % per update
+  (``train.t1_option_sac``).
 
-The four R2 arms differ only in the target of an eligible review sample (one step or the closed
-interval) and in whether the relative term is on (``train.train_t1_n``).
+    L_Q = L_TD (interval or one step) + lambda_eq L_eq + lambda_p L_rank
 """
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any
 
 import numpy as np
 import torch as th
 
+from env.t1_n_cf import T1NShadowConfig
 from env.t1_n_review import N_DESCENT_INDEX, N_DUE_INDEX, N_GAP_INDEX, N_PLAN_REMAINING_INDEX
 from train.t1_tcpf import IntervalReplayBuffer, TCPFSAC
 
-
-class PairedBatch(NamedTuple):
-    actions: th.Tensor
-    rewards: th.Tensor
-    next_observations: th.Tensor
-    weights: th.Tensor
-    real_rewards: th.Tensor
-    real_next_observations: th.Tensor
-    discount: th.Tensor
+RANK_MARGIN = T1NShadowConfig().rank_margin
 
 
 class T1NReplayBuffer(IntervalReplayBuffer):
-    """Interval buffer plus the predicted executed-action branch of each paired sample."""
+    """Interval buffer; the cached alternative holds (a~, D, w) with a continuous confidence w."""
 
     due_index = N_DUE_INDEX
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        n, e = self.buffer_size, self.n_envs
-        obs_dim = int(np.prod(self.obs_shape))
-        self.cf_real_rewards = np.zeros((n, e, 1), dtype=np.float32)
-        self.cf_real_next_observations = np.zeros((n, e, obs_dim), dtype=np.float32)
-        self.cf_discount = np.zeros((n, e, 1), dtype=np.float32)
-
     def add(self, obs, next_obs, action, reward, done, infos) -> None:
         i = self.pos
+        super().add(obs, next_obs, action, reward, done, infos)
         for e in range(self.n_envs):
             cf = infos[e].get("counterfactual") if e < len(infos) else None
-            valid = bool(cf and cf.get("w") == 1 and cf.get("a_tilde") is not None)
-            if valid:
-                self.cf_real_rewards[i, e] = np.float32(cf["r_hat_real"])
-                self.cf_real_next_observations[i, e] = np.asarray(cf["z_hat_real"], dtype=np.float32)
-                self.cf_discount[i, e] = np.float32(self.gamma ** int(cf["h_eff"]))
-            else:
-                self.cf_real_rewards[i, e] = 0.0
-                self.cf_real_next_observations[i, e] = 0.0
-                self.cf_discount[i, e] = 0.0
-        super().add(obs, next_obs, action, reward, done, infos)
-
-    def counterfactual(self) -> PairedBatch:  # type: ignore[override]
-        base = super().counterfactual()
-        assert self._last is not None
-        i, e = self._last
-        return PairedBatch(base.actions, base.rewards, base.next_observations, base.weights,
-                           self.to_torch(self.cf_real_rewards[i, e]),
-                           self.to_torch(self.cf_real_next_observations[i, e]),
-                           self.to_torch(self.cf_discount[i, e]))
+            self.cf_weights[i, e] = float(cf.get("rank_weight", 0.0)) if cf and cf.get("w") == 1 else 0.0
 
 
 class T1NSAC(TCPFSAC):
     due_index = N_DUE_INDEX
     gap_index = N_GAP_INDEX
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, rank_margin: float = RANK_MARGIN, **kwargs: Any) -> None:
+        self.rank_margin = float(rank_margin)
         kwargs.setdefault("replay_buffer_class", T1NReplayBuffer)
         kwargs["uniform_eligibility"] = True
         super().__init__(*args, **kwargs)
@@ -94,13 +66,18 @@ class T1NSAC(TCPFSAC):
         due = observations[:, N_DUE_INDEX:N_DUE_INDEX + 1] > 0.5
         return (plan & ~descent & due).float()
 
-    def _delta_target(self, data, cf: PairedBatch, v_next: th.Tensor) -> th.Tensor:
-        v_alt = self.target_value(cf.next_observations)
-        v_real = self.target_value(cf.real_next_observations)
-        return (cf.rewards - cf.real_rewards) + cf.discount * (v_alt - v_real)
+    def _delta_target(self, data, cf, v_next: th.Tensor) -> th.Tensor:
+        """The cached signal D (no successor value: nothing predicted is bootstrapped)."""
+
+        return cf.rewards
+
+    def _relative_loss(self, alt_q, current_q, delta: th.Tensor, weights: th.Tensor) -> th.Tensor:
+        direction = th.sign(delta)
+        return 0.5 * sum((weights * th.relu(self.rank_margin - direction * (qa - qr))).mean()
+                         for qa, qr in zip(alt_q, current_q))
 
     def _audit(self, replay_data, current_q_values, n: int) -> None:
-        """Q - G by mode and the keep-band Q spread (the T1-L audit on the T1-N indices)."""
+        """Q - G by mode, the keep-band Q spread and the ranking agreement of the critic."""
 
         with th.no_grad():
             obs = replay_data.observations
@@ -124,8 +101,17 @@ class T1NSAC(TCPFSAC):
                 v = th.cat(values, dim=1)
                 spread = float((v.max(dim=1)[0] - v.min(dim=1)[0]).mean().item())
             self.fix_stats["band_q_spread"].append(spread)
+            # does the critic order the cached pairs as the signal does? (all arms, read only)
+            cf = self.replay_buffer.counterfactual()  # type: ignore[union-attr]
+            valid = cf.weights[:, 0] > 0.0
+            agree = float("nan")
+            if bool(valid.any()):
+                qa = th.min(th.cat(self.critic(obs[valid], cf.actions[valid]), dim=1), dim=1)[0]
+                qr = th.min(th.cat(self.critic(obs[valid], replay_data.actions[valid]), dim=1), dim=1)[0]
+                agree = float((th.sign(qa - qr) == th.sign(cf.rewards[valid, 0])).float().mean().item())
+            self.fix_stats.setdefault("rank_agreement", []).append(agree)
             self.fix_stats["audit_update"].append(float(n))
             self.fix_stats["audit_decisions"].append(float(self.num_timesteps))
 
 
-__all__ = ["PairedBatch", "T1NReplayBuffer", "T1NSAC"]
+__all__ = ["RANK_MARGIN", "T1NReplayBuffer", "T1NSAC"]

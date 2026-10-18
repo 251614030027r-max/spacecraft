@@ -207,6 +207,13 @@ class OptionSAC(M1SAC):
         v_hat = self.target_value(cf.next_observations)
         return (cf.rewards - data.rewards) + self.gamma * (v_hat - v_next)
 
+    def _relative_loss(self, alt_q, current_q, delta: th.Tensor, weights: th.Tensor) -> th.Tensor:
+        """0.5 sum_j mean_B[ w Huber((Q_j(z, a~) - Q_j(z, a)) - delta) ] (166244b). T1-N overrides it
+        with a confidence-weighted ranking loss."""
+
+        return 0.5 * sum((weights * F.huber_loss(qa - qr, delta, reduction="none", delta=self.delta_huber)).mean()
+                         for qa, qr in zip(alt_q, current_q))
+
     def _cf_weights(self, cf) -> th.Tensor:
         """Weights of the relative MPC term (T1-O: also masked by the sample eligibility)."""
 
@@ -242,8 +249,7 @@ class OptionSAC(M1SAC):
                 with th.no_grad(), th.random.fork_rng(devices=[]):
                     delta = self._delta_target(data, cf, v_next)
                 alt_q = self.critic(data.observations, cf.actions)
-                rel = 0.5 * sum((cf_weights * F.huber_loss(qa - qr, delta, reduction="none", delta=self.delta_huber)).mean()
-                                for qa, qr in zip(alt_q, current_q))
+                rel = self._relative_loss(alt_q, current_q, delta, cf_weights)
                 diagnose = bool(self.delta_diagnostics_every) and n % self.delta_diagnostics_every == 0
                 g_td = g_rel = None
                 if probe or calibrated or diagnose:

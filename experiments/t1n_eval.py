@@ -14,6 +14,10 @@ Rows:
     python -B -m experiments.t1n_eval run --row model:logs/t1_n_r2/tcpf_s0/checkpoints/tcpf_40000_decisions.zip \
         --openings 300000-300047 --output-dir eval/t1n/tcpf_s0_40000 --workers 12
     python -B -m experiments.t1n_eval table --root eval/t1n --output table.csv
+
+Fixed-rule selection (run order step 3, before any formal evaluation): every row of
+``RULE_FAMILY`` on the development openings 292200-292231, then ``select-rule`` picks the largest
+mean return (ties: the first in ``RULE_FAMILY``) and writes ``selected_rule.json``.
 """
 
 from __future__ import annotations
@@ -28,6 +32,11 @@ from time import perf_counter
 from typing import Any
 
 import numpy as np
+
+
+RULE_FAMILY = ("fixed:-0.5", "fixed:-0.25", "fixed:0", "fixed:0.25", "fixed:0.5",
+               "earliest:0", "earliest:15", "earliest:30", "earliest:45")
+RULE_DEVELOPMENT_OPENINGS = "292200-292231"
 
 
 def parse_openings(text: str) -> list[int]:
@@ -145,6 +154,22 @@ def cmd_table(args) -> None:
     print(json.dumps(lines, indent=1))
 
 
+def cmd_select_rule(args) -> None:
+    root = Path(args.root)
+    expected = parse_openings(RULE_DEVELOPMENT_OPENINGS)
+    table = []
+    for rule in RULE_FAMILY:
+        d = root / rule.replace(":", "_")
+        rows = [json.loads((d / f"{rule.replace(':', '_')}_{k}.json").read_text()) for k in expected]
+        table.append({"rule": rule, **summarise(rows)})
+    best = max(table, key=lambda r: (r["return_mean"], -RULE_FAMILY.index(r["rule"])))
+    out = {"openings": RULE_DEVELOPMENT_OPENINGS, "family": list(RULE_FAMILY),
+           "criterion": "largest mean return; ties: first in the family order", "table": table,
+           "selected": best["rule"]}
+    Path(args.output).write_text(json.dumps(out, indent=1))
+    print(json.dumps(out, indent=1))
+
+
 def main(argv: list[str] | None = None) -> None:
     for k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
         os.environ.setdefault(k, "1")
@@ -158,8 +183,11 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("table")
     p.add_argument("--root", required=True)
     p.add_argument("--output", required=True)
+    p = sub.add_parser("select-rule")
+    p.add_argument("--root", required=True, help="directory with one sub-directory per rule (rule name, ':' -> '_')")
+    p.add_argument("--output", required=True)
     args = parser.parse_args(argv)
-    {"run": cmd_run, "table": cmd_table}[args.cmd](args)
+    {"run": cmd_run, "table": cmd_table, "select-rule": cmd_select_rule}[args.cmd](args)
 
 
 if __name__ == "__main__":

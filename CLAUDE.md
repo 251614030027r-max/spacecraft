@@ -14,7 +14,9 @@ uniform policy. The research layer's next version is **T1-N** (Research Plan
 R2: SAC chooses a neutral arrival time, conditional G* plans exactly that time,
 paired MPC shadow in the critic). It is implemented and technically reviewed
 (`evidence/T1N_R2_PRECHECK/`, collab review
-`R2_UPPER_FEASIBILITY_REVIEW_20261018.md`); **not frozen, no training authorised**. The earlier F01 value-stopping (handoff) line is
+`R2_UPPER_FEASIBILITY_REVIEW_20261018.md`, ranking term `evidence/T1N_R2_RANK/`);
+frozen for Round 1 (collab run order `T1_N_R2_ROUND1_20261018.md`), **training
+waits for the user's GO**. The earlier F01 value-stopping (handoff) line is
 finished and archived (`docs/archive/06_f01_value_stopping/`).
 
 ## Start here
@@ -96,9 +98,15 @@ T1 line (current):
 - **`tau_min_feasible` is not observed** in the T1-L / T1-O interfaces (computed
   inside `apply_intent`; rules and policies must not read it). T1-N observes a
   read-only earliest-feasible summary instead, shared by every arm and rule.
-- **T1-N shadow = simulator cost.** The paired rolling shadow solves the MPC every
+- **T1-N shadow = simulator cost.** The 2 s MPC shadow solves the MPC every
   0.1 s; it costs as much as a truth branch and is nearly as accurate. Do not
   claim it is cheaper or more informative than the simulator.
+- **T1-N ranking signal = G* plan + MPC 2 s correction.** Its long-horizon
+  content comes from the G* plan; report the plan-only and corrected signals
+  separately and never credit the plan's part to the MPC. Only its sign is
+  used (ranking loss); nothing is bootstrapped from a planned arrival state.
+- **T1-N 0k is a constant mid-range request.** The untrained deterministic actor
+  outputs a ~ 0: tau_req ~ 110 s at t = 0, i.e. the fixed:0 rule.
 - **Terminal semantics.** success / unsafe / timeout are terminal (no
   bootstrap); only a numerical failure is a truncation.
 - **Fuel weight.** Re-score any weight exactly from `info["delta_v_step_m_s"]`;
