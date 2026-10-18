@@ -4,7 +4,7 @@
 
 ## 当前执行单
 
-**[T1_N_R2_ROUND1_20261018](run_orders/T1_N_R2_ROUND1_20261018.md)**（科学 `2c504c1`，唯一有效）：T1-N 四臂 × 3 种子 × 40k，正式块 300000–300047 评估。**训练待用户 GO**；GO 前只授权第 1–2 节（同步、测试、吞吐复测）。审查 [R2_UPPER_FEASIBILITY_REVIEW_20261018](../reviews/R2_UPPER_FEASIBILITY_REVIEW_20261018.md) 第 8 节。
+**无有效执行单。** T1-P 候选 `8296c59` 未通过完整任务链（[测试记录](T1_P_UPPER_TEST_RECORD_20261018.md)），待研究层决定。[T1_N_R2_ROUND1_20261018](run_orders/T1_N_R2_ROUND1_20261018.md) 已被 T1-P 取代，不得执行。
 
 ## 历史，不能替代当前执行单
 
