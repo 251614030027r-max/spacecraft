@@ -158,6 +158,11 @@ class T1BFeedbackEnv(T1BReviewEnv):
         if not errors["terminal_match"]:reasons.append("terminal_mismatch")
         if counter["outcome"]!="accepted":reasons.append("alternative_not_accepted")
         if fact["outcome"]!="accepted":reasons.append("factual_not_accepted")
+        if counter["done"]:
+            # A small factual state error does not validate a discontinuous
+            # alternative capture/unsafe/resource label. Keep it in the audit,
+            # but do not inject unvalidated terminal rewards into the critic.
+            reasons.append("predicted_terminal_unvalidated")
         if abs((counter["tau"] or 0)-(fact["tau"] or 0))<cfg.min_tau_difference_s:reasons.append("same_tau")
         dp=float(np.linalg.norm(counter["q"]-fact_full["q"]))
         dr=float(counter["return"]-fact_full["return"])

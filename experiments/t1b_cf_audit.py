@@ -33,7 +33,9 @@ def clean(r):
     return {k:(v.tolist() if isinstance(v,np.ndarray) else v) for k,v in r.items()}
 
 def job(args):
-    opening,out,profile=args;path=Path(out)/f"audit_{opening}.json"
+    opening,out,profile=args[:3]
+    predictor_kind=args[3] if len(args)>3 else 'rolling'
+    path=Path(out)/f"audit_{opening}.json"
     if path.exists():return json.loads(path.read_text(encoding="utf-8"))
     from env.t1_b_task import T1BReviewEnv,MissionDistribution
     from env.t1_b_cf import MissionPredictor,alternate_action,ModelFeedbackConfig
@@ -42,9 +44,14 @@ def job(args):
     from experiments.t1b_diagnostic import policy_action
     start=time.perf_counter();mission=MissionDistribution(**profile) if profile else MissionDistribution()
     e=T1BReviewEnv(openings=[opening],mission=mission)
-    obs,reset=e.reset();p=MissionPredictor(e)
+    obs,reset=e.reset()
+    if predictor_kind=='fast':
+        from env.t1_b_fast_cf import FastMissionPredictor
+        p=FastMissionPredictor(e)
+    else:p=MissionPredictor(e)
     truth=CounterfactualPredictor(shadow_factory=lambda:T1BReviewEnv(openings=[opening],mission=mission))
-    cfg=ModelFeedbackConfig();records=[];ended=False
+    cfg=ModelFeedbackConfig(horizon_steps=1,every_reviews=1) if predictor_kind=='fast' else ModelFeedbackConfig()
+    records=[];ended=False
     while not ended:
         a=policy_action(e,"tau110",obs) if e._due else e.continue_action()
         if e._due and e._review_index in (0,3,6,9,12,15):
@@ -54,9 +61,9 @@ def job(args):
                           "chaser":pack_state(e.env.chaser_state).tolist(),"observation":obs.tolist(),
                           "t":e.env.time_s,"dv":e.env._delta_v,"review":e.review_state(),
                           "a":a.tolist(),"alt":alt.tolist()}
-                p.sync(e);f=p.rollout(a,2)
-                p.sync(e);c=p.rollout(alt,2)
-                tf=truth_rollout(truth,e,a,2);tc=truth_rollout(truth,e,alt,2)
+                p.sync(e);f=p.rollout(a,cfg.horizon_steps)
+                p.sync(e);c=p.rollout(alt,cfg.horizon_steps)
+                tf=truth_rollout(truth,e,a,cfg.horizon_steps);tc=truth_rollout(truth,e,alt,cfg.horizon_steps)
                 errors={}
                 for label,pr,tr in (("factual",f,tf),("alternative",c,tc)):
                     errors[label]={"reward":abs(pr["return"]-tr["return"]),
@@ -71,7 +78,7 @@ def job(args):
                     "true_physical_difference_m":float(np.linalg.norm(tc["q"]-tf["q"]))})
                 assert np.array_equal(np.asarray(snapshot["chaser"]),pack_state(e.env.chaser_state))
         obs,r,t,x,info=e.step(a);ended=t or x
-    result={"opening":opening,"mission":reset["mission"],"config":asdict(cfg),"records":records,
+    result={"opening":opening,"mission":reset["mission"],"predictor_kind":predictor_kind,"config":asdict(cfg),"records":records,
             "event":info["event"],"summary":e.env.summary(),"wall_s":time.perf_counter()-start}
     path.write_text(json.dumps(result,default=float),encoding="utf-8")
     return {"opening":opening,"pairs":len(records),"event":info["event"],"wall_s":result["wall_s"]}
@@ -79,12 +86,13 @@ def job(args):
 def main():
     p=argparse.ArgumentParser();p.add_argument("--output",required=True);p.add_argument("--profile")
     p.add_argument("--openings",default="292040-292043");p.add_argument("--workers",type=int,default=3)
+    p.add_argument('--predictor',choices=['rolling','fast'],default='rolling')
     a=p.parse_args();out=Path(a.output);out.mkdir(parents=True,exist_ok=True)
     from experiments.t1n_eval import parse_openings
     profile=json.loads(Path(a.profile).read_text(encoding="utf-8-sig")) if a.profile else None
     (out/"manifest.json").write_text(json.dumps(vars(a)|{"scheduled_reviews":[0,3,6,9,12,15]},indent=2))
     with ProcessPoolExecutor(a.workers) as pool:
-        fs=[pool.submit(job,(o,str(out),profile)) for o in parse_openings(a.openings)]
+        fs=[pool.submit(job,(o,str(out),profile,a.predictor)) for o in parse_openings(a.openings)]
         for f in as_completed(fs):print(json.dumps(f.result()),flush=True)
     (out/"finished.json").write_text(json.dumps({"completed":True,"time":time.time()}))
 if __name__=="__main__":main()

@@ -20,7 +20,8 @@ def run(job):
     path=Path(out)/f'{label}_{opening}.json'
     if path.exists():return json.loads(path.read_text(encoding='utf-8'))
     started=time.perf_counter();mission=MissionDistribution(**profile) if profile else MissionDistribution()
-    env=T1BReviewEnv(openings=[opening],mission=mission);obs,reset=env.reset()
+    env=T1BReviewEnv(openings=[opening],mission=mission,earliest_summary=row not in ('pure','oldgstar'))
+    obs,reset=env.reset()
     model=None;spec=None;weight_hash=None
     if row=='zero' or row.startswith('model:'):
         import torch
@@ -35,12 +36,33 @@ def run(job):
         weight_hash=hashlib.sha256(b''.join(p.detach().cpu().numpy().tobytes() for p in model.policy.parameters())).hexdigest()
     elif row.startswith('tree:'):
         spec=json.loads(Path(row.split(':',1)[1]).read_text(encoding='utf-8'))
+    committed_tree_row=tree_choice(spec,obs) if spec else None
+    raw_generator=None
+    if row=='oldgstar':
+        from env.t1_gstar import make_rendezvous
+        raw_generator=make_rendezvous(env.env,1.,entry_speed_m_s=.02,
+                                     deadline_margin_s=mission.descent_reserve_s)
     steps=[];ended=False;initial_obs=obs.tolist()
     while not ended:
-        if not env._due:a=env.continue_action()
+        if row in ('pure','oldgstar'):
+            e=env.env;a=np.zeros(1)
+            if raw_generator is None:
+                r,t,x,i=e.step(pure=True)
+                execution={'plan_status':'pure','tau_request_s':0.,'tau_effective_s':0.}
+            else:
+                remaining=raw_generator.remaining_s(e)
+                raw_generator.decide(e,remaining if remaining>0 else 0.)
+                r,t,x,i=e.step(reference=raw_generator)
+                execution={'plan_status':raw_generator.last_status,'tau_request_s':remaining,
+                           'tau_effective_s':raw_generator.tau_effective_s}
+            obs=env._observation()
+            i['execution']=execution;i['review']={'reviewed':False,'kind':'nonlearning_baseline'}
+        elif not env._due:a=env.continue_action()
         elif model is not None:a=np.asarray(model.predict(obs,deterministic=True)[0]).reshape(-1)
-        else:a=policy_action(env,tree_choice(spec,obs) if spec else row,obs)
-        obs,r,t,x,i=env.step(a);e=env.env
+        else:a=policy_action(env,committed_tree_row if spec else row,obs)
+        if row not in ('pure','oldgstar'):
+            obs,r,t,x,i=env.step(a)
+        e=env.env
         steps.append({'t':e.time_s,'r':r,'dv':i['delta_v_step_m_s'],'a':a.tolist(),
             'review':i['review'],'execution':i['execution'],'observation':obs.tolist(),
             'control_trace':i['resource_control_trace'],
@@ -48,7 +70,7 @@ def run(job):
             'v':(e.chaser_state.rotation@e.chaser_state.velocity-e.target_state.rotation@e.target_state.velocity).tolist()})
         ended=t or x
     result={'opening':opening,'row':row,'mission':reset['mission'],'profile':asdict(mission),
-        'initial_observation':initial_obs,'policy_sha256':weight_hash,'event':i['event'],
+        'initial_observation':initial_obs,'policy_sha256':weight_hash,'committed_tree_row':committed_tree_row,'event':i['event'],
         'return':sum(s['r'] for s in steps),'discounted_return':sum(e.config.reward.gamma**k*s['r'] for k,s in enumerate(steps)),
         'summary':e.summary(),'end_range_m':e.metrics().range_m,'violations':i.get('violations',{}),
         'steps':steps,'wall_s':time.perf_counter()-started}

@@ -40,3 +40,14 @@ def test_feedback_records_independent_model_transition():
     assert "signal" not in cf  # no old long-term ranking proxy
     assert cf["physical_difference_m"]>0
     assert cf["cf_discount"]==.999**2
+
+def test_feedback_preserves_the_real_controller_and_trajectory_bitwise():
+    options={"deadline_s":300.,"budget_m_s":100.,"urgent":False}
+    plain=T1BReviewEnv(openings=[292000],mission_override=options)
+    feedback=T1BFeedbackEnv(openings=[292000],mission_override=options)
+    plain.reset();feedback.reset()
+    for a in [np.zeros(1),np.zeros(1),np.zeros(1),np.array([.8])]:
+        o1,r1,t1,x1,i1=plain.step(a)
+        o2,r2,t2,x2,i2=feedback.step(a)
+        assert np.array_equal(o1,o2) and r1==r2 and (t1,x1)==(t2,x2)
+        assert np.array_equal(plain.env.controller._nominal_controls,feedback.env.controller._nominal_controls)
