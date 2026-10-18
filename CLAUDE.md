@@ -10,8 +10,11 @@ flies them and feeds 2 s shadow predictions back into training.
 
 **State (2026-10-18):** two learning-space checks (T1-L; T1-O V2, stopped at
 Gate C) found no observable state-dependent decision value beyond a simple
-uniform policy. The next task version is being designed by the research
-layer; no method is frozen. The earlier F01 value-stopping (handoff) line is
+uniform policy. The research layer's next version is **T1-N** (Research Plan
+R2: SAC chooses a neutral arrival time, conditional G* plans exactly that time,
+paired MPC shadow in the critic). It is implemented and technically reviewed
+(`evidence/T1N_R2_PRECHECK/`, collab review
+`R2_UPPER_FEASIBILITY_REVIEW_20261018.md`); **not frozen, no training authorised**. The earlier F01 value-stopping (handoff) line is
 finished and archived (`docs/archive/06_f01_value_stopping/`).
 
 ## Start here
@@ -90,8 +93,12 @@ T1 line (current):
   Branch from a snapshot with `CounterfactualPredictor.sync(fresh_solvers=True)`
   for every branch and report the difference to the original continuation as
   the numerical repeatability.
-- **`tau_min_feasible` is not observed.** It is computed by G* inside
-  `apply_intent`; state rules and policies must not read it.
+- **`tau_min_feasible` is not observed** in the T1-L / T1-O interfaces (computed
+  inside `apply_intent`; rules and policies must not read it). T1-N observes a
+  read-only earliest-feasible summary instead, shared by every arm and rule.
+- **T1-N shadow = simulator cost.** The paired rolling shadow solves the MPC every
+  0.1 s; it costs as much as a truth branch and is nearly as accurate. Do not
+  claim it is cheaper or more informative than the simulator.
 - **Terminal semantics.** success / unsafe / timeout are terminal (no
   bootstrap); only a numerical failure is a truncation.
 - **Fuel weight.** Re-score any weight exactly from `info["delta_v_step_m_s"]`;
@@ -142,7 +149,8 @@ T1 line (current; commands in `docs/current/REPRODUCE.md`):
 
 | Purpose | Entry |
 |---|---|
-| Task profiles | `env/t1_env.py`, `env/t1_l_task.py`, `env/t1_o_task.py` (`p1` / `p2` / `o`) |
+| Task profiles | `env/t1_env.py`, `env/t1_l_task.py`, `env/t1_o_task.py` (`p1` / `p2` / `o`), `env/t1_n_task.py` (T1-N) |
+| T1-N interface, shadow, learner | `env/t1_n_review.py`, `env/t1_n_cf.py`, `train/t1_n_sac.py`, `python -B -m train.train_t1_n`, checks `experiments.t1n_check`, evaluation `experiments.t1n_eval` |
 | G* and review interface | `env/t1_gstar.py`, `env/t1_task_review.py`, counterfactual `env/t1_option_cf.py` |
 | Learners and training | `train/t1_option_sac.py`, `train/t1_tcpf.py`, `python -B -m train.train_t1_option` |
 | Openings (geometry only) | `python -B -m experiments.t1o_openings`, `experiments.t1o_screen openings` |

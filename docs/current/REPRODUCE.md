@@ -39,7 +39,20 @@ python -B -m experiments.t1o_diagnose --profile p2 --episodes <dir> --output dia
 python -B -m train.train_t1_option --arm or3 --profile p2 --fuel-cost 20 --steps 12000 --seed 0 --run-name <name> --n-envs 4
 ```
 
-## 4. 产物
+## 4. T1-N（Research Plan R2）
+
+```bash
+python -B -m pytest -q tests/test_t1_n.py                                  # T1-N 合同（7 项）
+python -B -m experiments.t1n_check openings --first 292000 --count 2000 --output o.json     # 初值统计与 t=0 合法性
+python -B -m experiments.t1n_check feasibility --first 292000 --count 48 --output f.json    # 规划器对中性请求的响应
+python -B -m experiments.t1n_check closed --first 292000 --count 12 --policies earliest:0,random:1,reject,oldgstar --output-dir D
+python -B -m experiments.t1n_check signal --first 292100 --count 12 --output-dir D           # 影子配对信号 vs 真值分支
+python -B -m experiments.t1n_check timing --output timing.json                               # 串行计时
+python -B -m train.train_t1_n --arm tcpf --steps 40000 --seed 0 --run-name tcpf_s0 --shadow-steps H
+python -B -m experiments.t1n_eval run --row model:<zip> --openings A-B --output-dir D --workers W
+```
+
+## 5. 产物
 
 - 训练与评估产物写在 git 忽略的 `logs/` 下。
 - 证据只以单个文件强制加入 `evidence/<实验ID>/`，并附 `SHA256SUMS`。
