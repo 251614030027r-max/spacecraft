@@ -1,6 +1,6 @@
 # 项目当前状态（2026-10-18）
 
-*先读 [HANDOFF.md](HANDOFF.md) 与 [研究演进与耦合设计专题分析](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md)。本文件只记事实：正在运行什么、东西在哪里、哪些已完成、哪些未完成。由上层维护；下层现场状态见 `CURRENT.json`。*
+*先读 [HANDOFF.md](HANDOFF.md) 与 [研究演进](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md)（2026-10-18 按三窗口交接说明统一重写）。本文件只记事实：正在运行什么、东西在哪里、哪些已完成、哪些未完成。由上层维护；下层现场状态见 `CURRENT.json`。*
 
 ## 1. 当前状态
 
@@ -8,7 +8,7 @@
 |---|---|
 | 运行中 | **无。** 没有任何训练或评估在跑，下层待命 |
 | 研究阶段 | T1 预捕获任务族。两次学习空间检验都没有找到"可由观测兑现、优于简单统一策略"的状态相关决策余量（T1-L；T1-O V2 停于 Gate C）。下一任务版本由研究层设计，**尚无授权的执行单** |
-| 最新科学提交 | `claude/sac-mpc-coupling-design-ns7g6i` 上的 `7c2d513`（T1 文档更新）。T1-O V2 门控执行用的冻结提交是 `d3902a9` |
+| 最新科学提交 | `claude/sac-mpc-coupling-design-ns7g6i` 上的 `b5f0ec5`（只改文档：本机布局、中性措辞；代码与 `7c2d513` 相同）。T1-O V2 门控执行用的冻结提交是 `d3902a9` |
 | 规格与结论 | 科学分支 `docs/current/`（T1 任务族、方法构件、准入协议、命令），`docs/HISTORY.md` 阶段 7，`docs/DEAD_ENDS.md` D25–D29 |
 
 ## 2. 最近完成的工作（按时间倒序）
@@ -34,7 +34,7 @@
 | 下层交付包 | `lower/handoffs/<主题>/` |
 | 上层审查 | `reviews/`（索引 `README.md`） |
 | 实验总账 | `registry/EXPERIMENT_REGISTRY_20261007.csv` |
-| 本机工作树 | `D:\py\DRL2`（F01）、`D:\py\DRL2_T1`（T1 至 v4）、`D:\py\DRL2_T1_L`（T1-L）、`D:\py\DRL2_T1_O`（T1-O V2 门控） |
+| 本机工程 | 只有 `D:/py/DRL2`（检出 `4795910`，不是权威科学头）；旧 `DRL2_T1*` 克隆已保全后退役。保全库 `D:/py/DRL2/local_artifacts/资产归并_20261018/`；资产地图 `lower/handoffs/cleanup_inventory_20261018/LOCAL_ASSET_MAP.md`（`4f3d305`）。详见 HANDOFF 6.5 |
 | 历史文档与索引 | 科学分支 `docs/archive/`：`PATH_MAP.csv`、`ARTIFACT_INDEX.csv`、`CODE_INDEX.csv`、`06_f01_value_stopping/` |
 
 ## 4. Git 结构（2026-10-18）
@@ -47,7 +47,7 @@
 | `collab/spacecraft` | 协作：只改 `docs/collaboration/`；**不得从该分支运行代码** |
 | `main` | 实验结束后统一并入，现在不动 |
 
-**已并入的实验分支：** `experiment/t1_l_option_relative_20261015`、`experiment/t1_l_s_tcpf_20261016`、`experiment/t1_o_tcpf_20261017` 是一条直线，已快进并入科学分支。远端删除由下层在本机执行（命令见 `GIT_ASSETS_20261018.md` 第 2 节）。
+**已并入的实验分支：** `experiment/t1_l_option_relative_20261015`、`experiment/t1_l_s_tcpf_20261016`、`experiment/t1_o_tcpf_20261017` 是一条直线，已快进并入科学分支，并已由下层删除（远端核验只剩三条分支）。
 
 **标签：** `archive/*` 全部保留，见同一文件第 3 节。历史从未重写。
 
@@ -55,6 +55,5 @@
 
 | 项 | 前提 |
 |---|---|
-| 删除三条已并入的远端实验分支 | 下层本机执行，删前用文档中的核对命令确认三者都已并入 |
 | 下一任务版本的设计与执行单 | 研究层决定 |
 | 正式块 300000–999999 的评估、多种子训练 | 未授权 |
