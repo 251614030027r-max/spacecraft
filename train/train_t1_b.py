@@ -31,7 +31,7 @@ def make_env(arm,seed,rank,mission,feedback_kind):
 
 class Record(BaseCallback):
     def __init__(self,out,marks):
-        super().__init__();self.out=out;self.marks=set(marks);self.saved=set();self.start=time.perf_counter()
+        super().__init__();self.out=out;self.marks=set(marks);self.saved=set();self.start=time.perf_counter();self.event_counts={}
     def _on_training_start(self):
         self.handle=(self.out/"decisions.jsonl").open("a",encoding="utf-8")
         self.model.save(self.out/"checkpoints/step_0")
@@ -41,6 +41,8 @@ class Record(BaseCallback):
         technical_failure=None
         for e,info in enumerate(self.locals["infos"]):
             line={"step":n,"env":e,"reward":float(self.locals["rewards"][e]),
+                  "observation_before":self.model._last_obs[e],
+                  "observation_after":info.get('terminal_observation',self.locals['new_obs'][e]),
                   "action_proposed":self.locals["actions"][e],
                   "action_executed":info.get("executed_action"),
                   "event":info.get("event"),"review":info.get("review"),"execution":info.get("execution"),
@@ -48,6 +50,9 @@ class Record(BaseCallback):
                   "budget_remaining_m_s":info.get("budget_remaining_m_s"),
                   "delta_v_step_m_s":info.get("delta_v_step_m_s"),"counterfactual":info.get("counterfactual")}
             self.handle.write(json.dumps(line,default=json_default)+"\n")
+            if self.locals['dones'][e]:
+                event=info.get('event') or 'unknown_terminal'
+                self.event_counts[event]=self.event_counts.get(event,0)+1
             if info.get('event')=='numerical_failure':technical_failure={'reason':'numerical_failure','env':e,'step':n}
             if "episode_summary" in info:
                 with (self.out/"episodes.jsonl").open("a",encoding="utf-8") as f:
@@ -61,7 +66,14 @@ class Record(BaseCallback):
             finite=all(bool(torch.isfinite(p).all()) for p in self.model.policy.parameters())
             heartbeat={"steps":n,"wall_s":time.perf_counter()-self.start,"utc":datetime.now(timezone.utc).isoformat(),
                        "finite":finite,"pid":os.getpid(),"updates":self.model._n_updates,
-                       "actor_updates":self.model.actor_updates}
+                       "actor_updates":self.model.actor_updates,"episode_events":self.event_counts.copy()}
+            feedback=getattr(self.model.replay_buffer,'feedback_stats',None)
+            if feedback is not None:
+                heartbeat['model_payload_intervals_closed']=feedback['closed'];heartbeat['valid_model_intervals']=feedback['valid']
+                heartbeat['real_review_intervals_closed']=sum(self.model.replay_buffer.interval_counts[k] for k in ['closed_by_review','closed_by_terminal','closed_by_truncation'])
+                heartbeat['auxiliary_lambda_frozen']=self.model.delta_calibration.get('lambda')
+                shares=self.model.delta_stats.get('applied_share',[])
+                heartbeat['last_auxiliary_gradient_share']=float(shares[-1]) if shares and np.isfinite(shares[-1]) else None
             tmp=self.out/"heartbeat.tmp";tmp.write_text(json.dumps(heartbeat));tmp.replace(self.out/"heartbeat.json")
             self.handle.flush()
             if not finite:
@@ -72,6 +84,8 @@ class Record(BaseCallback):
                 self.model.save(self.out/f"checkpoints/step_{mark}")
                 for key in ("delta_stats","delta_calibration","tcpf_stats"):
                     (self.out/f"checkpoints/step_{mark}_{key}.json").write_text(json.dumps(getattr(self.model,key),default=json_default))
+                if hasattr(self.model.replay_buffer,'feedback_stats'):
+                    (self.out/f'checkpoints/step_{mark}_feedback_audit.json').write_text(json.dumps(self.model.replay_buffer.feedback_stats,default=json_default))
                 self.saved.add(mark)
         return True
     def _on_training_end(self):self.handle.close()
