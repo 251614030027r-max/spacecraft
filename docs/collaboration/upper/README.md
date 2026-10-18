@@ -4,7 +4,7 @@
 
 ## 当前执行单
 
-**无。** 研究层方案 [RESEARCH_PLAN_R2](RESEARCH_PLAN_R2_FOR_REVIEW_20261018.md)（`1c6fbd5`）已完成上层实质审查（[R2_UPPER_FEASIBILITY_REVIEW_20261018](../reviews/R2_UPPER_FEASIBILITY_REVIEW_20261018.md)，实现科学 `74d1f7f`）；待研究层就 MPC 相对项选 A / B 并确认上层操作化项后冻结，用户授予 GO 后再写 Round 1 执行单。上一份执行单 [T1_O_V2_GATES_LOCAL_20261017.md](run_orders/T1_O_V2_GATES_LOCAL_20261017.md) 已执行完毕，停于 Gate C。
+**[T1_N_R2_ROUND1_20261018](run_orders/T1_N_R2_ROUND1_20261018.md)**（科学 `2c504c1`，唯一有效）：T1-N 四臂 × 3 种子 × 40k，正式块 300000–300047 评估。**训练待用户 GO**；GO 前只授权第 1–2 节（同步、测试、吞吐复测）。审查 [R2_UPPER_FEASIBILITY_REVIEW_20261018](../reviews/R2_UPPER_FEASIBILITY_REVIEW_20261018.md) 第 8 节。
 
 ## 历史，不能替代当前执行单
 
