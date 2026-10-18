@@ -133,9 +133,13 @@ class T1Env:
     # ------------------------------------------------------------------ #
     def reset(self, seed: int) -> dict[str, Any]:
         rng = np.random.default_rng(int(seed))
-        self.target_state, self.chaser_state = sample_t1_initial_states(
-            rng, self.config.initial, self.config.task
-        )
+        sampler = getattr(self.config.initial, "sample", None)  # T1-N: its own sampler
+        if sampler is not None:
+            self.target_state, self.chaser_state = sampler(rng, self.config.task)
+        else:
+            self.target_state, self.chaser_state = sample_t1_initial_states(
+                rng, self.config.initial, self.config.task
+            )
         self.anchor = episode_anchor(self.target_state, self.chaser_state)
         self.controller.reset()
         self.time_s = 0.0

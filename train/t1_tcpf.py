@@ -106,7 +106,7 @@ class IntervalReplayBuffer(OptionReplayBuffer):
         for e in range(self.n_envs):
             self.interval_ready[i, e] = False  # this slot now holds a new transition
             self.interval_steps[i, e] = 0
-            if o[e, DUE_INDEX] > 0.5:
+            if o[e, self.due_index] > 0.5:
                 if self._open[e] is not None:  # the previous interval ends at this review state
                     self._close(e, o[e], terminal=False, how="closed_by_review")
                 self._open[e] = [i, index, 0.0, 0]
@@ -176,7 +176,7 @@ class TCPFSAC(OptionSAC):
         if not (self.interval_bellman or self.uniform_eligibility):
             return one_step, None
         ready, ret, discount, end_obs, done = self.replay_buffer.interval()  # type: ignore[union-attr]
-        review = (data.observations[:, DUE_INDEX:DUE_INDEX + 1] > 0.5).float()
+        review = (data.observations[:, self.due_index:self.due_index + 1] > 0.5).float()
         if self.interval_bellman:
             v_end = self.target_value(end_obs)
             folded = ret + discount * (1 - done) * v_end

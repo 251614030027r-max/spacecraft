@@ -62,12 +62,15 @@ from train.t1_m1 import M1ReplayBuffer, M1SAC, eq_mask
 class OptionReplayBuffer(M1ReplayBuffer):
     """M1 buffer plus the review flag of each stored state, and sampling of review states."""
 
+    #: index of the review flag in the observation (T1-N overrides it)
+    due_index = DUE_INDEX
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.due = np.zeros((self.buffer_size, self.n_envs), dtype=bool)
 
     def add(self, obs, next_obs, action, reward, done, infos) -> None:
-        self.due[self.pos] = np.asarray(obs).reshape(self.n_envs, -1)[:, DUE_INDEX] > 0.5
+        self.due[self.pos] = np.asarray(obs).reshape(self.n_envs, -1)[:, self.due_index] > 0.5
         super().add(obs, next_obs, action, reward, done, infos)
 
     def sample_due(self, batch_size: int, env=None) -> th.Tensor | None:
@@ -81,6 +84,10 @@ class OptionReplayBuffer(M1ReplayBuffer):
 
 
 class OptionSAC(M1SAC):
+    #: observation indices of the review flag and gap (T1-N overrides them)
+    due_index = DUE_INDEX
+    gap_index = GAP_INDEX
+
     def __init__(self, *args: Any, delta_lambda: float = 0.0, delta_warmup_decisions: int = 3000,
                  delta_huber: float = 10.0, delta_diagnostics_every: int = 50,
                  delta_target_share: float | None = None, delta_cap_share: float = 0.10,
@@ -123,7 +130,7 @@ class OptionSAC(M1SAC):
         return eq_mask(observations) * (observations[:, DUE_INDEX:DUE_INDEX + 1] > 0.5).float()
 
     def alpha_of(self, observations: th.Tensor) -> th.Tensor:
-        gap = th.clamp(th.round(observations[:, GAP_INDEX:GAP_INDEX + 1] * 3.0), 1.0, 3.0)
+        gap = th.clamp(th.round(observations[:, self.gap_index:self.gap_index + 1] * 3.0), 1.0, 3.0)
         return self.ent_coef_tensor * gap
 
     def continue_actions(self, observations: th.Tensor) -> th.Tensor:
@@ -142,7 +149,7 @@ class OptionSAC(M1SAC):
             v_review = q - self.alpha_of(observations) * log_prob.reshape(-1, 1)
             q_continue = th.min(th.cat(self.critic_target(observations, self.continue_actions(observations)), dim=1),
                                 dim=1, keepdim=True)[0]
-            due = observations[:, DUE_INDEX:DUE_INDEX + 1] > 0.5
+            due = observations[:, self.due_index:self.due_index + 1] > 0.5
             return th.where(due, v_review, q_continue)
 
     def delta_enabled(self) -> bool:
@@ -193,6 +200,13 @@ class OptionSAC(M1SAC):
     def _review_batch(self, batch_size: int) -> th.Tensor | None:
         return self.replay_buffer.sample_due(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
 
+    def _delta_target(self, data, cf, v_next: th.Tensor) -> th.Tensor:
+        """Relative label of the cached alternative (called without gradient): the 166244b one-step
+        label anchored on the real transition. T1-N overrides it with the paired h-step label."""
+
+        v_hat = self.target_value(cf.next_observations)
+        return (cf.rewards - data.rewards) + self.gamma * (v_hat - v_next)
+
     def _cf_weights(self, cf) -> th.Tensor:
         """Weights of the relative MPC term (T1-O: also masked by the sample eligibility)."""
 
@@ -226,8 +240,7 @@ class OptionSAC(M1SAC):
                 # the alternative's successor value samples the actor: on a forked RNG, so the
                 # term (and its read-only probes) leave the training stream exactly as in N0
                 with th.no_grad(), th.random.fork_rng(devices=[]):
-                    v_hat = self.target_value(cf.next_observations)
-                    delta = (cf.rewards - data.rewards) + self.gamma * (v_hat - v_next)
+                    delta = self._delta_target(data, cf, v_next)
                 alt_q = self.critic(data.observations, cf.actions)
                 rel = 0.5 * sum((cf_weights * F.huber_loss(qa - qr, delta, reduction="none", delta=self.delta_huber)).mean()
                                 for qa, qr in zip(alt_q, current_q))
