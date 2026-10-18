@@ -1,54 +1,47 @@
-# 复现说明（当前有效，2026-10-10）
+# 复现（2026-10-18）
 
-## 环境
+## 1. 环境
 
-```bash
-python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt -r requirements-mpc.txt -r requirements-dev.txt
-python -B -m pytest -q          # 仓库没有 conftest.py，也不作为包安装，必须从仓库根目录运行
-```
+- Python 3.12。依赖：`numpy scipy cvxpy gymnasium stable-baselines3 torch pytest`（PyPI 的 torch 可用）。
+- 自 `166244b` 以来 `requirements*.txt` 没有变化：下层本机 T1 / T1-L / T1-O 共用同一个 Python 环境。
+- 线程：`OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1`。
+- 项目没有安装成包，也没有 `conftest.py`：一律在仓库根目录运行 `python -B -m ...`。
 
-新工作副本建议用部分克隆，历史中约 1.5 GB 的模型 ZIP 不会被下载：
-
-```bash
-git clone --filter=blob:limit=5m -b claude/sac-mpc-coupling-design-ns7g6i <repo>
-```
-
-## 主线命令
-
-**训练**（每个种子一个进程，从零开始，60k 外层决策）：
+## 2. 测试
 
 ```bash
-python -B -m train.train_stopping --steps 60000 --seed 262460 --run-name final2_262460 --regime w2.36_r15
+python -B -m pytest -q                       # 全部（约 23 min）
+python -B -m pytest -q tests/test_t1_o.py tests/test_t1_l_s.py tests/test_t1_l.py tests/test_t1_counterfactual.py \
+    tests/test_t1_gym.py tests/test_t1_termination.py tests/test_t1_fixes.py tests/test_t1_m1.py   # T1 相关：106 项
 ```
 
-**评估**（确定性，串行）：
+## 3. 常用命令
 
 ```bash
-python -B -m experiments.v3_stopping evaluate --run-dir logs/final2_262460 --row stopping --seeds 271000-271047 --output-dir eval/final2/stopping_262460_271000
-python -B -m experiments.v3_stopping evaluate --run-dir logs/final2_262460 --row pure     --seeds 271000-271047 --output-dir eval/final2/pure_271000
-python -B -m experiments.regime_screen evaluate ...   # nominal 行
+# 开局（只按初始几何）
+python -B -m experiments.t1o_openings --profile p2 --set discovery            # 或 confirmation、development
+python -B -m experiments.t1o_screen openings --profile p1 --output <file>     # 物理筛选开局
+
+# 固定候选闭环（逐开局 JSON，含逐步 Δv 与四档 λ_f 回报）
+python -B -m experiments.t1o_screen run --profile p2 --policy A15 --openings <file> --output-dir <dir> --workers 4
+python -B -m experiments.t1o_screen table --openings <file> --root <dir> --output per_opening.csv
+
+# T1-O V2 读出与串联
+python -B -m experiments.t1o_v2 gate-a --openings <discovery> --root <dir> --output gate_a.json
+python -B -m experiments.t1o_v2 state-rule --openings <discovery> --root <dir> --fuel-weight 20 --output state_rule.json
+python -B -m experiments.t1o_gates gate-b --openings <discovery> --uniform A15 --fuel-weight 20 --output gate_b.json
+python -B -m experiments.t1o_v2_chain --root logs/t1o_v2 --workers W        # A → B → C → 零步 → E，遇 FAIL 即停
+
+# 已有证据的诊断（不新增回合）
+python -B -m experiments.t1o_diagnose --profile p2 --episodes <dir> --output diagnose.json
+
+# 训练（T1-O 四臂需 --profile 与 --fuel-cost；拒绝从修改过的工作树训练）
+python -B -m train.train_t1_option --arm or3 --profile p2 --fuel-cost 20 --steps 12000 --seed 0 --run-name <name> --n-envs 4
 ```
 
-**判定与表格：**
+## 4. 产物
 
-```bash
-python -B -m experiments.v3_stopping readout --pure <dir> --stopping M=<dir> --learned M=<dir> --seeds 271000-271047 --output ...
-python -B -m experiments.final_tables ...
-python -B -m experiments.stopping_replay replay ... ; python -B -m experiments.stopping_replay summarize ...
-```
-
-**训练健康检查**（只读，训练中可以运行）：
-
-```bash
-python -B -m experiments.v3_stopping_training_health --run-dir logs/final2_262460
-```
-
-F01 的逐步命令以协作分支 `docs/collaboration/upper/run_orders/FINAL_RERUN_20261007.md` 为准，本页不重复。
-
-## 产物与证据
-
-- 训练产物（模型、检查点、监控文件、逐开局 JSON）被 `.gitignore` 忽略，保存在本机，并按实验 ID 归档。
-- 进入决策或论文的文件，用 `git add -f` 单独发布到 `evidence/<实验ID>/`，并在总账中登记 SHA-256。
-- **不提交整个产物目录。**
-- 实验总账：协作分支 `docs/collaboration/registry/EXPERIMENT_REGISTRY_20261007.csv`。
+- 训练与评估产物写在 git 忽略的 `logs/` 下。
+- 证据只以单个文件强制加入 `evidence/<实验ID>/`，并附 `SHA256SUMS`。
+- 下层大包放在 collab 的 `docs/collaboration/lower/handoffs/<主题>/`；超过 50 MB 的留本机，只交 SHA。
+- 模型 zip 一律不上传，只交 SHA。

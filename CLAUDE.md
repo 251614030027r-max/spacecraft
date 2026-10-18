@@ -1,12 +1,18 @@
 # Working notes for this repository
 
 High-fidelity 6-DoF SE(3) **pre-capture** of a fast-tumbling non-cooperative
-target (chaser 106 kg, target 225 kg, 500 km / 45 deg orbit, RK45 truth with
-central gravity, second moments, gravity gradient and J2, 0.1 s control,
-+-5 N / +-0.6 N*m per axis). A SAC task policy proposes a reference every 2 s,
-a constrained MPC (h35) flies it, and a **value-based one-way handoff** decides
-at every decision point whether to keep the learned policy or hand control to
-Pure MPC now.
+target. Current line: the **T1 task family** (chaser 106 kg, target 225 kg box,
+500 km / 45 deg orbit, RK45 truth with central gravity and J2, 0.1 s control,
++-2 N / +-0.6 N*m per axis, 300 s). SAC chooses task intents at reviews
+(arrival delay / in-flight shift, descent pace kappa, entry speed), G* turns
+them into executable minimum-delta-v plans, the shared constrained MPC (h35)
+flies them and feeds 2 s shadow predictions back into training.
+
+**State (2026-10-18):** two learning-space checks (T1-L; T1-O V2, stopped at
+Gate C) found no observable state-dependent decision value beyond a simple
+uniform policy. The next task version is being designed by the research
+layer; no method is frozen. The earlier F01 value-stopping (handoff) line is
+finished and archived (`docs/archive/06_f01_value_stopping/`).
 
 ## Start here
 
@@ -16,10 +22,11 @@ and discipline). Then this file and the pages below.
 
 | What | Where |
 |---|---|
-| Task, regime, constraints | `docs/current/TASK.md` |
-| Current method | `docs/current/METHOD.md` |
-| Blocks, gate, descriptive evidence | `docs/current/EVALUATION.md` |
+| T1 task family, physics, G*, review interface, opening blocks | `docs/current/TASK.md` |
+| Method components (nothing frozen) | `docs/current/METHOD.md` |
+| Learning-space admission protocol (screen, Gates A-E) and results | `docs/current/EVALUATION.md` |
 | Commands | `docs/current/REPRODUCE.md` |
+| Branches, tags, evidence directories, local artifacts | `docs/archive/GIT_ASSETS_20261018.md` |
 | One-page research timeline | `docs/HISTORY.md` |
 | **Every direction already tried and refuted** | `docs/DEAD_ENDS.md` -- read before proposing any method, interface, reward or task change |
 | Live project state, run orders, hand-offs, experiment registry | branch `collab/spacecraft`, `docs/collaboration/` (`PROJECT_STATE.md` wins over anything here) |
@@ -31,11 +38,17 @@ and discipline). Then this file and the pages below.
   success criteria. The upper window reviews, writes run orders and code; it
   may question but not redefine them. Claim-breaking issues are reported as:
   what, which claim, why not a limitation, minimal check, method change needed.
-- The lower window runs long jobs on the user's machine (`D:\py\DRL2`), never
+- The lower window runs long jobs on the user's machine (one independent clone
+  per line: `D:\py\DRL2`, `DRL2_T1`, `DRL2_T1_L`, `DRL2_T1_O`), never
   switches branches or pulls in a working tree while a job runs.
-- `claude/sac-mpc-coupling-design-ns7g6i`: science code. `collab/spacecraft`:
-  only `docs/collaboration/` (fetch first, never force-push). `main` is merged
-  only when the experiments are over. No PRs unless the user asks.
+- **Exactly three branches** (user, 2026-10-18):
+  `claude/sac-mpc-coupling-design-ns7g6i` holds all science code and evidence;
+  `collab/spacecraft` only `docs/collaboration/` (fetch first, never
+  force-push); `main` is merged only when the experiments are over. Do not
+  open new long-lived branches: frozen science states are commits (and, if
+  needed, `archive/*` tags made by the lower window). The retired experiment
+  branches were fast-forward ancestors and are merged. No PRs unless the user
+  asks.
 - This sandbox cannot push tags or delete remote branches (proxy 403); the
   lower window does those from the user's machine.
 - **Git holds facts, not discussion.** Code, executed run orders, results,
@@ -67,6 +80,32 @@ and discipline). Then this file and the pages below.
 
 ## Traps
 
+T1 line (current):
+
+- **Solver-cache numerics.** A long-running MPC's CVXPY/CLARABEL cache carries
+  its own solve history; a shadow clone cannot be bitwise equal to it (~1e-8).
+  Branch from a snapshot with `CounterfactualPredictor.sync(fresh_solvers=True)`
+  for every branch and report the difference to the original continuation as
+  the numerical repeatability.
+- **`tau_min_feasible` is not observed.** It is computed by G* inside
+  `apply_intent`; state rules and policies must not read it.
+- **Terminal semantics.** success / unsafe / timeout are terminal (no
+  bootstrap); only a numerical failure is a truncation.
+- **Fuel weight.** Re-score any weight exactly from `info["delta_v_step_m_s"]`;
+  never rerun physics per weight. The counterfactual gate `e_r = 0.06` was set
+  at weight 5 and is not valid at another weight.
+- **G* planned delta-v covers only the transfer**, not station-keeping or
+  descent; it is biased towards long waits as a cost proxy.
+- **Do not edit modules a running job imports**: evaluation pools spawn new
+  processes per stage and import the current working tree.
+- **Opening blocks** are listed in `docs/current/TASK.md`; formal block
+  300000-999999 never accessed; training openings >= 1,000,000.
+- Cross-machine numerics: the same commit can differ in the last bits between
+  the sandbox and the lower's machine; compare verdicts, not bits, across
+  machines.
+
+F01 line (historical, `train/stopping.py` and friends):
+
 1. The raw per-key margins in `info` are not gated; compare
    `minimum_truth_normalized_margin` (from
    `normalized_precapture_truth_margins`).
@@ -95,6 +134,21 @@ and discipline). Then this file and the pages below.
     the shaped reward differs. Compare outcomes and states, not shaped reward.
 
 ## Trusted entry points
+
+T1 line (current; commands in `docs/current/REPRODUCE.md`):
+
+| Purpose | Entry |
+|---|---|
+| Task profiles | `env/t1_env.py`, `env/t1_l_task.py`, `env/t1_o_task.py` (`p1` / `p2` / `o`) |
+| G* and review interface | `env/t1_gstar.py`, `env/t1_task_review.py`, counterfactual `env/t1_option_cf.py` |
+| Learners and training | `train/t1_option_sac.py`, `train/t1_tcpf.py`, `python -B -m train.train_t1_option` |
+| Openings (geometry only) | `python -B -m experiments.t1o_openings`, `experiments.t1o_screen openings` |
+| Fixed candidates, tables | `python -B -m experiments.t1o_screen {run,verdict,table}` |
+| Gates A-E (pre-registered) | `experiments/t1o_v2.py`, `experiments/t1o_gates.py`, `experiments/t1o_cf_check.py`, chain `experiments/t1o_v2_chain.py` |
+| T1-L evaluation / readout | `python -B -m experiments.t1_l_eval`, `experiments.t1_l_readout` |
+| Pure MPC row | `python -B -m experiments.t1_gstar_probe run --row pure --task ...` |
+
+F01 line (historical):
 
 | Purpose | Entry |
 |---|---|

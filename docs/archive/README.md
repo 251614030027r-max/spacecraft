@@ -1,6 +1,6 @@
 # 归档说明
 
-本目录保存 2026-10-10 整理前的全部文档，**内容未作任何修改**，只按研究阶段分组。每个阶段的结论摘要见 `../HISTORY.md`，被否定的方向见 `../DEAD_ENDS.md`。
+本目录保存 2026-10-10 整理前的全部文档（以及 2026-10-18 移入的 F01 规格），**内容未作任何修改**，只按研究阶段分组。每个阶段的结论摘要见 `../HISTORY.md`，被否定的方向见 `../DEAD_ENDS.md`。
 
 | 目录 | 阶段 | 篇数 |
 |---|---|---|
@@ -10,8 +10,11 @@
 | `03_adaptive_round1_v2/` | 自适应任务、第一轮、V2（评估无效，见勘误） | 22 |
 | `04_v3_value_arbitration/` | V3b–V3e、价值仲裁 | 24 |
 | `05_handoff_stopping_final/` | B/C 阶段、停止头、价值规则、工况筛选 | 14 |
+| `06_f01_value_stopping/` | F01 价值停止（交接）方法的任务、方法、评估、复现规格。2026-10-18 从 `docs/current/` 原样移入：F01 已结束（用户判失败），T1 线接替 | 4 |
 | `handoffs/` | 历代窗口交接与开场提示 | 17 |
 | `index_pages_pre_cleanup/` | 整理前的 INDEX、HISTORY、EVIDENCE_INDEX、README、REPRODUCIBILITY | 5 |
+
+**注意：** 2026-10-18 之前的文档（含 collab 历史文件）中提到的 `docs/current/*.md`，指的是 F01 版本，现位于 `06_f01_value_stopping/`；当前的 `docs/current/` 描述 T1 任务族。
 
 ## 索引文件
 
@@ -33,3 +36,7 @@ git checkout archive/pre-cleanup-20261010 -- <旧路径>      # 恢复到工作�
 标签 `archive/pre-cleanup-20261010` 推到远端之前，把命令中的标签名换成提交 `813e27f` 即可，两者指向同一提交。
 
 几个旧 review 分支的证据，保存在标签 `archive/review/...` 下。
+
+## Git 资产清单
+
+分支、标签、证据目录与本机产物位置的总表见 `GIT_ASSETS_20261018.md`。
