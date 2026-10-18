@@ -4,7 +4,7 @@
 
 ## 当前执行单
 
-**无。** 最近一份 [T1_O_V2_GATES_LOCAL_20261017.md](run_orders/T1_O_V2_GATES_LOCAL_20261017.md)（第 2 版，科学 `d3902a9`）已执行完毕，按规则停于 Gate C（审查 [T1O_V2_GATES_UPPER_REVIEW_20261017](../reviews/T1O_V2_GATES_UPPER_REVIEW_20261017.md)）。下一份执行单待研究层确定新任务版本后再写。
+**无。** 研究层方案 [RESEARCH_PLAN_R2](RESEARCH_PLAN_R2_FOR_REVIEW_20261018.md)（`1c6fbd5`）已完成上层实质审查（[R2_UPPER_FEASIBILITY_REVIEW_20261018](../reviews/R2_UPPER_FEASIBILITY_REVIEW_20261018.md)，实现科学 `74d1f7f`）；待研究层就 MPC 相对项选 A / B 并确认上层操作化项后冻结，用户授予 GO 后再写 Round 1 执行单。上一份执行单 [T1_O_V2_GATES_LOCAL_20261017.md](run_orders/T1_O_V2_GATES_LOCAL_20261017.md) 已执行完毕，停于 Gate C。
 
 ## 历史，不能替代当前执行单
 
