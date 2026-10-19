@@ -76,6 +76,10 @@ class FeasibleArrivalEnv(T1BReviewEnv):
         base[N_DUE_INDEX]=float(self._due and len(choices)>=2)
         return np.r_[base,list(np.asarray(choices)/200.)+[0.]*(3-len(choices)),[1.]*len(choices)+[0.]*(3-len(choices))].astype(np.float32)
 
+    ALTERNATIVE_RULE='farthest verified time; no outcome/rank oracle'
+    def alternative_index(self,choices,idx):
+        return max((j for j in range(len(choices)) if j!=idx),key=lambda j:abs(choices[j]-choices[idx]))
+
     def apply_intent(self,action):
         e,g=self.env,self.generator
         if self._continuing:return super().apply_intent(np.zeros(1))
@@ -89,7 +93,7 @@ class FeasibleArrivalEnv(T1BReviewEnv):
         before=self._observation();physical_due_before=self._due;choices=tuple(float(x) for x in self.support());active=bool(before[N_DUE_INDEX]>.5)
         raw=float(np.clip(np.asarray(action).reshape(-1)[0],-1,1));idx=choice_index(raw,len(choices))
         canonical=executed_coordinate(choices[idx]) if active else 0.
-        payload=paired_payload(self,raw,choices,idx) if self.feedback_enabled and active else None
+        payload=paired_payload(self,raw,choices,idx,self.alternative_index(choices,idx)) if self.feedback_enabled and active else None
         obs,r,t,x,info=super().step(np.array([raw],np.float32))
         info['physical_review']=deepcopy(info['review'])
         info['review']['reviewed']=active;info['review']['learning_due']=active
@@ -110,9 +114,9 @@ class FeasiblePredictor(IntervalMissionPredictor):
         super().sync(real,fresh_solvers=fresh_solvers)
         self.shadow._support_cache=deepcopy(real._support_cache)
 
-def paired_payload(real,raw,choices,idx):
-    alt=max((j for j in range(len(choices)) if j!=idx),key=lambda j:abs(choices[j]-choices[idx]))
+def paired_payload(real,raw,choices,idx,alt=None):
+    if alt is None:alt=FeasibleArrivalEnv.alternative_index(real,choices,idx)
     pred=real.predictor;pred.sync(real);fact=pred.rollout(np.array([raw],np.float32))
     alt_raw=bin_center(alt,len(choices));pred.sync(real);counter=pred.rollout(np.array([alt_raw],np.float32))
     effect=float(np.linalg.norm(counter['q']-fact['q'])) if counter['steps']==fact['steps'] else 0.
-    return {'a_tilde':np.array([executed_coordinate(choices[alt])],np.float32),'factual':fact,'alternative':counter,'physical_difference_m':effect,'first_reward_difference':counter['rewards'][0]-fact['rewards'][0],'config':asdict(pred.interval_config),'kind':'verified_support_paired_mpc_prefix','sampling':{'population_tau_s':choices,'selected_index':idx,'alternative_index':alt,'rule':'farthest verified time; no outcome/rank oracle'},'raw_alternative':alt_raw}
+    return {'a_tilde':np.array([executed_coordinate(choices[alt])],np.float32),'factual':fact,'alternative':counter,'physical_difference_m':effect,'first_reward_difference':counter['rewards'][0]-fact['rewards'][0],'config':asdict(pred.interval_config),'kind':'verified_support_paired_mpc_prefix','sampling':{'population_tau_s':choices,'selected_index':idx,'alternative_index':alt,'rule':real.ALTERNATIVE_RULE},'raw_alternative':alt_raw}
