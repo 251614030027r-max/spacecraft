@@ -6,7 +6,7 @@ from concurrent.futures import ProcessPoolExecutor,as_completed
 import numpy as np
 
 def run(job):
-    opening,row,out,profile=job
+    opening,row,out,profile,cohort=job
     from env.t1_b_task import MissionDistribution,T1BReviewEnv
     from env.t1_b_admissible import T1BAdmissibleEnv,ADMISSIBLE_VERSION
     env=T1BAdmissibleEnv(openings=[opening],mission=MissionDistribution(**profile))
@@ -29,7 +29,7 @@ def run(job):
             'q':(e.chaser_state.position-e.target_state.position).tolist(),
             'v':(e.chaser_state.rotation@e.chaser_state.velocity-e.target_state.rotation@e.target_state.velocity).tolist()})
         done=t or x
-    result={'opening':opening,'row':row,'interface':ADMISSIBLE_VERSION,'training':False,'cohort':'EXPLORATORY_SELECTION_NOT_INDEPENDENT_CONFIRMATION',
+    result={'opening':opening,'row':row,'interface':ADMISSIBLE_VERSION,'training':False,'cohort':cohort,
         'mission':reset['mission'],'profile':asdict(env.mission_distribution),'policy_sha256':policy_hash,'initial_observation':initial.tolist(),
         'event':i['event'],'discounted_return':sum(e.config.reward.gamma**k*s['r'] for k,s in enumerate(steps)),
         'return':sum(s['r'] for s in steps),'summary':e.summary(),'violations':i.get('violations',{}),'steps':steps,
@@ -58,12 +58,13 @@ def contract(profile,out):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--output',required=True);p.add_argument('--profile',required=True)
-    p.add_argument('--openings',default='292100-292107');p.add_argument('--workers',type=int,default=6);p.add_argument('--contract-only',action='store_true');a=p.parse_args()
+    p.add_argument('--openings',default='292100-292107');p.add_argument('--workers',type=int,default=6);p.add_argument('--contract-only',action='store_true')
+    p.add_argument('--cohort',choices=['exploratory_selection','independent_confirmation'],default='exploratory_selection');a=p.parse_args()
     out=Path(a.output);out.mkdir(parents=True,exist_ok=True);profile=json.loads(Path(a.profile).read_text(encoding='utf-8-sig'))
     if a.contract_only:contract(profile,out);return
     from experiments.t1n_eval import parse_openings
     openings=parse_openings(a.openings);assert all(292000<=o<300000 for o in openings),'Formal block sealed'
-    jobs=[(o,row,str(out),profile) for o in openings for row in ['early','middle','late','zero']]
+    jobs=[(o,row,str(out),profile,a.cohort) for o in openings for row in ['early','middle','late','zero']]
     assert not any(out.glob('early_*.json')),'Never duplicate an existing batch'
     state={'pid':os.getpid(),'phase':'running','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'completed':[],'jobs':len(jobs),'args':vars(a),'training':False}
     def save():
