@@ -4,6 +4,6 @@
 
 先读RESULT.md与TRAINING_EVALUATION_FINAL.csv；全部失败和模型保留，后续替代必须先实测再训练，最新直接授权不要求上层审批。用户目标尚未实现，小时跟进保持。
 
-完整独立本机证据包：C:\Users\35884\Documents\Spacecraft\上层交付\最新\FINAL_20261019_085225.zip
+完整独立本机证据包：C:\Users\35884\Documents\Spacecraft\过程文件\通宵研究_20261019\交付构建\FINAL_20261019_085225\FINAL_20261019_085225.zip
 
 SHA256：8ebfc9e69a57f736863e923370b94a446bbab088174fb7270378cf7267e0dc54；仅本机交付，未对外推送原始数据或模型。
