@@ -23,6 +23,8 @@ from env.t1_b_task import MissionDistribution
 from env.t1_b_feasible_v1 import bin_center
 from env.t1_b_feasible_v2 import FeasibleArrivalEnvV2, VERSION as VERSION_V2
 from env.t1_b_feasible_v3 import FeasibleArrivalEnvV3, VERSION as VERSION_V3
+from env.t1_b_feasible_v4 import FeasibleArrivalEnvV4, VERSION as VERSION_V4
+from train.t1_b_v4_sac import FeasibleSupportSACV4, V4_BEHAVIOUR_EPSILON
 from env.t1_gym import T1GymConfig
 from env.t1_n_review import N_DUE_INDEX
 from train.t1_b_v2_sac import FeasibleSupportSACV2, CANDIDATE_ALPHA, BEHAVIOUR_EPSILON
@@ -34,7 +36,10 @@ INIT = Path('evidence/T1B_V1/models/E-SAC/step_0.zip')
 INIT_SHA = '40da22c6ea8483a4ab75e0f07bd924a98d005d297482d850b3d48f8cb46c8174'
 EXPERT_SHA = 'bf3c24f9f8db7eb156a5ab42835f6faeefee2332efbd59ba7c35ed733f5ffe80'
 # v2: a1698ac pilot interface; v3: committed arrival intent (env/t1_b_feasible_v3.py). Same learner.
-INTERFACES = {'v2': (FeasibleArrivalEnvV2, VERSION_V2), 'v3': (FeasibleArrivalEnvV3, VERSION_V3)}
+INTERFACES = {'v2': (FeasibleArrivalEnvV2, VERSION_V2), 'v3': (FeasibleArrivalEnvV3, VERSION_V3), 'v4': (FeasibleArrivalEnvV4, VERSION_V4)}
+# v4: V3 decisions + every unchosen candidate paired + behaviour epsilon 0.5 (train/t1_b_v4_sac.py)
+LEARNERS = {'v2': FeasibleSupportSACV2, 'v3': FeasibleSupportSACV2, 'v4': FeasibleSupportSACV4}
+TEACHER_INTERFACE = {'v2': 'v2', 'v3': 'v3', 'v4': 'v3'}   # V4 learning decisions are V3's: the V3 teacher file is valid
 
 
 def sha(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -54,9 +59,9 @@ def make_env(rank, feedback=False, seed=0, interface='v2'):
     return INTERFACES[interface][0](config=T1GymConfig(seed_base=1_000_000 * (seed + 1) + rank * 100_000), mission=mission(), feedback=feedback)
 
 
-def model_for(env, arm, seed, output=None, smoke=False):
+def model_for(env, arm, seed, output=None, smoke=False, interface='v2'):
     kwargs = {'feedback_audit_path': str(Path(output) / 'model_prefix_releases.jsonl')} if output else {}
-    m = FeasibleSupportSACV2('MlpPolicy', env, seed=seed, device='cpu', verbose=0, policy_kwargs={'net_arch': [128, 128]}, gamma=.999,
+    m = LEARNERS[interface]('MlpPolicy', env, seed=seed, device='cpu', verbose=0, policy_kwargs={'net_arch': [128, 128]}, gamma=.999,
                              buffer_size=20000 if smoke else 100000, batch_size=64 if smoke else 256, learning_starts=32 if smoke else 500,
                              learning_rate=CosineLearningRate(1e-4, 1e-5), ent_coef=.005, tau=.005, train_freq=(1, 'step'), gradient_steps=4,
                              interval_bellman=True, actor_every_transitions=3, mc_lambda=0., eq_lambda=0., audit_every=0, delta_lambda=0.,
@@ -74,7 +79,7 @@ def model_for(env, arm, seed, output=None, smoke=False):
 def contract(out, interface='v2'):
     torch.set_num_threads(1)
     env = INTERFACES[interface][0](openings=[292140], mission=mission()); obs, _ = env.reset()
-    m = model_for(env, 'e_sac', 0, smoke=True)
+    m = model_for(env, 'e_sac', 0, smoke=True, interface=interface)
     init = FeasibleSupportSACV2.load(INIT, device='cpu', custom_objects={'learning_rate': 1e-4, 'lr_schedule': lambda _: 1e-4})
     same = float(np.max(np.abs(init.predict(obs, deterministic=True)[0] - m.predict(obs, deterministic=True)[0])))
     assert same == 0.0
@@ -84,7 +89,7 @@ def contract(out, interface='v2'):
     alts = {(i, env.alternative_index([80., 100., 120.], i)) for i in range(3) for env.current_opening in range(292140, 292160)}
     assert all(i != j for i, j in alts) and {(1, 0), (1, 2)} <= alts
     dump(out / 'CONTRACT.json', {'passed': True, 'init_weights_max_abs_action_diff': same, 'candidate_alpha': CANDIDATE_ALPHA,
-                                 'behaviour_epsilon': BEHAVIOUR_EPSILON, 'version': INTERFACES[interface][1], 'alternative_pairs_seen': sorted(alts)})
+                                 'behaviour_epsilon': m.behaviour_epsilon, 'version': INTERFACES[interface][1], 'alternative_pairs_seen': sorted(alts)})
     print('CONTRACT PASS', flush=True)
 
 
@@ -122,19 +127,19 @@ def train(out, arm, steps, seed, expert_file, smoke=False, interface='v2'):
     if not smoke and interface != 'v2':
         # the teacher rule is V1's, recollected on the same interface (its flags/candidates must match)
         receipt = json.loads((Path(expert_file).parent / 'EXPERT_RECEIPT.json').read_text(encoding='utf-8'))
-        if receipt.get('interface') != interface or receipt.get('sha256') != sha(expert_file) or receipt.get('transitions') != 1000:
+        if receipt.get('interface') != TEACHER_INTERFACE[interface] or receipt.get('sha256') != sha(expert_file) or receipt.get('transitions') != 1000:
             raise RuntimeError('expert replay is not a 1000-transition teacher collection on this interface')
     out.mkdir(parents=True, exist_ok=False); (out / 'checkpoints').mkdir()
     torch.set_num_threads(1)
     env = SubprocVecEnv([partial(make_env, k, arm == 'e_tcpf', seed, interface) for k in range(4)], start_method='spawn')
-    model = model_for(env, arm, seed, out, smoke)
+    model = model_for(env, arm, seed, out, smoke, interface)
     records = pickle.loads(Path(expert_file).read_bytes())
     for r in records: model.replay_buffer.add(r['obs'], r['next_obs'], r['action'], r['reward'], r['done'], r['infos'])
     b = model.replay_buffer; b.demo_slots = b.pos; b._open = [None] * 4; b._prefix = [None] * 4; b._episode = [[] for _ in range(4)]
     dump(out / 'manifest.json', {'version': INTERFACES[interface][1], 'interface': interface, 'arm': arm, 'seed': seed, 'steps': steps, 'smoke_not_formal': smoke, 'git_head': head,
                                  'profile': asdict(mission()), 'profile_sha256': PROFILE_SHA, 'init_weights': str(INIT), 'init_sha256': INIT_SHA,
                                  'expert_sha256': sha(expert_file), 'expert_real_transitions': len(records) * 4, 'expert_sampling_fraction': .2,
-                                 'candidate_alpha': CANDIDATE_ALPHA, 'behaviour_epsilon': BEHAVIOUR_EPSILON,
+                                 'candidate_alpha': CANDIDATE_ALPHA, 'behaviour_epsilon': model.behaviour_epsilon,
                                  'cf_alternative_rule': INTERFACES[interface][0].ALTERNATIVE_RULE if arm == 'e_tcpf' else None,
                                  'unchanged_from_V1': 'task, D/B, support, G*, MPC, truth, network, init, optimiser, trainer, expert Replay, CF gate and 5 %/10 % share'})
     model.learn(total_timesteps=steps, callback=RecordV1(out, steps)); model.save(out / 'final')

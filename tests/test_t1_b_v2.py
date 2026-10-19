@@ -57,3 +57,13 @@ def test_v3_decides_only_without_a_live_plan_and_keeps_it():
         obs, r, term, trunc, info = env.step(np.array([0.9], np.float32))   # ignored: no decision while the plan is live
         assert not info['support_transition']['learning_decision']
     assert abs(env.generator.remaining_s(env.env) + env.env.time_s - tau) < 1.0
+
+
+def test_v4_learner_uses_two_counterfactual_slots_and_exploration_half():
+    import gymnasium as gym
+    from train.t1_b_v4_sac import AllAlternativesReplay, FeasibleSupportSACV4, V4_BEHAVIOUR_EPSILON
+    b = AllAlternativesReplay(8, gym.spaces.Box(-np.inf, np.inf, (52,), np.float32), gym.spaces.Box(-1, 1, (1,), np.float32), device='cpu')
+    b._sets[1]['cf_weights'][3, 0] = 0.7; b._sets[0]['cf_weights'][3, 0] = 0.2
+    b.use(1); assert float(b.cf_weights[3, 0]) == np.float32(0.7)
+    b.use(0); assert float(b.cf_weights[3, 0]) == np.float32(0.2)
+    assert V4_BEHAVIOUR_EPSILON == 0.5 and AllAlternativesReplay.SLOTS == 2
