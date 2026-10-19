@@ -37,3 +37,23 @@ def test_soft_optimal_policy_is_interior_at_v2_and_degenerate_at_v1_temperature(
     q = th.tensor([0., -0.5, -1.0])
     assert float(th.softmax(q / 0.015, 0)[1]) < 1e-12
     assert float(th.softmax(q / 0.5, 0)[1]) > 0.2
+
+
+def test_v3_decides_only_without_a_live_plan_and_keeps_it():
+    import json
+    from env.t1_b_task import MissionDistribution
+    from env.t1_b_feasible_v1 import bin_center
+    from env.t1_b_feasible_v3 import FeasibleArrivalEnvV3
+    from env.t1_n_review import N_DUE_INDEX
+    prof = json.load(open('evidence/T1B_V1/profile_mission_v3.json', encoding='utf-8-sig'))
+    env = FeasibleArrivalEnvV3(openings=[292140], mission=MissionDistribution(**prof)); obs, _ = env.reset()
+    n = int((obs[49:52] > .5).sum())
+    assert obs[N_DUE_INDEX] > .5 and n == 3 and obs[27] < .5
+    obs, *_, info = env.step(np.array([bin_center(2, 3)], np.float32))
+    tau = info['support_transition']['tau_candidates'][2]
+    assert info['support_transition']['learning_decision'] and info['support_transition']['candidate_index'] == 2
+    for _ in range(9):
+        assert obs[N_DUE_INDEX] < .5 and obs[27] > .5
+        obs, r, term, trunc, info = env.step(np.array([0.9], np.float32))   # ignored: no decision while the plan is live
+        assert not info['support_transition']['learning_decision']
+    assert abs(env.generator.remaining_s(env.env) + env.env.time_s - tau) < 1.0

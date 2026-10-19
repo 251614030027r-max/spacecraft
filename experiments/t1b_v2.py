@@ -21,7 +21,8 @@ import torch
 
 from env.t1_b_task import MissionDistribution
 from env.t1_b_feasible_v1 import bin_center
-from env.t1_b_feasible_v2 import FeasibleArrivalEnvV2, VERSION
+from env.t1_b_feasible_v2 import FeasibleArrivalEnvV2, VERSION as VERSION_V2
+from env.t1_b_feasible_v3 import FeasibleArrivalEnvV3, VERSION as VERSION_V3
 from env.t1_gym import T1GymConfig
 from env.t1_n_review import N_DUE_INDEX
 from train.t1_b_v2_sac import FeasibleSupportSACV2, CANDIDATE_ALPHA, BEHAVIOUR_EPSILON
@@ -32,6 +33,8 @@ PROFILE_SHA = 'd1eaa6c55ef53874c1f5757fcbe802f270060496ea540adc92053ee806329ff0'
 INIT = Path('evidence/T1B_V1/models/E-SAC/step_0.zip')
 INIT_SHA = '40da22c6ea8483a4ab75e0f07bd924a98d005d297482d850b3d48f8cb46c8174'
 EXPERT_SHA = 'bf3c24f9f8db7eb156a5ab42835f6faeefee2332efbd59ba7c35ed733f5ffe80'
+# v2: a1698ac pilot interface; v3: committed arrival intent (env/t1_b_feasible_v3.py). Same learner.
+INTERFACES = {'v2': (FeasibleArrivalEnvV2, VERSION_V2), 'v3': (FeasibleArrivalEnvV3, VERSION_V3)}
 
 
 def sha(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -47,8 +50,8 @@ def mission():
     return MissionDistribution(**json.loads(PROFILE.read_text(encoding='utf-8-sig')))
 
 
-def make_env(rank, feedback=False, seed=0):
-    return FeasibleArrivalEnvV2(config=T1GymConfig(seed_base=1_000_000 * (seed + 1) + rank * 100_000), mission=mission(), feedback=feedback)
+def make_env(rank, feedback=False, seed=0, interface='v2'):
+    return INTERFACES[interface][0](config=T1GymConfig(seed_base=1_000_000 * (seed + 1) + rank * 100_000), mission=mission(), feedback=feedback)
 
 
 def model_for(env, arm, seed, output=None, smoke=False):
@@ -68,9 +71,9 @@ def model_for(env, arm, seed, output=None, smoke=False):
 
 
 # ------------------------------------------------------------------ contract
-def contract(out):
+def contract(out, interface='v2'):
     torch.set_num_threads(1)
-    env = FeasibleArrivalEnvV2(openings=[292140], mission=mission()); obs, _ = env.reset()
+    env = INTERFACES[interface][0](openings=[292140], mission=mission()); obs, _ = env.reset()
     m = model_for(env, 'e_sac', 0, smoke=True)
     init = FeasibleSupportSACV2.load(INIT, device='cpu', custom_objects={'learning_rate': 1e-4, 'lr_schedule': lambda _: 1e-4})
     same = float(np.max(np.abs(init.predict(obs, deterministic=True)[0] - m.predict(obs, deterministic=True)[0])))
@@ -81,7 +84,7 @@ def contract(out):
     alts = {(i, env.alternative_index([80., 100., 120.], i)) for i in range(3) for env.current_opening in range(292140, 292160)}
     assert all(i != j for i, j in alts) and {(1, 0), (1, 2)} <= alts
     dump(out / 'CONTRACT.json', {'passed': True, 'init_weights_max_abs_action_diff': same, 'candidate_alpha': CANDIDATE_ALPHA,
-                                 'behaviour_epsilon': BEHAVIOUR_EPSILON, 'version': VERSION, 'alternative_pairs_seen': sorted(alts)})
+                                 'behaviour_epsilon': BEHAVIOUR_EPSILON, 'version': INTERFACES[interface][1], 'alternative_pairs_seen': sorted(alts)})
     print('CONTRACT PASS', flush=True)
 
 
@@ -92,9 +95,9 @@ def teacher_action(z):
     return [bin_center(j, n) if n else 0.]
 
 
-def expert(out, transitions):
+def expert(out, transitions, interface='v2'):
     from stable_baselines3.common.vec_env import SubprocVecEnv
-    env = SubprocVecEnv([partial(make_env, k, False) for k in range(4)], start_method='spawn'); obs = env.reset(); records = []
+    env = SubprocVecEnv([partial(make_env, k, False, 0, interface) for k in range(4)], start_method='spawn'); obs = env.reset(); records = []
     for _ in range(transitions // 4):
         nxt, rewards, dones, infos = env.step(np.array([teacher_action(z) for z in obs], np.float32))
         terminal = np.stack([i.get('terminal_observation', nxt[k]) for k, i in enumerate(infos)])
@@ -104,30 +107,35 @@ def expert(out, transitions):
         obs = nxt
     env.close()
     with (out / 'expert_replay.pkl').open('wb') as f: pickle.dump(records, f)
-    dump(out / 'EXPERT_RECEIPT.json', {'transitions': transitions, 'sha256': sha(out / 'expert_replay.pkl'), 'rule': 'V1 teacher: earliest without plan, keep a live plan'})
+    dump(out / 'EXPERT_RECEIPT.json', {'transitions': transitions, 'sha256': sha(out / 'expert_replay.pkl'), 'interface': interface, 'rule': 'V1 teacher: earliest without plan, keep a live plan'})
 
 
 # ------------------------------------------------------------------ training
-def train(out, arm, steps, seed, expert_file, smoke=False):
+def train(out, arm, steps, seed, expert_file, smoke=False, interface='v2'):
     from stable_baselines3.common.vec_env import SubprocVecEnv
     from experiments.t1b_repair_v1 import RecordV1
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     if not smoke and subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], text=True).strip():
         raise RuntimeError('formal training requires a clean committed checkout')
-    if not smoke and sha(expert_file) != EXPERT_SHA:
+    if not smoke and interface == 'v2' and sha(expert_file) != EXPERT_SHA:
         raise RuntimeError('expert replay is not the V1 teacher file')
+    if not smoke and interface != 'v2':
+        # the teacher rule is V1's, recollected on the same interface (its flags/candidates must match)
+        receipt = json.loads((Path(expert_file).parent / 'EXPERT_RECEIPT.json').read_text(encoding='utf-8'))
+        if receipt.get('interface') != interface or receipt.get('sha256') != sha(expert_file) or receipt.get('transitions') != 1000:
+            raise RuntimeError('expert replay is not a 1000-transition teacher collection on this interface')
     out.mkdir(parents=True, exist_ok=False); (out / 'checkpoints').mkdir()
     torch.set_num_threads(1)
-    env = SubprocVecEnv([partial(make_env, k, arm == 'e_tcpf', seed) for k in range(4)], start_method='spawn')
+    env = SubprocVecEnv([partial(make_env, k, arm == 'e_tcpf', seed, interface) for k in range(4)], start_method='spawn')
     model = model_for(env, arm, seed, out, smoke)
     records = pickle.loads(Path(expert_file).read_bytes())
     for r in records: model.replay_buffer.add(r['obs'], r['next_obs'], r['action'], r['reward'], r['done'], r['infos'])
     b = model.replay_buffer; b.demo_slots = b.pos; b._open = [None] * 4; b._prefix = [None] * 4; b._episode = [[] for _ in range(4)]
-    dump(out / 'manifest.json', {'version': VERSION, 'arm': arm, 'seed': seed, 'steps': steps, 'smoke_not_formal': smoke, 'git_head': head,
+    dump(out / 'manifest.json', {'version': INTERFACES[interface][1], 'interface': interface, 'arm': arm, 'seed': seed, 'steps': steps, 'smoke_not_formal': smoke, 'git_head': head,
                                  'profile': asdict(mission()), 'profile_sha256': PROFILE_SHA, 'init_weights': str(INIT), 'init_sha256': INIT_SHA,
                                  'expert_sha256': sha(expert_file), 'expert_real_transitions': len(records) * 4, 'expert_sampling_fraction': .2,
                                  'candidate_alpha': CANDIDATE_ALPHA, 'behaviour_epsilon': BEHAVIOUR_EPSILON,
-                                 'cf_alternative_rule': FeasibleArrivalEnvV2.ALTERNATIVE_RULE if arm == 'e_tcpf' else None,
+                                 'cf_alternative_rule': INTERFACES[interface][0].ALTERNATIVE_RULE if arm == 'e_tcpf' else None,
                                  'unchanged_from_V1': 'task, D/B, support, G*, MPC, truth, network, init, optimiser, trainer, expert Replay, CF gate and 5 %/10 % share'})
     model.learn(total_timesteps=steps, callback=RecordV1(out, steps)); model.save(out / 'final')
     dump(out / 'learning_audit.json', model.support_stats); dump(out / 'feedback_audit.json', b.feedback_stats); dump(out / 'delta_calibration.json', model.delta_calibration)
@@ -138,9 +146,9 @@ def train(out, arm, steps, seed, expert_file, smoke=False):
 
 # ------------------------------------------------------------------ evaluation (deterministic, serial per opening)
 def eval_job(job):
-    opening, checkpoint, label, out = job; torch.set_num_threads(1); file = Path(out) / f'{label}_{opening}.json'
+    opening, checkpoint, label, out, interface = job; torch.set_num_threads(1); file = Path(out) / f'{label}_{opening}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
-    env = FeasibleArrivalEnvV2(openings=[opening], mission=mission()); obs, reset = env.reset()
+    env = INTERFACES[interface][0](openings=[opening], mission=mission()); obs, reset = env.reset()
     model = FeasibleSupportSACV2.load(checkpoint, device='cpu', custom_objects={'learning_rate': 1e-4, 'lr_schedule': lambda _: 1e-4})
     initial, done, k, disc, first = obs.tolist(), False, 0, 0., None
     while not done:
@@ -148,23 +156,23 @@ def eval_job(job):
         if first is None and i['support_transition']['learning_decision']:
             first = {'tau_candidates': i['support_transition']['tau_candidates'], 'index': i['support_transition']['candidate_index']}
         disc += .999 ** k * r; k += 1
-    res = {'opening': opening, 'label': label, 'checkpoint': str(checkpoint), 'mission': reset['mission'], 'event': i['event'],
+    res = {'opening': opening, 'label': label, 'interface': interface, 'checkpoint': str(checkpoint), 'mission': reset['mission'], 'event': i['event'],
            'discounted_return': disc, 'time_s': env.env.time_s, 'delta_v': env.env._delta_v, 'first_decision': first, 'initial_observation': initial}
     dump(file, res); return res
 
 
-def evaluate(out, checkpoint, label, ops, workers):
+def evaluate(out, checkpoint, label, ops, workers, interface='v2'):
     out.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(workers) as pool:
-        for f in as_completed([pool.submit(eval_job, (o, checkpoint, label, str(out))) for o in ops]):
+        for f in as_completed([pool.submit(eval_job, (o, checkpoint, label, str(out), interface)) for o in ops]):
             r = f.result(); print(json.dumps({k: r[k] for k in ('opening', 'label', 'event', 'discounted_return', 'first_decision')}, default=default), flush=True)
 
 
 # ------------------------------------------------------------------ candidate truth scan
 def scan_job(job):
-    opening, j0, out = job; torch.set_num_threads(1); file = Path(out) / f'scan_{opening}_{j0}.json'
+    opening, j0, out, interface = job; torch.set_num_threads(1); file = Path(out) / f'scan_{opening}_{j0}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
-    env = FeasibleArrivalEnvV2(openings=[opening], mission=mission()); obs, reset = env.reset()
+    env = INTERFACES[interface][0](openings=[opening], mission=mission()); obs, reset = env.reset()
     done, k, disc, choices0, skipped = False, 0, 0., None, False
     while not done:
         z = obs; n = int((z[49:52] > .5).sum()); a = [0.]
@@ -182,10 +190,10 @@ def scan_job(job):
     dump(file, res); return res
 
 
-def scan(out, ops, workers):
+def scan(out, ops, workers, interface='v2'):
     out.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(workers) as pool:
-        for f in as_completed([pool.submit(scan_job, (o, j, str(out))) for o in ops for j in range(3)]):
+        for f in as_completed([pool.submit(scan_job, (o, j, str(out), interface)) for o in ops for j in range(3)]):
             r = f.result(); print(json.dumps({k: r.get(k) for k in ('opening', 'first_index', 'first_candidates_s', 'event', 'discounted_return')}, default=default), flush=True)
 
 
@@ -213,14 +221,15 @@ def main():
     p.add_argument('--output', required=True); p.add_argument('--arm', choices=['e_sac', 'e_tcpf'], default='e_sac'); p.add_argument('--seed', type=int, default=0)
     p.add_argument('--steps', type=int, default=5000); p.add_argument('--expert'); p.add_argument('--checkpoint'); p.add_argument('--checkpoints')
     p.add_argument('--label'); p.add_argument('--openings', default='292140-292147'); p.add_argument('--episodes'); p.add_argument('--workers', type=int, default=4)
-    p.add_argument('--smoke', action='store_true'); a = p.parse_args(); out = Path(a.output)
+    p.add_argument('--smoke', action='store_true'); p.add_argument('--interface', choices=sorted(INTERFACES), default='v2')
+    a = p.parse_args(); out = Path(a.output)
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')
     if a.mode not in ('train', 'audit'): out.mkdir(parents=True, exist_ok=True)
-    if a.mode == 'contract': contract(out)
-    elif a.mode == 'expert': expert(out, a.steps)
-    elif a.mode == 'train': train(out, a.arm, a.steps, a.seed, a.expert, a.smoke)
-    elif a.mode == 'eval': evaluate(out, a.checkpoint, a.label, openings(a.openings), a.workers)
-    elif a.mode == 'scan': scan(out, openings(a.openings), a.workers)
+    if a.mode == 'contract': contract(out, a.interface)
+    elif a.mode == 'expert': expert(out, a.steps, a.interface)
+    elif a.mode == 'train': train(out, a.arm, a.steps, a.seed, a.expert, a.smoke, a.interface)
+    elif a.mode == 'eval': evaluate(out, a.checkpoint, a.label, openings(a.openings), a.workers, a.interface)
+    elif a.mode == 'scan': scan(out, openings(a.openings), a.workers, a.interface)
     else: audit(a.checkpoints.split(','), a.episodes, out)
 
 
