@@ -67,3 +67,26 @@ def test_v4_learner_uses_two_counterfactual_slots_and_exploration_half():
     b.use(1); assert float(b.cf_weights[3, 0]) == np.float32(0.7)
     b.use(0); assert float(b.cf_weights[3, 0]) == np.float32(0.2)
     assert V4_BEHAVIOUR_EPSILON == 0.5 and AllAlternativesReplay.SLOTS == 2
+
+
+def test_v5_full_horizon_gate_admits_only_reproduced_real_outcomes():
+    from train.t1_b_v5_sac import FullHorizonReplay
+    g = FullHorizonReplay.calibrate
+    pay = {'factual': {'done': True, 'event': 'success', 'return': 60.0, 'steps': 50, 'outcome': 'accepted'},
+           'alternative': {'done': True, 'event': 'success', 'return': 63.0, 'steps': 58, 'outcome': 'accepted'}}
+    ok = g(None, pay, 61.0, None, 52, 'success', False)
+    assert ok['weight'] == 0.8 and not ok['reasons']
+    assert g(None, pay, 61.0, None, 52, 'resource_exhausted', False)['weight'] == 0.
+    assert g(None, pay, 50.0, None, 52, 'success', False)['weight'] == 0.
+    assert g(None, pay, 61.0, None, 70, 'success', False)['weight'] == 0.
+    assert FullHorizonReplay.close_after(None, pay) == 60
+
+
+def test_v5_gate_admits_a_reproduced_plan_loss():
+    from train.t1_b_v5_sac import FullHorizonReplay
+    pay = {'factual': {'done': False, 'event': None, 'return': -14.6, 'steps': 25, 'outcome': 'accepted'},
+           'alternative': {'done': False, 'event': None, 'return': -23.3, 'steps': 46, 'outcome': 'accepted'}}
+    due = np.zeros(52, np.float32); due[39] = 1.
+    assert FullHorizonReplay.calibrate(None, pay, -15.0, due, 25, None, False)['weight'] > 0.9
+    assert FullHorizonReplay.calibrate(None, pay, -15.0, np.zeros(52, np.float32), 25, None, False)['weight'] == 0.
+    assert FullHorizonReplay.calibrate(None, pay, -15.0, due, 24, None, False)['weight'] == 0.
