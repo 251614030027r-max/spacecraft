@@ -28,6 +28,8 @@ from train.t1_b_v4_sac import FeasibleSupportSACV4, V4_BEHAVIOUR_EPSILON
 from env.t1_b_feasible_v5 import FeasibleArrivalEnvV5, VERSION as VERSION_V5
 from train.t1_b_v5_sac import FeasibleSupportSACV5
 from train.t1_b_v6_sac import FeasibleSupportSACV6, CF_WEIGHT
+from env.t1_b_feasible_v7 import FeasibleArrivalEnvV7, VERSION as VERSION_V7
+from train.t1_b_v7_sac import FeasibleSupportSACV7
 from env.t1_gym import T1GymConfig
 from env.t1_n_review import N_DUE_INDEX
 from train.t1_b_v2_sac import FeasibleSupportSACV2, CANDIDATE_ALPHA, BEHAVIOUR_EPSILON
@@ -39,12 +41,14 @@ INIT = Path('evidence/T1B_V1/models/E-SAC/step_0.zip')
 INIT_SHA = '40da22c6ea8483a4ab75e0f07bd924a98d005d297482d850b3d48f8cb46c8174'
 EXPERT_SHA = 'bf3c24f9f8db7eb156a5ab42835f6faeefee2332efbd59ba7c35ed733f5ffe80'
 # v2: a1698ac pilot interface; v3: committed arrival intent (env/t1_b_feasible_v3.py). Same learner.
-INTERFACES = {'v2': (FeasibleArrivalEnvV2, VERSION_V2), 'v3': (FeasibleArrivalEnvV3, VERSION_V3), 'v4': (FeasibleArrivalEnvV4, VERSION_V4), 'v5': (FeasibleArrivalEnvV5, VERSION_V5), 'v6': (FeasibleArrivalEnvV5, 't1b-intent-replay-mpc-advantage-v6')}
+INTERFACES = {'v2': (FeasibleArrivalEnvV2, VERSION_V2), 'v3': (FeasibleArrivalEnvV3, VERSION_V3), 'v4': (FeasibleArrivalEnvV4, VERSION_V4), 'v5': (FeasibleArrivalEnvV5, VERSION_V5), 'v6': (FeasibleArrivalEnvV5, 't1b-intent-replay-mpc-advantage-v6'),
+              'v7': (FeasibleArrivalEnvV7, VERSION_V7)}
+# v7: V6 learner; counterfactual branches run the real controller (QP every control), asynchronously (env/t1_b_feasible_v7.py)
 # v6: V5.1 interface + intent-level replay; E-TCPF adds the MPC-paired advantage (train/t1_b_v6_sac.py)
 # v5: E-TCPF only -- full-horizon paired MPC counterfactual of the first decision (train/t1_b_v5_sac.py); its E-SAC is v4's
 # v4: V3 decisions + every unchosen candidate paired + behaviour epsilon 0.5 (train/t1_b_v4_sac.py)
-LEARNERS = {'v2': FeasibleSupportSACV2, 'v3': FeasibleSupportSACV2, 'v4': FeasibleSupportSACV4, 'v5': FeasibleSupportSACV5, 'v6': FeasibleSupportSACV6}
-TEACHER_INTERFACE = {'v2': 'v2', 'v3': 'v3', 'v4': 'v3', 'v5': 'v3', 'v6': 'v3'}   # V4 learning decisions are V3's: the V3 teacher file is valid
+LEARNERS = {'v2': FeasibleSupportSACV2, 'v3': FeasibleSupportSACV2, 'v4': FeasibleSupportSACV4, 'v5': FeasibleSupportSACV5, 'v6': FeasibleSupportSACV6, 'v7': FeasibleSupportSACV7}
+TEACHER_INTERFACE = {'v2': 'v2', 'v3': 'v3', 'v4': 'v3', 'v5': 'v3', 'v6': 'v3', 'v7': 'v3'}   # V4 learning decisions are V3's: the V3 teacher file is valid
 
 
 def sha(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -70,8 +74,8 @@ def model_for(env, arm, seed, output=None, smoke=False, interface='v2'):
                              buffer_size=20000 if smoke else 100000, batch_size=64 if smoke else 256, learning_starts=32 if smoke else 500,
                              learning_rate=CosineLearningRate(1e-4, 1e-5), ent_coef=.005, tau=.005, train_freq=(1, 'step'), gradient_steps=4,
                              interval_bellman=True, actor_every_transitions=3, mc_lambda=0., eq_lambda=0., audit_every=0,
-                             delta_lambda=CF_WEIGHT if interface == 'v6' and arm == 'e_tcpf' else 0.,
-                             delta_target_share=None if interface == 'v6' else ((.10 if interface == 'v5' else .05) if arm == 'e_tcpf' else None),
+                             delta_lambda=CF_WEIGHT if interface in ('v6', 'v7') and arm == 'e_tcpf' else 0.,
+                             delta_target_share=None if interface in ('v6', 'v7') else ((.10 if interface == 'v5' else .05) if arm == 'e_tcpf' else None),
                              delta_cap_share=.2 if interface == 'v5' else .1,
                              delta_warmup_decisions=32 if smoke else 500, delta_calibration_steps=32 if smoke else 500, delta_probe_every=5,
                              delta_min_probes=5 if smoke else 30, delta_diagnostics_every=20, preserve_warmup_options=False,

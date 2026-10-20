@@ -101,3 +101,23 @@ def test_v6_intent_replay_samples_only_closed_decisions_and_sets_last():
     b.observations[1, 0, 0] = 1.; b.observations[4, 0, 0] = 4.
     d = b.sample_decisions(64)
     assert set(d.observations[:, 0].tolist()) <= {1., 4.} and len(set(b._last[0].tolist())) == 2
+
+
+def test_v7_snapshot_reproduces_the_in_process_branch_bitwise():
+    import json, pickle
+    from dataclasses import replace
+    from env.t1_b_task import MissionDistribution
+    from env.t1_b_feasible_v1 import bin_center
+    from env.t1_b_feasible_v5 import FeasibleArrivalEnvV5
+    from env.t1_b_feasible_v7 import CF_QP_STRIDE, make_predictor, proxy, snapshot
+    assert CF_QP_STRIDE == 1
+    prof = json.load(open('evidence/T1B_V1/profile_mission_v3.json', encoding='utf-8-sig'))
+    env = FeasibleArrivalEnvV5(openings=[292140], mission=MissionDistribution(**prof), feedback=True); env.reset()
+    env.step(np.array([bin_center(2, 3)], np.float32))
+    pred = env.predictor; pred.interval_config = replace(pred.interval_config, qp_stride_controls=1)
+    pred.sync(env); a = pred.rollout(np.zeros(1, np.float32), h=2)
+    spec = {'config': env.config, 'env_config': env.env.config, 'mission_distribution': env.mission_distribution,
+            'mission_override': env.mission_override, 'earliest_summary': env.earliest_summary}
+    p2 = make_predictor(pickle.loads(pickle.dumps(spec))); p2.sync(proxy(pickle.loads(pickle.dumps(snapshot(env)))))
+    b = p2.rollout(np.zeros(1, np.float32), h=2)
+    assert a['rewards'] == b['rewards'] and np.array_equal(a['q'], b['q'])
