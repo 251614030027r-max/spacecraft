@@ -1,0 +1,2840 @@
+{
+  "state": {
+    "topic": "t1b_v51_round",
+    "phase": "effectiveness_pilot_training_and_readout",
+    "pid": 20964,
+    "scientific_commit": "b6f5c8a22728b6ca3970d6201525cd4047cba8d8",
+    "run_order": "docs/collaboration/upper/run_orders/T1_B_V51_ROUND_20261020.md",
+    "training": {
+      "e_sac_s0": {
+        "pid": 1044,
+        "command": [
+          "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+          "-B",
+          "-m",
+          "experiments.t1b_v2",
+          "train",
+          "--interface",
+          "v5",
+          "--arm",
+          "e_sac",
+          "--seed",
+          "0",
+          "--steps",
+          "20000",
+          "--expert",
+          "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V3_ROUND_20261019\\expert\\expert_replay.pkl",
+          "--output",
+          "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0"
+        ],
+        "output": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0"
+      },
+      "e_tcpf_s0": {
+        "pid": 20096,
+        "command": [
+          "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+          "-B",
+          "-m",
+          "experiments.t1b_v2",
+          "train",
+          "--interface",
+          "v5",
+          "--arm",
+          "e_tcpf",
+          "--seed",
+          "0",
+          "--steps",
+          "20000",
+          "--expert",
+          "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V3_ROUND_20261019\\expert\\expert_replay.pkl",
+          "--output",
+          "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_tcpf_s0"
+        ],
+        "output": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_tcpf_s0"
+      }
+    },
+    "training_active": true,
+    "started_seeds": [
+      0
+    ],
+    "requested_runs": 2,
+    "planned_steps_each": 20000,
+    "completed_evaluations": 80,
+    "completed_shared_0k": 16,
+    "resource_policy": {
+      "physical_core_masks": [
+        3,
+        12,
+        48,
+        192,
+        768,
+        3072
+      ],
+      "reserved_physical_core_mask": "0x3",
+      "experiment_affinity_mask": 4092,
+      "logical_cpus_reserved": 2,
+      "priority": "BelowNormal",
+      "numerical_threads": 1,
+      "max_requested_pairs": 3,
+      "commit_reserve_gb": 4.0,
+      "physical_free_floor_gb": 2.0,
+      "admission": "Add whole SAC/TCPF pairs only after resident manifest/step0 and measured memory admission; otherwise queue; never change n_envs/hyperparameters",
+      "prior_resource_failure": "V4 actual WinError1455 and system2004; all old artifacts retained"
+    },
+    "resource_admission_note": "All six authorized; add matched pairs only when current physical/commit capacity admits them. This may queue seeds to avoid repeating confirmed V4 host exhaustion. Science unchanged.",
+    "updated_jst": "2026-10-20T15:47:18.483502+09:00",
+    "active_runs": [
+      "e_sac_s0",
+      "e_tcpf_s0"
+    ],
+    "queued_seeds": [],
+    "last_steps": {
+      "e_sac_s0": 18900,
+      "e_tcpf_s0": 5500
+    },
+    "memory": {
+      "free_physical_gb": 3.854724884033203,
+      "free_commit_gb": 4.817020416259766,
+      "commit_limit_gb": 31.855525970458984,
+      "used_commit_gb": 27.03850555419922
+    },
+    "eval_worker_budget": 3,
+    "active_evaluations": [],
+    "pending_evaluations": 0,
+    "scheduler": "run_seed0_pilot.py",
+    "scheduler_only_adoption": true,
+    "resource_adjustment": "User requested modest acceleration; existing scientific PIDs preserved; eval target3 with2.8GB commit/1.2GB physical reserve. Original resource_policy above is admission baseline, RUNTIME_RESOURCE_POLICY is current.",
+    "run_scope": {
+      "automatic_seeds": [
+        0
+      ],
+      "conditional_reserved_seeds": [
+        1
+      ],
+      "cancelled_seeds": [
+        2
+      ],
+      "maximum_seeds_this_round": 2,
+      "purpose": "Effectiveness pilot, not final figure/statistical campaign",
+      "seed1_rule": "Only if complete seed0 evidence warrants a seed-effect replication check; not automatically queued and never used to evade M failure",
+      "steps_per_method": 20000,
+      "methods": [
+        "e_sac",
+        "e_tcpf"
+      ],
+      "jst": "2026-10-20T13:08:30.1394029+09:00"
+    },
+    "conditional_reserved_seeds": [
+      1
+    ],
+    "cancelled_seeds": [
+      2
+    ],
+    "planned_evaluations": 128
+  },
+  "M": {
+    "e_sac_s0": {
+      "arm": "e_sac",
+      "seed": 0,
+      "pass": true,
+      "checks": {
+        "no_learning_with_plan": true,
+        "post500_non_earliest_ge30pct": true
+      },
+      "learning_count": 46,
+      "post500_count": 35,
+      "post500_non_earliest": 19,
+      "post500_fraction": 0.5428571428571428,
+      "valid_cf_slots": {
+        "0": 0,
+        "1": 0
+      },
+      "valid_pairs": 0,
+      "total_pairs": 0,
+      "violations": [],
+      "last_logged_step": 2032,
+      "jst": "2026-10-20T12:11:46.147415+09:00"
+    },
+    "e_tcpf_s0": {
+      "arm": "e_tcpf",
+      "seed": 0,
+      "pass": true,
+      "checks": {
+        "no_learning_with_plan": true,
+        "post500_non_earliest_ge30pct": true,
+        "both_cf_slots_valid": true
+      },
+      "learning_count": 46,
+      "post500_count": 35,
+      "post500_non_earliest": 19,
+      "post500_fraction": 0.5428571428571428,
+      "valid_cf_slots": {
+        "0": 23,
+        "1": 22
+      },
+      "valid_pairs": 45,
+      "total_pairs": 55,
+      "violations": [],
+      "last_logged_step": 2008,
+      "jst": "2026-10-20T13:18:40.956544+09:00"
+    }
+  },
+  "scope": "Latest user scope: seed0 paired effectiveness pilot; seed1 conditional reserve only, seed2 cancelled. No final three-seed figure campaign.",
+  "rankings_and_state_dependence": {
+    "e_sac_s0_2000": {
+      "ranked_states": 15,
+      "Q_truth_best_agreement_count": 5,
+      "Q_truth_best_agreement_fraction": 0.3333333333333333,
+      "three_candidate_choice_distribution_by_mission": {
+        "economy": {
+          "0": 6
+        },
+        "urgent": {
+          "0": 9
+        }
+      },
+      "first16_choices": {
+        "292140": 0,
+        "292141": 0,
+        "292142": 0,
+        "292143": 0,
+        "292144": 0,
+        "292145": 0,
+        "292146": 0,
+        "292147": 0,
+        "292120": 0,
+        "292121": 0,
+        "292122": 0,
+        "292123": 0,
+        "292124": 0,
+        "292125": 0,
+        "292126": 0,
+        "292127": 0
+      },
+      "truth_caution": "Frozen candidate truth uses fixed V1 teacher continuation. V3 commits, but later decisions after plan loss can still differ; not an exact policy-Q claim.",
+      "Q_slopes_15_states": [
+        {
+          "opening": 292140,
+          "Q_per_candidate_step": [
+            -1.188690185546875,
+            -1.1447982788085938
+          ],
+          "mean_Q_per_candidate_step": -1.1667442321777344,
+          "urgent": false
+        },
+        {
+          "opening": 292141,
+          "Q_per_candidate_step": [
+            -1.2833662033081055,
+            -1.310302734375
+          ],
+          "mean_Q_per_candidate_step": -1.2968344688415527,
+          "urgent": true
+        },
+        {
+          "opening": 292142,
+          "Q_per_candidate_step": [
+            -1.156259536743164,
+            -1.1428542137145996
+          ],
+          "mean_Q_per_candidate_step": -1.1495568752288818,
+          "urgent": false
+        },
+        {
+          "opening": 292143,
+          "Q_per_candidate_step": [
+            -1.3968591690063477,
+            -1.3864517211914062
+          ],
+          "mean_Q_per_candidate_step": -1.391655445098877,
+          "urgent": true
+        },
+        {
+          "opening": 292144,
+          "Q_per_candidate_step": [
+            -1.2486724853515625,
+            -1.2455005645751953
+          ],
+          "mean_Q_per_candidate_step": -1.247086524963379,
+          "urgent": true
+        },
+        {
+          "opening": 292145,
+          "Q_per_candidate_step": [
+            -1.157125473022461,
+            -1.1410560607910156
+          ],
+          "mean_Q_per_candidate_step": -1.1490907669067383,
+          "urgent": true
+        },
+        {
+          "opening": 292146,
+          "Q_per_candidate_step": [
+            -1.2130794525146484,
+            -1.2609672546386719
+          ],
+          "mean_Q_per_candidate_step": -1.2370233535766602,
+          "urgent": true
+        },
+        {
+          "opening": 292147,
+          "Q_per_candidate_step": [
+            -1.262070655822754,
+            -1.2720232009887695
+          ],
+          "mean_Q_per_candidate_step": -1.2670469284057617,
+          "urgent": true
+        },
+        {
+          "opening": 292120,
+          "Q_per_candidate_step": [
+            -1.0892828702926636,
+            -1.1398138999938965
+          ],
+          "mean_Q_per_candidate_step": -1.11454838514328,
+          "urgent": false
+        },
+        {
+          "opening": 292121,
+          "Q_per_candidate_step": [
+            -1.3131656646728516,
+            -1.284158706665039
+          ],
+          "mean_Q_per_candidate_step": -1.2986621856689453,
+          "urgent": false
+        },
+        {
+          "opening": 292123,
+          "Q_per_candidate_step": [
+            -1.079877495765686,
+            -1.101822555065155
+          ],
+          "mean_Q_per_candidate_step": -1.0908500254154205,
+          "urgent": true
+        },
+        {
+          "opening": 292124,
+          "Q_per_candidate_step": [
+            -0.5477619171142578,
+            -0.7713780403137207
+          ],
+          "mean_Q_per_candidate_step": -0.6595699787139893,
+          "urgent": false
+        },
+        {
+          "opening": 292125,
+          "Q_per_candidate_step": [
+            -0.5947957038879395,
+            -0.8051033020019531
+          ],
+          "mean_Q_per_candidate_step": -0.6999495029449463,
+          "urgent": false
+        },
+        {
+          "opening": 292126,
+          "Q_per_candidate_step": [
+            -1.2896804809570312,
+            -1.2073326110839844
+          ],
+          "mean_Q_per_candidate_step": -1.2485065460205078,
+          "urgent": true
+        },
+        {
+          "opening": 292127,
+          "Q_per_candidate_step": [
+            -1.2791996002197266,
+            -1.2016944885253906
+          ],
+          "mean_Q_per_candidate_step": -1.2404470443725586,
+          "urgent": true
+        }
+      ],
+      "mean_Q_step": -1.1505048175652821
+    },
+    "e_sac_s0_5000": {
+      "ranked_states": 15,
+      "Q_truth_best_agreement_count": 5,
+      "Q_truth_best_agreement_fraction": 0.3333333333333333,
+      "three_candidate_choice_distribution_by_mission": {
+        "economy": {
+          "0": 6
+        },
+        "urgent": {
+          "0": 9
+        }
+      },
+      "first16_choices": {
+        "292140": 0,
+        "292141": 0,
+        "292142": 0,
+        "292143": 0,
+        "292144": 0,
+        "292145": 0,
+        "292146": 0,
+        "292147": 0,
+        "292120": 0,
+        "292121": 0,
+        "292122": 0,
+        "292123": 0,
+        "292124": 0,
+        "292125": 0,
+        "292126": 0,
+        "292127": 0
+      },
+      "truth_caution": "Frozen candidate truth uses fixed V1 teacher continuation. V3 commits, but later decisions after plan loss can still differ; not an exact policy-Q claim.",
+      "Q_slopes_15_states": [
+        {
+          "opening": 292140,
+          "Q_per_candidate_step": [
+            -11.176848411560059,
+            -11.243052005767822
+          ],
+          "mean_Q_per_candidate_step": -11.20995020866394,
+          "urgent": false
+        },
+        {
+          "opening": 292141,
+          "Q_per_candidate_step": [
+            -10.476871490478516,
+            -10.235340118408203
+          ],
+          "mean_Q_per_candidate_step": -10.35610580444336,
+          "urgent": true
+        },
+        {
+          "opening": 292142,
+          "Q_per_candidate_step": [
+            -3.8672027587890625,
+            -4.374828338623047
+          ],
+          "mean_Q_per_candidate_step": -4.121015548706055,
+          "urgent": false
+        },
+        {
+          "opening": 292143,
+          "Q_per_candidate_step": [
+            -11.666545867919922,
+            -11.48019790649414
+          ],
+          "mean_Q_per_candidate_step": -11.573371887207031,
+          "urgent": true
+        },
+        {
+          "opening": 292144,
+          "Q_per_candidate_step": [
+            -8.388336181640625,
+            -8.969566345214844
+          ],
+          "mean_Q_per_candidate_step": -8.678951263427734,
+          "urgent": true
+        },
+        {
+          "opening": 292145,
+          "Q_per_candidate_step": [
+            -7.553546905517578,
+            -7.64300537109375
+          ],
+          "mean_Q_per_candidate_step": -7.598276138305664,
+          "urgent": true
+        },
+        {
+          "opening": 292146,
+          "Q_per_candidate_step": [
+            -10.727678298950195,
+            -11.049097061157227
+          ],
+          "mean_Q_per_candidate_step": -10.888387680053711,
+          "urgent": true
+        },
+        {
+          "opening": 292147,
+          "Q_per_candidate_step": [
+            -7.12066650390625,
+            -10.383979797363281
+          ],
+          "mean_Q_per_candidate_step": -8.752323150634766,
+          "urgent": true
+        },
+        {
+          "opening": 292120,
+          "Q_per_candidate_step": [
+            -3.3938140869140625,
+            -4.039894104003906
+          ],
+          "mean_Q_per_candidate_step": -3.7168540954589844,
+          "urgent": false
+        },
+        {
+          "opening": 292121,
+          "Q_per_candidate_step": [
+            -10.137535095214844,
+            -10.089799880981445
+          ],
+          "mean_Q_per_candidate_step": -10.113667488098145,
+          "urgent": false
+        },
+        {
+          "opening": 292123,
+          "Q_per_candidate_step": [
+            -3.1500167846679688,
+            -3.2055130004882812
+          ],
+          "mean_Q_per_candidate_step": -3.177764892578125,
+          "urgent": true
+        },
+        {
+          "opening": 292124,
+          "Q_per_candidate_step": [
+            -2.8646697998046875,
+            -2.8282318115234375
+          ],
+          "mean_Q_per_candidate_step": -2.8464508056640625,
+          "urgent": false
+        },
+        {
+          "opening": 292125,
+          "Q_per_candidate_step": [
+            -2.8508529663085938,
+            -3.0835647583007812
+          ],
+          "mean_Q_per_candidate_step": -2.9672088623046875,
+          "urgent": false
+        },
+        {
+          "opening": 292126,
+          "Q_per_candidate_step": [
+            -10.697178840637207,
+            -11.70145034790039
+          ],
+          "mean_Q_per_candidate_step": -11.199314594268799,
+          "urgent": true
+        },
+        {
+          "opening": 292127,
+          "Q_per_candidate_step": [
+            -10.401418685913086,
+            -10.78831434249878
+          ],
+          "mean_Q_per_candidate_step": -10.594866514205933,
+          "urgent": true
+        }
+      ],
+      "mean_Q_step": -7.852967262268066
+    },
+    "e_sac_s0_10000": {
+      "ranked_states": 15,
+      "Q_truth_best_agreement_count": 5,
+      "Q_truth_best_agreement_fraction": 0.3333333333333333,
+      "three_candidate_choice_distribution_by_mission": {
+        "economy": {
+          "0": 6
+        },
+        "urgent": {
+          "0": 9
+        }
+      },
+      "first16_choices": {
+        "292140": 0,
+        "292141": 0,
+        "292142": 0,
+        "292143": 0,
+        "292144": 0,
+        "292145": 0,
+        "292146": 0,
+        "292147": 0,
+        "292120": 0,
+        "292121": 0,
+        "292122": 0,
+        "292123": 0,
+        "292124": 0,
+        "292125": 0,
+        "292126": 0,
+        "292127": 0
+      },
+      "truth_caution": "Frozen candidate truth uses fixed V1 teacher continuation. V3 commits, but later decisions after plan loss can still differ; not an exact policy-Q claim.",
+      "Q_slopes_15_states": [
+        {
+          "opening": 292140,
+          "Q_per_candidate_step": [
+            -22.88482615724206,
+            -23.55211639404297
+          ],
+          "mean_Q_per_candidate_step": -23.218471275642514,
+          "urgent": false
+        },
+        {
+          "opening": 292141,
+          "Q_per_candidate_step": [
+            -18.009292602539062,
+            -19.420140743255615
+          ],
+          "mean_Q_per_candidate_step": -18.71471667289734,
+          "urgent": true
+        },
+        {
+          "opening": 292142,
+          "Q_per_candidate_step": [
+            -6.686103820800781,
+            -9.928970336914062
+          ],
+          "mean_Q_per_candidate_step": -8.307537078857422,
+          "urgent": false
+        },
+        {
+          "opening": 292143,
+          "Q_per_candidate_step": [
+            -23.44224452972412,
+            -23.298222541809082
+          ],
+          "mean_Q_per_candidate_step": -23.3702335357666,
+          "urgent": true
+        },
+        {
+          "opening": 292144,
+          "Q_per_candidate_step": [
+            -11.466270446777344,
+            -17.853012084960938
+          ],
+          "mean_Q_per_candidate_step": -14.65964126586914,
+          "urgent": true
+        },
+        {
+          "opening": 292145,
+          "Q_per_candidate_step": [
+            -12.721488952636719,
+            -14.065858840942383
+          ],
+          "mean_Q_per_candidate_step": -13.39367389678955,
+          "urgent": true
+        },
+        {
+          "opening": 292146,
+          "Q_per_candidate_step": [
+            -21.196422576904297,
+            -22.64196541905403
+          ],
+          "mean_Q_per_candidate_step": -21.919193997979164,
+          "urgent": true
+        },
+        {
+          "opening": 292147,
+          "Q_per_candidate_step": [
+            -7.476997375488281,
+            -14.454872131347656
+          ],
+          "mean_Q_per_candidate_step": -10.965934753417969,
+          "urgent": true
+        },
+        {
+          "opening": 292120,
+          "Q_per_candidate_step": [
+            -6.599517822265625,
+            -12.404804229736328
+          ],
+          "mean_Q_per_candidate_step": -9.502161026000977,
+          "urgent": false
+        },
+        {
+          "opening": 292121,
+          "Q_per_candidate_step": [
+            -20.207073211669922,
+            -20.811487197875977
+          ],
+          "mean_Q_per_candidate_step": -20.50928020477295,
+          "urgent": false
+        },
+        {
+          "opening": 292123,
+          "Q_per_candidate_step": [
+            -5.016700744628906,
+            -6.376922607421875
+          ],
+          "mean_Q_per_candidate_step": -5.696811676025391,
+          "urgent": true
+        },
+        {
+          "opening": 292124,
+          "Q_per_candidate_step": [
+            -4.490386962890625,
+            -5.419349670410156
+          ],
+          "mean_Q_per_candidate_step": -4.954868316650391,
+          "urgent": false
+        },
+        {
+          "opening": 292125,
+          "Q_per_candidate_step": [
+            -4.7181549072265625,
+            -11.956741333007812
+          ],
+          "mean_Q_per_candidate_step": -8.337448120117188,
+          "urgent": false
+        },
+        {
+          "opening": 292126,
+          "Q_per_candidate_step": [
+            -23.292012214660645,
+            -24.546810150146484
+          ],
+          "mean_Q_per_candidate_step": -23.919411182403564,
+          "urgent": true
+        },
+        {
+          "opening": 292127,
+          "Q_per_candidate_step": [
+            -24.502041816711426,
+            -24.860556602478027
+          ],
+          "mean_Q_per_candidate_step": -24.681299209594727,
+          "urgent": true
+        }
+      ],
+      "mean_Q_step": -15.476712147518992
+    },
+    "e_tcpf_s0_2000": {
+      "ranked_states": 15,
+      "Q_truth_best_agreement_count": 5,
+      "Q_truth_best_agreement_fraction": 0.3333333333333333,
+      "three_candidate_choice_distribution_by_mission": {
+        "economy": {
+          "0": 6
+        },
+        "urgent": {
+          "0": 9
+        }
+      },
+      "first16_choices": {
+        "292140": 0,
+        "292141": 0,
+        "292142": 0,
+        "292143": 0,
+        "292144": 0,
+        "292145": 0,
+        "292146": 0,
+        "292147": 0,
+        "292120": 0,
+        "292121": 0,
+        "292122": 0,
+        "292123": 0,
+        "292124": 0,
+        "292125": 0,
+        "292126": 0,
+        "292127": 0
+      },
+      "truth_caution": "Frozen candidate truth uses fixed V1 teacher continuation. V3 commits, but later decisions after plan loss can still differ; not an exact policy-Q claim.",
+      "Q_slopes_15_states": [
+        {
+          "opening": 292140,
+          "Q_per_candidate_step": [
+            -0.9065570831298828,
+            -0.9723663330078125
+          ],
+          "mean_Q_per_candidate_step": -0.9394617080688477,
+          "urgent": false
+        },
+        {
+          "opening": 292141,
+          "Q_per_candidate_step": [
+            -1.145655632019043,
+            -1.1802473068237305
+          ],
+          "mean_Q_per_candidate_step": -1.1629514694213867,
+          "urgent": true
+        },
+        {
+          "opening": 292142,
+          "Q_per_candidate_step": [
+            -1.0258326530456543,
+            -1.0235772132873535
+          ],
+          "mean_Q_per_candidate_step": -1.024704933166504,
+          "urgent": false
+        },
+        {
+          "opening": 292143,
+          "Q_per_candidate_step": [
+            -1.2277121543884277,
+            -1.24924898147583
+          ],
+          "mean_Q_per_candidate_step": -1.238480567932129,
+          "urgent": true
+        },
+        {
+          "opening": 292144,
+          "Q_per_candidate_step": [
+            -1.04774808883667,
+            -1.069185733795166
+          ],
+          "mean_Q_per_candidate_step": -1.058466911315918,
+          "urgent": true
+        },
+        {
+          "opening": 292145,
+          "Q_per_candidate_step": [
+            -0.9406089782714844,
+            -0.9502449035644531
+          ],
+          "mean_Q_per_candidate_step": -0.9454269409179688,
+          "urgent": true
+        },
+        {
+          "opening": 292146,
+          "Q_per_candidate_step": [
+            -0.9685459136962891,
+            -1.1638011932373047
+          ],
+          "mean_Q_per_candidate_step": -1.0661735534667969,
+          "urgent": true
+        },
+        {
+          "opening": 292147,
+          "Q_per_candidate_step": [
+            -1.188523292541504,
+            -1.1424179077148438
+          ],
+          "mean_Q_per_candidate_step": -1.1654706001281738,
+          "urgent": true
+        },
+        {
+          "opening": 292120,
+          "Q_per_candidate_step": [
+            -0.9467979669570923,
+            -0.959381103515625
+          ],
+          "mean_Q_per_candidate_step": -0.9530895352363586,
+          "urgent": false
+        },
+        {
+          "opening": 292121,
+          "Q_per_candidate_step": [
+            -0.8322525024414062,
+            -0.8293428421020508
+          ],
+          "mean_Q_per_candidate_step": -0.8307976722717285,
+          "urgent": false
+        },
+        {
+          "opening": 292123,
+          "Q_per_candidate_step": [
+            -0.8968283534049988,
+            -0.9045931100845337
+          ],
+          "mean_Q_per_candidate_step": -0.9007107317447662,
+          "urgent": true
+        },
+        {
+          "opening": 292124,
+          "Q_per_candidate_step": [
+            -0.5221729278564453,
+            -0.6653256416320801
+          ],
+          "mean_Q_per_candidate_step": -0.5937492847442627,
+          "urgent": false
+        },
+        {
+          "opening": 292125,
+          "Q_per_candidate_step": [
+            -0.5311417579650879,
+            -0.6717891693115234
+          ],
+          "mean_Q_per_candidate_step": -0.6014654636383057,
+          "urgent": false
+        },
+        {
+          "opening": 292126,
+          "Q_per_candidate_step": [
+            -1.0644416809082031,
+            -1.0608444213867188
+          ],
+          "mean_Q_per_candidate_step": -1.062643051147461,
+          "urgent": true
+        },
+        {
+          "opening": 292127,
+          "Q_per_candidate_step": [
+            -1.2239704132080078,
+            -1.1752891540527344
+          ],
+          "mean_Q_per_candidate_step": -1.199629783630371,
+          "urgent": true
+        }
+      ],
+      "mean_Q_step": -0.9828814804553986
+    },
+    "e_tcpf_s0_5000": {
+      "ranked_states": 15,
+      "Q_truth_best_agreement_count": 5,
+      "Q_truth_best_agreement_fraction": 0.3333333333333333,
+      "three_candidate_choice_distribution_by_mission": {
+        "economy": {
+          "0": 6
+        },
+        "urgent": {
+          "0": 9
+        }
+      },
+      "first16_choices": {
+        "292140": 0,
+        "292141": 0,
+        "292142": 0,
+        "292143": 0,
+        "292144": 0,
+        "292145": 0,
+        "292146": 0,
+        "292147": 0,
+        "292120": 0,
+        "292121": 0,
+        "292122": 0,
+        "292123": 0,
+        "292124": 0,
+        "292125": 0,
+        "292126": 0,
+        "292127": 0
+      },
+      "truth_caution": "Frozen candidate truth uses fixed V1 teacher continuation. V3 commits, but later decisions after plan loss can still differ; not an exact policy-Q claim.",
+      "Q_slopes_15_states": [
+        {
+          "opening": 292140,
+          "Q_per_candidate_step": [
+            -4.032779693603516,
+            -3.9784114360809326
+          ],
+          "mean_Q_per_candidate_step": -4.005595564842224,
+          "urgent": false
+        },
+        {
+          "opening": 292141,
+          "Q_per_candidate_step": [
+            -3.4117279052734375,
+            -3.5330657958984375
+          ],
+          "mean_Q_per_candidate_step": -3.4723968505859375,
+          "urgent": true
+        },
+        {
+          "opening": 292142,
+          "Q_per_candidate_step": [
+            -1.1476669311523438,
+            -1.2289657592773438
+          ],
+          "mean_Q_per_candidate_step": -1.1883163452148438,
+          "urgent": false
+        },
+        {
+          "opening": 292143,
+          "Q_per_candidate_step": [
+            -4.859340667724609,
+            -5.0905609130859375
+          ],
+          "mean_Q_per_candidate_step": -4.974950790405273,
+          "urgent": true
+        },
+        {
+          "opening": 292144,
+          "Q_per_candidate_step": [
+            -3.0677032470703125,
+            -3.361865997314453
+          ],
+          "mean_Q_per_candidate_step": -3.214784622192383,
+          "urgent": true
+        },
+        {
+          "opening": 292145,
+          "Q_per_candidate_step": [
+            -1.6124687194824219,
+            -1.7634620666503906
+          ],
+          "mean_Q_per_candidate_step": -1.6879653930664062,
+          "urgent": true
+        },
+        {
+          "opening": 292146,
+          "Q_per_candidate_step": [
+            -4.535009384155273,
+            -4.895394325256348
+          ],
+          "mean_Q_per_candidate_step": -4.7152018547058105,
+          "urgent": true
+        },
+        {
+          "opening": 292147,
+          "Q_per_candidate_step": [
+            -3.7831497192382812,
+            -3.8691329956054688
+          ],
+          "mean_Q_per_candidate_step": -3.826141357421875,
+          "urgent": true
+        },
+        {
+          "opening": 292120,
+          "Q_per_candidate_step": [
+            -0.9472274780273438,
+            -0.8242568969726562
+          ],
+          "mean_Q_per_candidate_step": -0.8857421875,
+          "urgent": false
+        },
+        {
+          "opening": 292121,
+          "Q_per_candidate_step": [
+            -3.1901206970214844,
+            -2.9772491455078125
+          ],
+          "mean_Q_per_candidate_step": -3.0836849212646484,
+          "urgent": false
+        },
+        {
+          "opening": 292123,
+          "Q_per_candidate_step": [
+            -1.1862945556640625,
+            -1.945831298828125
+          ],
+          "mean_Q_per_candidate_step": -1.5660629272460938,
+          "urgent": true
+        },
+        {
+          "opening": 292124,
+          "Q_per_candidate_step": [
+            -1.0100326538085938,
+            -1.0566635131835938
+          ],
+          "mean_Q_per_candidate_step": -1.0333480834960938,
+          "urgent": false
+        },
+        {
+          "opening": 292125,
+          "Q_per_candidate_step": [
+            -1.1355514526367188,
+            -1.1062850952148438
+          ],
+          "mean_Q_per_candidate_step": -1.1209182739257812,
+          "urgent": false
+        },
+        {
+          "opening": 292126,
+          "Q_per_candidate_step": [
+            -4.618588447570801,
+            -4.630816459655762
+          ],
+          "mean_Q_per_candidate_step": -4.624702453613281,
+          "urgent": true
+        },
+        {
+          "opening": 292127,
+          "Q_per_candidate_step": [
+            -4.84537410736084,
+            -5.029834032058716
+          ],
+          "mean_Q_per_candidate_step": -4.937604069709778,
+          "urgent": true
+        }
+      ],
+      "mean_Q_step": -2.9558277130126953
+    }
+  },
+  "paired": {
+    "s0_2000_292140–147": {
+      "completed_pairs": 8,
+      "first_choice_difference_count": 0,
+      "return_differences_TCPF_minus_SAC": {
+        "292140": 0.0,
+        "292141": 0.0,
+        "292142": 0.0,
+        "292143": 0.0,
+        "292144": 0.0,
+        "292145": 0.0,
+        "292146": 0.0,
+        "292147": 0.0
+      },
+      "mean_paired_difference": 0.0,
+      "capture_difference_TCPF_minus_SAC": 0,
+      "truth_agreement_count_difference_15states": 0
+    },
+    "s0_2000_292120–127": {
+      "completed_pairs": 8,
+      "first_choice_difference_count": 0,
+      "return_differences_TCPF_minus_SAC": {
+        "292120": 0.0,
+        "292121": 0.0,
+        "292122": 0.0,
+        "292123": 0.0,
+        "292124": 0.0,
+        "292125": 0.0,
+        "292126": 0.0,
+        "292127": 0.0
+      },
+      "mean_paired_difference": 0.0,
+      "capture_difference_TCPF_minus_SAC": 0,
+      "truth_agreement_count_difference_15states": 0
+    },
+    "s0_5000_292140–147": {
+      "completed_pairs": 8,
+      "first_choice_difference_count": 0,
+      "return_differences_TCPF_minus_SAC": {
+        "292140": 0.0,
+        "292141": 0.0,
+        "292142": 0.0,
+        "292143": 0.0,
+        "292144": 0.0,
+        "292145": 0.0,
+        "292146": 0.0,
+        "292147": 0.0
+      },
+      "mean_paired_difference": 0.0,
+      "capture_difference_TCPF_minus_SAC": 0,
+      "truth_agreement_count_difference_15states": 0
+    },
+    "s0_5000_292120–127": {
+      "completed_pairs": 8,
+      "first_choice_difference_count": 0,
+      "return_differences_TCPF_minus_SAC": {
+        "292120": 0.0,
+        "292121": 0.0,
+        "292122": 0.0,
+        "292123": 0.0,
+        "292124": 0.0,
+        "292125": 0.0,
+        "292126": 0.0,
+        "292127": 0.0
+      },
+      "mean_paired_difference": 0.0,
+      "capture_difference_TCPF_minus_SAC": 0,
+      "truth_agreement_count_difference_15states": 0
+    }
+  },
+  "three_seed_comparison": {
+    "2000_292140–147": {
+      "seedwise": {
+        "0": {
+          "completed_pairs": 8,
+          "first_choice_difference_count": 0,
+          "return_differences_TCPF_minus_SAC": {
+            "292140": 0.0,
+            "292141": 0.0,
+            "292142": 0.0,
+            "292143": 0.0,
+            "292144": 0.0,
+            "292145": 0.0,
+            "292146": 0.0,
+            "292147": 0.0
+          },
+          "mean_paired_difference": 0.0,
+          "capture_difference_TCPF_minus_SAC": 0,
+          "truth_agreement_count_difference_15states": 0
+        },
+        "1": null,
+        "2": null
+      },
+      "all_three_complete": false,
+      "mean_return_difference_3seeds": null,
+      "mean_capture_difference_3seeds": null
+    },
+    "2000_292120–127": {
+      "seedwise": {
+        "0": {
+          "completed_pairs": 8,
+          "first_choice_difference_count": 0,
+          "return_differences_TCPF_minus_SAC": {
+            "292120": 0.0,
+            "292121": 0.0,
+            "292122": 0.0,
+            "292123": 0.0,
+            "292124": 0.0,
+            "292125": 0.0,
+            "292126": 0.0,
+            "292127": 0.0
+          },
+          "mean_paired_difference": 0.0,
+          "capture_difference_TCPF_minus_SAC": 0,
+          "truth_agreement_count_difference_15states": 0
+        },
+        "1": null,
+        "2": null
+      },
+      "all_three_complete": false,
+      "mean_return_difference_3seeds": null,
+      "mean_capture_difference_3seeds": null
+    },
+    "5000_292140–147": {
+      "seedwise": {
+        "0": {
+          "completed_pairs": 8,
+          "first_choice_difference_count": 0,
+          "return_differences_TCPF_minus_SAC": {
+            "292140": 0.0,
+            "292141": 0.0,
+            "292142": 0.0,
+            "292143": 0.0,
+            "292144": 0.0,
+            "292145": 0.0,
+            "292146": 0.0,
+            "292147": 0.0
+          },
+          "mean_paired_difference": 0.0,
+          "capture_difference_TCPF_minus_SAC": 0,
+          "truth_agreement_count_difference_15states": 0
+        },
+        "1": null,
+        "2": null
+      },
+      "all_three_complete": false,
+      "mean_return_difference_3seeds": null,
+      "mean_capture_difference_3seeds": null
+    },
+    "5000_292120–127": {
+      "seedwise": {
+        "0": {
+          "completed_pairs": 8,
+          "first_choice_difference_count": 0,
+          "return_differences_TCPF_minus_SAC": {
+            "292120": 0.0,
+            "292121": 0.0,
+            "292122": 0.0,
+            "292123": 0.0,
+            "292124": 0.0,
+            "292125": 0.0,
+            "292126": 0.0,
+            "292127": 0.0
+          },
+          "mean_paired_difference": 0.0,
+          "capture_difference_TCPF_minus_SAC": 0,
+          "truth_agreement_count_difference_15states": 0
+        },
+        "1": null,
+        "2": null
+      },
+      "all_three_complete": false,
+      "mean_return_difference_3seeds": null,
+      "mean_capture_difference_3seeds": null
+    },
+    "10000_292140–147": {
+      "seedwise": {
+        "0": null,
+        "1": null,
+        "2": null
+      },
+      "all_three_complete": false,
+      "mean_return_difference_3seeds": null,
+      "mean_capture_difference_3seeds": null
+    },
+    "10000_292120–127": {
+      "seedwise": {
+        "0": null,
+        "1": null,
+        "2": null
+      },
+      "all_three_complete": false,
+      "mean_return_difference_3seeds": null,
+      "mean_capture_difference_3seeds": null
+    },
+    "20000_292140–147": {
+      "seedwise": {
+        "0": null,
+        "1": null,
+        "2": null
+      },
+      "all_three_complete": false,
+      "mean_return_difference_3seeds": null,
+      "mean_capture_difference_3seeds": null
+    },
+    "20000_292120–127": {
+      "seedwise": {
+        "0": null,
+        "1": null,
+        "2": null
+      },
+      "all_three_complete": false,
+      "mean_return_difference_3seeds": null,
+      "mean_capture_difference_3seeds": null
+    }
+  },
+  "shared_0k": [
+    {
+      "opening": 292120,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 292.5,
+        "budget_m_s": 1.4827099373791959,
+        "urgent": false,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 69.15467883931777,
+      "time_s": 131.8,
+      "delta_v": 0.9393757767203526,
+      "first_decision": {
+        "tau_candidates": [
+          80.0,
+          100.0,
+          120.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.4448927342891693,
+        -9.575142338915369e-17,
+        0.728320837020874,
+        0.7032421231269836,
+        0.5559426546096802,
+        0.013188827782869339,
+        -0.9196674227714539,
+        -0.3540525436401367,
+        -0.1698782593011856,
+        -0.1813921183347702,
+        -0.0006769258761778474,
+        0.9834105968475342,
+        0.08739524334669113,
+        0.019769927486777306,
+        0.9002467393875122,
+        0.8534522652626038,
+        0.8533820509910583,
+        0.5212860107421875,
+        0.35927459597587585,
+        -0.9332318902015686,
+        0.709308922290802,
+        0.0,
+        1.462499976158142,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.4000000059604645,
+        1.0,
+        1.0,
+        1.0,
+        0.9750000238418579,
+        0.7413549423217773,
+        0.9750000238418579,
+        0.7413549423217773,
+        0.0,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292121,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 283.4,
+        "budget_m_s": 1.4627048760243544,
+        "urgent": false,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 65.54782927046794,
+      "time_s": 136.5,
+      "delta_v": 1.1096740098910114,
+      "first_decision": {
+        "tau_candidates": [
+          80.0,
+          100.0,
+          120.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.35870566964149475,
+        -3.1214530608692905e-17,
+        -0.8590856790542603,
+        -0.19306406378746033,
+        -0.38029879331588745,
+        0.44732093811035156,
+        0.8445591330528259,
+        0.53212970495224,
+        -0.05964710935950279,
+        0.1435209959745407,
+        -0.11764221638441086,
+        0.9826301336288452,
+        -0.048792384564876556,
+        0.014269206672906876,
+        0.9628336429595947,
+        0.9309661388397217,
+        -0.9227893948554993,
+        0.3853047490119934,
+        -0.5330788493156433,
+        0.8460655808448792,
+        0.853219747543335,
+        0.0,
+        1.4170000553131104,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.4000000059604645,
+        1.0,
+        1.0,
+        1.0,
+        0.9446666836738586,
+        0.7313524484634399,
+        0.9446666836738586,
+        0.7313524484634399,
+        0.0,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292122,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 147.7,
+        "budget_m_s": 1.9179448619910433,
+        "urgent": true,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "timeout",
+      "discounted_return": -137.0188316191882,
+      "time_s": 147.7,
+      "delta_v": 1.9179448619910433,
+      "first_decision": null,
+      "initial_observation": [
+        0.8056823015213013,
+        -2.8818856736061727e-17,
+        -0.35772329568862915,
+        0.5421067476272583,
+        -0.019610542804002762,
+        -0.024794302880764008,
+        0.9621208906173706,
+        -0.19170869886875153,
+        -0.19383278489112854,
+        0.175779327750206,
+        -0.10723687708377838,
+        0.978571355342865,
+        -0.10472408682107925,
+        0.03659886494278908,
+        0.9875473976135254,
+        0.8815270066261292,
+        -0.4057995676994324,
+        0.9139620661735535,
+        0.19541482627391815,
+        0.9807206988334656,
+        0.823723554611206,
+        0.0,
+        0.7384999990463257,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.6499999761581421,
+        1.0,
+        0.0,
+        1.0,
+        0.492333322763443,
+        0.9589724540710449,
+        0.492333322763443,
+        0.9589724540710449,
+        1.0,
+        0.6499999761581421,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "opening": 292123,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 149.0,
+        "budget_m_s": 1.8743618347414204,
+        "urgent": true,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 73.84405965818416,
+      "time_s": 89.5,
+      "delta_v": 0.8910135265387038,
+      "first_decision": {
+        "tau_candidates": [
+          50.0,
+          70.0,
+          90.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.5356472134590149,
+        3.511745990629371e-17,
+        -0.6040300130844116,
+        0.22301988303661346,
+        0.3657124936580658,
+        0.15887147188186646,
+        0.7798390984535217,
+        -0.6254395246505737,
+        0.026008240878582,
+        -0.24126172065734863,
+        -0.26196351647377014,
+        0.9344345331192017,
+        0.04935939610004425,
+        0.04186946526169777,
+        0.8538536429405212,
+        0.8073228597640991,
+        -0.7481889128684998,
+        0.6634857654571533,
+        0.6256511211395264,
+        0.7801029682159424,
+        0.7264342904090881,
+        0.0,
+        0.7450000047683716,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.25,
+        1.0,
+        1.0,
+        1.0,
+        0.49666666984558105,
+        0.9371809363365173,
+        0.49666666984558105,
+        0.9371809363365173,
+        1.0,
+        0.25,
+        0.3499999940395355,
+        0.44999998807907104,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292124,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 238.1,
+        "budget_m_s": 1.642122351078834,
+        "urgent": false,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 69.81706250215302,
+      "time_s": 111.7,
+      "delta_v": 0.9948408110554359,
+      "first_decision": {
+        "tau_candidates": [
+          60.0,
+          80.0,
+          100.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        1.0020862817764282,
+        1.1524619438139928e-17,
+        0.5562269687652588,
+        0.1526556760072708,
+        0.4180394411087036,
+        0.016494624316692352,
+        -0.30393028259277344,
+        -0.952575147151947,
+        -0.015063880011439323,
+        -0.31005144119262695,
+        0.0839497372508049,
+        0.947006106376648,
+        0.05547739192843437,
+        -0.010423094965517521,
+        0.8179085850715637,
+        1.1461087465286255,
+        0.48531779646873474,
+        0.8743378520011902,
+        0.9526832699775696,
+        -0.303964763879776,
+        0.9487677216529846,
+        0.0,
+        1.190500020980835,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.30000001192092896,
+        1.0,
+        1.0,
+        1.0,
+        0.793666660785675,
+        0.8210611939430237,
+        0.793666660785675,
+        0.8210611939430237,
+        0.0,
+        0.30000001192092896,
+        0.4000000059604645,
+        0.5,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292125,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 240.9,
+        "budget_m_s": 1.49338840199731,
+        "urgent": false,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 72.0572668930745,
+      "time_s": 98.5,
+      "delta_v": 0.9359105878289207,
+      "first_decision": {
+        "tau_candidates": [
+          60.0,
+          80.0,
+          100.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.9949695467948914,
+        2.0406481191595414e-17,
+        -0.16142019629478455,
+        0.43967512249946594,
+        0.3973568081855774,
+        0.05971037223935127,
+        0.17229782044887543,
+        -0.9732106924057007,
+        -0.15223154425621033,
+        0.014995182864367962,
+        -0.1519334763288498,
+        0.9882769584655762,
+        -0.010582593269646168,
+        0.07215778529644012,
+        0.8188095092773438,
+        1.0079785585403442,
+        -0.16014248132705688,
+        0.9870939254760742,
+        0.984687328338623,
+        0.17432966828346252,
+        0.7256705164909363,
+        0.0,
+        1.2044999599456787,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.30000001192092896,
+        1.0,
+        1.0,
+        1.0,
+        0.8029999732971191,
+        0.7466942071914673,
+        0.8029999732971191,
+        0.7466942071914673,
+        0.0,
+        0.30000001192092896,
+        0.4000000059604645,
+        0.5,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292126,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 166.3,
+        "budget_m_s": 2.1061188874046817,
+        "urgent": true,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "timeout",
+      "discounted_return": -137.24792233431754,
+      "time_s": 166.3,
+      "delta_v": 1.9331791623494659,
+      "first_decision": {
+        "tau_candidates": [
+          100.0,
+          120.0,
+          140.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.8857457041740417,
+        2.1317605747071548e-17,
+        0.186847522854805,
+        0.4149288237094879,
+        0.022566769272089005,
+        0.518115758895874,
+        -0.16226787865161896,
+        0.986729085445404,
+        0.00590099673718214,
+        0.1566581428050995,
+        0.019857147708535194,
+        0.9874532222747803,
+        -0.03247687965631485,
+        -0.0021394994109869003,
+        0.9060336351394653,
+        0.9052388668060303,
+        0.2064068764448166,
+        0.978466272354126,
+        -0.9867462515830994,
+        -0.1622706949710846,
+        0.957118034362793,
+        0.0,
+        0.8314999938011169,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        1.0,
+        1.0,
+        1.0,
+        0.5543333292007446,
+        1.053059458732605,
+        0.5543333292007446,
+        1.053059458732605,
+        1.0,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292127,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 155.2,
+        "budget_m_s": 2.041532876777161,
+        "urgent": true,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 67.8544252307113,
+      "time_s": 147.0,
+      "delta_v": 0.9380309450835953,
+      "first_decision": {
+        "tau_candidates": [
+          100.0,
+          120.0,
+          140.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.5138770937919617,
+        3.268717017938841e-17,
+        0.9383231997489929,
+        -0.4987654685974121,
+        0.05700348690152168,
+        0.3959968090057373,
+        0.5022683143615723,
+        0.8647051453590393,
+        -0.003396763000637293,
+        -0.1526556760072708,
+        0.09253595024347305,
+        0.983937680721283,
+        0.02814261056482792,
+        -0.018271908164024353,
+        0.8330193758010864,
+        1.0698224306106567,
+        0.8770831227302551,
+        0.4803386628627777,
+        -0.8647101521492004,
+        0.5022712349891663,
+        0.8840936422348022,
+        0.0,
+        0.7760000228881836,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        1.0,
+        1.0,
+        1.0,
+        0.5173333287239075,
+        1.0207664966583252,
+        0.5173333287239075,
+        1.0207664966583252,
+        1.0,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292140,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 250.9,
+        "budget_m_s": 1.5315841945792132,
+        "urgent": false,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "resource_exhausted",
+      "discounted_return": -129.54184448541702,
+      "time_s": 154.5,
+      "delta_v": 1.5315841945792132,
+      "first_decision": {
+        "tau_candidates": [
+          100.0,
+          120.0,
+          140.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.807198703289032,
+        4.675994430991632e-17,
+        0.25084614753723145,
+        0.044974200427532196,
+        -0.09531038999557495,
+        -0.8439183831214905,
+        0.5280351638793945,
+        0.8452001810073853,
+        -0.08255594968795776,
+        0.17977526783943176,
+        -0.01624208129942417,
+        0.9835736155509949,
+        -0.04970056936144829,
+        -0.019283337518572807,
+        0.8822256922721863,
+        0.8452772498130798,
+        0.29676198959350586,
+        0.9549514651298523,
+        -0.8480952382087708,
+        0.5298438668251038,
+        0.9483172297477722,
+        0.0,
+        1.2545000314712524,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        1.0,
+        1.0,
+        1.0,
+        0.8363333344459534,
+        0.7657920718193054,
+        0.8363333344459534,
+        0.7657920718193054,
+        0.0,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292141,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 172.7,
+        "budget_m_s": 2.05194199634024,
+        "urgent": true,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 50.311165328744714,
+      "time_s": 150.5,
+      "delta_v": 1.8176467924721331,
+      "first_decision": {
+        "tau_candidates": [
+          80.0,
+          100.0,
+          120.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.8874133229255676,
+        -7.633527922285371e-18,
+        0.5705682635307312,
+        0.6152740716934204,
+        -0.1825687289237976,
+        -0.5243089199066162,
+        -0.9846173524856567,
+        0.02582506462931633,
+        -0.1728055775165558,
+        -0.17333926260471344,
+        -0.02007913403213024,
+        0.9846574664115906,
+        0.08875472843647003,
+        0.00253103906288743,
+        0.8840216398239136,
+        1.0550121068954468,
+        0.5408167839050293,
+        0.8411403894424438,
+        -0.026219511404633522,
+        -0.9996562004089355,
+        0.9036653637886047,
+        0.0,
+        0.8634999990463257,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.4000000059604645,
+        1.0,
+        1.0,
+        1.0,
+        0.5756666660308838,
+        1.0259710550308228,
+        0.5756666660308838,
+        1.0259710550308228,
+        1.0,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292142,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 250.5,
+        "budget_m_s": 1.3662811200244442,
+        "urgent": false,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 70.29863328570956,
+      "time_s": 131.6,
+      "delta_v": 0.8881736361563995,
+      "first_decision": {
+        "tau_candidates": [
+          80.0,
+          100.0,
+          120.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.46078357100486755,
+        -2.1014879149573066e-17,
+        1.025269627571106,
+        -0.34262415766716003,
+        0.10051479935646057,
+        -0.38372188806533813,
+        -0.9964737892150879,
+        -0.07140280306339264,
+        -0.04406406357884407,
+        -0.026763681322336197,
+        -0.22724251449108124,
+        0.9734703898429871,
+        0.021162962540984154,
+        0.0497165285050869,
+        0.964409589767456,
+        1.1240547895431519,
+        0.912117063999176,
+        0.4099298119544983,
+        0.07147222757339478,
+        -0.9974426031112671,
+        0.9290305376052856,
+        0.0,
+        1.252500057220459,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.4000000059604645,
+        1.0,
+        1.0,
+        1.0,
+        0.8349999785423279,
+        0.6831405758857727,
+        0.8349999785423279,
+        0.6831405758857727,
+        0.0,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292143,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 173.3,
+        "budget_m_s": 1.9994408949862557,
+        "urgent": true,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 58.19536934716107,
+      "time_s": 157.8,
+      "delta_v": 1.391975984498042,
+      "first_decision": {
+        "tau_candidates": [
+          100.0,
+          120.0,
+          140.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.5730543732643127,
+        8.485624042069109e-18,
+        0.688443660736084,
+        0.034383006393909454,
+        0.13805809617042542,
+        0.3835618793964386,
+        0.9210208058357239,
+        -0.3578338325023651,
+        -0.15386901795864105,
+        0.15361647307872772,
+        -0.02932022139430046,
+        0.9876954555511475,
+        -0.08394808322191238,
+        0.02596360631287098,
+        0.9749927520751953,
+        0.8957376480102539,
+        0.7685773372650146,
+        0.6397569179534912,
+        0.3621465265750885,
+        0.9321211576461792,
+        0.7640405297279358,
+        0.0,
+        0.8665000200271606,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        1.0,
+        1.0,
+        1.0,
+        0.5776666402816772,
+        0.9997204542160034,
+        0.5776666402816772,
+        0.9997204542160034,
+        1.0,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292144,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 155.0,
+        "budget_m_s": 2.0000832024079536,
+        "urgent": true,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 68.05118196035689,
+      "time_s": 129.1,
+      "delta_v": 1.0060690236679108,
+      "first_decision": {
+        "tau_candidates": [
+          80.0,
+          100.0,
+          120.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.8198807239532471,
+        -6.017873290454755e-17,
+        -0.8076225519180298,
+        -0.7715348601341248,
+        -0.799142062664032,
+        0.017353354021906853,
+        -0.9486861824989319,
+        -0.2806655764579773,
+        0.14567549526691437,
+        0.12021508812904358,
+        0.10598428547382355,
+        0.9870743155479431,
+        -0.071061871945858,
+        -0.035560473799705505,
+        0.9187450408935547,
+        1.1508512496948242,
+        -0.70176100730896,
+        0.712412416934967,
+        0.2836918830871582,
+        -0.9589154720306396,
+        0.9085233211517334,
+        0.0,
+        0.7749999761581421,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.4000000059604645,
+        1.0,
+        1.0,
+        1.0,
+        0.5166666507720947,
+        1.0000416040420532,
+        0.5166666507720947,
+        1.0000416040420532,
+        1.0,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292145,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 152.1,
+        "budget_m_s": 1.931349613381422,
+        "urgent": true,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 61.79389546110348,
+      "time_s": 143.9,
+      "delta_v": 1.2655887170519113,
+      "first_decision": {
+        "tau_candidates": [
+          80.0,
+          100.0,
+          120.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.34489017724990845,
+        4.554318313554674e-18,
+        -0.8684108853340149,
+        0.5007664561271667,
+        0.45885321497917175,
+        0.841133713722229,
+        -0.9241116046905518,
+        0.3669659495353699,
+        -0.1065540760755539,
+        -0.11172232031822205,
+        0.007195015903562307,
+        0.9937134385108948,
+        0.05790667608380318,
+        -0.01503087766468525,
+        0.9409391283988953,
+        0.9343910813331604,
+        -0.9293869733810425,
+        0.36910685896873474,
+        -0.36906707286834717,
+        -0.929402768611908,
+        0.7232165336608887,
+        0.0,
+        0.7605000138282776,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.4000000059604645,
+        1.0,
+        1.0,
+        1.0,
+        0.5070000290870667,
+        0.9656748175621033,
+        0.5070000290870667,
+        0.9656748175621033,
+        1.0,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292146,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 168.1,
+        "budget_m_s": 2.197643470555242,
+        "urgent": true,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "timeout",
+      "discounted_return": -136.20226936886272,
+      "time_s": 168.1,
+      "delta_v": 1.8858467365149139,
+      "first_decision": {
+        "tau_candidates": [
+          80.0,
+          100.0,
+          120.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.6351405382156372,
+        2.1928690387678772e-17,
+        0.804371178150177,
+        -0.20751826465129852,
+        -0.23494350910186768,
+        -0.362164705991745,
+        -0.07362731546163559,
+        0.9971795082092285,
+        0.01456358376890421,
+        0.2545744478702545,
+        0.004673217423260212,
+        0.9670419096946716,
+        -0.052342671900987625,
+        0.003951951861381531,
+        0.9287195205688477,
+        1.0248982906341553,
+        0.7848302721977234,
+        0.6197108030319214,
+        -0.9972852468490601,
+        -0.07363512367010117,
+        0.98611980676651,
+        0.0,
+        0.840499997138977,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.4000000059604645,
+        1.0,
+        1.0,
+        1.0,
+        0.5603333115577698,
+        1.098821759223938,
+        0.5603333115577698,
+        1.098821759223938,
+        1.0,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "opening": 292147,
+      "label": "shared_0k",
+      "interface": "v5",
+      "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_0.zip",
+      "mission": {
+        "deadline_s": 169.8,
+        "budget_m_s": 2.032591176713724,
+        "urgent": true,
+        "distribution": {
+          "version": "t1b-public-urgency-resource-v3",
+          "urgent_deadline": [
+            145.0,
+            175.0
+          ],
+          "urgent_budget": [
+            1.85,
+            2.25
+          ],
+          "economy_deadline": [
+            230.0,
+            300.0
+          ],
+          "economy_budget": [
+            1.3,
+            1.7
+          ],
+          "descent_reserve_s": 0.0
+        }
+      },
+      "event": "success",
+      "discounted_return": 66.81886185868979,
+      "time_s": 127.8,
+      "delta_v": 1.081363586730242,
+      "first_decision": {
+        "tau_candidates": [
+          80.0,
+          100.0,
+          120.0
+        ],
+        "index": 1
+      },
+      "initial_observation": [
+        0.2731246054172516,
+        3.1848551313325e-17,
+        1.033787727355957,
+        -0.573991060256958,
+        -0.31759950518608093,
+        -0.2241164594888687,
+        -0.9972596764564514,
+        0.04055318608880043,
+        0.0618753544986248,
+        0.06712821871042252,
+        0.1444815844297409,
+        0.9872278571128845,
+        -0.03691735491156578,
+        -0.03101535700261593,
+        0.9765953421592712,
+        1.069258689880371,
+        0.9668266177177429,
+        0.2554336190223694,
+        -0.040631040930747986,
+        -0.9991742372512817,
+        0.8101194500923157,
+        0.0,
+        0.8489999771118164,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.4000000059604645,
+        1.0,
+        1.0,
+        1.0,
+        0.5659999847412109,
+        1.0162955522537231,
+        0.5659999847412109,
+        1.0162955522537231,
+        1.0,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "coupling": {
+    "e_sac_s0": {
+      "closed_pairs": 0,
+      "valid_pairs": 0,
+      "directions": {
+        "earlier": 0,
+        "later": 0,
+        "same": 0
+      },
+      "on_probes_including_zero": 0,
+      "median_applied_gradient_share": null,
+      "delta_calibration": {},
+      "feedback_audit": {},
+      "label_decomposition": {},
+      "caution": "Labels below are recomputed using each frozen checkpoint target critic on existing released pairs; exact historical per-update targets were not logged.",
+      "valid_by_cf_slot": {
+        "0": 0,
+        "1": 0
+      }
+    },
+    "e_tcpf_s0": {
+      "closed_pairs": 164,
+      "valid_pairs": 139,
+      "directions": {
+        "earlier": 44,
+        "later": 95,
+        "same": 0
+      },
+      "on_probes_including_zero": 478,
+      "median_applied_gradient_share": 0.19652789776863328,
+      "delta_calibration": {},
+      "feedback_audit": {},
+      "label_decomposition": {},
+      "caution": "Labels below are recomputed using each frozen checkpoint target critic on existing released pairs; exact historical per-update targets were not logged.",
+      "valid_by_cf_slot": {
+        "0": 71,
+        "1": 68
+      }
+    }
+  },
+  "all_three_research_goals_claimed": false,
+  "cross_seed_inference": "Report exact matched development seeds. No formal test-set or statistical success is presumed."
+}

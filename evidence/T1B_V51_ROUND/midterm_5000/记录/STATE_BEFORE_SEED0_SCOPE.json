@@ -1,0 +1,131 @@
+{
+  "topic": "t1b_v51_round",
+  "phase": "training_and_readout",
+  "pid": 20884,
+  "scientific_commit": "b6f5c8a22728b6ca3970d6201525cd4047cba8d8",
+  "run_order": "docs/collaboration/upper/run_orders/T1_B_V51_ROUND_20261020.md",
+  "training": {
+    "e_sac_s0": {
+      "pid": 1044,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t1b_v2",
+        "train",
+        "--interface",
+        "v5",
+        "--arm",
+        "e_sac",
+        "--seed",
+        "0",
+        "--steps",
+        "20000",
+        "--expert",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V3_ROUND_20261019\\expert\\expert_replay.pkl",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0"
+      ],
+      "output": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0"
+    },
+    "e_tcpf_s0": {
+      "pid": 20096,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t1b_v2",
+        "train",
+        "--interface",
+        "v5",
+        "--arm",
+        "e_tcpf",
+        "--seed",
+        "0",
+        "--steps",
+        "20000",
+        "--expert",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V3_ROUND_20261019\\expert\\expert_replay.pkl",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_tcpf_s0"
+      ],
+      "output": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_tcpf_s0"
+    }
+  },
+  "training_active": true,
+  "started_seeds": [
+    0
+  ],
+  "requested_runs": 6,
+  "planned_steps_each": 20000,
+  "completed_evaluations": 28,
+  "completed_shared_0k": 16,
+  "resource_policy": {
+    "physical_core_masks": [
+      3,
+      12,
+      48,
+      192,
+      768,
+      3072
+    ],
+    "reserved_physical_core_mask": "0x3",
+    "experiment_affinity_mask": 4092,
+    "logical_cpus_reserved": 2,
+    "priority": "BelowNormal",
+    "numerical_threads": 1,
+    "max_requested_pairs": 3,
+    "commit_reserve_gb": 4.0,
+    "physical_free_floor_gb": 2.0,
+    "admission": "Add whole SAC/TCPF pairs only after resident manifest/step0 and measured memory admission; otherwise queue; never change n_envs/hyperparameters",
+    "prior_resource_failure": "V4 actual WinError1455 and system2004; all old artifacts retained"
+  },
+  "resource_admission_note": "All six authorized; add matched pairs only when current physical/commit capacity admits them. This may queue seeds to avoid repeating confirmed V4 host exhaustion. Science unchanged.",
+  "updated_jst": "2026-10-20T13:08:30.897966+09:00",
+  "active_runs": [
+    "e_sac_s0",
+    "e_tcpf_s0"
+  ],
+  "queued_seeds": [
+    1,
+    2
+  ],
+  "last_steps": {
+    "e_sac_s0": 6200,
+    "e_tcpf_s0": 1800
+  },
+  "memory": {
+    "free_physical_gb": 4.245113372802734,
+    "free_commit_gb": 7.141105651855469,
+    "commit_limit_gb": 31.855525970458984,
+    "used_commit_gb": 24.714420318603516
+  },
+  "eval_worker_budget": 3,
+  "active_evaluations": [
+    [
+      292124,
+      "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_5000.zip",
+      "e_sac_s0_5000",
+      "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\eval_e_sac_s0_5000",
+      "v5"
+    ],
+    [
+      292125,
+      "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_5000.zip",
+      "e_sac_s0_5000",
+      "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\eval_e_sac_s0_5000",
+      "v5"
+    ],
+    [
+      292126,
+      "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\TRAIN_e_sac_s0\\checkpoints\\step_5000.zip",
+      "e_sac_s0_5000",
+      "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\eval_e_sac_s0_5000",
+      "v5"
+    ]
+  ],
+  "pending_evaluations": 1,
+  "scheduler": "run_round_accel2.py",
+  "scheduler_only_adoption": true,
+  "resource_adjustment": "User requested modest acceleration; existing scientific PIDs preserved; eval target3 with2.8GB commit/1.2GB physical reserve. Original resource_policy above is admission baseline, RUNTIME_RESOURCE_POLICY is current."
+}
