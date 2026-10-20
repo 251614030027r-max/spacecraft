@@ -1,0 +1,72 @@
+{
+  "e_sac": {
+    "heartbeat": {
+      "steps": 16300,
+      "critic_updates": 15796,
+      "actor_updates": 5265,
+      "events": {
+        "success": 174,
+        "timeout": 28,
+        "resource_exhausted": 59
+      },
+      "pid": 26136,
+      "wall_s": 12507.1287133,
+      "model_prefixes_closed": 0,
+      "valid_model_prefixes": 0,
+      "lambda": null
+    },
+    "real_decisions": 469,
+    "candidate_counts": {
+      "0": 316,
+      "2": 72,
+      "1": 81
+    },
+    "valid_model_pairs": 0,
+    "valid_later_better": 0,
+    "valid_earlier_better": 0,
+    "later_vs_earlier_delta_median": null,
+    "valid_both_terminal": 0,
+    "accepted_factual_error_max": null,
+    "median_nonzero_logged_gradient_share": null,
+    "notes": [
+      "Counts are saved real decisions, not environment steps. CF pairs share factual branches; not independent samples.",
+      "Gradient statistics are periodic logged probes, not every historical update.",
+      "A factual gate does not validate the alternative branch against real dynamics."
+    ]
+  },
+  "e_tcpf": {
+    "heartbeat": {
+      "steps": 4800,
+      "critic_updates": 4296,
+      "actor_updates": 1432,
+      "events": {
+        "success": 49,
+        "timeout": 11,
+        "resource_exhausted": 13
+      },
+      "pid": 14684,
+      "wall_s": 12548.0558511,
+      "model_prefixes_closed": 138,
+      "valid_model_prefixes": 115,
+      "lambda": 3.0242388376025002
+    },
+    "real_decisions": 117,
+    "candidate_counts": {
+      "0": 60,
+      "2": 26,
+      "1": 31
+    },
+    "valid_model_pairs": 115,
+    "valid_later_better": 40,
+    "valid_earlier_better": 18,
+    "later_vs_earlier_delta_median": 0.06271506788317538,
+    "valid_both_terminal": 115,
+    "accepted_factual_error_max": 4.834044313669295,
+    "median_nonzero_logged_gradient_share": 0.19999999999999998,
+    "notes": [
+      "Counts are saved real decisions, not environment steps. CF pairs share factual branches; not independent samples.",
+      "Gradient statistics are periodic logged probes, not every historical update.",
+      "A factual gate does not validate the alternative branch against real dynamics."
+    ]
+  }
+}
