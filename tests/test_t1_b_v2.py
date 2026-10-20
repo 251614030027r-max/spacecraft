@@ -90,3 +90,14 @@ def test_v5_gate_admits_a_reproduced_plan_loss():
     assert FullHorizonReplay.calibrate(None, pay, -15.0, due, 25, None, False)['weight'] > 0.9
     assert FullHorizonReplay.calibrate(None, pay, -15.0, np.zeros(52, np.float32), 25, None, False)['weight'] == 0.
     assert FullHorizonReplay.calibrate(None, pay, -15.0, due, 24, None, False)['weight'] == 0.
+
+
+def test_v6_intent_replay_samples_only_closed_decisions_and_sets_last():
+    import gymnasium as gym
+    from train.t1_b_v6_sac import IntentReplay
+    b = IntentReplay(16, gym.spaces.Box(-np.inf, np.inf, (52,), np.float32), gym.spaces.Box(-1, 1, (1,), np.float32), device='cpu')
+    assert b.sample_decisions(8) is None
+    b.pos = 6; b.due[[1, 4], 0] = True; b.interval_ready[[1, 4], 0] = True; b.due[3, 0] = True   # 3: still open
+    b.observations[1, 0, 0] = 1.; b.observations[4, 0, 0] = 4.
+    d = b.sample_decisions(64)
+    assert set(d.observations[:, 0].tolist()) <= {1., 4.} and len(set(b._last[0].tolist())) == 2
