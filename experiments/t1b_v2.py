@@ -25,6 +25,8 @@ from env.t1_b_feasible_v2 import FeasibleArrivalEnvV2, VERSION as VERSION_V2
 from env.t1_b_feasible_v3 import FeasibleArrivalEnvV3, VERSION as VERSION_V3
 from env.t1_b_feasible_v4 import FeasibleArrivalEnvV4, VERSION as VERSION_V4
 from train.t1_b_v4_sac import FeasibleSupportSACV4, V4_BEHAVIOUR_EPSILON
+from env.t1_b_feasible_v5 import FeasibleArrivalEnvV5, VERSION as VERSION_V5
+from train.t1_b_v5_sac import FeasibleSupportSACV5
 from env.t1_gym import T1GymConfig
 from env.t1_n_review import N_DUE_INDEX
 from train.t1_b_v2_sac import FeasibleSupportSACV2, CANDIDATE_ALPHA, BEHAVIOUR_EPSILON
@@ -36,10 +38,11 @@ INIT = Path('evidence/T1B_V1/models/E-SAC/step_0.zip')
 INIT_SHA = '40da22c6ea8483a4ab75e0f07bd924a98d005d297482d850b3d48f8cb46c8174'
 EXPERT_SHA = 'bf3c24f9f8db7eb156a5ab42835f6faeefee2332efbd59ba7c35ed733f5ffe80'
 # v2: a1698ac pilot interface; v3: committed arrival intent (env/t1_b_feasible_v3.py). Same learner.
-INTERFACES = {'v2': (FeasibleArrivalEnvV2, VERSION_V2), 'v3': (FeasibleArrivalEnvV3, VERSION_V3), 'v4': (FeasibleArrivalEnvV4, VERSION_V4)}
+INTERFACES = {'v2': (FeasibleArrivalEnvV2, VERSION_V2), 'v3': (FeasibleArrivalEnvV3, VERSION_V3), 'v4': (FeasibleArrivalEnvV4, VERSION_V4), 'v5': (FeasibleArrivalEnvV5, VERSION_V5)}
+# v5: E-TCPF only -- full-horizon paired MPC counterfactual of the first decision (train/t1_b_v5_sac.py); its E-SAC is v4's
 # v4: V3 decisions + every unchosen candidate paired + behaviour epsilon 0.5 (train/t1_b_v4_sac.py)
-LEARNERS = {'v2': FeasibleSupportSACV2, 'v3': FeasibleSupportSACV2, 'v4': FeasibleSupportSACV4}
-TEACHER_INTERFACE = {'v2': 'v2', 'v3': 'v3', 'v4': 'v3'}   # V4 learning decisions are V3's: the V3 teacher file is valid
+LEARNERS = {'v2': FeasibleSupportSACV2, 'v3': FeasibleSupportSACV2, 'v4': FeasibleSupportSACV4, 'v5': FeasibleSupportSACV5}
+TEACHER_INTERFACE = {'v2': 'v2', 'v3': 'v3', 'v4': 'v3', 'v5': 'v3'}   # V4 learning decisions are V3's: the V3 teacher file is valid
 
 
 def sha(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()

@@ -57,11 +57,20 @@ class AllAlternativesReplay(ExpertPrefixReplay):
             if p is None:
                 continue
             p[2] += self.gamma ** p[3] * float(reward[e]); p[3] += 1
-            if p[3] >= p[4][0]['factual']['steps'] or bool(done[e]):
+            if p[3] >= self.close_after(p[4][0]) or bool(done[e]):
                 self._prefix[e] = None
                 event = infos[e].get('event') if bool(done[e]) else None
                 self._release(e, p, np.asarray(next_obs[e]), event, infos[e].get('TimeLimit.truncated', False))
         self.use(0)
+
+    def close_after(self, pay):
+        return pay['factual']['steps']
+
+    def calibrate(self, pay, ret, end_obs, d, event, truncated):
+        gate = calibrate_interval(pay, ret, end_obs, d, event, truncated)
+        if pay['alternative']['steps'] != d:
+            gate['reasons'].append('unequal_prefix_horizon'); gate['weight'] = 0.
+        return gate
 
     def _release(self, e, p, end_obs, event, truncated, early=False):
         i, ix, ret, d, pays = p
@@ -71,9 +80,7 @@ class AllAlternativesReplay(ExpertPrefixReplay):
             if early:
                 gate = {'weight': 0., 'reasons': ['real_early_review_before_predicted_horizon'], 'errors': {'return': None, 'position_m': None}}
             else:
-                gate = calibrate_interval(pay, ret, end_obs, d, event, truncated)
-                if pay['alternative']['steps'] != d:
-                    gate['reasons'].append('unequal_prefix_horizon'); gate['weight'] = 0.
+                gate = self.calibrate(pay, ret, end_obs, d, event, truncated)
             w = gate['weight']; s = self._sets[k]; s['cf_weights'][i, e] = w
             if w > 0:
                 f, a = pay['factual'], pay['alternative']
