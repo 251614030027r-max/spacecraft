@@ -68,7 +68,8 @@ def model_for(env, arm, seed, output=None, smoke=False, interface='v2'):
                              buffer_size=20000 if smoke else 100000, batch_size=64 if smoke else 256, learning_starts=32 if smoke else 500,
                              learning_rate=CosineLearningRate(1e-4, 1e-5), ent_coef=.005, tau=.005, train_freq=(1, 'step'), gradient_steps=4,
                              interval_bellman=True, actor_every_transitions=3, mc_lambda=0., eq_lambda=0., audit_every=0, delta_lambda=0.,
-                             delta_target_share=.05 if arm == 'e_tcpf' else None, delta_cap_share=.1,
+                             delta_target_share=(.10 if interface == 'v5' else .05) if arm == 'e_tcpf' else None,
+                             delta_cap_share=.2 if interface == 'v5' else .1,
                              delta_warmup_decisions=32 if smoke else 500, delta_calibration_steps=32 if smoke else 500, delta_probe_every=5,
                              delta_min_probes=5 if smoke else 30, delta_diagnostics_every=20, preserve_warmup_options=False,
                              replay_buffer_kwargs=kwargs)

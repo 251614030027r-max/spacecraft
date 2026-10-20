@@ -135,7 +135,7 @@ class FeasibleSupportSACV4(FeasibleSupportSACV2):
                     if phase == 'calibrating' and self._n_updates_in_call % 5 == 0 and gtd > 1e-8:
                         self.delta_calibration['ratios'].append(gcf / gtd); self.delta_calibration['decisions'].append(int(self.num_timesteps))
                     if phase == 'on' and gtd > 1e-8 and gcf > 0:
-                        applied = min(lam, .1 * gtd / gcf); share = applied * gcf / gtd; loss = td + applied * rel
+                        applied = min(lam, self.delta_cap_share * gtd / gcf); share = applied * gcf / gtd; loss = td + applied * rel
             self.critic.optimizer.zero_grad(); loss.backward(); self.critic.optimizer.step()
             aloss = qgrad = 0.
             if step >= gradient_steps - owed:

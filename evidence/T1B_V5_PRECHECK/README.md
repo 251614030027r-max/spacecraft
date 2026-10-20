@@ -47,3 +47,24 @@ basis. E-SAC under `--interface v5` has no counterfactual and is identical to V4
 Smoke (600 steps, `v5_smoke_*`): factual model vs real 67.2/67.8, 61.2/62.9, −133.7/−130.4
 (timeout), 75.2/76.3; plan losses reproduced at the exact step (25/25, 14/14, 28/28). Rollout wall
 10–42 s each; sandbox 1.46 s per transition (4 envs) vs 0.75 for V3.
+
+## 5. V5.1 (2026-10-20, after the lower's V4 5k delivery `2c7283b`)
+
+V4 seed 0 (`evidence/T1B_V4_RESOURCE_RESTART1_20261020/`): with ~40 % non-earliest real decisions
+both arms still rank the earliest first in 15/15 states at 5k (E-SAC step −1.15 → −7.85, E-TCPF
+−0.51 → −1.40); 97 % of the 6 s labels follow the bootstrap sign. Coverage was fixed; the missing
+piece is the long-horizon signal — V5 had not been run (the lower ran V4, then the host crashed).
+
+Changes before the first V5 run:
+- every other verified candidate is paired at the first decision (2 labels per episode);
+- the model branch runs to the end of the episode; a model-side re-decision after a lost plan takes
+  the earliest candidate (exactly the validated scan of §3). The first V5 smoke showed the model
+  losing plans that the real system kept (stride-5 QP tracking), which the gate then rejected;
+- the factual branch must end in the real terminal event (±10 steps, |return error| ≤ 5);
+- the counterfactual gradient share is 10 % calibrated / 20 % capped (V1–V4: 5 / 10): the label is
+  independent full-horizon model information, no longer a bootstrap echo.
+
+Smoke (500 steps, `v5_1_smoke_*`): 4 of 5 decisions admitted (8 labels); factual model vs real
+65.6/66.4, 63.0/65.9, −117.4/−116.9 (timeout), −131.9/−134.4 (timeout); e.g. chosen 120 s → real
+timeout while the model predicts 80 s → success (+66); one model exhaustion not matched by the real
+episode was rejected. 0.86 s per transition in the sandbox (V4: 0.70).

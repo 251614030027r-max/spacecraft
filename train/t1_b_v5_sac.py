@@ -1,12 +1,12 @@
 """T1-B V5 learner (E-TCPF arm): V4 learner, with the full-horizon paired MPC counterfactual of
 ``env.t1_b_feasible_v5`` admitted by the real outcome.
 
-Gate: either the factual model branch ends in a terminal event and the real episode ends with the
-same event within ``END_SLACK_STEPS`` of the predicted end, or it ends at a new learning decision
-(plan lost) and the real interval ends the same way at the same step; in both cases the discounted
-returns must agree within ``MAX_RETURN_ERROR``; weight = 1 - error / MAX_RETURN_ERROR. The relative target is the
+Gate: the factual model branch (run to the end of the episode) must end in the same terminal event
+as the real episode within ``END_SLACK_STEPS`` steps, and the discounted returns must agree within
+``MAX_RETURN_ERROR`` (a non-terminal model branch, i.e. the horizon reached, is rejected); weight = 1 - error / MAX_RETURN_ERROR. The relative target is the
 V1 factual-anchored one; when both model branches end at a terminal it is the pure paired model
-return difference (no critic bootstrap). Same 5 % calibrated / 10 % capped gradient share.
+return difference (no critic bootstrap). Gradient share 10 % calibrated / 20 % capped (V1-V4: 5 / 10):
+the label is now independent full-horizon model information, not a bootstrap echo of the critic.
 """
 from env.t1_n_review import N_DUE_INDEX
 from train.t1_b_v4_sac import AllAlternativesReplay, FeasibleSupportSACV4
