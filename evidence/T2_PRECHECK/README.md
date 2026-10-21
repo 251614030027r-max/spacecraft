@@ -11,3 +11,8 @@ Code: `env/t2_stage.py`, `experiments/t2.py`, `train/t2_mve_sac.py` (screen at `
    neutral action (the untrained policy's deterministic action) capture 4/8, mean -29.1; best uniform
    policy (deadline-aware rule) 7/8, +42.0; per-opening best +68.6 (+26.6); best policy per opening
    c_0_0 3, c_8_8 2, c_8_0 2, rally 1.
+3. **Training smoke** (`smoke_e_mve_80/`, `experiments.t2 train --arm e_mve --steps 80 --envs 2 --smoke`): 12 episodes,
+   22 / 80 stage transitions carried usable model candidates (66 candidates; the factual gate admitted them
+   after the per-environment calibration had 10 stages); model term active in 5 / 6 probes with
+   lambda_eff 0.38-1.0 and lambda_eff * |g_model| <= 0.5 |g_real| in every probe; checkpoints save / load;
+   the untrained deterministic action is ~(0.05, -0.02), i.e. the neutral action.
