@@ -30,6 +30,7 @@ from train.t1_b_v5_sac import FeasibleSupportSACV5
 from train.t1_b_v6_sac import FeasibleSupportSACV6, CF_WEIGHT
 from env.t1_b_feasible_v7 import FeasibleArrivalEnvV7, VERSION as VERSION_V7
 from train.t1_b_v7_sac import FeasibleSupportSACV7
+from train.t1_b_v8_sac import FeasibleSupportSACV8, CE_WEIGHT, PREFERENCE_TEMPERATURE
 from env.t1_gym import T1GymConfig
 from env.t1_n_review import N_DUE_INDEX
 from train.t1_b_v2_sac import FeasibleSupportSACV2, CANDIDATE_ALPHA, BEHAVIOUR_EPSILON
@@ -42,13 +43,17 @@ INIT_SHA = '40da22c6ea8483a4ab75e0f07bd924a98d005d297482d850b3d48f8cb46c8174'
 EXPERT_SHA = 'bf3c24f9f8db7eb156a5ab42835f6faeefee2332efbd59ba7c35ed733f5ffe80'
 # v2: a1698ac pilot interface; v3: committed arrival intent (env/t1_b_feasible_v3.py). Same learner.
 INTERFACES = {'v2': (FeasibleArrivalEnvV2, VERSION_V2), 'v3': (FeasibleArrivalEnvV3, VERSION_V3), 'v4': (FeasibleArrivalEnvV4, VERSION_V4), 'v5': (FeasibleArrivalEnvV5, VERSION_V5), 'v6': (FeasibleArrivalEnvV5, 't1b-intent-replay-mpc-advantage-v6'),
-              'v7': (FeasibleArrivalEnvV7, VERSION_V7)}
+              'v7': (FeasibleArrivalEnvV7, VERSION_V7), 'v8': (FeasibleArrivalEnvV7, 't1b-ecpg-v8')}
+# v8: V7 interface; critic real TD only; masked categorical intent head + event-aware CE to the V7 labels (train/t1_b_v8_sac.py)
 # v7: V6 learner; counterfactual branches run the real controller (QP every control), asynchronously (env/t1_b_feasible_v7.py)
 # v6: V5.1 interface + intent-level replay; E-TCPF adds the MPC-paired advantage (train/t1_b_v6_sac.py)
 # v5: E-TCPF only -- full-horizon paired MPC counterfactual of the first decision (train/t1_b_v5_sac.py); its E-SAC is v4's
 # v4: V3 decisions + every unchosen candidate paired + behaviour epsilon 0.5 (train/t1_b_v4_sac.py)
-LEARNERS = {'v2': FeasibleSupportSACV2, 'v3': FeasibleSupportSACV2, 'v4': FeasibleSupportSACV4, 'v5': FeasibleSupportSACV5, 'v6': FeasibleSupportSACV6, 'v7': FeasibleSupportSACV7}
-TEACHER_INTERFACE = {'v2': 'v2', 'v3': 'v3', 'v4': 'v3', 'v5': 'v3', 'v6': 'v3', 'v7': 'v3'}   # V4 learning decisions are V3's: the V3 teacher file is valid
+LEARNERS = {'v2': FeasibleSupportSACV2, 'v3': FeasibleSupportSACV2, 'v4': FeasibleSupportSACV4, 'v5': FeasibleSupportSACV5, 'v6': FeasibleSupportSACV6, 'v7': FeasibleSupportSACV7, 'v8': FeasibleSupportSACV8}
+TEACHER_INTERFACE = {'v2': 'v2', 'v3': 'v3', 'v4': 'v3', 'v5': 'v3', 'v6': 'v3', 'v7': 'v3', 'v8': 'v3'}   # V4 learning decisions are V3's: the V3 teacher file is valid
+
+
+FEEDBACK_ARMS = ('e_tcpf', 'e_ecpg')   # e_ecpg: the V8 arm with model branches (E-SAC: none)
 
 
 def sha(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -70,19 +75,22 @@ def make_env(rank, feedback=False, seed=0, interface='v2'):
 
 def model_for(env, arm, seed, output=None, smoke=False, interface='v2'):
     kwargs = {'feedback_audit_path': str(Path(output) / 'model_prefix_releases.jsonl')} if output else {}
+    extra = {'ce_weight': CE_WEIGHT if arm == 'e_ecpg' else 0.} if interface == 'v8' else {}
     m = LEARNERS[interface]('MlpPolicy', env, seed=seed, device='cpu', verbose=0, policy_kwargs={'net_arch': [128, 128]}, gamma=.999,
                              buffer_size=20000 if smoke else 100000, batch_size=64 if smoke else 256, learning_starts=32 if smoke else 500,
                              learning_rate=CosineLearningRate(1e-4, 1e-5), ent_coef=.005, tau=.005, train_freq=(1, 'step'), gradient_steps=4,
                              interval_bellman=True, actor_every_transitions=3, mc_lambda=0., eq_lambda=0., audit_every=0,
-                             delta_lambda=CF_WEIGHT if interface in ('v6', 'v7') and arm == 'e_tcpf' else 0.,
+                             delta_lambda=CF_WEIGHT if interface in ('v6', 'v7') and arm == 'e_tcpf' else 0.,   # v8: no MPC term in the critic (both arms)
                              delta_target_share=None if interface in ('v6', 'v7') else ((.10 if interface == 'v5' else .05) if arm == 'e_tcpf' else None),
                              delta_cap_share=.2 if interface == 'v5' else .1,
                              delta_warmup_decisions=32 if smoke else 500, delta_calibration_steps=32 if smoke else 500, delta_probe_every=5,
                              delta_min_probes=5 if smoke else 30, delta_diagnostics_every=20, preserve_warmup_options=False,
-                             replay_buffer_kwargs=kwargs)
+                             replay_buffer_kwargs=kwargs, **extra)
     assert sha(INIT) == INIT_SHA, 'initial weights changed'
     init = FeasibleSupportSACV2.load(INIT, device='cpu', custom_objects={'learning_rate': 1e-4, 'lr_schedule': lambda _: 1e-4})
-    m.policy.load_state_dict(init.policy.state_dict())
+    missing, unexpected = m.policy.load_state_dict(init.policy.state_dict(), strict=interface != 'v8')
+    # V8: the shared networks are V1's interface_0k weights; only the new intent head (zero last layer) is not in that file
+    assert not unexpected and all(k.startswith('intent_head.') for k in missing), (missing, unexpected)
     return m
 
 
@@ -92,8 +100,13 @@ def contract(out, interface='v2'):
     env = INTERFACES[interface][0](openings=[292140], mission=mission()); obs, _ = env.reset()
     m = model_for(env, 'e_sac', 0, smoke=True, interface=interface)
     init = FeasibleSupportSACV2.load(INIT, device='cpu', custom_objects={'learning_rate': 1e-4, 'lr_schedule': lambda _: 1e-4})
-    same = float(np.max(np.abs(init.predict(obs, deterministic=True)[0] - m.predict(obs, deterministic=True)[0])))
-    assert same == 0.0
+    if interface == 'v8':
+        # shared networks = V1 interface_0k; the new zero-initialised intent head is uniform and deploys the earliest candidate
+        same = float(np.max(np.abs(init.critic(torch.tensor(obs[None]), torch.zeros((1, 1)))[0].detach().numpy() - m.critic(torch.tensor(obs[None]), torch.zeros((1, 1)))[0].detach().numpy())))
+        assert same == 0.0 and float(m.predict(obs, deterministic=True)[0][0]) == np.float32(bin_center(0, 3))
+    else:
+        same = float(np.max(np.abs(init.predict(obs, deterministic=True)[0] - m.predict(obs, deterministic=True)[0])))
+        assert same == 0.0
     z = torch.tensor(obs[None]); assert float(m.alpha_of(z)) == CANDIDATE_ALPHA
     p = m.support_probabilities(z); assert abs(float(p.sum()) - 1) < 1e-6
     # alternative rule: deterministic, never the chosen index, covers both directions
@@ -140,9 +153,11 @@ def train(out, arm, steps, seed, expert_file, smoke=False, interface='v2'):
         receipt = json.loads((Path(expert_file).parent / 'EXPERT_RECEIPT.json').read_text(encoding='utf-8'))
         if receipt.get('interface') != TEACHER_INTERFACE[interface] or receipt.get('sha256') != sha(expert_file) or receipt.get('transitions') != 1000:
             raise RuntimeError('expert replay is not a 1000-transition teacher collection on this interface')
+    if (arm == 'e_ecpg') != (interface == 'v8' and arm != 'e_sac'):
+        raise ValueError('V8 arms are e_sac / e_ecpg; e_ecpg exists only on v8')
     out.mkdir(parents=True, exist_ok=False); (out / 'checkpoints').mkdir()
     torch.set_num_threads(1)
-    env = SubprocVecEnv([partial(make_env, k, arm == 'e_tcpf', seed, interface) for k in range(4)], start_method='spawn')
+    env = SubprocVecEnv([partial(make_env, k, arm in FEEDBACK_ARMS, seed, interface) for k in range(4)], start_method='spawn')
     model = model_for(env, arm, seed, out, smoke, interface)
     records = pickle.loads(Path(expert_file).read_bytes())
     for r in records: model.replay_buffer.add(r['obs'], r['next_obs'], r['action'], r['reward'], r['done'], r['infos'])
@@ -151,12 +166,15 @@ def train(out, arm, steps, seed, expert_file, smoke=False, interface='v2'):
                                  'profile': asdict(mission()), 'profile_sha256': PROFILE_SHA, 'init_weights': str(INIT), 'init_sha256': INIT_SHA,
                                  'expert_sha256': sha(expert_file), 'expert_real_transitions': len(records) * 4, 'expert_sampling_fraction': .2,
                                  'candidate_alpha': CANDIDATE_ALPHA, 'behaviour_epsilon': model.behaviour_epsilon,
-                                 'cf_alternative_rule': INTERFACES[interface][0].ALTERNATIVE_RULE if arm == 'e_tcpf' else None,
+                                 'cf_alternative_rule': INTERFACES[interface][0].ALTERNATIVE_RULE if arm in FEEDBACK_ARMS else None,
+                                 **({'ce_weight': model.ce_weight, 'preference_temperature': PREFERENCE_TEMPERATURE, 'critic_mpc_weight': 0.,
+                                     'intent_head': 'masked categorical, 52-128-128-3, zero last layer'} if interface == 'v8' else {}),
                                  'unchanged_from_V1': 'task, D/B, support, G*, MPC, truth, network, init, optimiser, trainer, expert Replay, CF gate and 5 %/10 % share'})
     model.learn(total_timesteps=steps, callback=RecordV1(out, steps)); model.save(out / 'final')
     dump(out / 'learning_audit.json', model.support_stats); dump(out / 'feedback_audit.json', b.feedback_stats); dump(out / 'delta_calibration.json', model.delta_calibration)
     dump(out / 'finished.json', {'steps': model.num_timesteps, 'critic_updates': model._n_updates, 'actor_updates': model.actor_updates,
-                                 'behaviour_counts': model.behaviour_counts, 'expert_sampling': b.sample_counts, 'interval_counts': b.interval_counts})
+                                 'behaviour_counts': model.behaviour_counts, 'expert_sampling': b.sample_counts, 'interval_counts': b.interval_counts,
+                                 'preference_counts': getattr(b, 'preference_counts', None)})
     env.close(); print('TRAIN COMPLETE', arm, seed, steps, flush=True)
 
 
@@ -165,7 +183,7 @@ def eval_job(job):
     opening, checkpoint, label, out, interface = job; torch.set_num_threads(1); file = Path(out) / f'{label}_{opening}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
     env = INTERFACES[interface][0](openings=[opening], mission=mission()); obs, reset = env.reset()
-    model = FeasibleSupportSACV2.load(checkpoint, device='cpu', custom_objects={'learning_rate': 1e-4, 'lr_schedule': lambda _: 1e-4})
+    model = (LEARNERS['v8'] if interface == 'v8' else FeasibleSupportSACV2).load(checkpoint, device='cpu', custom_objects={'learning_rate': 1e-4, 'lr_schedule': lambda _: 1e-4})
     initial, done, k, disc, first = obs.tolist(), False, 0, 0., None
     while not done:
         a = model.predict(obs, deterministic=True)[0]; obs, r, t, x, i = env.step(a); done = t or x
@@ -234,7 +252,7 @@ def audit(checkpoints, episodes, output):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('mode', choices=['contract', 'expert', 'train', 'eval', 'scan', 'audit'])
-    p.add_argument('--output', required=True); p.add_argument('--arm', choices=['e_sac', 'e_tcpf'], default='e_sac'); p.add_argument('--seed', type=int, default=0)
+    p.add_argument('--output', required=True); p.add_argument('--arm', choices=['e_sac', 'e_tcpf', 'e_ecpg'], default='e_sac'); p.add_argument('--seed', type=int, default=0)
     p.add_argument('--steps', type=int, default=5000); p.add_argument('--expert'); p.add_argument('--checkpoint'); p.add_argument('--checkpoints')
     p.add_argument('--label'); p.add_argument('--openings', default='292140-292147'); p.add_argument('--episodes'); p.add_argument('--workers', type=int, default=4)
     p.add_argument('--smoke', action='store_true'); p.add_argument('--interface', choices=sorted(INTERFACES), default='v2')
