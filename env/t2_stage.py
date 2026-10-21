@@ -11,7 +11,7 @@ truth propagation alone. The frozen MPC is unchanged (it extrapolates the curren
 Stage action a = (a_p, a_z) in [-1, 1]^2: the stage-end relative velocity (H = 16 s) in the spin
 frame of the target (constant-rate model): e_r line of sight, e_pol towards the spin axis, e_az
 towards the oncoming port (``spin_frame``):
-    closing speed   v_c = 0.075 + 0.125 a_p  in [-0.05, 0.20] m/s   (progress),
+    closing speed   v_c = 0.05 + 0.15 a_p    in [-0.10, 0.20] m/s   (progress),
     azimuthal speed v_z = 0.15 a_z           in [-0.15, 0.15] m/s   (meet the port earlier / later),
     latitude        v_l = clip(0.02/s * r * (lam - beta), +-0.12)   (fixed regulation onto the port's
                     sweep cone; not a decision: without it the port never passes the line of sight);
@@ -19,7 +19,7 @@ towards the oncoming port (``spin_frame``):
     d = 0.7 (1.6 N / m) H^2 / 2 (1.35 m; 0.17 m/s of velocity change per stage at 106 kg).
 A velocity-level goal is a guidance law (the centripetal part of a swing is re-issued every stage);
 a goal beyond the 16 s reachable velocity change is scaled onto it and reported (``rate_limited``).
-a = 0 approaches at 0.075 m/s and waits for the port's pass; the trade-off SAC owns is how fast to
+a = 0 approaches slowly (0.05 m/s) and waits for the port's pass; the trade-off SAC owns is how fast to
 close and whether to spend fuel swinging to meet the port earlier, against the mission deadline.
 
 Chain: stage (SAC every 16 s) -> bridge (r <= 12 m and the port forecast within 35 deg of the
@@ -28,7 +28,7 @@ line of sight for one of the bridge arrival times 15-60 s: the T1-N conditional 
 bridge returns to a hold and SAC is asked again at the next 2 s step. Bridge and descent run inside
 one environment step (a terminal macro-step), so every SAC transition starts at a stage decision.
 
-Mission (T1-B assets, soft fuel): urgent deadline 220-260 s or economy 300-360 s (the episode times
+Mission (T1-B assets, soft fuel): urgent deadline 170-210 s or economy 280-340 s (the episode times
 out at the deadline, -100), fuel -20 per m/s of delta-v, a 3.0 m/s safety budget (resource
 exhausted -100), -0.05 per s, capture +100, unsafe -150.
 
@@ -91,8 +91,8 @@ TRACK_KD = 0.40      # 1/s
 
 @dataclass(frozen=True)
 class T2Mission:
-    urgent_deadline_s: tuple[float, float] = (220.0, 260.0)
-    economy_deadline_s: tuple[float, float] = (300.0, 360.0)
+    urgent_deadline_s: tuple[float, float] = (170.0, 210.0)
+    economy_deadline_s: tuple[float, float] = (280.0, 340.0)
     fuel_cost_per_m_s: float = 20.0
     budget_m_s: float = 3.0
 
@@ -137,7 +137,7 @@ def port_forecast(env, s: float) -> np.ndarray:
 
 LAT_GAIN_PER_S = 0.02          # latitude regulation: 1 / 50 s
 LAT_SPEED_M_S = 0.12
-CLOSING_M_S = (0.075, 0.125)   # v_c = 0.075 + 0.125 a_p in [-0.05, 0.20]
+CLOSING_M_S = (0.05, 0.15)     # v_c = 0.05 + 0.15 a_p in [-0.10, 0.20]
 AZIMUTH_M_S = 0.15             # v_z = 0.15 a_z
 
 
