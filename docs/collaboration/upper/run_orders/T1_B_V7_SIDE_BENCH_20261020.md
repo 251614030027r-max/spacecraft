@@ -73,3 +73,14 @@ collab `docs/collaboration/lower/handoffs/t1b_v7_side_bench_20261020/`：`SIDE_B
 ## 执行顺序（研究层 2026-10-21 意见，上层同意）
 
 先完成 A（包括研究层登记的 293100–293131 独立开发块）和 C。种子 1 按 `T1_B_V7_ROUND_20261020.md` 第 3 节，在 A 完成后再启动；资格已于 `35c8f79` 满足。只有在 C 查出评估或技术伪影（例如确定性评估不可复现）时才暂缓，届时上报。B 在种子 1 结束后做。期间不改 V7 代码。
+
+## D. 灾难性择时状态的 Q–Actor 审计（研究层 2026-10-21；只读；A 完成后、B 之前）
+
+状态：确认块 292522、292530，独立块 293122；另加两个失败的非最早选择 292505、292526（若后者也属于非最早失败），以及三个有益的非最早选择 292513、292515、292524 作为对照。
+1. 把两臂 10k 在这些开局上的评估 JSON 复制到 `$Q\D_states\`，然后运行：
+   `& $py -B -m experiments.t1b_v2 audit --checkpoints "<TRAIN_e_tcpf_s0>\checkpoints\step_5000.zip,<TRAIN_e_tcpf_s0>\checkpoints\step_10000.zip" --episodes "$Q\D_states" --output "$Q\D_audit_tcpf.json"`；E-SAC 同样各跑一次。
+2. 对首次决策之后的每个学习决策（尤其是 293122，它首审只有 1 个候选），从 `.trace.jsonl` 取 `observation_before`，输出相同的概率、Q1/Q2 与 Actor 选择。
+3. 逐状态报告：候选的真值回报、模型预测回报（`model_scan.jsonl`）、Q1/Q2、min-Q 排序、Actor 概率与确定性选择。归类为以下三种之一：
+   - “MPC 对、Q 错”；
+   - “Q 对、Actor 错”；
+   - 两者都错。
