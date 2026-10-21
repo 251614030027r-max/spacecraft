@@ -28,9 +28,9 @@ line of sight for one of the bridge arrival times 15-60 s: the T1-N conditional 
 bridge returns to a hold and SAC is asked again at the next 2 s step. Bridge and descent run inside
 one environment step (a terminal macro-step), so every SAC transition starts at a stage decision.
 
-Mission (T1-B assets, soft fuel): urgent deadline 170-210 s or economy 280-340 s (the episode times
-out at the deadline, -100), fuel -20 per m/s of delta-v, a 3.0 m/s safety budget (resource
-exhausted -100), -0.05 per s, capture +100, unsafe -150.
+Mission (T1-B assets, soft fuel): urgent (deadline 170-210 s, -0.10 per s, -10 per m/s of delta-v) or
+economy (deadline 280-340 s, -0.02 per s, -40 per m/s); the episode times out at the deadline (-100);
+a 3.0 m/s safety budget (resource exhausted -100); capture +100, unsafe -150.
 
 Stage model (for the coupled learner, ``candidates`` > 0): at each decision the local planner also
 plans K candidate actions; each plan is corrected by this environment's *execution calibration*
@@ -50,7 +50,7 @@ import gymnasium as gym
 import numpy as np
 
 from dynamics.lie import so3_exp
-from env.t1_env import T1Env, T1EnvConfig, T1Reward
+from env.t1_env import T1Env, T1EnvConfig
 from env.t1_n_task import make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
@@ -74,6 +74,9 @@ GATE_DELTA_V_M_S = 0.03
 CALIBRATION_MIN_STAGES = 10
 CALIBRATION_WINDOW = 60
 CANDIDATE_RADIUS = 0.5
+#: SMDP discount of one stage (0.999 per 2 s); the same constant is the learner's gamma and the
+#: potential-shaping discount of every non-terminal real and model transition
+GAMMA_STAGE = 0.999 ** (16.0 / 2.0)
 #: a stage is re-planned from the actual state at the next decision (<= 16 s); only a gross deviation
 #: holds (T1-P held at 1 m, and the MPC's 0.4-0.6 m tracking lag on a full-authority stage turned
 #: most stages into holds that did not brake an outward drift)
@@ -93,21 +96,26 @@ TRACK_KD = 0.40      # 1/s
 class T2Mission:
     urgent_deadline_s: tuple[float, float] = (170.0, 210.0)
     economy_deadline_s: tuple[float, float] = (280.0, 340.0)
-    fuel_cost_per_m_s: float = 20.0
     budget_m_s: float = 3.0
+    #: mission preference (observed through the mission class): urgent values time, economy fuel
+    urgent_time_cost_per_s: float = 0.10
+    urgent_fuel_cost_per_m_s: float = 10.0
+    economy_time_cost_per_s: float = 0.02
+    economy_fuel_cost_per_m_s: float = 40.0
 
     def sample(self, opening: int) -> dict[str, Any]:
         rng = np.random.default_rng(np.random.SeedSequence([int(opening), 290021]))
         urgent = bool(rng.integers(0, 2))
         d = rng.uniform(*(self.urgent_deadline_s if urgent else self.economy_deadline_s))
-        return {"deadline_s": float(round(d, 1)), "urgent": urgent, "budget_m_s": self.budget_m_s}
+        return {"deadline_s": float(round(d, 1)), "urgent": urgent, "budget_m_s": self.budget_m_s,
+                "time_cost_per_s": self.urgent_time_cost_per_s if urgent else self.economy_time_cost_per_s,
+                "fuel_cost_per_m_s": self.urgent_fuel_cost_per_m_s if urgent else self.economy_fuel_cost_per_m_s}
 
 
 def t2_env_config(mission: T2Mission = T2Mission()) -> T1EnvConfig:
     base = T1EnvConfig()
     initial = replace(T1InitialDistribution(), range_m=(12.0, 16.0), inertial_speed_max_m_s=0.05)
-    reward = replace(T1Reward(), delta_v_cost_per_m_s=mission.fuel_cost_per_m_s)
-    return replace(base, initial=initial, reward=reward, max_time_s=max(mission.economy_deadline_s))
+    return replace(base, initial=initial, max_time_s=max(mission.economy_deadline_s))
 
 
 # ---------------------------------------------------------------------- information boundary
@@ -251,6 +259,10 @@ class Calibration:
     def ready(self) -> bool:
         return len(self.rows) >= CALIBRATION_MIN_STAGES
 
+    def frozen(self) -> "Calibration":
+        """Copy used for one stage: the factual check and every candidate share it."""
+        return Calibration(rows=list(self.rows))
+
     def coefficients(self) -> tuple[float, float]:
         p = np.array([r[0] for r in self.rows]); e = np.array([r[1] for r in self.rows])
         A = np.c_[np.ones_like(p), p]
@@ -283,7 +295,7 @@ class T2StageEnv(gym.Env):
         self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(OBS_DIM,), dtype=np.float32)
         self.episode = 0
         self.calibration = Calibration()
-        self.gamma_stage = 0.999 ** (STAGE_S / 2.0)
+        self.gamma_stage = GAMMA_STAGE
         self.far_field_controls = 0
         original = self.env.controller.command
 
@@ -324,7 +336,9 @@ class T2StageEnv(gym.Env):
         self.episode += 1
         self.current_opening = opening
         self.mission = self.mission_distribution.sample(opening)
-        self.env.config = replace(self.base_config, max_time_s=self.mission["deadline_s"])
+        self.env.config = replace(self.base_config, max_time_s=self.mission["deadline_s"],
+                                  reward=replace(self.base_config.reward, time_cost_per_s=self.mission["time_cost_per_s"],
+                                                 delta_v_cost_per_m_s=self.mission["fuel_cost_per_m_s"]))
         self.env.reset(opening)
         self.info_env = InfoEnv(self.env)
         self.generator = T1PGenerator(planner=LocalStagePlanner(self.env.config.task, self.env.chaser_parameters.mass,
@@ -417,7 +431,7 @@ class T2StageEnv(gym.Env):
         return float(r), event, info
 
     def _plan_candidates(self, q, v, frame, action) -> list[dict]:
-        if self.candidates <= 0 or not self.calibration.ready:
+        if self.candidates <= 0:
             return []
         out, mass = [], self.env.chaser_parameters.mass
         a = np.asarray(action, dtype=np.float64)
@@ -431,21 +445,45 @@ class T2StageEnv(gym.Env):
             out.append({"a": ac.astype(np.float32), "plan": plan})
         return out
 
-    def _predicted(self, plan, basis, t0, dv0, phi0) -> tuple[float, np.ndarray, float, float]:
+    def predict_stage(self, plan, basis, cal: "Calibration", start: dict) -> dict:
+        """Calibrated model prediction of one 16 s stage from its *start*: position / velocity / delta-v
+        from the frozen calibration ``cal``; the target attitude forecast from the stage-start attitude
+        and body rate (``start``) by exactly 16 s; reward and shaping with this mission's weights."""
+
         mass = self.env.chaser_parameters.mass
-        q1, v1, dv = self.calibration.predict(plan, basis, mass)
-        t = self.env.target_state
-        rot1 = t.rotation @ so3_exp(STAGE_S * t.omega)
-        reward = -self.env.config.reward.time_cost_per_s * STAGE_S - self.env.config.reward.delta_v_cost_per_m_s * dv
-        dq, dvv = self.calibration.residuals()
-        obs = observe(self.env, q1, v1, t0 + STAGE_S, dv0 + dv, self.mission, rot1, t.omega,
+        q1, v1, dv = cal.predict(plan, basis, mass)
+        rot1 = start["rotation"] @ so3_exp(STAGE_S * start["omega"])
+        w = self.env.config.reward
+        reward = -w.time_cost_per_s * STAGE_S - w.delta_v_cost_per_m_s * dv
+        dq, dvv = cal.residuals()
+        obs = observe(self.env, q1, v1, start["t"] + STAGE_S, start["dv"] + dv, self.mission, rot1, start["omega"],
                       {"position_residual_m": float(np.linalg.norm(dq)), "velocity_residual_m_s": float(np.linalg.norm(dvv)), "held": False})
-        shaped = reward + (self.gamma_stage * self.potential(q1, rot1, t.omega) - phi0 if self.shaping else 0.0)
-        return float(shaped), obs, float(np.linalg.norm(q1)), dv
+        shaped = reward + (GAMMA_STAGE * self.potential(q1, rot1, start["omega"]) - start["phi"] if self.shaping else 0.0)
+        return {"reward": float(shaped), "obs": obs, "r_end": float(np.linalg.norm(q1)), "dv": float(dv), "q": q1, "v": v1}
+
+    def _macro_to_end(self):
+        """A step that starts in the bridge or descent (the G* reference row): fly until the end."""
+        e, g = self.env, self.generator
+        t0, phi0, reward, event = e.time_s, self._phi(), 0.0, None
+        while event is None:
+            r, event, _ = self._advance(); reward += r
+            if g.mode in ("stage", "hold"):
+                break
+        terminated = event in ("success", "unsafe", "timeout", "resource_exhausted")
+        self.return_true += reward
+        shaped = reward + ((GAMMA_STAGE * (0.0 if terminated else self._phi()) - phi0) if self.shaping else 0.0)
+        q1, _ = relative_inertial(e)
+        info = {"event": event, "true_reward": reward, "stage_s": e.time_s - t0, "held": g.mode == "hold", "mode": g.mode,
+                "plan_status": "macro", "rate_limited": False, "planned_dv": None, "executed_dv": None,
+                "gate": {"usable": False, "reason": "macro"}, "stage_model": [], "time_s": e.time_s, "delta_v": e._delta_v,
+                "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission), "far_field_controls": self.far_field_controls}
+        return self.observation(), float(shaped), terminated, event == "numerical_failure", info
 
     # ---------------------------------------------------------------- step
     def step(self, action):
         e, g, mass = self.env, self.generator, self.env.chaser_parameters.mass
+        if g.mode in ("bridge", "descent"):
+            return self._macro_to_end()
         a = np.clip(np.asarray(action, dtype=np.float64).reshape(-1)[:2], -1.0, 1.0)
         q, v = relative_inertial(e)
         frame = frame_now(e, q); basis = frame["basis"]
@@ -460,10 +498,17 @@ class T2StageEnv(gym.Env):
         else:
             self.stats["rejected"] += 1
             g._enter_hold(self.info_env, f"hold:rejected:{plan['status']}")
-        factual = None
+        start = {"rotation": e.target_state.rotation.copy(), "omega": e.target_state.omega.copy(), "t": t0, "dv": dv0, "phi": phi0}
+        factual, predictions = None, []
         if plan["feasible"] and self.calibration.ready:
-            factual = self.calibration.predict(plan, basis, mass)
-        cands = self._plan_candidates(q, v, frame, a) if plan["feasible"] else []
+            cal = self.calibration.frozen()            # one frozen calibration for the factual check and all candidates
+            factual = self.predict_stage(plan, basis, cal, start)
+            for c in self._plan_candidates(q, v, frame, a):
+                if c["plan"].get("terminal_position_error_m", 1.0) > 0.3:
+                    continue
+                pr = self.predict_stage(c["plan"], basis, cal, start)
+                if 7.0 <= pr["r_end"] <= 25.0:
+                    predictions.append({"a": c["a"], **pr})
         reward, event, steps = 0.0, None, 0
         while True:
             r, event, info = self._advance(); reward += r; steps += 1
@@ -490,7 +535,7 @@ class T2StageEnv(gym.Env):
             if not stage_complete:
                 gate = {"usable": False, "reason": "stage_not_complete"}
             else:
-                eq, ev, ed = float(np.linalg.norm(factual[0] - q1)), float(np.linalg.norm(factual[1] - v1)), abs(factual[2] - (e._delta_v - dv0))
+                eq, ev, ed = float(np.linalg.norm(factual["q"] - q1)), float(np.linalg.norm(factual["v"] - v1)), abs(factual["dv"] - (e._delta_v - dv0))
                 ok = eq <= GATE_POSITION_M and ev <= GATE_VELOCITY_M_S and ed <= GATE_DELTA_V_M_S
                 gate = {"usable": bool(ok), "reason": "ok" if ok else "factual_mismatch", "position_error_m": eq,
                         "velocity_error_m_s": ev, "delta_v_error_m_s": ed,
@@ -503,24 +548,18 @@ class T2StageEnv(gym.Env):
         shaped = reward
         if self.shaping:
             phi1 = 0.0 if terminated else self._phi()
-            shaped = reward + (0.999 ** ((e.time_s - t0) / 2.0)) * phi1 - phi0
-        out_cands = []
-        if gate["usable"]:
-            for c in cands:
-                if c["plan"].get("terminal_position_error_m", 1.0) > 0.3:
-                    continue
-                rh, obs, r_end, dv = self._predicted(c["plan"], basis, t0, dv0, phi0)
-                if not (7.0 <= r_end <= 25.0):
-                    continue
-                out_cands.append({"a": c["a"], "reward": rh, "next_obs": obs, "weight": gate["weight"]})
+            shaped = reward + GAMMA_STAGE * phi1 - phi0
+        out_cands = [{"a": p["a"], "reward": p["reward"], "next_obs": p["obs"], "weight": gate["weight"]} for p in predictions] if gate["usable"] else []
+        self.stats["model_candidates"] = self.stats.get("model_candidates", 0) + len(out_cands)
+        self.stats["gate_usable"] = self.stats.get("gate_usable", 0) + int(gate["usable"])
         if g.mode in ("bridge", "descent"):
             self.stats["macro"] = g.mode
         info = {"event": event, "true_reward": reward, "stage_s": e.time_s - t0, "held": held, "mode": g.mode,
                 "plan_status": plan["status"], "rate_limited": goal["rate_limited"], "planned_dv": plan.get("delta_v_m_s"), "executed_dv": e._delta_v - dv0,
                 "gate": gate, "stage_model": out_cands, "time_s": e.time_s, "delta_v": e._delta_v,
-                "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission)}
+                "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission), "far_field_controls": self.far_field_controls}
         return self.observation(), float(shaped), terminated, truncated, info
 
 
-__all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "InfoEnv", "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
+__all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "GAMMA_STAGE", "InfoEnv", "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
            "d_authority", "observe", "Calibration", "t2_env_config"]

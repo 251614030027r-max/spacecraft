@@ -61,6 +61,19 @@ def run_episode(env, opening, act, record=None):
             'macro': s['macro'], 'mission': env.mission, 'wall_s': time.time() - t0, 'decisions': decisions}
 
 
+def guarded(fn):
+    """A failing episode is recorded (event 'error', excluded by the readout) and the pool goes on."""
+    def run(job):
+        try:
+            return fn(job)
+        except Exception as error:  # noqa: BLE001 -- recorded, not swallowed
+            import traceback
+            opening, name, out = job[0], job[1] if fn is screen_job else job[2], job[-1]
+            res = {'opening': opening, 'policy_or_label': name, 'event': 'error', 'error': repr(error), 'traceback': traceback.format_exc()}
+            dump(Path(out) / f'ERROR_{name}_{opening}.json', res); return res
+    return run
+
+
 def screen_job(job):
     opening, policy, out = job
     import torch; torch.set_num_threads(1)
@@ -74,7 +87,7 @@ def screen_job(job):
         while not done:
             obs, r, term, trunc, i = env.step(np.zeros(2)); done = term or trunc; ret += i['true_reward']
             if not done and env.generator.mode in ('stage', 'hold'):
-                if not env.start_direct_gstar(): pass
+                env.start_direct_gstar()      # bridge lost: G* re-plans from the far field (else the step flies a neutral stage)
         res = {'opening': opening, 'event': i['event'], 'return': ret, 'time_s': env.env.time_s, 'delta_v': env.env._delta_v,
                'stages': env.stats['stages'], 'holds': env.stats['holds'], 'rejected': env.stats['rejected'], 'mission': env.mission, 'wall_s': time.time() - t0}
     else:
@@ -86,7 +99,7 @@ def screen_job(job):
 def screen(out, ops, policies, workers):
     out.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(workers) as pool:
-        for f in as_completed([pool.submit(screen_job, (o, p, str(out))) for p in policies for o in ops]):
+        for f in as_completed([pool.submit(guarded_screen, (o, p, str(out))) for p in policies for o in ops]):
             r = f.result(); print(json.dumps({k: r.get(k) for k in STAGE_EVAL_KEYS}, default=str), flush=True)
 
 
@@ -106,8 +119,16 @@ def eval_job(job):
 def evaluate(out, checkpoint, label, ops, workers):
     out.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(workers) as pool:
-        for f in as_completed([pool.submit(eval_job, (o, checkpoint, label, str(out))) for o in ops]):
+        for f in as_completed([pool.submit(guarded_eval, (o, checkpoint, label, str(out))) for o in ops]):
             r = f.result(); print(json.dumps({k: r.get(k) for k in STAGE_EVAL_KEYS}, default=str), flush=True)
+
+
+def guarded_screen(job):
+    return guarded(screen_job)(job)
+
+
+def guarded_eval(job):
+    return guarded(eval_job)(job)
 
 
 def main():

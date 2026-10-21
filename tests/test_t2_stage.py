@@ -104,3 +104,55 @@ def test_model_term_uses_only_usable_candidates_and_is_capped():
         m0.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([-1.0]), np.array([False]), [{}])
     m0.train(gradient_steps=2, batch_size=8)
     assert all(s['model_td'] is None for s in m0.model_stats)
+
+
+def test_stage_prediction_is_aligned_to_the_stage_start_and_uses_the_frozen_calibration():
+    from dynamics.lie import so3_exp
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import GAMMA_STAGE, T2StageEnv, frame_now, observe, stage_goal
+    env = T2StageEnv(openings=[1000001], shaping=True, candidates=3)
+    env.reset()
+    e = env.env
+    for k in range(12):
+        env.calibration.add(0.10, 0.12, np.array([0.05 * k, 0.0, 0.0]), np.array([0.0, 0.001 * k, 0.0]))
+    q, v = relative_inertial(e)
+    frame = frame_now(e, q)
+    goal = stage_goal(q, v, frame, np.array([0.3, 0.2]), e.chaser_parameters.mass)
+    plan = env.generator.planner.solve(q, v, goal['q_goal'], goal['v_goal'])
+    assert plan['feasible']
+    start = {"rotation": e.target_state.rotation.copy(), "omega": e.target_state.omega.copy(), "t": e.time_s, "dv": e._delta_v, "phi": env._phi()}
+    cal = env.calibration.frozen()
+    p1 = env.predict_stage(plan, frame['basis'], cal, start)
+    # the live calibration and the target attitude move on (as after the real stage); the prediction must not
+    env.calibration.add(0.5, 2.0, np.array([3.0, 3.0, 3.0]), np.array([0.3, 0.3, 0.3]))
+    e.target_state = type(e.target_state)(rotation=e.target_state.rotation @ so3_exp(16.0 * e.target_state.omega),
+                                           position=e.target_state.position, omega=e.target_state.omega, velocity=e.target_state.velocity)
+    p2 = env.predict_stage(plan, frame['basis'], cal, start)
+    assert np.array_equal(p1['obs'], p2['obs']) and p1['reward'] == p2['reward']
+    rot16 = start['rotation'] @ so3_exp(16.0 * start['omega'])
+    dq, dvv = cal.residuals()
+    expected = observe(e, p1['q'], p1['v'], start['t'] + 16.0, start['dv'] + p1['dv'], env.mission, rot16, start['omega'],
+                       {"position_residual_m": float(np.linalg.norm(dq)), "velocity_residual_m_s": float(np.linalg.norm(dvv)), "held": False})
+    assert np.allclose(p1['obs'], expected)
+    w = e.config.reward
+    shaped = -w.time_cost_per_s * 16.0 - w.delta_v_cost_per_m_s * p1['dv'] + GAMMA_STAGE * env.potential(p1['q'], rot16, start['omega']) - start['phi']
+    assert abs(p1['reward'] - shaped) < 1e-9
+    assert len(cal.rows) == 12 and len(env.calibration.rows) == 13
+
+
+def test_learner_gamma_is_the_stage_discount():
+    from env.t2_stage import GAMMA_STAGE
+    from train.t2_mve_sac import make_model
+    import inspect, train.t2_mve_sac as m
+    assert 'gamma=GAMMA_STAGE' in inspect.getsource(m.make_model)
+    assert abs(GAMMA_STAGE - 0.999 ** 8) < 1e-15
+
+
+def test_mission_preferences_trade_time_against_fuel():
+    m = T2Mission()
+    for o in range(1000000, 1000020):
+        x = m.sample(o)
+        if x['urgent']:
+            assert x['time_cost_per_s'] > 0.05 and x['fuel_cost_per_m_s'] < 20
+        else:
+            assert x['time_cost_per_s'] < 0.05 and x['fuel_cost_per_m_s'] > 20
