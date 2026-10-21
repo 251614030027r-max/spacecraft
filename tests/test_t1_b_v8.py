@@ -86,3 +86,18 @@ def test_v8_save_load_keeps_the_head(tmp_path):
     r = FeasibleSupportSACV8.load(tmp_path / 'v8.zip', device='cpu', custom_objects={'learning_rate': 1e-4, 'lr_schedule': lambda _: 1e-4})
     assert float(r.predict(obs, deterministic=True)[0][0]) == np.float32(bin_center(2, 3))
     json.dumps(r.support_stats)
+
+
+def test_v8_readout_trigger_behaviour_classes_and_recall():
+    from experiments.t1b_v8_readout import trigger_behaviour, truth_class
+    s, f = (55., 'success'), (-130., 'resource_exhausted')
+    assert truth_class([f, f, (53., 'success')]) == 'rescue' and truth_class([f, f]) == 'all_fail'
+    assert truth_class([s, (58., 'success')]) == 'better_alternative' and truth_class([s, (55.5, 'success')]) == 'earliest_best'
+    rows = [{'opening': 1, 'proposal': 0, 'q_min': [-50., 10.], 'truth': [f, (53., 'success')]},
+            {'opening': 2, 'proposal': 0, 'q_min': [-20., -30.], 'truth': [f, f]},
+            {'opening': 3, 'proposal': 1, 'q_min': [40., 45.], 'truth': [s, (58., 'success')]},
+            {'opening': 4, 'proposal': 0, 'q_min': [30., 20.], 'truth': [s, (50., 'success')]}]
+    b = trigger_behaviour(rows, 0.)
+    assert b['triggered'] == 3 and b['earliest_failure_recall'] == 1. and b['rescue_triggered'] == {1: True}
+    assert b['classes']['better_alternative']['by_deviation'] == 1 and b['classes']['earliest_best']['triggered'] == 0
+    assert b['other_thresholds_report_only']['-40.0']['trigger_rate'] == .5
