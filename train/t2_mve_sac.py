@@ -174,15 +174,19 @@ class Checkpoints(BaseCallback):
         return True
 
 
-def make_model(env, arm: str, seed: int, smoke: bool = False) -> T2SAC:
+def make_model(env, arm: str, seed: int, smoke: bool = False, gradient_cap: float = GRADIENT_CAP,
+               updates_per_transition: float = UPDATES_PER_TRANSITION) -> T2SAC:
     n_envs = getattr(env, 'num_envs', 1)
     return T2SAC('MlpPolicy', env, seed=seed, device='cpu', verbose=0, policy_kwargs={'net_arch': [256, 256]},
                  gamma=GAMMA_STAGE, learning_rate=3e-4, buffer_size=100_000, batch_size=64 if smoke else 256,
-                 learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=UPDATES_PER_TRANSITION * n_envs, ent_coef=ENT_COEF, tau=0.005,
-                 model_lambda=MODEL_LAMBDA if arm == 'e_mve' else 0.0, model_start=16 if smoke else MODEL_START)
+                 learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=max(1, int(round(updates_per_transition * n_envs))), ent_coef=ENT_COEF, tau=0.005,
+                 model_lambda=MODEL_LAMBDA if arm == 'e_mve' else 0.0, model_start=16 if smoke else MODEL_START, gradient_cap=gradient_cap)
 
 
-def train(out: Path, arm: str, seed: int, steps: int, n_envs: int, marks: list[int], smoke: bool = False) -> None:
+def train(out: Path, arm: str, seed: int, steps: int, n_envs: int, marks: list[int], smoke: bool = False,
+          gradient_cap: float = GRADIENT_CAP, updates_per_transition: float = UPDATES_PER_TRANSITION, entry_stages: int | None = None) -> None:
+    from env.t2_stage import ENTRY_STAGES
+    entry_stages = ENTRY_STAGES if entry_stages is None else int(entry_stages)
     from functools import partial
     from stable_baselines3.common.vec_env import SubprocVecEnv
     from env.t2_stage import T2StageEnv
@@ -190,13 +194,14 @@ def train(out: Path, arm: str, seed: int, steps: int, n_envs: int, marks: list[i
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     th.set_num_threads(1)
     def make(rank):
-        return T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, candidates=K_CANDIDATES, shaping=True, seed=seed * 100 + rank)
+        return T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, candidates=K_CANDIDATES, shaping=True, seed=seed * 100 + rank,
+                          entry_stages=entry_stages)
     env = SubprocVecEnv([partial(make, k) for k in range(n_envs)], start_method='spawn')
-    model = make_model(env, arm, seed, smoke)
+    model = make_model(env, arm, seed, smoke, gradient_cap=gradient_cap, updates_per_transition=updates_per_transition)
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'envs': n_envs, 'git_head': head, 'smoke': smoke,
                                                    'model_lambda': model.model_lambda, 'gradient_cap': model.gradient_cap, 'model_start': model.model_start,
                                                    'ent_coef': ENT_COEF, 'k_candidates': K_CANDIDATES, 'candidates_computed_both_arms': True,
-                                                   'gradient_steps': model.gradient_steps, 'updates_per_transition': UPDATES_PER_TRANSITION,
+                                                   'gradient_steps': model.gradient_steps, 'updates_per_transition': updates_per_transition, 'entry_stages': entry_stages,
                                                    'env_version': __import__('env.t2_stage', fromlist=['T2_VERSION']).T2_VERSION}, indent=1), encoding='utf-8')
     cb = Checkpoints(out, [m for m in marks if m <= steps] + [steps])
     model.learn(total_timesteps=steps, callback=cb)

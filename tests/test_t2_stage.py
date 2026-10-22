@@ -243,7 +243,7 @@ def test_basic_layering_is_rotation_unaware_closing():
 def test_update_ratio_scales_with_env_count():
     import inspect, train.t2_mve_sac as m
     src = inspect.getsource(m.make_model)
-    assert 'gradient_steps=UPDATES_PER_TRANSITION * n_envs' in src and m.UPDATES_PER_TRANSITION == 2
+    assert 'gradient_steps=max(1, int(round(updates_per_transition * n_envs)))' in src and m.UPDATES_PER_TRANSITION == 2
 
 
 def test_candidates_cover_the_decisive_alternatives():
@@ -283,3 +283,18 @@ def test_paired_readout_drops_the_two_largest_gains(tmp_path):
     p = paired(tmp_path)['s0/step_100']
     assert p['n'] == 4 and abs(p['mean'] - 38.75) < 1e-9 and abs(p['without_top2'] - 2.5) < 1e-9
     assert abs(p['urgent'] - 30.0) < 1e-9 and abs(p['economy'] - 47.5) < 1e-9 and p['positive'] == 3 and p['negative'] == 1
+
+
+def test_decision_applies_the_preregistered_criteria():
+    from experiments.t2_decide import decide
+    arm = lambda r0, r2, r3: {'0': {'mean_return': r0}, '2000': {'mean_return': r2}, '3000': {'mean_return': r3}}
+    pair = lambda m, u, t2: {'mean': m, 'urgent': u, 'without_top2': t2, 'capture_mve': 21, 'capture_sac': 20, 'unsafe_mve': 0, 'unsafe_sac': 0}
+    r = {'all_complete': True, 'arms': {'e_mve_s0': arm(-50, 20, 40), 'e_mve_s1': arm(-50, 20, 35), 'e_sac_s0': arm(-50, 10, 25), 'e_sac_s1': arm(-50, 10, 22)},
+         'paired': {'s0/step_2000': pair(10, 1, 1), 's1/step_2000': pair(10, 1, 1), 's0/step_3000': pair(15, 3, 2), 's1/step_3000': pair(13, 1, 1)}}
+    assert decide(r)['verdict'] == 'pass'
+    r['paired']['s1/step_3000'] = pair(13, -9, 1)
+    assert decide(r)['verdict'] == 'coupling_failure'
+    r['arms'] = {k: arm(-50, -40, -30) for k in r['arms']}
+    assert decide(r)['verdict'] == 'learning_failure'
+    r['all_complete'] = False
+    assert decide(r)['verdict'] == 'incomplete'

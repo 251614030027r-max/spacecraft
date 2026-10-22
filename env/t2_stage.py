@@ -324,7 +324,7 @@ ENTRY_NODES_S = tuple(ENTRY_NODE_S * k for k in range(1, 9))
 ENTRY_SOLVES_PER_NODE = 4        # entry-planner solves per node (ascending arrival time, as the executor)
 ENTRY_MAX_SOLVES = 24            # per predicted action (over both stages)
 ENTRY_CAL_MIN = 5                # executed entries before entry labels are issued
-ENTRY_STAGES = 2                 # entry horizon: the action's stage and one more holding the same intent
+ENTRY_STAGES = 2                 # entry horizon: the action's stage and (n - 1) more holding the same intent
 
 
 @dataclass
@@ -366,8 +366,10 @@ class T2StageEnv(gym.Env):
     metadata: dict[str, Any] = {"render_modes": []}
 
     def __init__(self, openings: list[int] | None = None, seed_base: int = 1_000_000, candidates: int = 0,
-                 mission: T2Mission = T2Mission(), shaping: bool = True, seed: int = 0, geometry: bool = True) -> None:
+                 mission: T2Mission = T2Mission(), shaping: bool = True, seed: int = 0, geometry: bool = True,
+                 entry_stages: int = ENTRY_STAGES) -> None:
         self.geometry = bool(geometry)
+        self.entry_stages = int(entry_stages)
         self.mission_distribution = mission
         self.base_config = t2_env_config(mission)
         self.env = T1Env(self.base_config)
@@ -525,31 +527,38 @@ class T2StageEnv(gym.Env):
         return None
 
     def predict_entry(self, plan, basis, cal: "Calibration", start: dict, action=None) -> dict:
-        """Entry-level executor model over two stages: the action's own stage, then -- if the entry does not
-        open there -- one more stage holding the same intent from the predicted stage end (an approximation:
-        the value of committing to the intent for a second stage; no error bound is claimed). The decisive
+        """Entry-level executor model over ``entry_stages`` stages (default two): the action's own stage, then --
+        while the entry does not open -- further stages holding the same intent from the predicted stage end
+        (an approximation: the value of committing to the intent; no error bound is claimed). The decisive
         along-sweep decisions (swing or co-move) are taken about one stage before the window."""
 
         budget = [ENTRY_MAX_SOLVES]
         hit = self._scan_entry(plan, basis, cal, start["rotation"], start["omega"], start["t"], budget)
         if hit is not None:
             return {"entry": True, "stages": 1, **hit}
-        if action is None or ENTRY_STAGES < 2 or budget[0] <= 0:
+        if action is None or self.entry_stages < 2 or budget[0] <= 0:
             return {"entry": False}
         e, mass = self.env, self.env.chaser_parameters.mass
-        q1, v1, _ = cal.predict(plan, basis, mass)
-        rot1 = start["rotation"] @ so3_exp(STAGE_S * start["omega"])
-        if float(np.linalg.norm(q1)) > BRIDGE_RANGE_M + 2 * d_authority(mass):
-            return {"entry": False}
-        frame1 = spin_frame(rot1, start["omega"], q1, e.config.task.approach_axis)
-        goal = stage_goal(q1, v1, frame1, action, mass, geometry=self.geometry)
-        plan2 = self.generator.planner.solve(q1, v1, goal["q_goal"], goal["v_goal"])
-        if not plan2["feasible"]:
-            return {"entry": False}
-        hit = self._scan_entry(plan2, frame1["basis"], cal, rot1, start["omega"], start["t"] + STAGE_S, budget)
-        if hit is None:
-            return {"entry": False}
-        return {"entry": True, "stages": 2, "plan2": plan2, **hit}
+        cur, cur_basis, rot, t = plan, basis, start["rotation"], start["t"]
+        prefix = []                                  # calibrated stage plans flown in full before the entry stage
+        for k in range(2, self.entry_stages + 1):
+            q1, v1, _ = cal.predict(cur, cur_basis, mass)
+            rot = rot @ so3_exp(STAGE_S * start["omega"]); t = t + STAGE_S
+            if float(np.linalg.norm(q1)) > BRIDGE_RANGE_M + 2 * d_authority(mass) * (self.entry_stages - k + 1):
+                return {"entry": False}
+            frame1 = spin_frame(rot, start["omega"], q1, e.config.task.approach_axis)
+            goal = stage_goal(q1, v1, frame1, action, mass, geometry=self.geometry)
+            nxt = self.generator.planner.solve(q1, v1, goal["q_goal"], goal["v_goal"])
+            if not nxt["feasible"]:
+                return {"entry": False}
+            prefix.append(cur)
+            hit = self._scan_entry(nxt, frame1["basis"], cal, rot, start["omega"], t, budget)
+            if hit is not None:
+                return {"entry": True, "stages": k, "plan2": nxt, "prefix": prefix, **hit}
+            if budget[0] <= 0:
+                break
+            cur, cur_basis = nxt, frame1["basis"]
+        return {"entry": False}
 
     def _partial_dv(self, plan, cal: "Calibration", s: float) -> float:
         mass = self.env.chaser_parameters.mass
@@ -572,10 +581,14 @@ class T2StageEnv(gym.Env):
             true = cost(ent["s"], self._partial_dv(plan, cal, ent["s"]) + brake) + macro["reward"]
             shaped = true
         else:
-            _, _, dv1 = cal.predict(plan, np.eye(3), self.env.chaser_parameters.mass)
-            r1 = cost(STAGE_S, dv1); r2 = cost(ent["s"], self._partial_dv(ent["plan2"], cal, ent["s"]) + brake) + macro["reward"]
-            true = r1 + r2
-            shaped = r1 + GAMMA_STAGE * r2
+            # full stages before the entry stage, each discounted by one more stage (PBRS potentials cancel)
+            mass = self.env.chaser_parameters.mass
+            true, shaped = 0.0, 0.0
+            for k, full in enumerate(ent["prefix"]):
+                _, _, dv_k = cal.predict(full, np.eye(3), mass)
+                r_k = cost(STAGE_S, dv_k); true += r_k; shaped += GAMMA_STAGE ** k * r_k
+            r_e = cost(ent["s"], self._partial_dv(ent["plan2"], cal, ent["s"]) + brake) + macro["reward"]
+            true += r_e; shaped += GAMMA_STAGE ** len(ent["prefix"]) * r_e
         shaped -= start["phi"] if self.shaping else 0.0
         return {"reward": float(shaped), "true": float(true), "macro": macro}
 

@@ -151,13 +151,17 @@ def main():
     p.add_argument('--seed', type=int, default=0); p.add_argument('--steps', type=int, default=2000); p.add_argument('--envs', type=int, default=4)
     p.add_argument('--checkpoint'); p.add_argument('--label'); p.add_argument('--checkpoints', default='500,1000,1500,2000,3000')
     p.add_argument('--smoke', action='store_true')
+    # pre-registered single-factor fallbacks (T2_2 autonomous run order); defaults = the frozen design
+    p.add_argument('--gradient-cap', type=float, default=0.5); p.add_argument('--entry-stages', type=int, default=2)
+    p.add_argument('--updates-per-transition', type=float, default=2.0)
     a = p.parse_args(); out = Path(a.output)
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')
     if a.mode == 'screen': screen(out, openings(a.openings), a.policies.split(','), a.workers)
     elif a.mode == 'eval': evaluate(out, a.checkpoint, a.label, openings(a.openings), a.workers)
     else:
         from train.t2_mve_sac import train
-        train(out, a.arm, a.seed, a.steps, a.envs, [int(x) for x in a.checkpoints.split(',')], a.smoke)
+        train(out, a.arm, a.seed, a.steps, a.envs, [int(x) for x in a.checkpoints.split(',')], a.smoke,
+              gradient_cap=a.gradient_cap, updates_per_transition=a.updates_per_transition, entry_stages=a.entry_stages)
 
 
 if __name__ == '__main__':
