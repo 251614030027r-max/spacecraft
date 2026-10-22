@@ -6,7 +6,8 @@
 
 Fixed policies (screen): ``coast`` (a = 0), ``c_PP_AA`` constant action (a_p = PP/10, a_a = AA/10),
 ``rally`` (deadline-aware rule inside the action space: close to 9.5 m, swing towards the oncoming port only when waiting would miss the deadline),
-``gstar`` (reference outside the action space: conditional G* from the far field, earliest feasible).
+``gstar`` (reference outside the action space: conditional G* from the far field, earliest feasible),
+``pure`` (the shared MPC alone: fixed terminal set-point from the start, no stage layer).
 """
 import argparse, hashlib, json, os, subprocess, time
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -81,7 +82,17 @@ def screen_job(job):
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
     from env.t2_stage import T2StageEnv
     env = T2StageEnv(openings=[opening], shaping=False)
-    if policy == 'gstar':
+    if policy == 'pure':
+        # paper baseline: the shared MPC alone (fixed terminal set-point, no stage layer, no G*), same
+        # mission, deadline, weights, budget and truth judge
+        obs, _ = env.reset(options={'opening': opening}); t0 = time.time(); ret = 0.; event = None
+        while event is None:
+            r, term, trunc, i = env.env.step(pure=True); ret += r; event = i.get('event')
+            if event is None and env.env._delta_v >= env.mission['budget_m_s']:
+                event = 'resource_exhausted'; ret -= env.env.config.reward.timeout_penalty
+        res = {'opening': opening, 'event': event, 'return': ret, 'time_s': env.env.time_s, 'delta_v': env.env._delta_v,
+               'stages': 0, 'holds': 0, 'rejected': 0, 'mission': env.mission, 'wall_s': time.time() - t0}
+    elif policy == 'gstar':
         obs, _ = env.reset(options={'opening': opening}); t0 = time.time()
         ok = env.start_direct_gstar(); done = not ok; ret = 0.; i = {'event': 'no_plan'}
         while not done:

@@ -40,12 +40,14 @@ def stats(rs):
 
 def screen(dir_, out):
     P = load(dir_)
-    pols = sorted(p for p in P if p != 'gstar')
+    pols = sorted(p for p in P if p not in ('gstar', 'pure'))
     ops = sorted(set.intersection(*[set(P[p]) for p in pols]))
     const = [p for p in pols if p.startswith('c_')]
     table = {p: stats(P[p][o] for o in ops) for p in pols}
     if 'gstar' in P:
         table['gstar_reference_outside_action_space'] = stats(P['gstar'][o] for o in ops if o in P['gstar'])
+    if 'pure' in P:
+        table['pure_mpc_baseline'] = stats(P['pure'][o] for o in ops if o in P['pure'])
     best = {o: max(pols, key=lambda p: P[p][o]['return']) for o in ops}
     best_ret = {o: P[best[o]][o]['return'] for o in ops}
     bc = max(const, key=lambda p: table[p]['mean_return'])
@@ -79,11 +81,13 @@ def curve(eval_root, train_root, screen_dir, out):
             rs = [json.loads(Path(f).read_text(encoding='utf-8')) for f in sorted(ck_dir.glob('*.json')) if not Path(f).name.startswith('ERROR_')]
             per[int(ck_dir.name.split('_')[1])] = stats(rs)
         res['arms'][arm_dir.name] = per
-    pols = [p for p in S if p != 'gstar']
+    pols = [p for p in S if p not in ('gstar', 'pure')]
     if pols:
         ops = sorted(set.intersection(*[set(S[p]) for p in pols]))
         res['reference'] = {'rally_rule': stats(S['rally'][o] for o in ops) if 'rally' in S else None,
                             'neutral_c_0_0': stats(S['c_0_0'][o] for o in ops) if 'c_0_0' in S else None,
+                            'pure_mpc': stats(S['pure'][o] for o in ops if o in S['pure']) if 'pure' in S else None,
+                            'best_constant': max((stats(S[p][o] for o in ops) for p in pols if p.startswith('c_')), key=lambda x: x['mean_return']),
                             'per_opening_best_fixed': float(np.mean([max(S[p][o]['return'] for p in pols) for o in ops]))}
     res['training'] = {}
     for t in sorted(Path(train_root).glob('*')):

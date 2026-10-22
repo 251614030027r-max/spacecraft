@@ -34,7 +34,7 @@ from stable_baselines3.common.utils import polyak_update
 
 from env.t2_stage import GAMMA_STAGE
 
-K_CANDIDATES = 3
+K_CANDIDATES = 6
 MODEL_LAMBDA = 1.0
 GRADIENT_CAP = 0.5
 MODEL_START = 300
@@ -169,7 +169,7 @@ class Checkpoints(BaseCallback):
 def make_model(env, arm: str, seed: int, smoke: bool = False) -> T2SAC:
     return T2SAC('MlpPolicy', env, seed=seed, device='cpu', verbose=0, policy_kwargs={'net_arch': [256, 256]},
                  gamma=GAMMA_STAGE, learning_rate=3e-4, buffer_size=100_000, batch_size=64 if smoke else 256,
-                 learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=4, ent_coef=ENT_COEF, tau=0.005,
+                 learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=12, ent_coef=ENT_COEF, tau=0.005,
                  model_lambda=MODEL_LAMBDA if arm == 'e_mve' else 0.0, model_start=16 if smoke else MODEL_START)
 
 

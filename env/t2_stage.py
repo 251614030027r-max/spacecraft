@@ -90,6 +90,12 @@ STAGE_DEVIATION_HOLD_M = 3.0
 FAR_FIELD_M = 7.5
 TRACK_KP = 0.04      # 1/s^2  (omega_n 0.2 rad/s, critically damped)
 TRACK_KD = 0.40      # 1/s
+#: far-field attitude: the camera boresight is pointed at the port by a PD law (omega_n 0.6 rad/s)
+#: and the MPC is not solved there at all (its translational output was discarded anyway; it was
+#: 85 % of the wall time of a stage). The MPC flies the bridge and the descent (the near field).
+POINT_KP = 0.36      # 1/s^2
+POINT_KD = 1.2       # 1/s
+FAR_FIELD_DIAGNOSTICS = SimpleNamespace(used_zero_fallback=False, maximum_slack=0.0, status="far_field_tracking")
 
 
 @dataclass(frozen=True)
@@ -240,7 +246,9 @@ def observe(env, q: np.ndarray, v: np.ndarray, t_s: float, dv_used: float, missi
         f["time_to_pass_s"] / 150.0, np.degrees(f["rate_rad_s"]) / 2.7,
         (mission["deadline_s"] - t_s) / 300.0, float(mission["urgent"]), dv_used / 2.5, (mission["budget_m_s"] - dv_used) / 3.0,
         last.get("position_residual_m", 0.0), last.get("velocity_residual_m_s", 0.0) / 0.1, float(last.get("held", False)),
-        bridge / 180.0, float(np.clip(margin / 0.1, -3.0, 3.0)), np.cos(np.radians(f["lam_deg"])), f["beta_deg"] / 90.0,
+        bridge / 180.0, float(np.clip(margin / 0.1, -3.0, 3.0)),
+        float(np.clip((mission["deadline_s"] - t_s - f["time_to_pass_s"] - 60.0) / 100.0, -3.0, 3.0)),   # deadline slack after the pass
+        f["beta_deg"] / 90.0,
         *(b @ f["port"]),
     ], dtype=np.float32)
 
@@ -300,12 +308,11 @@ class T2StageEnv(gym.Env):
         original = self.env.controller.command
 
         def command(*args, **kwargs):
-            wrench, diagnostics = original(*args, **kwargs)
             force = self._far_field_force()
             if force is not None:
-                wrench = np.array(wrench, dtype=np.float64); wrench[3:] = force
                 self.far_field_controls += 1
-            return wrench, diagnostics
+                return np.r_[self._pointing_torque(), force], FAR_FIELD_DIAGNOSTICS
+            return original(*args, **kwargs)
         self.env.controller.command = command
 
     # ---------------------------------------------------------------- helpers
@@ -401,6 +408,18 @@ class T2StageEnv(gym.Env):
         a = a_ff + TRACK_KP * (q_ref - q) + TRACK_KD * (v_ref - v)
         limit = e.config.max_force_per_axis_n
         return np.clip(e.chaser_state.rotation.T @ (mass * a), -limit, limit)
+
+    def _pointing_torque(self) -> np.ndarray:
+        e = self.env; c, t, task = e.chaser_state, e.target_state, e.config.task
+        d = t.position + t.rotation @ np.asarray(task.port_position) - c.position
+        d = d / np.linalg.norm(d)
+        b = c.rotation @ np.asarray(task.camera_boresight, dtype=np.float64)
+        axis = np.cross(b, d); s = float(np.linalg.norm(axis))
+        theta = axis / s * np.arctan2(s, float(b @ d)) if s > 1e-12 else np.zeros(3)
+        J = np.asarray(e.chaser_parameters.inertia); w = np.asarray(c.omega)
+        torque = J @ (POINT_KP * (c.rotation.T @ theta) - POINT_KD * w) + np.cross(w, J @ w)
+        limit = e.config.max_torque_per_axis_nm
+        return np.clip(torque, -limit, limit)
 
     def _reference(self, env, metrics):
         return self.generator(self.info_env, metrics)
@@ -507,7 +526,7 @@ class T2StageEnv(gym.Env):
                 if c["plan"].get("terminal_position_error_m", 1.0) > 0.3:
                     continue
                 pr = self.predict_stage(c["plan"], basis, cal, start)
-                if 7.0 <= pr["r_end"] <= 25.0:
+                if 6.5 <= pr["r_end"] <= 25.0:
                     predictions.append({"a": c["a"], **pr})
         reward, event, steps = 0.0, None, 0
         while True:
