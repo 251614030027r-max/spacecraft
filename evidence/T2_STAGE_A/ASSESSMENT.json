@@ -1,0 +1,103 @@
+{
+  "version": "31074206045cf62dba3d560e4442db4b00eea05a",
+  "order_collab": "a3135ef",
+  "A_gates": {
+    "A1_mechanics": true,
+    "A2_state_dependence": true,
+    "A3_spread": true
+  },
+  "A_passed": true,
+  "coverage": {
+    "A_expected": 216,
+    "A_completed": 216,
+    "A_missing": [],
+    "B_expected_if_A_pass": 192,
+    "B_completed": 192,
+    "B_missing": [],
+    "errors": [],
+    "training": {
+      "e_sac": {
+        "steps": 3000,
+        "updates": 2240,
+        "replay": {
+          "transitions": 3000,
+          "with_candidates": 1257,
+          "candidates": 3759
+        }
+      },
+      "e_mve": {
+        "steps": 3000,
+        "updates": 2240,
+        "replay": {
+          "transitions": 3000,
+          "with_candidates": 1378,
+          "candidates": 4126
+        }
+      }
+    },
+    "model_candidate_fraction": {
+      "e_sac": 0.419,
+      "e_mve": 0.4593333333333333
+    }
+  },
+  "learning_reading": {
+    "e_sac": {
+      "gain_3000_vs_0": 64.04606302604532,
+      "capture_0": 11,
+      "capture_3000": 19,
+      "reading_learning_curve_gain20_capture_nondecrease": true,
+      "not_a_stop_gate": true
+    },
+    "e_mve": {
+      "gain_3000_vs_0": 74.57081154869098,
+      "capture_0": 11,
+      "capture_3000": 20,
+      "reading_learning_curve_gain20_capture_nondecrease": true,
+      "not_a_stop_gate": true
+    }
+  },
+  "arm_differences": [
+    {
+      "step": 0,
+      "mve_minus_sac_mean": 0.0,
+      "capture_sac": 11,
+      "capture_mve": 11,
+      "reading_mve_gain5": false,
+      "not_a_stop_gate": true
+    },
+    {
+      "step": 1000,
+      "mve_minus_sac_mean": 9.240686284212742,
+      "capture_sac": 17,
+      "capture_mve": 18,
+      "reading_mve_gain5": true,
+      "not_a_stop_gate": true
+    },
+    {
+      "step": 2000,
+      "mve_minus_sac_mean": 8.02222012830649,
+      "capture_sac": 17,
+      "capture_mve": 18,
+      "reading_mve_gain5": true,
+      "not_a_stop_gate": true
+    },
+    {
+      "step": 3000,
+      "mve_minus_sac_mean": 10.52474852264568,
+      "capture_sac": 19,
+      "capture_mve": 20,
+      "reading_mve_gain5": true,
+      "not_a_stop_gate": true
+    }
+  ],
+  "wall_seconds": {
+    "A": 6064.17882,
+    "B_train": 46135.213099,
+    "B_eval_post_train_tail": 4206.38286,
+    "B_eval_calendar_with_overlap": 27462.414193
+  },
+  "scope": "Single-seed bounded pilot; no formal multiseed training authorized",
+  "stop_reason": "registered_A_B_complete",
+  "restarts": {},
+  "generated_jst": "2026-10-22T17:35:58.658856+09:00"
+}
