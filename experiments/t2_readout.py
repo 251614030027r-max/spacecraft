@@ -40,7 +40,7 @@ def stats(rs):
 
 def screen(dir_, out):
     P = load(dir_)
-    pols = sorted(p for p in P if p not in ('gstar', 'pure'))
+    pols = sorted(p for p in P if p not in ('gstar', 'pure') and not p.startswith('b_'))
     ops = sorted(set.intersection(*[set(P[p]) for p in pols]))
     const = [p for p in pols if p.startswith('c_')]
     table = {p: stats(P[p][o] for o in ops) for p in pols}
@@ -48,6 +48,8 @@ def screen(dir_, out):
         table['gstar_reference_outside_action_space'] = stats(P['gstar'][o] for o in ops if o in P['gstar'])
     if 'pure' in P:
         table['pure_mpc_baseline'] = stats(P['pure'][o] for o in ops if o in P['pure'])
+    for p in sorted(x for x in P if x.startswith('b_')):
+        table[f'basic_layering_{p}'] = stats(P[p][o] for o in ops if o in P[p])
     best = {o: max(pols, key=lambda p: P[p][o]['return']) for o in ops}
     best_ret = {o: P[best[o]][o]['return'] for o in ops}
     bc = max(const, key=lambda p: table[p]['mean_return'])
@@ -79,12 +81,15 @@ def curve(eval_root, train_root, screen_dir, out):
         per = {}
         for ck_dir in sorted(arm_dir.glob('step_*'), key=lambda p: int(p.name.split('_')[1])):
             rs = [json.loads(Path(f).read_text(encoding='utf-8')) for f in sorted(ck_dir.glob('*.json')) if not Path(f).name.startswith('ERROR_')]
-            per[int(ck_dir.name.split('_')[1])] = stats(rs)
+            per[int(ck_dir.name.split('_')[1])] = {**stats(rs), 'urgent': stats(r for r in rs if r['mission']['urgent']),
+                                                   'economy': stats(r for r in rs if not r['mission']['urgent'])}
         res['arms'][arm_dir.name] = per
-    pols = [p for p in S if p not in ('gstar', 'pure')]
+    pols = [p for p in S if p not in ('gstar', 'pure') and not p.startswith('b_')]
     if pols:
         ops = sorted(set.intersection(*[set(S[p]) for p in pols]))
         res['reference'] = {'rally_rule': stats(S['rally'][o] for o in ops) if 'rally' in S else None,
+                            'basic_layering_best': max((stats(S[p][o] for o in ops if o in S[p]) for p in S if p.startswith('b_')),
+                                                       key=lambda x: x['mean_return'], default=None),
                             'neutral_c_0_0': stats(S['c_0_0'][o] for o in ops) if 'c_0_0' in S else None,
                             'pure_mpc': stats(S['pure'][o] for o in ops if o in S['pure']) if 'pure' in S else None,
                             'best_constant': max((stats(S[p][o] for o in ops) for p in pols if p.startswith('c_')), key=lambda x: x['mean_return']),

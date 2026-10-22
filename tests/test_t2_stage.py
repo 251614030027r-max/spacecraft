@@ -94,7 +94,7 @@ def test_model_term_uses_only_usable_candidates_and_is_capped():
     for k in range(16):
         cands = [{'a': np.ones(2, np.float32) * .1, 'reward': -1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'weight': 0.8}] if k % 2 else []
         b.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([-1.0]), np.array([False]), [{'stage_model': cands}])
-    assert b.model_counts == {'transitions': 16, 'with_candidates': 8, 'candidates': 8}
+    assert b.model_counts == {'transitions': 16, 'with_candidates': 8, 'candidates': 8, 'entry_candidates': 0}
     m.train(gradient_steps=5, batch_size=8)
     used = [s for s in m.model_stats if s['model_rows']]
     assert used and all(s['lambda_eff'] <= 1.0 and s['lambda_eff'] * s['g_model'] <= 0.5 * s['g_real'] + 1e-9 for s in used)
@@ -165,3 +165,91 @@ def test_pure_row_is_the_mpc_alone():
     for _ in range(2):
         env.step_pure()
     assert env.far_field_controls == 0 and env.generator is None
+
+
+def test_entry_calibration_prediction():
+    from env.t2_stage import EntryCalibration
+    from env.t1_env import T1Reward
+    c = EntryCalibration()
+    for k in range(6):
+        c.add(20.0 + k, 0.3, 60.0 + k, 0.2 + 1.5 * 0.3, k != 0, 150.0)
+    assert c.ready
+    w = T1Reward(time_cost_per_s=0.1, delta_v_cost_per_m_s=10.0)
+    p = c.predict(30.0, 0.3, w)
+    assert abs(p["duration"] - 70.0) < 1e-9 and abs(p["p_success"] - 6.0 / 8.0) < 1e-12
+    assert abs(p["dv"] - 0.65) < 0.05
+    assert abs(p["reward"] - (0.75 * 100 - 0.25 * 150 - 0.1 * 70 - 10 * p["dv"])) < 1e-9
+
+
+def test_entry_model_predicts_the_executors_entry():
+    """294000, full closing: the stage starting at 48 s opens the entry ~6 s in (tau 25 s) -- the entry
+    model on the calibrated plan finds the same node and arrival, and the state gate at the entry accepts it."""
+    from env.t2_stage import EntryCalibration, T2StageEnv
+    env = T2StageEnv(openings=[294000], shaping=True, candidates=3, seed=1)
+    env.reset(options={'opening': 294000})
+    for _ in range(12):
+        env.calibration.add(0.1, 0.1, np.zeros(3), np.zeros(3))
+    for _ in range(6):
+        env.entry_calibration.add(25.0, 0.35, 50.0, 0.6, True, 100.0)
+    a = np.array([1.0, 0.0])
+    for _ in range(3):
+        env.step(a)
+    obs, r, term, trunc, info = env.step(a)
+    assert term and info['event'] == 'success'
+    g = info['gate']
+    assert g['reason'] == 'entry_ok' and g['predicted_entry'] and abs(g['entry_s'] - 6.0) <= 2.0
+    assert g['position_error_m'] <= 0.5 and g['velocity_error_m_s'] <= 0.05
+    assert info['stage_model'] and all(c['done'] for c in info['stage_model'])
+    assert env.entry_calibration.rows[-1][0] == 25.0
+
+
+def test_terminal_model_labels_do_not_bootstrap():
+    from env.t2_stage import OBS_DIM
+    from train.t2_mve_sac import T2SAC
+    import gymnasium as gym
+    from stable_baselines3.common.logger import configure
+
+    class Dummy(gym.Env):
+        observation_space = gym.spaces.Box(-np.inf, np.inf, (OBS_DIM,), np.float32)
+        action_space = gym.spaces.Box(-1, 1, (2,), np.float32)
+        def reset(self, seed=None, options=None): return np.zeros(OBS_DIM, np.float32), {}
+        def step(self, a): return np.zeros(OBS_DIM, np.float32), 0.0, False, False, {}
+
+    m = T2SAC('MlpPolicy', Dummy(), model_lambda=1.0, model_start=0, learning_starts=0, batch_size=4, device='cpu', seed=0)
+    m.set_logger(configure(None, []))
+    for k in range(4):
+        cands = [{'a': np.zeros(2, np.float32), 'reward': 50.0, 'next_obs': np.ones(OBS_DIM, np.float32) * 9, 'weight': 1.0, 'done': True}]
+        m.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([0.0]), np.array([False]), [{'stage_model': cands}])
+    assert m.replay_buffer.model_counts['entry_candidates'] == 4
+    data = m.replay_buffer.sample(4)
+    with th.no_grad():
+        # with every candidate terminal the target is the label itself, whatever the critic says at s'
+        for p in m.critic_target.parameters():
+            p.add_(1.0)
+    loss, used = m._model_loss(data, m.ent_coef_tensor)
+    q = th.cat(m.critic(data.observations, th.zeros(4, 2)), dim=1)
+    expected = 0.5 * ((q - 50.0) ** 2).sum() / 4
+    assert used == 4 and abs(float(loss) - float(expected)) < 1e-4
+
+
+def test_basic_layering_is_rotation_unaware_closing():
+    from env.t2_stage import target_velocity
+    f, _ = _frame(); b = f["basis"]
+    v = target_velocity(f, np.array([0.4, 0.9]), geometry=False)
+    assert np.allclose(v, -(0.05 + 0.15 * 0.4) * b[0])
+    assert abs(target_velocity(f, np.array([0.4, 0.9])) @ b[1]) > 0      # with the geometry: cone regulation
+
+
+def test_update_ratio_scales_with_env_count():
+    import inspect, train.t2_mve_sac as m
+    src = inspect.getsource(m.make_model)
+    assert 'gradient_steps=UPDATES_PER_TRANSITION * n_envs' in src and m.UPDATES_PER_TRANSITION == 2
+
+
+def test_candidates_cover_the_decisive_alternatives():
+    from env.t2_stage import T2StageEnv
+    env = T2StageEnv(openings=[294000], candidates=8, seed=0)
+    c = env.candidate_actions(np.array([1.0, 0.7]))
+    assert len(c) == 8 and all(np.all(np.abs(x) <= 1.0) for x in c)
+    assert np.allclose(c[0], [1.0, 0.0]) and np.allclose(c[1], [1.0, -0.7]) and np.allclose(c[2], [0.4, 0.7])
+    assert all(np.linalg.norm(x - [1.0, 0.7]) <= 0.5 + 1e-9 for x in c[4:])

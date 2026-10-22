@@ -46,6 +46,8 @@ def policy_action(name, env, obs):
     if name == 'rally': return rally_action(env)
     if name.startswith('c_'):
         _, p, a = name.split('_'); return np.array([int(p) / 10.0, int(a) / 10.0])
+    if name.startswith('b_'):          # basic layering: rotation-unaware closing (env built with geometry=False)
+        return np.array([int(name.split('_')[1]) / 10.0, 0.0])
     raise ValueError(name)
 
 
@@ -81,7 +83,7 @@ def screen_job(job):
     file = Path(out) / f'{policy}_{opening}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
     from env.t2_stage import T2StageEnv
-    env = T2StageEnv(openings=[opening], shaping=False)
+    env = T2StageEnv(openings=[opening], shaping=False, geometry=not policy.startswith('b_'))
     if policy == 'pure':
         # paper baseline: the shared MPC alone (fixed terminal set-point, no stage layer, no G*), same
         # mission, deadline, weights, budget and truth judge

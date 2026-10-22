@@ -11,8 +11,9 @@ usable only when the executed action's calibrated prediction matched the truth a
     L_model = sum_k w_k * 0.5 * sum_i (Q_i(s, a'_k) - y_k)^2 / sum_k w_k
     L_Q = L_real + lambda_eff * L_model,   lambda_eff = min(lambda, c * |grad L_real| / |grad L_model|)
 
-The model never predicts a terminal event (a stage that ended in the bridge, descent or a terminal
-is not usable) and every candidate lies within 0.5 (action units) of the executed action. The term is
+Entry-level candidates (T2.2) are terminal: y_k = r^_k (the stage part up to the predicted entry plus
+the calibrated entry outcome, no bootstrap); all others bootstrap as above. Every candidate lies
+within 0.5 (action units) of the executed action. The term is
 off until ``model_start`` real transitions are stored. lambda = 1, c = 0.5 (the model gradient is at
 most half of the real TD gradient on the critic parameters).
 """
@@ -34,11 +35,14 @@ from stable_baselines3.common.utils import polyak_update
 
 from env.t2_stage import GAMMA_STAGE
 
-K_CANDIDATES = 6
+K_CANDIDATES = 8          # 3 structured alternatives + 1 global + 4 local (T2StageEnv.candidate_actions)
 MODEL_LAMBDA = 1.0
 GRADIENT_CAP = 0.5
 MODEL_START = 300
 ENT_COEF = 0.05
+#: critic / actor updates per stored real transition (gradient_steps = UPDATES_PER_TRANSITION * n_envs);
+#: B ran 0.8 (4 per 5 transitions) and was still rising at 3000 decisions, T2.1 hard-coded 12 per step
+UPDATES_PER_TRANSITION = 2
 
 
 class StageReplay(ReplayBuffer):
@@ -50,12 +54,13 @@ class StageReplay(ReplayBuffer):
         self.cand_r = np.zeros((self.buffer_size, self.n_envs, k), np.float32)
         self.cand_obs = np.zeros((self.buffer_size, self.n_envs, k, d), np.float32)
         self.cand_w = np.zeros((self.buffer_size, self.n_envs, k), np.float32)
-        self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0}
+        self.cand_done = np.zeros((self.buffer_size, self.n_envs, k), np.float32)
+        self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0, 'entry_candidates': 0}
         self._last = None
 
     def add(self, obs, next_obs, action, reward, done, infos):
         i = self.pos
-        self.cand_w[i] = 0.0
+        self.cand_w[i] = 0.0; self.cand_done[i] = 0.0
         for e, info in enumerate(infos):
             cands = (info.get('stage_model') or [])[:self.k]
             self.model_counts['transitions'] += 1
@@ -64,6 +69,7 @@ class StageReplay(ReplayBuffer):
             for j, c in enumerate(cands):
                 self.cand_a[i, e, j] = c['a']; self.cand_r[i, e, j] = c['reward']
                 self.cand_obs[i, e, j] = c['next_obs']; self.cand_w[i, e, j] = c['weight']
+                self.cand_done[i, e, j] = float(c.get('done', False)); self.model_counts['entry_candidates'] += int(c.get('done', False))
         super().add(obs, next_obs, action, reward, done, infos)
 
     def _get_samples(self, batch_inds, env=None):
@@ -78,7 +84,7 @@ class StageReplay(ReplayBuffer):
 
     def candidates(self):
         i, e = self._last
-        return tuple(map(self.to_torch, (self.cand_a[i, e], self.cand_r[i, e], self.cand_obs[i, e], self.cand_w[i, e])))
+        return tuple(map(self.to_torch, (self.cand_a[i, e], self.cand_r[i, e], self.cand_obs[i, e], self.cand_w[i, e], self.cand_done[i, e])))
 
 
 class T2SAC(SAC):
@@ -93,17 +99,17 @@ class T2SAC(SAC):
         return [*super()._excluded_save_params(), 'model_stats']
 
     def _model_loss(self, data, ent_coef):
-        cand_a, cand_r, cand_obs, cand_w = self.replay_buffer.candidates()
+        cand_a, cand_r, cand_obs, cand_w, cand_done = self.replay_buffer.candidates()
         mask = cand_w > 0
         if not bool(mask.any()):
             return None, 0
         b, k = cand_w.shape
         s = data.observations[:, None, :].expand(-1, k, -1)[mask]; a = cand_a[mask]; r = cand_r[mask].reshape(-1, 1)
-        s1 = cand_obs[mask]; w = cand_w[mask].reshape(-1, 1)
+        s1 = cand_obs[mask]; w = cand_w[mask].reshape(-1, 1); d = cand_done[mask].reshape(-1, 1)
         with th.no_grad():
             a1, logp1 = self.actor.action_log_prob(s1)
             q1 = th.min(th.cat(self.critic_target(s1, a1), dim=1), dim=1, keepdim=True).values - ent_coef * logp1.reshape(-1, 1)
-            y = r + self.gamma * q1
+            y = r + (1.0 - d) * self.gamma * q1
         qs = self.critic(s, a)
         loss = 0.5 * sum((w * (q - y) ** 2).sum() for q in qs) / w.sum().clamp_min(1e-6)
         return loss, int(mask.sum())
@@ -167,9 +173,10 @@ class Checkpoints(BaseCallback):
 
 
 def make_model(env, arm: str, seed: int, smoke: bool = False) -> T2SAC:
+    n_envs = getattr(env, 'num_envs', 1)
     return T2SAC('MlpPolicy', env, seed=seed, device='cpu', verbose=0, policy_kwargs={'net_arch': [256, 256]},
                  gamma=GAMMA_STAGE, learning_rate=3e-4, buffer_size=100_000, batch_size=64 if smoke else 256,
-                 learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=12, ent_coef=ENT_COEF, tau=0.005,
+                 learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=UPDATES_PER_TRANSITION * n_envs, ent_coef=ENT_COEF, tau=0.005,
                  model_lambda=MODEL_LAMBDA if arm == 'e_mve' else 0.0, model_start=16 if smoke else MODEL_START)
 
 
@@ -186,7 +193,9 @@ def train(out: Path, arm: str, seed: int, steps: int, n_envs: int, marks: list[i
     model = make_model(env, arm, seed, smoke)
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'envs': n_envs, 'git_head': head, 'smoke': smoke,
                                                    'model_lambda': model.model_lambda, 'gradient_cap': model.gradient_cap, 'model_start': model.model_start,
-                                                   'ent_coef': ENT_COEF, 'k_candidates': K_CANDIDATES, 'candidates_computed_both_arms': True}, indent=1), encoding='utf-8')
+                                                   'ent_coef': ENT_COEF, 'k_candidates': K_CANDIDATES, 'candidates_computed_both_arms': True,
+                                                   'gradient_steps': model.gradient_steps, 'updates_per_transition': UPDATES_PER_TRANSITION,
+                                                   'env_version': __import__('env.t2_stage', fromlist=['T2_VERSION']).T2_VERSION}, indent=1), encoding='utf-8')
     cb = Checkpoints(out, [m for m in marks if m <= steps] + [steps])
     model.learn(total_timesteps=steps, callback=cb)
     model.save(out / 'final')
