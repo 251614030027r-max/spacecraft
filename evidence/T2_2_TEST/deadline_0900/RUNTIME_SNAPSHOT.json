@@ -1,0 +1,251 @@
+{
+  "pid": 3312,
+  "started_jst": "2026-10-22T23:29:25.347094+09:00",
+  "science_SHA": "fa54ed1391602386063290b7d34222313a4a427e",
+  "order_collab": "1745c28",
+  "active_stage": "phase1",
+  "seed_scope": [
+    0,
+    1
+  ],
+  "formal_training": false,
+  "deadline_jst": "2026-10-23T09:00:00+09:00",
+  "desktop_reserved": false,
+  "logical_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "updated_jst": "2026-10-23T08:30:24.779214+09:00",
+  "memory": {
+    "commit_free_GiB": 18.998424530029297,
+    "physical_free_GiB": 3.3513031005859375,
+    "commit_limit_GiB": 45.855525970458984
+  },
+  "phase": "phase1_training",
+  "training_jobs": [
+    {
+      "tag": "TRAIN_e_sac_s0",
+      "arm": "e_sac",
+      "seed": 0,
+      "steps": 3000,
+      "marks": "1000,2000",
+      "extra": []
+    },
+    {
+      "tag": "TRAIN_e_sac_s1",
+      "arm": "e_sac",
+      "seed": 1,
+      "steps": 3000,
+      "marks": "1000,2000",
+      "extra": []
+    },
+    {
+      "tag": "TRAIN_e_mve_s0",
+      "arm": "e_mve",
+      "seed": 0,
+      "steps": 3000,
+      "marks": "1000,2000",
+      "extra": []
+    },
+    {
+      "tag": "TRAIN_e_mve_s1",
+      "arm": "e_mve",
+      "seed": 1,
+      "steps": 3000,
+      "marks": "1000,2000",
+      "extra": []
+    }
+  ],
+  "training": {
+    "TRAIN_e_sac_s0": {
+      "pid": 23244,
+      "start_jst": "2026-10-22T23:29:25.355598+09:00",
+      "attempt": 0,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_2_TEST_20261022\\脚本\\native_entry.py",
+        "t2",
+        "train",
+        "--arm",
+        "e_sac",
+        "--seed",
+        "0",
+        "--steps",
+        "3000",
+        "--envs",
+        "3",
+        "--checkpoints",
+        "1000,2000",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_2_TEST_20261022\\TRAIN_e_sac_s0"
+      ]
+    },
+    "TRAIN_e_sac_s1": {
+      "pid": 21336,
+      "start_jst": "2026-10-22T23:29:30.379019+09:00",
+      "attempt": 0,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_2_TEST_20261022\\脚本\\native_entry.py",
+        "t2",
+        "train",
+        "--arm",
+        "e_sac",
+        "--seed",
+        "1",
+        "--steps",
+        "3000",
+        "--envs",
+        "3",
+        "--checkpoints",
+        "1000,2000",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_2_TEST_20261022\\TRAIN_e_sac_s1"
+      ]
+    },
+    "TRAIN_e_mve_s0": {
+      "pid": 1776,
+      "start_jst": "2026-10-22T23:29:35.393681+09:00",
+      "attempt": 0,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_2_TEST_20261022\\脚本\\native_entry.py",
+        "t2",
+        "train",
+        "--arm",
+        "e_mve",
+        "--seed",
+        "0",
+        "--steps",
+        "3000",
+        "--envs",
+        "3",
+        "--checkpoints",
+        "1000,2000",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_2_TEST_20261022\\TRAIN_e_mve_s0"
+      ]
+    },
+    "TRAIN_e_mve_s1": {
+      "pid": 2368,
+      "start_jst": "2026-10-22T23:29:40.416729+09:00",
+      "attempt": 0,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_2_TEST_20261022\\脚本\\native_entry.py",
+        "t2",
+        "train",
+        "--arm",
+        "e_mve",
+        "--seed",
+        "1",
+        "--steps",
+        "3000",
+        "--envs",
+        "3",
+        "--checkpoints",
+        "1000,2000",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_2_TEST_20261022\\TRAIN_e_mve_s1"
+      ]
+    }
+  },
+  "training_progress": {
+    "TRAIN_e_sac_s0": {
+      "steps": 2001,
+      "wall_s": 28433.042977809906,
+      "episodes": 371,
+      "replay": {
+        "transitions": 1998,
+        "with_candidates": 1121,
+        "candidates": 8882,
+        "entry_candidates": 1997,
+        "gate": {
+          "no_prediction": 57,
+          "ok": 896,
+          "stage_not_complete": 112,
+          "entry_event_mismatch": 313,
+          "entry_ok": 229,
+          "factual_mismatch": 270,
+          "entry_state_mismatch": 121
+        }
+      }
+    },
+    "TRAIN_e_sac_s1": {
+      "steps": 2001,
+      "wall_s": 27182.056378364563,
+      "episodes": 383,
+      "replay": {
+        "transitions": 1998,
+        "with_candidates": 1256,
+        "candidates": 9858,
+        "entry_candidates": 2073,
+        "gate": {
+          "no_prediction": 64,
+          "factual_mismatch": 201,
+          "ok": 1020,
+          "stage_not_complete": 110,
+          "entry_state_mismatch": 74,
+          "entry_ok": 251,
+          "entry_event_mismatch": 278
+        }
+      }
+    },
+    "TRAIN_e_mve_s0": {
+      "steps": 2001,
+      "wall_s": 30937.40734910965,
+      "episodes": 407,
+      "replay": {
+        "transitions": 1998,
+        "with_candidates": 1089,
+        "candidates": 8631,
+        "entry_candidates": 2013,
+        "gate": {
+          "no_prediction": 60,
+          "ok": 839,
+          "stage_not_complete": 116,
+          "entry_event_mismatch": 346,
+          "entry_ok": 252,
+          "factual_mismatch": 266,
+          "entry_state_mismatch": 119
+        }
+      }
+    },
+    "TRAIN_e_mve_s1": {
+      "steps": 2001,
+      "wall_s": 26640.284228801727,
+      "episodes": 353,
+      "replay": {
+        "transitions": 1998,
+        "with_candidates": 1158,
+        "candidates": 9154,
+        "entry_candidates": 1698,
+        "gate": {
+          "no_prediction": 55,
+          "factual_mismatch": 277,
+          "ok": 965,
+          "stage_not_complete": 117,
+          "entry_state_mismatch": 100,
+          "entry_ok": 203,
+          "entry_event_mismatch": 281
+        }
+      }
+    }
+  },
+  "training_completed": [],
+  "training_pending": []
+}
