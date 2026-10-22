@@ -43,14 +43,16 @@ Entry level (T2.2). The stage model alone was blind exactly at the window decisi
 which the executor opens the entry never completes its 16 s, so it was never checked and gave no
 candidates (T2_STAGE_B: every remaining failure was a missed port pass). Each action is now also run
 through the executor's own entry rule on the calibrated plan (2 s cadence: range, radial envelope --
-inside the MPC's near field its braking is emulated --, port forecast within the window, then the entry
-planner itself). An action
+inside the MPC's near field its braking is accepted only when the force bound allows it within one node
+interval, and charged --, port forecast within the window, then the entry planner itself), over the
+action's stage and one more holding the same intent. An action
 whose stage opens the entry gets a *terminal* label: the stage part up to the entry plus the entry
 outcome calibrated on this environment's executed entries (duration beyond the planned arrival,
-delta-v against the plan, capture rate). The executed action's prediction is checked against
-the truth at the executor's actual entry (the calibrated plan state at the entry time, within the stage
-gate's 0.5 m / 0.05 m/s); a mismatch withholds every candidate of that stage. The discrete entry event is
-a knife edge (window angle, planner feasibility) and the entry outcome a draw: neither is compared.
+delta-v against the plan, capture rate). The executed action's prediction is checked twice:
+its entry event (entered or not within the stage) must agree with the executor, and at an executed entry
+the calibrated plan state at the entry time must agree with the truth (the stage gate's 0.5 m /
+0.05 m/s); either mismatch withholds every candidate of that stage. The entry outcome is an expectation
+over this environment's executed entries (an approximation, not a per-candidate success probability).
 """
 from __future__ import annotations
 
@@ -317,7 +319,8 @@ class Calibration:
 #: entry-level executor model (T2.2): does the executor open the entry within the stage, and with what
 #: calibrated outcome (``predict_entry``, ``entry_label``, ``EntryCalibration``)
 ENTRY_MODEL = True
-ENTRY_NODES_S = (2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0)   # the executor's 2 s bridge cadence
+ENTRY_NODE_S = 2.0               # the executor's bridge cadence
+ENTRY_NODES_S = tuple(ENTRY_NODE_S * k for k in range(1, 9))
 ENTRY_SOLVES_PER_NODE = 4        # entry-planner solves per node (ascending arrival time, as the executor)
 ENTRY_MAX_SOLVES = 24            # per predicted action (over both stages)
 ENTRY_CAL_MIN = 5                # executed entries before entry labels are issued
@@ -493,15 +496,18 @@ class T2StageEnv(gym.Env):
             r = float(np.linalg.norm(q))
             if r > BRIDGE_RANGE_M:
                 continue
-            # the bridge needs the radial braking envelope with a margin. Inside FAR_FIELD_M the executor's
-            # MPC holds that envelope (the stage plan may exceed it): the predicted inward speed is limited
-            # to it. Outside, the tracking law flies the plan as it is: the executor's own check applies.
+            # the bridge needs the radial braking envelope with a margin. Outside FAR_FIELD_M the tracking law
+            # flies the plan as it is: the executor's own check applies. Inside, the MPC brakes onto the
+            # envelope -- accepted only when the excess inward speed can be removed within one node interval
+            # at the force bound (conservative: the MPC may start earlier), and its delta-v is charged
             closing = -float(q @ v) / r
             cap = task.braking_speed_limit(max(r - float(task.operation_sphere_radius_m), 0.0)) - BRIDGE_ENVELOPE_MARGIN_M_S
+            brake = 0.0
             if closing > cap:
-                if r > FAR_FIELD_M:
+                brake = closing - cap
+                if r > FAR_FIELD_M or brake > e.config.max_force_per_axis_n / mass * ENTRY_NODE_S:
                     continue
-                v = v + (closing - cap) * q / r
+                v = v + brake * q / r
             rot = rot0 @ so3_exp(s * omega)
             node_solves = 0
             for tau in BRIDGE_TAUS_S:
@@ -515,14 +521,14 @@ class T2StageEnv(gym.Env):
                 res = g.bridge.planner.solve(q, v, tau, history, None, entry_speed_m_s=g.bridge.entry_speed_m_s)
                 node_solves += 1; budget[0] -= 1
                 if res["feasible"]:
-                    return {"s": s, "tau": float(res["tau_s"]), "dv_plan": float(res["delta_v_m_s"])}
+                    return {"s": s, "tau": float(res["tau_s"]), "dv_plan": float(res["delta_v_m_s"]), "brake_dv": brake}
         return None
 
     def predict_entry(self, plan, basis, cal: "Calibration", start: dict, action=None) -> dict:
         """Entry-level executor model over two stages: the action's own stage, then -- if the entry does not
-        open there -- one more stage holding the same intent from the predicted stage end (the value of
-        committing to the intent, which the policy can always realise: a lower bound of the optimal value).
-        The decisive along-sweep decisions (swing or co-move) are taken one stage before the window."""
+        open there -- one more stage holding the same intent from the predicted stage end (an approximation:
+        the value of committing to the intent for a second stage; no error bound is claimed). The decisive
+        along-sweep decisions (swing or co-move) are taken about one stage before the window."""
 
         budget = [ENTRY_MAX_SOLVES]
         hit = self._scan_entry(plan, basis, cal, start["rotation"], start["omega"], start["t"], budget)
@@ -561,12 +567,13 @@ class T2StageEnv(gym.Env):
         w = self.env.config.reward
         macro = ecal.predict(ent["tau"], ent["dv_plan"], w)
         cost = lambda s, dv: -w.time_cost_per_s * s - w.delta_v_cost_per_m_s * dv
+        brake = ent.get("brake_dv", 0.0)
         if ent["stages"] == 1:
-            true = cost(ent["s"], self._partial_dv(plan, cal, ent["s"])) + macro["reward"]
+            true = cost(ent["s"], self._partial_dv(plan, cal, ent["s"]) + brake) + macro["reward"]
             shaped = true
         else:
             _, _, dv1 = cal.predict(plan, np.eye(3), self.env.chaser_parameters.mass)
-            r1 = cost(STAGE_S, dv1); r2 = cost(ent["s"], self._partial_dv(ent["plan2"], cal, ent["s"])) + macro["reward"]
+            r1 = cost(STAGE_S, dv1); r2 = cost(ent["s"], self._partial_dv(ent["plan2"], cal, ent["s"]) + brake) + macro["reward"]
             true = r1 + r2
             shaped = r1 + GAMMA_STAGE * r2
         shaped -= start["phi"] if self.shaping else 0.0
@@ -770,7 +777,13 @@ class T2StageEnv(gym.Env):
                 self.calibration.add(float(plan["delta_v_m_s"]), float(e._delta_v - dv0), basis @ (q1 - q_plan), basis @ (v1 - v_plan),
                                      near=float(np.linalg.norm(q)) <= NEAR_REGIME_M)
         entered = self._stage_entry
-        if factual is not None and entered is not None:
+        predicted = bool(factual_entry is not None and factual_entry["entry"])
+        if factual is not None and factual_entry is not None and predicted != (entered is not None) and (entered is not None or stage_complete):
+            # the entry event of the executed intent itself was mispredicted: no candidate of this stage is released
+            gate = {"usable": False, "reason": "entry_event_mismatch", "predicted_entry": predicted, "entered": entered is not None}
+        elif factual is not None and entered is not None and factual_entry is None:
+            gate = {"usable": False, "reason": "stage_not_complete"}
+        elif factual is not None and entered is not None:
             # the executed stage opened the entry at s_e: the calibrated plan state at s_e against the truth at
             # the entry (same thresholds as the stage level). The entry rule and planner are the executor's own;
             # what is checked is the state the model hands them. The entry outcome is an expectation over this

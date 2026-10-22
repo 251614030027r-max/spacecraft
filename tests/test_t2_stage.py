@@ -94,7 +94,7 @@ def test_model_term_uses_only_usable_candidates_and_is_capped():
     for k in range(16):
         cands = [{'a': np.ones(2, np.float32) * .1, 'reward': -1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'weight': 0.8}] if k % 2 else []
         b.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([-1.0]), np.array([False]), [{'stage_model': cands}])
-    assert b.model_counts == {'transitions': 16, 'with_candidates': 8, 'candidates': 8, 'entry_candidates': 0}
+    assert {k: b.model_counts[k] for k in ('transitions', 'with_candidates', 'candidates', 'entry_candidates')} == {'transitions': 16, 'with_candidates': 8, 'candidates': 8, 'entry_candidates': 0}
     m.train(gradient_steps=5, batch_size=8)
     used = [s for s in m.model_stats if s['model_rows']]
     assert used and all(s['lambda_eff'] <= 1.0 and s['lambda_eff'] * s['g_model'] <= 0.5 * s['g_real'] + 1e-9 for s in used)
@@ -253,3 +253,33 @@ def test_candidates_cover_the_decisive_alternatives():
     assert len(c) == 8 and all(np.all(np.abs(x) <= 1.0) for x in c)
     assert np.allclose(c[0], [1.0, 0.0]) and np.allclose(c[1], [1.0, -0.7]) and np.allclose(c[2], [0.4, 0.7])
     assert all(np.linalg.norm(x - [1.0, 0.7]) <= 0.5 + 1e-9 for x in c[4:])
+
+
+def test_mispredicted_entry_event_releases_no_candidate():
+    """Same stage as above, but the entry model is made to miss the executed entry: the stage releases no
+    candidate (entry labels would rest on a wrong event)."""
+    from env.t2_stage import T2StageEnv
+    env = T2StageEnv(openings=[294000], shaping=True, candidates=3, seed=1)
+    env.reset(options={'opening': 294000})
+    for _ in range(12):
+        env.calibration.add(0.1, 0.1, np.zeros(3), np.zeros(3))
+    for _ in range(6):
+        env.entry_calibration.add(25.0, 0.35, 50.0, 0.6, True, 100.0)
+    a = np.array([1.0, 0.0])
+    for _ in range(3):
+        env.step(a)
+    env.predict_entry = lambda *args, **kwargs: {'entry': False}
+    obs, r, term, trunc, info = env.step(a)
+    assert term and info['gate']['reason'] == 'entry_event_mismatch' and info['stage_model'] == []
+
+
+def test_paired_readout_drops_the_two_largest_gains(tmp_path):
+    import json
+    from experiments.t2_readout import paired
+    for arm, rets in (('e_mve_s0', [10, 100, 50, 0]), ('e_sac_s0', [0, 0, 0, 5])):
+        d = tmp_path / arm / 'step_100'; d.mkdir(parents=True)
+        for k, ret in enumerate(rets):
+            (d / f'{k}.json').write_text(json.dumps({'opening': k, 'return': ret, 'event': 'success', 'mission': {'urgent': k % 2 == 0}}))
+    p = paired(tmp_path)['s0/step_100']
+    assert p['n'] == 4 and abs(p['mean'] - 38.75) < 1e-9 and abs(p['without_top2'] - 2.5) < 1e-9
+    assert abs(p['urgent'] - 30.0) < 1e-9 and abs(p['economy'] - 47.5) < 1e-9 and p['positive'] == 3 and p['negative'] == 1

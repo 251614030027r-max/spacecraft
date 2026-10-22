@@ -55,7 +55,7 @@ class StageReplay(ReplayBuffer):
         self.cand_obs = np.zeros((self.buffer_size, self.n_envs, k, d), np.float32)
         self.cand_w = np.zeros((self.buffer_size, self.n_envs, k), np.float32)
         self.cand_done = np.zeros((self.buffer_size, self.n_envs, k), np.float32)
-        self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0, 'entry_candidates': 0}
+        self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0, 'entry_candidates': 0, 'gate': {}}
         self._last = None
 
     def add(self, obs, next_obs, action, reward, done, infos):
@@ -64,6 +64,8 @@ class StageReplay(ReplayBuffer):
         for e, info in enumerate(infos):
             cands = (info.get('stage_model') or [])[:self.k]
             self.model_counts['transitions'] += 1
+            reason = (info.get('gate') or {}).get('reason', 'none')
+            self.model_counts['gate'][reason] = self.model_counts['gate'].get(reason, 0) + 1
             self.model_counts['with_candidates'] += int(bool(cands))
             self.model_counts['candidates'] += len(cands)
             for j, c in enumerate(cands):

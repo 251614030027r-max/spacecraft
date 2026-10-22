@@ -74,7 +74,34 @@ def screen(dir_, out):
     if 'gain_vs_rally_rule_report_only' in res: print('vs rally (report):', res['gain_vs_rally_rule_report_only'])
 
 
-def curve(eval_root, train_root, screen_dir, out):
+def paired(eval_root):
+    """E-MVE minus E-SAC per seed and checkpoint, paired by opening: mean, mean without the two largest
+    per-opening gains, urgent / economy means, positive / negative counts (arms named e_mve_sN / e_sac_sN)."""
+    root = Path(eval_root); out = {}
+    for mve in sorted(root.glob('e_mve_s*')):
+        sac = root / mve.name.replace('e_mve', 'e_sac')
+        if not sac.is_dir():
+            continue
+        for ck in sorted(mve.glob('step_*'), key=lambda p: int(p.name.split('_')[1])):
+            load_ = lambda d: {r['opening']: r for r in (json.loads(Path(f).read_text(encoding='utf-8')) for f in d.glob('*.json')
+                                                       if not Path(f).name.startswith('ERROR_'))}
+            a, b = load_(ck), load_(sac / ck.name)
+            ops = sorted(set(a) & set(b))
+            if not ops:
+                continue
+            d = {o: a[o]['return'] - b[o]['return'] for o in ops}
+            srt = sorted(d.values(), reverse=True)
+            mean = lambda xs: float(np.mean(xs)) if xs else None
+            out[f'{mve.name[len("e_mve_"):]}/{ck.name}'] = {
+                'n': len(ops), 'mean': mean(srt), 'without_top2': mean(srt[2:]),
+                'urgent': mean([d[o] for o in ops if a[o]['mission']['urgent']]), 'economy': mean([d[o] for o in ops if not a[o]['mission']['urgent']]),
+                'positive': sum(x > 0 for x in srt), 'negative': sum(x < 0 for x in srt),
+                'capture_mve': sum(a[o]['event'] == 'success' for o in ops), 'capture_sac': sum(b[o]['event'] == 'success' for o in ops),
+                'unsafe_mve': sum(a[o]['event'] == 'unsafe' for o in ops), 'unsafe_sac': sum(b[o]['event'] == 'unsafe' for o in ops)}
+    return out
+
+
+def curve(eval_root, train_root, screen_dir, out, expected=24):
     S = load(screen_dir); res = {'arms': {}}
     for arm_dir in sorted(Path(eval_root).glob('*')):
         if not arm_dir.is_dir(): continue
@@ -94,6 +121,14 @@ def curve(eval_root, train_root, screen_dir, out):
                             'pure_mpc': stats(S['pure'][o] for o in ops if o in S['pure']) if 'pure' in S else None,
                             'best_constant': max((stats(S[p][o] for o in ops) for p in pols if p.startswith('c_')), key=lambda x: x['mean_return']),
                             'per_opening_best_fixed': float(np.mean([max(S[p][o]['return'] for p in pols) for o in ops]))}
+    res['completeness'] = {}
+    for arm, per in res['arms'].items():
+        for k, st in per.items():
+            ck_dir = Path(eval_root) / arm / f'step_{k}'
+            errors = sorted(Path(f).name for f in ck_dir.glob('ERROR_*.json'))
+            res['completeness'][f'{arm}/step_{k}'] = {'n': st['n'], 'errors': errors, 'complete': st['n'] == expected and not errors}
+    res['all_complete'] = bool(res['completeness']) and all(c['complete'] for c in res['completeness'].values())
+    res['paired'] = paired(eval_root)
     res['training'] = {}
     for t in sorted(Path(train_root).glob('*')):
         f = t / 'model_stats.json'
@@ -109,9 +144,10 @@ def curve(eval_root, train_root, screen_dir, out):
 def main():
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('mode', choices=['screen', 'curve'])
     p.add_argument('--dir'); p.add_argument('--eval-root'); p.add_argument('--train-root'); p.add_argument('--screen'); p.add_argument('--output', required=True)
+    p.add_argument('--expected', type=int, default=24, help='openings every arm / checkpoint must have (completeness)')
     a = p.parse_args()
     if a.mode == 'screen': screen(a.dir, a.output)
-    else: curve(a.eval_root, a.train_root, a.screen, a.output)
+    else: curve(a.eval_root, a.train_root, a.screen, a.output, a.expected)
 
 
 if __name__ == '__main__':
