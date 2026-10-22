@@ -156,3 +156,12 @@ def test_mission_preferences_trade_time_against_fuel():
             assert x['time_cost_per_s'] > 0.05 and x['fuel_cost_per_m_s'] < 20
         else:
             assert x['time_cost_per_s'] < 0.05 and x['fuel_cost_per_m_s'] > 20
+
+
+def test_pure_row_is_the_mpc_alone():
+    from env.t2_stage import T2StageEnv
+    env = T2StageEnv(openings=[1000000], shaping=False)
+    env.reset(options={'opening': 1000000})
+    for _ in range(2):
+        env.step_pure()
+    assert env.far_field_controls == 0 and env.generator is None

@@ -87,7 +87,7 @@ def screen_job(job):
         # mission, deadline, weights, budget and truth judge
         obs, _ = env.reset(options={'opening': opening}); t0 = time.time(); ret = 0.; event = None
         while event is None:
-            r, term, trunc, i = env.env.step(pure=True); ret += r; event = i.get('event')
+            r, term, trunc, i = env.step_pure(); ret += r; event = i.get('event')
             if event is None and env.env._delta_v >= env.mission['budget_m_s']:
                 event = 'resource_exhausted'; ret -= env.env.config.reward.timeout_penalty
         res = {'opening': opening, 'event': event, 'return': ret, 'time_s': env.env.time_s, 'delta_v': env.env._delta_v,

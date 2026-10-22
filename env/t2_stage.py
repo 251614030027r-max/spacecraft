@@ -387,6 +387,12 @@ class T2StageEnv(gym.Env):
                 return True
         return False
 
+    def step_pure(self):
+        """Paper baseline: one T1Env step of the shared MPC alone (fixed terminal set-point); the stage
+        layer and its far-field execution law are switched off for the whole episode."""
+        self.generator = None
+        return self.env.step(pure=True)
+
     def _far_field_force(self):
         g = getattr(self, "generator", None)
         if g is None or g.mode not in ("stage", "hold"):
