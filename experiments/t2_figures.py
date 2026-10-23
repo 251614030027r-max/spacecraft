@@ -361,7 +361,8 @@ def fig_mechanism(plt, A, out):
                 a.annotate(str(v), (b.get_x() + b.get_width() / 2, v), textcoords='offset points', xytext=(0, 3), ha='center')
             a.set_xticks([0, 1], ['时刻承诺', '窗口承诺']); a.set_ylabel('丢失的入口承诺（次）')
             pr = w['paired_return']
-            a.set_title(f"{L} 入口承诺：配对回报 {pr['mean']:+.1f}/回合", loc='left')
+            a.set_title(f"{L} 入口承诺（{w['pairs']} 对回合）", loc='left')
+            a.text(0.97, 0.55, f"配对回报 {pr['mean']:+.1f}/回合", transform=a.transAxes, ha='right', va='top', color=INK2, fontsize=9.5)
         else:
             s = json.loads(Path(A['audit']).read_text(encoding='utf-8'))
             names = [('entry_label_abs_err_median', '入口结局标签\n|误差| 中位数'), ('stage_pos_err_p90_m', '阶段末位置\n误差 p90 (m)')]
@@ -371,8 +372,10 @@ def fig_mechanism(plt, A, out):
                 bars = a.bar(x + off, vals, wdt, color=col, label=lab, edgecolor='white', linewidth=2)
                 for b, v in zip(bars, vals):
                     a.annotate(f'{v:.2g}', (b.get_x() + b.get_width() / 2, v), textcoords='offset points', xytext=(0, 3), ha='center', fontsize=8.5)
-            a.set_yscale('log'); a.set_xticks(x, [n for _, n in names], fontsize=8.5); a.legend(fontsize=8.5)
-            a.set_title(f"{L} 上行反馈精度（入口事件一致率 {100 * s['anchored']['event_agreement']:.0f}%）", loc='left', fontsize=10)
+            a.set_yscale('log'); a.set_xticks(x, [n for _, n in names], fontsize=8.5); a.legend(fontsize=8.5, loc='upper right', bbox_to_anchor=(1.0, 0.9))
+            a.set_title(f"{L} 上行反馈精度（{s['openings']} 个开局，{s['anchored']['candidates']} 个候选）", loc='left', fontsize=10)
+            a.text(0.97, 0.66, f"入口事件一致率\n{100 * s['raw']['event_agreement']:.0f}% → {100 * s['anchored']['event_agreement']:.0f}%",
+                   transform=a.transAxes, ha='right', va='top', color=INK2, fontsize=9)
     fig.tight_layout(); save(fig, out, 'fig5_mechanism'); plt.close(fig)
 
 
