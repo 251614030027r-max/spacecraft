@@ -2,6 +2,7 @@
 
     python -B -m experiments.t2_readout screen --dir SCREEN_DIR --output A.json
     python -B -m experiments.t2_readout curve  --eval-root EVAL_ROOT --train-root TRAIN_ROOT --screen SCREEN_DIR --output B.json
+    python -B -m experiments.t2_readout window --rigid SCREEN_RIGID --window SCREEN_WINDOW --output W.json
 
 Screen (stage A, pre-registered gates):
   A1 mechanics: every episode finished; held + rejected stages <= 10 % of stages.
@@ -134,19 +135,42 @@ def curve(eval_root, train_root, screen_dir, out, expected=24):
         f = t / 'model_stats.json'
         if f.exists():
             ms = json.loads(f.read_text(encoding='utf-8')); fin = json.loads((t / 'finished.json').read_text(encoding='utf-8')) if (t / 'finished.json').exists() else {}
-            used = [m for m in ms if m['model_rows']]
-            res['training'][t.name] = {'finished': fin, 'probes': len(ms), 'probes_with_model_rows': len(used),
-                                       'lambda_eff_mean': float(np.mean([m['lambda_eff'] for m in used])) if used else 0.0,
-                                       'model_td_last': used[-1]['model_td'] if used else None}
+            used = [m for m in ms if m.get('model_rows')]
+            q_pi = [m['q_pi_mean'] for m in ms]
+            res['training'][t.name] = {'finished': {k: v for k, v in fin.items() if k != 'worker_order'}, 'probes': len(ms),
+                                       'probes_with_model_rows': len(used),
+                                       'w_mean': float(np.mean([m['w_mean'] for m in used])) if used else None,
+                                       'abs_err_median': float(np.median([m['abs_err_median'] for m in used])) if used else None,
+                                       'sigma_last': ms[-1].get('sigma') if ms else None,
+                                       'model_td_last': used[-1]['model_td'] if used else None,
+                                       'q_pi_last_decile': float(np.mean(q_pi[-max(1, len(q_pi) // 10):])) if q_pi else None}
     Path(out).write_text(json.dumps(res, indent=1), encoding='utf-8'); print(json.dumps(res, indent=1)[:4000])
 
 
+def window(rigid_dir, window_dir, out):
+    """Sub-mechanism screen: the same fixed policies and openings with the rigid (T2.2) and the pass-window entry
+    commitment; paired by policy and opening: return, capture, time, delta-v, lost entries."""
+    R, W = load(rigid_dir), load(window_dir)
+    rows = [(p, o) for p in sorted(set(R) & set(W)) for o in sorted(set(R[p]) & set(W[p]))]
+    d = [W[p][o]['return'] - R[p][o]['return'] for p, o in rows]
+    srt = sorted(d, reverse=True)
+    lost = lambda X: int(sum(X[p][o].get('entries_lost', 0) for p, o in rows))
+    res = {'pairs': len(rows), 'rigid': stats(R[p][o] for p, o in rows), 'window': stats(W[p][o] for p, o in rows),
+           'paired_return': {'mean': float(np.mean(d)) if d else None, 'without_top2': float(np.mean(srt[2:])) if len(srt) > 2 else None,
+                             'positive': sum(x > 0 for x in d), 'negative': sum(x < 0 for x in d)},
+           'entries_lost': {'rigid': lost(R), 'window': lost(W)},
+           'per_policy': {p: float(np.mean([W[p][o]['return'] - R[p][o]['return'] for q, o in rows if q == p])) for p in sorted({p for p, _ in rows})}}
+    Path(out).write_text(json.dumps(res, indent=1), encoding='utf-8'); print(json.dumps(res, indent=1))
+
+
 def main():
-    p = argparse.ArgumentParser(description=__doc__); p.add_argument('mode', choices=['screen', 'curve'])
+    p = argparse.ArgumentParser(description=__doc__); p.add_argument('mode', choices=['screen', 'curve', 'window'])
+    p.add_argument('--rigid'); p.add_argument('--window')
     p.add_argument('--dir'); p.add_argument('--eval-root'); p.add_argument('--train-root'); p.add_argument('--screen'); p.add_argument('--output', required=True)
     p.add_argument('--expected', type=int, default=24, help='openings every arm / checkpoint must have (completeness)')
     a = p.parse_args()
     if a.mode == 'screen': screen(a.dir, a.output)
+    elif a.mode == 'window': window(a.rigid, a.window, a.output)
     else: curve(a.eval_root, a.train_root, a.screen, a.output, a.expected)
 
 

@@ -32,27 +32,23 @@ Mission (T1-B assets, soft fuel): urgent (deadline 170-210 s, -0.10 per s, -10 p
 economy (deadline 280-340 s, -0.02 per s, -40 per m/s); the episode times out at the deadline (-100);
 a 3.0 m/s safety budget (resource exhausted -100); capture +100, unsafe -150.
 
-Stage model (for the coupled learner, ``candidates`` > 0): at each decision the local planner also
-plans K candidate actions; each plan is corrected by this environment's *execution calibration*
-(least squares of executed vs planned delta-v, mean end-position / end-velocity residual in the stage
-basis, fitted on its own executed stages) and turned into a predicted reward and next observation.
-At the end of the stage the executed action's calibrated prediction is compared with the truth;
-the candidates of that stage are marked usable only if it matched (``gate``).
+Executor model (EACC, T2.3; for the coupled learner, ``candidates`` > 0). After each executed stage, from
+the same decision state: M1 -- the executed intent and K candidate intents are run through the
+executor's own stage planner and its entry rule (2 s cadence: range, radial envelope, port window,
+entry planner; inside the MPC's near field a braking excess removable within one node interval is
+accepted and charged), over the intent's stage and one more holding it; an intent that opens the entry
+gets a terminal label (stage part + entry outcome calibrated on this environment's executed entries,
+from the first bridge to the terminal event: a lost bridge is not an outcome). M2 -- hindsight anchoring:
+every intent sees the realized target attitude (the target's motion does not depend on the chaser),
+and the executed intent's realized tracking residual path (every 2 s) and, for an entry that ended in
+this decision, its realized outcome residual are transported to the candidates. The executed intent's
+raw prediction (calibration only) is returned for the learner's precision weight (M3,
+``train/t2_mve_sac.py``). Labels are issued only where the executed outcome covers the same interval
+(its stage completed, or it opened the entry inside the stage).
 
-Entry level (T2.2). The stage model alone was blind exactly at the window decisions: a stage in
-which the executor opens the entry never completes its 16 s, so it was never checked and gave no
-candidates (T2_STAGE_B: every remaining failure was a missed port pass). Each action is now also run
-through the executor's own entry rule on the calibrated plan (2 s cadence: range, radial envelope --
-inside the MPC's near field its braking is accepted only when the force bound allows it within one node
-interval, and charged --, port forecast within the window, then the entry planner itself), over the
-action's stage and one more holding the same intent. An action
-whose stage opens the entry gets a *terminal* label: the stage part up to the entry plus the entry
-outcome calibrated on this environment's executed entries (duration beyond the planned arrival,
-delta-v against the plan, capture rate). The executed action's prediction is checked twice:
-its entry event (entered or not within the stage) must agree with the executor, and at an executed entry
-the calibrated plan state at the entry time must agree with the truth (the stage gate's 0.5 m /
-0.05 m/s); either mismatch withholds every candidate of that stage. The entry outcome is an expectation
-over this environment's executed entries (an approximation, not a per-candidate success probability).
+Entry commitment (T2.3 sub-mechanism, ``WindowGStar``): a live entry whose fixed-time re-plan fails is
+re-timed inside the same port pass (2 / 4 / 8 s later), then flown with the authority reserve, never
+beyond the deadline (``window=False``: T2.2's rigid commitment).
 """
 from __future__ import annotations
 
@@ -66,11 +62,11 @@ import numpy as np
 
 from dynamics.lie import so3_exp
 from env.t1_env import T1Env, T1EnvConfig
-from env.t1_n_task import make_conditional_gstar
+from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.2"
+T2_VERSION = "t2-stage-0.3"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -82,10 +78,6 @@ BRIDGE_TAUS_S = (15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0)
 BRIDGE_ENVELOPE_MARGIN_M_S = 0.02
 BRIDGE_DEADLINE_MARGIN_S = 45.0
 OBS_DIM = 24
-#: stage-model gate (executed action: calibrated prediction vs truth at the stage end)
-GATE_POSITION_M = 0.5
-GATE_VELOCITY_M_S = 0.05
-GATE_DELTA_V_M_S = 0.03
 CALIBRATION_MIN_STAGES = 10
 CALIBRATION_WINDOW = 60
 CALIBRATION_REGIME_MIN = 5       # stages of one execution regime before its own calibration is used
@@ -140,6 +132,68 @@ def t2_env_config(mission: T2Mission = T2Mission()) -> T1EnvConfig:
     base = T1EnvConfig()
     initial = replace(T1InitialDistribution(), range_m=(12.0, 16.0), inertial_speed_max_m_s=0.05)
     return replace(base, initial=initial, max_time_s=max(mission.economy_deadline_s))
+
+
+#: T2.3 window commitment (sub-mechanism): the entry is a commitment to the port's pass, not to an instant
+WINDOW_SLIPS_S = (2.0, 4.0, 8.0)     # arrival re-timing inside the same pass (<= ~20 deg of port sweep)
+WINDOW_RESERVE_FRACTION = 0.95       # authority reserve: the last re-plan may use 95 % of the force bound
+
+
+@dataclass
+class WindowGStar(ConditionalGStar):
+    """Conditional G* with a pass-window commitment (T2.3 sub-mechanism).
+
+    The frozen MPC lags a bang-coast-bang entry plan systematically (T2.3 loss probe: the deviation grows
+    ~0.05 m per 2 s until the 1 m re-plan threshold); the conditional G* then re-plans *exactly* the
+    remaining arrival time at 80 % of the force bound, which is infeasible in most cases, and the entry is
+    lost although the same pass is still reachable (2 s later arrival, or the 20 % authority reserve).
+    Here a failed re-plan of a live entry is retried inside the same pass: later arrivals
+    (``WINDOW_SLIPS_S``) at the plan bound, then the same arrival and slips with the authority reserve,
+    never beyond the deadline. A new entry request (no live plan) is unchanged."""
+
+    reserve_planner: Any = None
+    window_slips_s: tuple = WINDOW_SLIPS_S
+    elastic: bool = True
+    recoveries: int = 0
+
+    def decide(self, env, tau_s: float) -> None:
+        live = self.plan is not None
+        super().decide(env, tau_s)
+        if not (self.elastic and live and self.plan is None and self.last_outcome == "replan_failed"):
+            return
+        from time import perf_counter
+        from env.t1_gstar import free_body_rotations
+        started = perf_counter()
+        target, chaser = env.target_state, env.chaser_state
+        q0 = chaser.position - target.position
+        v0 = chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
+        horizon = float(env.config.max_time_s) - self.deadline_margin_s - float(env.time_s)
+        trials = [(self.planner, s) for s in self.window_slips_s]
+        if self.reserve_planner is not None:
+            trials += [(self.reserve_planner, s) for s in (0.0, *self.window_slips_s)]
+        for planner, slip in trials:
+            tau = float(tau_s) + slip
+            if tau <= 0.0 or tau > horizon + self.deadline_tolerance_s:
+                continue
+            history = free_body_rotations(target.rotation, target.omega, env.target_parameters.inertia, tau + 1.0)
+            result = planner.solve(q0, v0, tau, history, None, entry_speed_m_s=self.entry_speed_m_s)
+            if result["feasible"]:
+                self.plan_wall_s.append(perf_counter() - started)
+                self.plan_start_s = float(env.time_s)
+                self.plan, self.last_status = result, f"window:{slip:g}:{'reserve' if planner is self.reserve_planner else 'plan'}"
+                self.tau_s = self.tau_effective_s = float(result["tau_s"])
+                self.hold_position, self.last_outcome = None, "accepted"
+                self.recoveries += 1
+                return
+        self.plan_wall_s.append(perf_counter() - started)
+
+
+def make_window_gstar(env, elastic: bool = True, **kwargs: Any) -> WindowGStar:
+    from env.t1_gstar import RendezvousPlanner
+    base = make_conditional_gstar(env, **kwargs)
+    reserve = RendezvousPlanner(env.config.task, env.chaser_parameters.mass, WINDOW_RESERVE_FRACTION * env.config.max_force_per_axis_n)
+    return WindowGStar(kappa=base.kappa, planner=base.planner, recovery_planner=None, entry_speed_m_s=base.entry_speed_m_s,
+                       deadline_margin_s=base.deadline_margin_s, reserve_planner=reserve, elastic=bool(elastic))
 
 
 # ---------------------------------------------------------------------- information boundary
@@ -317,13 +371,13 @@ class Calibration:
 
 
 #: entry-level executor model (T2.2): does the executor open the entry within the stage, and with what
-#: calibrated outcome (``predict_entry``, ``entry_label``, ``EntryCalibration``)
+#: calibrated outcome (``predict_intent``, ``EntryCalibration``)
 ENTRY_MODEL = True
 ENTRY_NODE_S = 2.0               # the executor's bridge cadence
 ENTRY_NODES_S = tuple(ENTRY_NODE_S * k for k in range(1, 9))
-ENTRY_SOLVES_PER_NODE = 4        # entry-planner solves per node (ascending arrival time, as the executor)
+ENTRY_SOLVES_PER_NODE = 7        # entry-planner solves per node: every arrival time, ascending, as the executor
 ENTRY_MAX_SOLVES = 24            # per predicted action (over both stages)
-ENTRY_CAL_MIN = 5                # executed entries before entry labels are issued
+ENTRY_CAL_MIN = 20               # executed entries before entry labels are issued (5 left the success rate to the prior: labels ~55 low, T2.3 audit)
 ENTRY_STAGES = 2                 # entry horizon: the action's stage and (n - 1) more holding the same intent
 
 
@@ -367,8 +421,10 @@ class T2StageEnv(gym.Env):
 
     def __init__(self, openings: list[int] | None = None, seed_base: int = 1_000_000, candidates: int = 0,
                  mission: T2Mission = T2Mission(), shaping: bool = True, seed: int = 0, geometry: bool = True,
-                 entry_stages: int = ENTRY_STAGES) -> None:
+                 entry_stages: int = ENTRY_STAGES, window: bool = True) -> None:
         self.geometry = bool(geometry)
+        self.window = bool(window)
+        self.diagnostics = False            # also predict the executed intent with its own realized residual (tests)
         self.entry_stages = int(entry_stages)
         self.mission_distribution = mission
         self.base_config = t2_env_config(mission)
@@ -383,6 +439,9 @@ class T2StageEnv(gym.Env):
         self.entry_calibration = EntryCalibration()
         self._bridge = None
         self._stage_entry = None
+        self._entry_open = None
+        self._trace = []
+        self._model_t0 = 0.0
         self.gamma_stage = GAMMA_STAGE
         self.far_field_controls = 0
         original = self.env.controller.command
@@ -430,10 +489,12 @@ class T2StageEnv(gym.Env):
         self.info_env = InfoEnv(self.env)
         self.generator = T1PGenerator(planner=LocalStagePlanner(self.env.config.task, self.env.chaser_parameters.mass,
                                                                 PLAN_FORCE_N, horizon_s=STAGE_S, nodes=STAGE_NODES),
-                                      bridge=make_conditional_gstar(self.info_env, deadline_margin_s=BRIDGE_DEADLINE_MARGIN_S),
+                                      bridge=make_window_gstar(self.info_env, elastic=self.window, deadline_margin_s=BRIDGE_DEADLINE_MARGIN_S),
                                       mass=self.env.chaser_parameters.mass, replan_deviation_m=STAGE_DEVIATION_HOLD_M)
         self.last = {}
         self._bridge = None
+        self._entry_open = None
+        self._trace = []
         self.return_true = 0.0
         self.stats = {"stages": 0, "holds": 0, "rejected": 0, "bridge_attempts": 0, "macro": None}
         return self.observation(), {"opening": opening, "mission": dict(self.mission)}
@@ -468,54 +529,70 @@ class T2StageEnv(gym.Env):
                 q, v = relative_inertial(self.env)
                 self._bridge = {"t": self.env.time_s, "dv": self.env._delta_v, "tau": float(g.bridge.plan["tau_s"]),
                                 "dv_plan": float(g.bridge.plan["delta_v_m_s"]), "q": q, "v": v}
-                if self._stage_entry is None:          # the stage's first entry (a lost one may be re-opened)
+                if self._stage_entry is None:          # the decision's first entry
                     self._stage_entry = self._bridge
+                if self._entry_open is None:           # an entry record runs from the first bridge to the terminal event
+                    self._entry_open = {**self._bridge, "G": 0.0}
                 return True
         return False
 
     def _close_bridge(self, event) -> None:
-        """At a terminal event after an entry, or when the entry is lost: one entry-calibration row."""
-        b, e, w = self._bridge, self.env, self.env.config.reward
-        if b is None:
+        """A lost bridge ends only the bridge: the entry record stays open and its eventual outcome counts
+        (T2.2 counted a lost bridge as a failed entry; most were recovered, the labels were 69 too low).
+        A terminal event closes the record: one entry-calibration row."""
+        if self._bridge is not None:
+            self.stats["entries_lost"] = self.stats.get("entries_lost", 0) + int(event == "lost")
+            self._bridge = None
+        o, e, w = self._entry_open, self.env, self.env.config.reward
+        if o is None or event == "lost":
             return
         penalty = {"unsafe": w.unsafe_penalty, "timeout": w.timeout_penalty, "resource_exhausted": w.timeout_penalty}.get(event, w.timeout_penalty)
-        self.entry_calibration.add(b["tau"], b["dv_plan"], e.time_s - b["t"], e._delta_v - b["dv"], event == "success", penalty)
-        self._bridge = None
+        self.entry_calibration.add(o["tau"], o["dv_plan"], e.time_s - o["t"], e._delta_v - o["dv"], event == "success", penalty)
+        self._entry_open = None
 
-    def _scan_entry(self, plan, basis, cal: "Calibration", rot0, omega, t0: float, budget: list) -> dict | None:
-        """First node of one calibrated stage plan (2 s cadence) at which the executor's bridge rule holds
-        and its entry planner returns a feasible plan (constant-rate attitude forecast from ``rot0``)."""
+    # ------------------------------------------------------------ EACC executor option model (M1 + M2)
+    def _dv_model(self, plan, cal: "Calibration", s: float) -> float:
+        """Calibrated delta-v of a stage plan flown for ``s`` seconds (executed against planned, fitted)."""
+        mass = self.env.chaser_parameters.mass
+        n = int(round(s / plan["dt"]))
+        dv_plan_s = float(np.sum(np.linalg.norm(plan["f"][:n], axis=1)) * plan["dt"] / mass)
+        c0, c1 = cal.coefficients()
+        return max(0.0, c0 * s / STAGE_S + c1 * dv_plan_s)
+
+    def _scan(self, plan, resid, attitude, offset: float, budget: list, brake_model: bool) -> dict | None:
+        """The executor's bridge rule at its 2 s cadence along one stage plan corrected by ``resid`` (range,
+        radial envelope, port window, entry planner -- the executor's own functions and inputs). The target
+        attitude at each node is ``attitude`` (the realized one where known: it does not depend on the
+        chaser's intent). ``brake_model``: a node violating the envelope inside the MPC's near field is
+        accepted when the excess can be braked within one node interval (charged); the executor's MPC does so."""
 
         from env.t1_gstar import free_body_rotations
         e, g, task = self.env, self.generator, self.env.config.task
         mass = e.chaser_parameters.mass
-        dq, dvv = cal.residuals()
         inertia = np.asarray(self.info_env.target_parameters.inertia)
         horizon = e.config.max_time_s - BRIDGE_DEADLINE_MARGIN_S
+        t0 = self._model_t0
         for s in ENTRY_NODES_S:
             q, v = plan_state(plan, s, mass)
-            q = q + basis.T @ dq * (s / STAGE_S); v = v + basis.T @ dvv * (s / STAGE_S)
+            dq, dv_, _ = resid(s)
+            q = q + dq; v = v + dv_
             r = float(np.linalg.norm(q))
             if r > BRIDGE_RANGE_M:
                 continue
-            # the bridge needs the radial braking envelope with a margin. Outside FAR_FIELD_M the tracking law
-            # flies the plan as it is: the executor's own check applies. Inside, the MPC brakes onto the
-            # envelope -- accepted only when the excess inward speed can be removed within one node interval
-            # at the force bound (conservative: the MPC may start earlier), and its delta-v is charged
             closing = -float(q @ v) / r
-            cap = task.braking_speed_limit(max(r - float(task.operation_sphere_radius_m), 0.0)) - BRIDGE_ENVELOPE_MARGIN_M_S
+            cap = float(task.outer_radial_closing_speed_limit(r)) - BRIDGE_ENVELOPE_MARGIN_M_S
             brake = 0.0
             if closing > cap:
                 brake = closing - cap
-                if r > FAR_FIELD_M or brake > e.config.max_force_per_axis_n / mass * ENTRY_NODE_S:
+                if not brake_model or r > FAR_FIELD_M or brake > e.config.max_force_per_axis_n / mass * ENTRY_NODE_S:
                     continue
                 v = v + brake * q / r
-            rot = rot0 @ so3_exp(s * omega)
+            rot, omega = attitude(offset + s)
             node_solves = 0
             for tau in BRIDGE_TAUS_S:
                 if node_solves >= ENTRY_SOLVES_PER_NODE or budget[0] <= 0:
                     break
-                if tau > horizon - (t0 + s) + 1e-6:
+                if tau > horizon - (t0 + offset + s) + 1e-6:
                     continue
                 if angle_deg(rot @ so3_exp(tau * omega) @ task.approach_axis, q) > BRIDGE_ANGLE_DEG:
                     continue
@@ -526,71 +603,117 @@ class T2StageEnv(gym.Env):
                     return {"s": s, "tau": float(res["tau_s"]), "dv_plan": float(res["delta_v_m_s"]), "brake_dv": brake}
         return None
 
-    def predict_entry(self, plan, basis, cal: "Calibration", start: dict, action=None) -> dict:
-        """Entry-level executor model over ``entry_stages`` stages (default two): the action's own stage, then --
-        while the entry does not open -- further stages holding the same intent from the predicted stage end
-        (an approximation: the value of committing to the intent; no error bound is claimed). The decisive
-        along-sweep decisions (swing or co-move) are taken about one stage before the window."""
+    def predict_intent(self, plan, action, start: dict, cal: "Calibration", ecal: "EntryCalibration", resid, attitude,
+                       entry_offset: float = 0.0, brake_model: bool = True) -> dict:
+        """Executor option model of one intent from the decision state: its stage plan, corrected by ``resid``
+        (raw: the calibration's mean residual; anchored: the executed intent's realized residual path), run
+        through the executor's entry rule over ``entry_stages`` stages holding the intent. Returns the shaped
+        label: an entry is terminal (stage part + calibrated entry outcome + ``entry_offset``), otherwise the
+        stage end (reward, next observation with the realized target attitude, bootstrapped by the learner)."""
 
-        budget = [ENTRY_MAX_SOLVES]
-        hit = self._scan_entry(plan, basis, cal, start["rotation"], start["omega"], start["t"], budget)
-        if hit is not None:
-            return {"entry": True, "stages": 1, **hit}
-        if action is None or self.entry_stages < 2 or budget[0] <= 0:
-            return {"entry": False}
-        e, mass = self.env, self.env.chaser_parameters.mass
-        cur, cur_basis, rot, t = plan, basis, start["rotation"], start["t"]
-        prefix = []                                  # calibrated stage plans flown in full before the entry stage
-        for k in range(2, self.entry_stages + 1):
-            q1, v1, _ = cal.predict(cur, cur_basis, mass)
-            rot = rot @ so3_exp(STAGE_S * start["omega"]); t = t + STAGE_S
-            if float(np.linalg.norm(q1)) > BRIDGE_RANGE_M + 2 * d_authority(mass) * (self.entry_stages - k + 1):
-                return {"entry": False}
-            frame1 = spin_frame(rot, start["omega"], q1, e.config.task.approach_axis)
-            goal = stage_goal(q1, v1, frame1, action, mass, geometry=self.geometry)
-            nxt = self.generator.planner.solve(q1, v1, goal["q_goal"], goal["v_goal"])
-            if not nxt["feasible"]:
-                return {"entry": False}
-            prefix.append(cur)
-            hit = self._scan_entry(nxt, frame1["basis"], cal, rot, start["omega"], t, budget)
-            if hit is not None:
-                return {"entry": True, "stages": k, "plan2": nxt, "prefix": prefix, **hit}
-            if budget[0] <= 0:
-                break
-            cur, cur_basis = nxt, frame1["basis"]
-        return {"entry": False}
-
-    def _partial_dv(self, plan, cal: "Calibration", s: float) -> float:
-        mass = self.env.chaser_parameters.mass
-        f, dt = plan["f"], plan["dt"]
-        n = int(round(s / dt))
-        dv_plan_s = float(np.sum(np.linalg.norm(f[:n], axis=1)) * dt / mass)
-        c0, c1 = cal.coefficients()
-        return max(0.0, c0 * s / STAGE_S + c1 * dv_plan_s)
-
-    def entry_label(self, plan, cal: "Calibration", ecal: EntryCalibration, ent: dict, start: dict) -> dict:
-        """Terminal model label of an action whose path opens the entry: the calibrated stage part(s) up to
-        the entry plus the calibrated entry outcome. Two stages: y = r1 + gamma (r2 + entry) - Phi(s0); the
-        potential at the intermediate stage end cancels exactly (PBRS)."""
-
-        w = self.env.config.reward
-        macro = ecal.predict(ent["tau"], ent["dv_plan"], w)
+        e, mass, w = self.env, self.env.chaser_parameters.mass, self.env.config.reward
         cost = lambda s, dv: -w.time_cost_per_s * s - w.delta_v_cost_per_m_s * dv
-        brake = ent.get("brake_dv", 0.0)
-        if ent["stages"] == 1:
-            true = cost(ent["s"], self._partial_dv(plan, cal, ent["s"]) + brake) + macro["reward"]
-            shaped = true
-        else:
-            # full stages before the entry stage, each discounted by one more stage (PBRS potentials cancel)
-            mass = self.env.chaser_parameters.mass
-            true, shaped = 0.0, 0.0
-            for k, full in enumerate(ent["prefix"]):
-                _, _, dv_k = cal.predict(full, np.eye(3), mass)
-                r_k = cost(STAGE_S, dv_k); true += r_k; shaped += GAMMA_STAGE ** k * r_k
-            r_e = cost(ent["s"], self._partial_dv(ent["plan2"], cal, ent["s"]) + brake) + macro["reward"]
-            true += r_e; shaped += GAMMA_STAGE ** len(ent["prefix"]) * r_e
-        shaped -= start["phi"] if self.shaping else 0.0
-        return {"reward": float(shaped), "true": float(true), "macro": macro}
+        budget = [ENTRY_MAX_SOLVES]
+        ecal_on = ecal is not None and ecal.ready
+        hit = self._scan(plan, resid, attitude, 0.0, budget, brake_model) if ecal_on else None
+        if hit is not None:
+            macro = ecal.predict(hit["tau"], hit["dv_plan"], w)["reward"] + entry_offset
+            true = cost(hit["s"], self._dv_model(plan, cal, hit["s"]) + resid(hit["s"])[2] + hit["brake_dv"]) + macro
+            return {"reward": float(true - (start["phi"] if self.shaping else 0.0)), "done": True, "entry": hit, "stages": 1, "true": float(true)}
+        dq, dvv, ddv = resid(STAGE_S)
+        q1, v1 = plan_state(plan, STAGE_S, mass)
+        q1, v1 = q1 + dq, v1 + dvv
+        dv1 = self._dv_model(plan, cal, STAGE_S) + ddv
+        rot1, om1 = attitude(STAGE_S)
+        r1 = cost(STAGE_S, dv1)
+        obs = observe(e, q1, v1, start["t"] + STAGE_S, start["dv"] + dv1, self.mission, rot1, om1,
+                      {"position_residual_m": float(np.linalg.norm(dq)), "velocity_residual_m_s": float(np.linalg.norm(dvv)), "held": False})
+        phi1 = self.potential(q1, rot1, om1)
+        out = {"reward": float(r1 + (GAMMA_STAGE * phi1 - start["phi"] if self.shaping else 0.0)), "obs": obs, "done": False,
+               "q": q1, "v": v1, "dv": float(dv1), "r_end": float(np.linalg.norm(q1)), "true": float(r1)}
+        if not ecal_on or self.entry_stages < 2 or budget[0] <= 0 or float(np.linalg.norm(q1)) > BRIDGE_RANGE_M + 2 * d_authority(mass):
+            return out
+        # second stage holding the same intent (raw calibration: no realized residual exists beyond the stage)
+        frame1 = spin_frame(rot1, om1, q1, e.config.task.approach_axis)
+        goal = stage_goal(q1, v1, frame1, action, mass, geometry=self.geometry)
+        nxt = self.generator.planner.solve(q1, v1, goal["q_goal"], goal["v_goal"])
+        if not nxt["feasible"]:
+            return out
+        dq_b, dv_b = cal.residuals(); b1 = frame1["basis"]
+        raw = lambda s: (b1.T @ dq_b * (s / STAGE_S), b1.T @ dv_b * (s / STAGE_S), 0.0)
+        hit = self._scan(nxt, raw, attitude, STAGE_S, budget, brake_model)
+        if hit is None:
+            return out
+        macro = ecal.predict(hit["tau"], hit["dv_plan"], w)["reward"] + entry_offset
+        r2 = cost(hit["s"], self._dv_model(nxt, cal, hit["s"]) + hit["brake_dv"]) + macro
+        true = r1 + r2
+        shaped = r1 + GAMMA_STAGE * r2 - (start["phi"] if self.shaping else 0.0)   # PBRS potentials cancel at the stage end
+        return {"reward": float(shaped), "done": True, "entry": hit, "stages": 2, "true": float(true)}
+
+    def _realized_attitude(self, trace):
+        """Target attitude at a time after the decision: realized where the factual trajectory recorded it
+        (the target's motion does not depend on the chaser's intent), else the constant-rate forecast from
+        the latest realized state (the executor's own model)."""
+        rec = {round(x["s"], 1): (x["rot"], x["omega"]) for x in trace}
+        keys = sorted(rec)
+        def attitude(s):
+            k = round(float(s), 1)
+            if k in rec:
+                return rec[k]
+            last = max([x for x in keys if x <= k] or [keys[0]])
+            rot, om = rec[last]
+            return rot @ so3_exp((k - last) * om), om
+        return attitude
+
+    def _labels(self, plan, a, start, cal, ecal, trace, entered, entry_rec, event) -> dict:
+        """EACC labels of one decision, computed after the factual stage from the same decision state.
+
+        M1 executor option model (``predict_intent``). M2 hindsight execution anchoring: (i) exogenous -- every
+        intent sees the realized target attitude (common random numbers: the tumbling target's motion, the
+        unknown-inertia nutation included, is the same whatever the chaser does); (ii) endogenous -- the
+        executed intent's realized tracking residual path (truth minus its plan, every 2 s) is transported to
+        each candidate's plan, and an executed entry that ended in this decision transports its realized
+        outcome residual to the candidates' entry outcomes. The raw factual prediction (calibration only) is
+        returned for the learner's precision weight (M3)."""
+
+        e, mass = self.env, self.env.chaser_parameters.mass
+        basis = start["basis"]
+        attitude = self._realized_attitude(trace)
+        dq_b, dv_b = cal.residuals()
+        raw = lambda s: (basis.T @ dq_b * (s / STAGE_S), basis.T @ dv_b * (s / STAGE_S), 0.0)
+        s_valid = (entered["t"] - start["t"]) if entered is not None else STAGE_S
+        nodes = {}
+        for x in trace:
+            if x["s"] <= s_valid + 1e-6:
+                qp, vp = plan_state(plan, x["s"], mass)
+                nodes[round(x["s"], 1)] = (x["q"] - qp, x["v"] - vp, (x["dv"] - start["dv"]) - self._dv_model(plan, cal, x["s"]))
+        keys = sorted(nodes)
+        def anchored(s):
+            k = round(float(s), 1)
+            return nodes[k] if k in nodes else nodes[max([x for x in keys if x <= k] or [keys[0]])]
+        self._model_t0 = start["t"]
+        fact = self.predict_intent(plan, a, start, cal, ecal, raw, attitude)
+        offset = 0.0
+        if entry_rec is not None and entry_rec["t"] >= start["t"] - 1e-6 and terminated_event(event) and ecal.ready:
+            offset = float(entry_rec["G"] - ecal.predict(entry_rec["tau"], entry_rec["dv_plan"], e.config.reward)["reward"])
+        cands = []
+        for c in self._plan_candidates(start["q"], start["v"], start["frame"], a):
+            p = self.predict_intent(c["plan"], c["a"], start, cal, ecal, anchored, attitude, entry_offset=offset)
+            if p["done"]:
+                cand = {"a": c["a"], "reward": p["reward"], "next_obs": np.zeros(OBS_DIM, np.float32), "done": True}
+            elif c["plan"].get("terminal_position_error_m", 1.0) <= 0.3 and 6.5 <= p["r_end"] <= 25.0:   # model domain
+                cand = {"a": c["a"], "reward": p["reward"], "next_obs": p["obs"], "done": False}
+            else:
+                continue
+            if self.diagnostics:      # label audit against truth branches: the raw (calibration-only) prediction beside it
+                cand["anchored"] = p; cand["raw"] = self.predict_intent(c["plan"], c["a"], start, cal, ecal, raw, attitude)
+            cands.append(cand)
+        diag = {"fact_entry": bool(fact["done"]), "entered": entered is not None, "entry_offset": offset, "candidates": len(cands)}
+        if self.diagnostics:
+            diag["anchored_fact"] = self.predict_intent(plan, a, start, cal, ecal, anchored, attitude, entry_offset=offset, brake_model=False)
+            diag["raw_fact"] = fact
+        return {"fact": {"reward": fact["reward"], "next_obs": fact.get("obs", np.zeros(OBS_DIM, np.float32)), "done": bool(fact["done"])},
+                "cands": cands, "diag": diag}
 
     def step_pure(self):
         """Paper baseline: one T1Env step of the shared MPC alone (fixed terminal set-point); the stage
@@ -647,6 +770,12 @@ class T2StageEnv(gym.Env):
         event = info.get("event")
         if event is None and self.env._delta_v >= self.mission["budget_m_s"]:
             event = "resource_exhausted"; r -= self.env.config.reward.timeout_penalty
+        if self._entry_open is not None:
+            self._entry_open["G"] += float(r)
+        if self._trace:
+            q, v = relative_inertial(self.env); t = self.env.target_state
+            self._trace.append({"s": self.env.time_s - self._trace[0]["t_abs"], "q": q, "v": v,
+                                "dv": self.env._delta_v, "rot": t.rotation.copy(), "omega": t.omega.copy()})
         if event is None:
             m = self._metrics()
             # mode bookkeeping (T1-P after_step with this module's bridge rule)
@@ -690,25 +819,10 @@ class T2StageEnv(gym.Env):
             out.append({"a": ac.astype(np.float32), "plan": plan})
         return out
 
-    def predict_stage(self, plan, basis, cal: "Calibration", start: dict) -> dict:
-        """Calibrated model prediction of one 16 s stage from its *start*: position / velocity / delta-v
-        from the frozen calibration ``cal``; the target attitude forecast from the stage-start attitude
-        and body rate (``start``) by exactly 16 s; reward and shaping with this mission's weights."""
-
-        mass = self.env.chaser_parameters.mass
-        q1, v1, dv = cal.predict(plan, basis, mass)
-        rot1 = start["rotation"] @ so3_exp(STAGE_S * start["omega"])
-        w = self.env.config.reward
-        reward = -w.time_cost_per_s * STAGE_S - w.delta_v_cost_per_m_s * dv
-        dq, dvv = cal.residuals()
-        obs = observe(self.env, q1, v1, start["t"] + STAGE_S, start["dv"] + dv, self.mission, rot1, start["omega"],
-                      {"position_residual_m": float(np.linalg.norm(dq)), "velocity_residual_m_s": float(np.linalg.norm(dvv)), "held": False})
-        shaped = reward + (GAMMA_STAGE * self.potential(q1, rot1, start["omega"]) - start["phi"] if self.shaping else 0.0)
-        return {"reward": float(shaped), "obs": obs, "r_end": float(np.linalg.norm(q1)), "dv": float(dv), "q": q1, "v": v1}
-
     def _macro_to_end(self):
         """A step that starts in the bridge or descent (the G* reference row): fly until the end."""
         e, g = self.env, self.generator
+        self._trace = []
         t0, phi0, reward, event = e.time_s, self._phi(), 0.0, None
         while event is None:
             r, event, _ = self._advance(); reward += r
@@ -722,7 +836,7 @@ class T2StageEnv(gym.Env):
         q1, _ = relative_inertial(e)
         info = {"event": event, "true_reward": reward, "stage_s": e.time_s - t0, "held": g.mode == "hold", "mode": g.mode,
                 "plan_status": "macro", "rate_limited": False, "planned_dv": None, "executed_dv": None,
-                "gate": {"usable": False, "reason": "macro"}, "stage_model": [], "time_s": e.time_s, "delta_v": e._delta_v,
+                "model": {"fact": None, "cands": [], "diag": {"reason": "macro"}}, "time_s": e.time_s, "delta_v": e._delta_v,
                 "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission), "far_field_controls": self.far_field_controls}
         return self.observation(), float(shaped), terminated, event == "numerical_failure", info
 
@@ -745,27 +859,15 @@ class T2StageEnv(gym.Env):
         else:
             self.stats["rejected"] += 1
             g._enter_hold(self.info_env, f"hold:rejected:{plan['status']}")
-        start = {"rotation": e.target_state.rotation.copy(), "omega": e.target_state.omega.copy(), "t": t0, "dv": dv0, "phi": phi0}
-        factual, factual_entry, predictions = None, None, []
-        entry_on = ENTRY_MODEL and self.entry_calibration.ready
-        if plan["feasible"] and self.calibration.ready and self.candidates > 0:   # model-free runs skip the model
-            near = float(np.linalg.norm(q)) <= NEAR_REGIME_M
-            cal = self.calibration.frozen().regime(near)   # one frozen calibration for the factual check and all candidates
-            ecal = self.entry_calibration.frozen() if entry_on else None
-            factual = self.predict_stage(plan, basis, cal, start)
-            if entry_on:
-                factual_entry = self.predict_entry(plan, basis, cal, start, a)
-                if factual_entry["entry"]:
-                    factual_entry.update(self.entry_label(plan, cal, ecal, factual_entry, start))
-            for c in self._plan_candidates(q, v, frame, a):
-                pr = self.predict_stage(c["plan"], basis, cal, start)
-                ent = self.predict_entry(c["plan"], basis, cal, start, c["a"]) if entry_on else {"entry": False}
-                if ent["entry"]:            # the stage plan is used only up to the entry
-                    lab = self.entry_label(c["plan"], cal, ecal, ent, start)
-                    predictions.append({"a": c["a"], **pr, "reward": lab["reward"], "done": True, "entry_s": ent["s"], "entry_stages": ent["stages"]})
-                elif c["plan"].get("terminal_position_error_m", 1.0) <= 0.3 and 6.5 <= pr["r_end"] <= 25.0:
-                    predictions.append({"a": c["a"], **pr, "done": False})
+        start = {"rotation": e.target_state.rotation.copy(), "omega": e.target_state.omega.copy(), "t": t0, "dv": dv0, "phi": phi0,
+                 "q": q, "v": v, "basis": basis, "frame": frame}
+        # the model of this decision uses the calibrations as they were at the decision (not this stage's own truth)
+        model_on = bool(plan["feasible"] and self.candidates > 0 and self.calibration.ready)
+        if model_on:
+            cal = self.calibration.frozen().regime(float(np.linalg.norm(q)) <= NEAR_REGIME_M)
+            ecal = self.entry_calibration.frozen()
         self._stage_entry = None
+        self._trace = [{"s": 0.0, "t_abs": t0, "q": q.copy(), "v": v.copy(), "dv": dv0, "rot": start["rotation"], "omega": start["omega"]}]
         reward, event, steps = 0.0, None, 0
         while True:
             r, event, info = self._advance(); reward += r; steps += 1
@@ -780,7 +882,6 @@ class T2StageEnv(gym.Env):
         q1, v1 = relative_inertial(e)
         held = g.mode == "hold"
         last = {"held": held}
-        gate = {"usable": False, "reason": "no_prediction"}
         stage_complete = abs(e.time_s - t0 - STAGE_S) < 1e-6 and event is None and not held and g.mode == "stage"
         if plan["feasible"]:
             q_plan, v_plan = plan_state(plan, e.time_s - t0, mass)
@@ -789,59 +890,38 @@ class T2StageEnv(gym.Env):
             if stage_complete:
                 self.calibration.add(float(plan["delta_v_m_s"]), float(e._delta_v - dv0), basis @ (q1 - q_plan), basis @ (v1 - v_plan),
                                      near=float(np.linalg.norm(q)) <= NEAR_REGIME_M)
-        entered = self._stage_entry
-        predicted = bool(factual_entry is not None and factual_entry["entry"])
-        if factual is not None and factual_entry is not None and predicted != (entered is not None) and (entered is not None or stage_complete):
-            # the entry event of the executed intent itself was mispredicted: no candidate of this stage is released
-            gate = {"usable": False, "reason": "entry_event_mismatch", "predicted_entry": predicted, "entered": entered is not None}
-        elif factual is not None and entered is not None and factual_entry is None:
-            gate = {"usable": False, "reason": "stage_not_complete"}
-        elif factual is not None and entered is not None:
-            # the executed stage opened the entry at s_e: the calibrated plan state at s_e against the truth at
-            # the entry (same thresholds as the stage level). The entry rule and planner are the executor's own;
-            # what is checked is the state the model hands them. The entry outcome is an expectation over this
-            # environment's executed entries (EntryCalibration), not a single draw.
-            s_e = entered["t"] - t0
-            dq, dvv = cal.residuals()
-            q_e, v_e = plan_state(plan, s_e, mass)
-            q_e = q_e + basis.T @ dq * (s_e / STAGE_S); v_e = v_e + basis.T @ dvv * (s_e / STAGE_S)
-            eq, ev = float(np.linalg.norm(q_e - entered["q"])), float(np.linalg.norm(v_e - entered["v"]))
-            ok = eq <= GATE_POSITION_M and ev <= GATE_VELOCITY_M_S and terminated_event(event)
-            gate = {"usable": bool(ok), "reason": "entry_ok" if ok else "entry_state_mismatch", "entry_s": s_e,
-                    "position_error_m": eq, "velocity_error_m_s": ev, "predicted_entry": bool(factual_entry and factual_entry["entry"]),
-                    "weight": float(max(0.0, 1.0 - max(eq / GATE_POSITION_M, ev / GATE_VELOCITY_M_S)))}
-        elif factual is not None:
-            if not stage_complete:
-                gate = {"usable": False, "reason": "stage_not_complete"}
-            else:
-                eq, ev, ed = float(np.linalg.norm(factual["q"] - q1)), float(np.linalg.norm(factual["v"] - v1)), abs(factual["dv"] - (e._delta_v - dv0))
-                ok = eq <= GATE_POSITION_M and ev <= GATE_VELOCITY_M_S and ed <= GATE_DELTA_V_M_S
-                gate = {"usable": bool(ok), "reason": "ok" if ok else "factual_mismatch", "position_error_m": eq,
-                        "velocity_error_m_s": ev, "delta_v_error_m_s": ed,
-                        "weight": float(max(0.0, 1.0 - max(eq / GATE_POSITION_M, ev / GATE_VELOCITY_M_S, ed / GATE_DELTA_V_M_S)))}
+        entered = self._stage_entry if (self._stage_entry is not None and self._stage_entry["t"] - t0 <= STAGE_S + 1e-6) else None
+        entry_rec = self._entry_open
         self.last = last
         self.stats["holds"] += int(held)
         terminated = event in ("success", "unsafe", "timeout", "resource_exhausted")
         truncated = event == "numerical_failure"
         if terminated:
             self._close_bridge(event)
+        # EACC labels: only where the executed intent's outcome covers the same interval as its siblings' --
+        # its stage completed, or it opened the entry inside the stage
+        model = {"fact": None, "cands": [], "diag": {"reason": "off"}}
+        if model_on and (stage_complete or entered is not None) and ecal.ready:
+            model = self._labels(plan, a, start, cal, ecal, self._trace, entered, entry_rec, event)
+            model["diag"]["reason"] = "entry" if entered is not None else "stage"
+        elif model_on:
+            model["diag"]["reason"] = "not_comparable" if ecal.ready else "entry_calibration"
         self.return_true += reward
         shaped = reward
         if self.shaping:
             phi1 = 0.0 if terminated else self._phi()
             shaped = reward + GAMMA_STAGE * phi1 - phi0
-        out_cands = [{"a": p["a"], "reward": p["reward"], "next_obs": p["obs"], "weight": gate["weight"], "done": bool(p.get("done", False))}
-                     for p in predictions] if gate["usable"] else []
-        self.stats["entry_labels"] = self.stats.get("entry_labels", 0) + sum(c["done"] for c in out_cands)
-        self.stats["entry_gate"] = self.stats.get("entry_gate", {})
-        self.stats["entry_gate"][gate["reason"]] = self.stats["entry_gate"].get(gate["reason"], 0) + 1
-        self.stats["model_candidates"] = self.stats.get("model_candidates", 0) + len(out_cands)
-        self.stats["gate_usable"] = self.stats.get("gate_usable", 0) + int(gate["usable"])
+        n_entry = sum(c["done"] for c in model["cands"])
+        self.stats["entry_labels"] = self.stats.get("entry_labels", 0) + n_entry
+        self.stats["model_candidates"] = self.stats.get("model_candidates", 0) + len(model["cands"])
+        reason = model["diag"]["reason"]
+        self.stats["model_reason"] = self.stats.get("model_reason", {})
+        self.stats["model_reason"][reason] = self.stats["model_reason"].get(reason, 0) + 1
         if g.mode in ("bridge", "descent"):
             self.stats["macro"] = g.mode
         info = {"event": event, "true_reward": reward, "stage_s": e.time_s - t0, "held": held, "mode": g.mode,
                 "plan_status": plan["status"], "rate_limited": goal["rate_limited"], "planned_dv": plan.get("delta_v_m_s"), "executed_dv": e._delta_v - dv0,
-                "gate": gate, "stage_model": out_cands, "time_s": e.time_s, "delta_v": e._delta_v,
+                "model": model, "time_s": e.time_s, "delta_v": e._delta_v,
                 "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission), "far_field_controls": self.far_field_controls}
         return self.observation(), float(shaped), terminated, truncated, info
 
