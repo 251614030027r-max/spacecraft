@@ -1,0 +1,22 @@
+{
+  "forecast_complete_phase1": "17:00-19:00 JST conditional",
+  "samples": [
+    "learner21676 waiting in SubprocVecEnv.step_wait pipe recv",
+    "env17836 active in CLARABEL/cvxpy solver -> controllers/mpc/controller.py:807 -> env/t2_stage.py -> true env advance",
+    "same group env18236/20568 idle waiting command"
+  ],
+  "interpretation": "synchronous vector environment waits for slow MPC/truth rollout; more allowed CPU cores cannot remove within-group dependency",
+  "scientific_code_changed": false,
+  "limits": "one nonblocking stack sample group, not whole-run profile; no locals used",
+  "parallel_runs": 4,
+  "all_cpus": "0xFFF",
+  "training_restarted": false,
+  "frozen": "fa54ed1391602386063290b7d34222313a4a427e",
+  "memory_bottleneck_not_observed": "commit free18.86GiB/physical3.28GiB",
+  "phase1_remaining_screen": 360,
+  "cpu_sample_percent": 38,
+  "forecast_training": "11:00-13:00 JST conditional",
+  "environments_each": 3,
+  "jst": "2026-10-23T09:59:12.5706577+09:00",
+  "phase1_remaining_eval": 384
+}

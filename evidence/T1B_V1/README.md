@@ -1,0 +1,25 @@
+# T1-B V1 minimal offline review assets
+
+Published by explicit user request on2026-10-19. No learning, new truth evaluation, model conversion, rebase, force push or frozen-file edits were performed for this delivery.
+
+Scientific commits: original `27e8095cd3f5e53b069b083b4df581fb1f0ecbf4`, V1 `636b65517bf73985b4e544c67decf857b4fffc19`. Both remain in this branch history. Before publication, `git merge-base --is-ancestor origin/claude/sac-mpc-coupling-design-ns7g6i 636b655` returned0 (remote2a2ba3a); no merge was needed. `MANIFEST.json` maps copied bytes to original local sources; `SHA256SUMS` covers all package files except itself.
+
+## Entry points
+
+`RESULT.md` is the original27e8095 negative readout. `RESULT_V1.md` is the completed V1 result. The two current lower execution documents are in `execution_orders/`; the original nonmandatory T1B recommendation and research consensus are context in `protocol/`. Inputs are evidence, not permission to execute further training.
+
+`models/MODEL_SHA256.json` lists exactly8 unchanged E-SAC/E-TCPF checkpoints (0/2k/5k/10k), global clocks and hashes. Load with `train.t1_b_feasible_sac.FeasibleSupportSAC` at636b655; 52D observations include46 original fields+3 candidate times/200+3 valid flags. `experiments.t1b_repair_v1` constructs the frozen task. The callback checkpoints precede the current4-transition storage/update, e.g.5k has4496critic/1498Actor updates;10k has9496/3165. Post-update final models have4500/1500 and9500/3166 and are deliberately not substituted. Do not load52D E models as the original46D cold policy.
+
+`episodes/` contains all V1 original-block2k/5k/10k and both10k readout blocks, separate cold/interface trajectories, and necessary fixed strong references. `training/<arm>/0000_5000` and `5000_10000` contain actual manifests, exact online decision traces and numerical learning probes. Each decisions.jsonl is<50MB and is supplied intact. The10k continuation retained matching post-update weights/optimizers/Replay/RNG; its administrative episode boundary, next unused openings and LR floor1e-5 are disclosed in each continuation manifest and `drivers/continue_v1_10k.py`. No fake terminal reward or cross-opening SMDP closure was inserted.
+
+`training/E-TCPF/*/model_prefix_releases.jsonl` contains all model factual/alternative prefixes, the same-time actual factual endpoint, validation and the predeclared alternative rule. These allow bootstrap/reward decomposition using frozen target critics; they do not provide alternate RK45 truth. `MPC_FACTUAL_VALUE_CHECK.csv` uses frozen5k target values, not the historical update-time targets. `FROZEN_REPLAY_TARGETS.csv` is a systematic64-per-arm sample of saved5k Replay numerical targets, not the full Replay.
+
+`coverage/CANDIDATE_BY_1K_AND_EXPERT.csv` separates actual online1k global-step bins from the separate shared1000-step teacher collection clock. Count `learning_decision=true` when estimating genuine task-choice coverage; canonical nondecision holds are not SAC choices. Expert records are in `coverage/EXPERT_DECISIONS.csv`. Teacher is earliest when no plan, keeps a live plan, includes failures, and uses no BC; it is not correct to assume every teacher task-review action has index0. Twenty percent refers to mixed Replay sampling; exact cumulative sampling counts are in finished/learning files. Teacher collection counts must not be counted as additional online steps or imputed as sampled expert actions in every1k bin.
+
+The V1 actor implementation already uses discrete categorical entropy of exact Gaussian-CDF bin probabilities (`train/t1_b_feasible_sac.py`). Actual alpha comes from inherited `alpha_of(obs)`, not merely an unqualified0.005 copied from an unrelated shared entry point. Q sees actual executed tau/100-1; raw latent bin selection is not differentiated as a continuous physical tau. These are code facts for review, not a proven root-cause judgment. Candidate saturation, low entropy temperature, off-policy coverage, bootstrap self-reference and their causal roles still require the requested independent audit. No claim is made that phi(z) is identically zero at any universal threshold.
+
+Requested old-format delta_stats/fix_stats/interval_audit are preserved under `historical_27e8095/`. V1 did not generate those filenames; `MISSING_AND_EQUIVALENTS.json` points to its actual learning/feedback/calibration records instead. No old-format file has been relabeled as V1.
+
+Offline only: no optimizer updates are required to inspect probabilities, Gaussian boundaries,z,phi(z),discrete entropy,alpha,Q1/Q2,target values and behavior coverage. Original task/safety/Gstar/MPC remain unchanged. Three research objectives are not jointly satisfied: fixed-block2k→10k plateau, identical paired task returns in both blocks, expanded mean return below its original cold0k. Do not extend this failed version as part of the review.
+
+Git byte integrity: package-local `.gitattributes` disables EOL conversion for these review assets only. Each staged Git blob is verified with SHA256 against the supplied original-byte manifest; no global Git settings changed.

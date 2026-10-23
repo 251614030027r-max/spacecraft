@@ -69,3 +69,18 @@ def reconstruct_chaser_state(
     return SpacecraftState(
         rotation, position, chaser_twist[:3], chaser_twist[3:]
     )
+
+
+def reconstruct_target_state(
+    chaser: SpacecraftState, relative: RelativeState
+) -> SpacecraftState:
+    """Invert :func:`relative_state` when the chaser state is known."""
+
+    target_transform = state_transform(chaser) @ inverse_transform(relative.transform)
+    rotation, position = split_transform(target_transform)
+    target_twist = adjoint(relative.transform) @ (
+        chaser.twist - relative.twist
+    )
+    return SpacecraftState(
+        rotation, position, target_twist[:3], target_twist[3:]
+    )

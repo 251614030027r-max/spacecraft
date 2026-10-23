@@ -1,0 +1,5 @@
+{"opening": 292000, "time_window_s": [0, 12], "run_utc": "2026-10-18T14:29:09Z",
+ "a_t1p_coast_stage": {"position_error_m": 0.532, "velocity_error_eci_m_s": [-0.004, -0.083, 0.003], "delta_v_used_m_s": 0.094, "delta_v_planned_m_s": 0.0},
+ "b_t1n_gstar_plan_110s": {"position_error_m": 0.407, "velocity_error_eci_m_s": [-0.002, -0.053, -0.004], "delta_v_used_m_s": 0.194, "delta_v_planned_first_12s_m_s": 0.1811, "status": "kept"},
+ "reading": "the same directional MPC tracking error appears with the T1-N long G* reference: it is the frozen shared MPC's tracking of G*-style inertial references, not a T1-P reference construction error",
+ "script": "inline in the upper session: T1PReviewEnv a=0 stage then 5 continue steps vs plan_state; T1NReviewEnv tau=110 s then 5 continue steps vs _plan_position/_plan_velocity"}
