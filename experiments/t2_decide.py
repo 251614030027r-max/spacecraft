@@ -2,6 +2,7 @@
 
     python -B -m experiments.t2_decide --readout VB_READOUT.json --output DECISION.json [--final 3000]             (T2.2)
     python -B -m experiments.t2_decide --criteria t23 --readout READOUT.json --output DECISION.json [--final 4000]  (T2.3)
+    python -B -m experiments.t2_decide --criteria t24 --readout READOUT.json --output DECISION.json                (T2.4)
 
 T2.2 (research layer, 2026-10-22):
 
@@ -25,6 +26,7 @@ import numpy as np
 
 T2_MVE_3000 = 23.421727291070482          # evidence/T2_STAGE_B/B_READOUT.json, e_mve step 3000
 T22_SAC_3000 = 54.32                       # evidence/T2_2_TEST/seed1_final: e_sac_s1 step 3000, the best arm of T2.2
+T23_EACC_4000 = 42.36499930600538         # evidence/T2_3_TEST/B_seed0: e_mve_s0 step 4000 (T2.3 coupled arm)
 
 
 def decide(r: dict, final: int = 3000) -> dict:
@@ -110,13 +112,58 @@ def decide_t23(r: dict, final: int = 4000, checkpoints=(1000, 2000, 3000, 4000))
     return out
 
 
+def decide_t24(r: dict) -> dict:
+    """T2.4 (pre-registered with its run order). Seed 0: EACC trained to 4000 against the T2.3 SAC seed 0 (same
+    executor; the T2.4 change touches only the coupled labels). Seed 1: EACC to 4000 against the T2.3 SAC
+    seed 1, which was stopped at 3000: compared over 1000..3000.
+
+      C0 complete     seed 0: both arms at 0..4000; seed 1: both arms at 1000..3000; all 24/24, no ERROR file
+      C1 beyond T2.3  EACC seed 0 at 4000 > 42.365 (the T2.3 coupled arm)
+      C2 coupling     paired EACC - SAC averaged over the checkpoints > 0: seed 0 over 1000..4000, seed 1 over 1000..3000
+      C3 end level    paired at the last common checkpoint >= -3 (seed 0 at 4000, seed 1 at 3000)
+      C4 converged    seed 0, both arms: |R(4000) - R(3000)| <= 10
+      C5 safety       seed 0 at 4000: EACC captures >= SAC captures - 1, EACC unsafe <= SAC unsafe + 1
+    Verdict: incomplete | pass (all) | seed0_only (seed 0 passes C1..C5, seed 1 fails C2 or C3) | not_converged |
+    coupling_failure."""
+    arms = r['arms']; paired = r.get('paired', {})
+    get = lambda arm, k: (arms.get(arm) or {}).get(str(k))
+    pr = lambda s, k: paired.get(f's{s}/step_{k}')
+    plan = {'0': (1000, 2000, 3000, 4000), '1': (1000, 2000, 3000)}
+    out = {'criteria': {}, 'values': {}}; c = out['criteria']; v = out['values']
+    c['C0_complete'] = bool(r.get('all_complete')) and all(get(f'e_{a}_s0', k) for a in ('mve', 'sac') for k in (0, 1000, 2000, 3000, 4000)) \
+        and all(pr(s, k) for s, ks in plan.items() for k in ks)
+    if not c['C0_complete']:
+        out['verdict'] = 'incomplete'; return out
+    v['eacc_s0_4000'] = get('e_mve_s0', 4000)['mean_return']; v['sac_s0_4000'] = get('e_sac_s0', 4000)['mean_return']
+    v['paired_auc'] = {s: float(np.mean([pr(s, k)['mean'] for k in ks])) for s, ks in plan.items()}
+    v['paired_end'] = {s: pr(s, ks[-1])['mean'] for s, ks in plan.items()}
+    v['paired_end_urgent'] = {s: pr(s, ks[-1])['urgent'] for s, ks in plan.items()}
+    v['last_step_change_s0'] = {a: get(f'e_{a}_s0', 4000)['mean_return'] - get(f'e_{a}_s0', 3000)['mean_return'] for a in ('mve', 'sac')}
+    c['C1_beyond_t23'] = v['eacc_s0_4000'] > T23_EACC_4000
+    c['C2_coupling_s0'] = v['paired_auc']['0'] > 0; c['C2_coupling_s1'] = v['paired_auc']['1'] > 0
+    c['C3_end_s0'] = v['paired_end']['0'] >= -3.0; c['C3_end_s1'] = v['paired_end']['1'] >= -3.0
+    c['C4_converged'] = all(abs(x) <= 10.0 for x in v['last_step_change_s0'].values())
+    p = pr('0', 4000)
+    c['C5_safety'] = p['capture_mve'] >= p['capture_sac'] - 1 and p['unsafe_mve'] <= p['unsafe_sac'] + 1
+    seed0 = all(c[k] for k in ('C1_beyond_t23', 'C2_coupling_s0', 'C3_end_s0', 'C4_converged', 'C5_safety'))
+    if seed0 and c['C2_coupling_s1'] and c['C3_end_s1']:
+        out['verdict'] = 'pass'
+    elif seed0:
+        out['verdict'] = 'seed0_only'
+    elif not c['C4_converged']:
+        out['verdict'] = 'not_converged'
+    else:
+        out['verdict'] = 'coupling_failure'
+    return out
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--readout', required=True); p.add_argument('--output', required=True); p.add_argument('--final', type=int, default=None)
-    p.add_argument('--criteria', choices=['t22', 't23'], default='t22')
+    p.add_argument('--criteria', choices=['t22', 't23', 't24'], default='t22')
     a = p.parse_args()
     r = json.loads(Path(a.readout).read_text(encoding='utf-8'))
-    res = decide_t23(r, a.final or 4000) if a.criteria == 't23' else decide(r, a.final or 3000)
+    res = decide_t24(r) if a.criteria == 't24' else decide_t23(r, a.final or 4000) if a.criteria == 't23' else decide(r, a.final or 3000)
     Path(a.output).write_text(json.dumps(res, indent=1), encoding='utf-8')
     print(json.dumps(res, indent=1))
 

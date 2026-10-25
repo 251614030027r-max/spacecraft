@@ -419,3 +419,20 @@ def test_window_readout_pairs_rigid_and_window(tmp_path):
     window(tmp_path / 'rigid', tmp_path / 'window', tmp_path / 'w.json')
     w = json.loads((tmp_path / 'w.json').read_text())
     assert w['pairs'] == 2 and abs(w['paired_return']['mean'] - 1.5) < 1e-9 and w['entries_lost'] == {'rigid': 4, 'window': 0}
+
+
+def test_t24_decision_applies_the_preregistered_criteria():
+    from experiments.t2_decide import decide_t24
+    arm = lambda xs: {str(k): {'mean_return': x} for k, x in zip((0, 1000, 2000, 3000, 4000), xs)}
+    pair = lambda m: {'mean': m, 'urgent': m, 'without_top2': m, 'capture_mve': 23, 'capture_sac': 23, 'unsafe_mve': 0, 'unsafe_sac': 0}
+    r = {'all_complete': True, 'arms': {'e_mve_s0': arm([-15, 40, 50, 55, 56]), 'e_sac_s0': arm([-15, 36, 45, 55, 54]),
+                                        'e_mve_s1': arm([None, 30, 45, 50]), 'e_sac_s1': arm([None, 26, 44, 50])},
+         'paired': {**{f's0/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 5), (3000, 0), (4000, 2))},
+                    **{f's1/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 1), (3000, 0))}}}
+    assert decide_t24(r)['verdict'] == 'pass'
+    r['paired']['s1/step_3000'] = pair(-20)
+    assert decide_t24(r)['verdict'] == 'seed0_only'
+    r['arms']['e_mve_s0'] = arm([-15, 30, 35, 40, 41])
+    assert decide_t24(r)['verdict'] == 'coupling_failure'
+    r['all_complete'] = False
+    assert decide_t24(r)['verdict'] == 'incomplete'
