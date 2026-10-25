@@ -59,7 +59,8 @@ class StageReplay(ReplayBuffer):
         self.cand_a = np.zeros((*shape, k, a), np.float32); self.cand_r = np.zeros((*shape, k), np.float32)
         self.cand_obs = np.zeros((*shape, k, d), np.float32); self.cand_done = np.zeros((*shape, k), np.float32)
         self.cand_valid = np.zeros((*shape, k), np.float32)
-        self.cand_bias = np.zeros((*shape, k), np.float32)     # systematic error of the label's outcome model (entry labels)
+        #: label kind: 0 stage end, 1 entry with the executed entry's realized outcome anchored, 2 entry on the outcome model alone
+        self.cand_kind = np.zeros((*shape, k), np.float32)
         self.created = np.zeros(shape, np.float32)             # stored transitions at label time (label age diagnostic)
         self.stored = 0
         self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0, 'entry_candidates': 0, 'reason': {}}
@@ -67,7 +68,7 @@ class StageReplay(ReplayBuffer):
 
     def add(self, obs, next_obs, action, reward, done, infos):
         i = self.pos
-        self.fact_valid[i] = 0.0; self.cand_valid[i] = 0.0; self.cand_done[i] = 0.0; self.cand_bias[i] = 0.0
+        self.fact_valid[i] = 0.0; self.cand_valid[i] = 0.0; self.cand_done[i] = 0.0; self.cand_kind[i] = 0.0
         self.created[i] = self.stored; self.stored += 1
         for e, info in enumerate(infos):
             model = info.get('model') or {}
@@ -81,7 +82,7 @@ class StageReplay(ReplayBuffer):
             c['with_candidates'] += 1; c['candidates'] += len(cands)
             for j, x in enumerate(cands):
                 self.cand_a[i, e, j] = x['a']; self.cand_r[i, e, j] = x['reward']; self.cand_obs[i, e, j] = x['next_obs']
-                self.cand_done[i, e, j] = float(x['done']); self.cand_valid[i, e, j] = 1.0; self.cand_bias[i, e, j] = float(x.get('bias', 0.0))
+                self.cand_done[i, e, j] = float(x['done']); self.cand_valid[i, e, j] = 1.0; self.cand_kind[i, e, j] = float(x.get('kind', 0))
                 c['entry_candidates'] += int(x['done'])
         super().add(obs, next_obs, action, reward, done, infos)
 
@@ -98,7 +99,7 @@ class StageReplay(ReplayBuffer):
     def model_batch(self):
         i, e = self._last
         return {k: self.to_torch(getattr(self, k)[i, e]) for k in
-                ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_bias', 'created')}
+                ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_kind', 'created')}
 
 
 class T2SAC(SAC):
@@ -106,6 +107,7 @@ class T2SAC(SAC):
         self.model_beta, self.model_start = float(model_beta), int(model_start)
         self.model_stats = []
         self.td_ms = None          # running mean of the squared real TD residual (sigma^2)
+        self.entry_bias_now = None # current entry outcome-model bias (mean over environments that know it), None = unknown
         kwargs.setdefault('replay_buffer_class', StageReplay)
         kwargs.setdefault('ent_coef', ENT_COEF)   # fixed (DEAD_ENDS D02)
         super().__init__(*args, **kwargs)
@@ -131,14 +133,16 @@ class T2SAC(SAC):
             mask = (m['cand_valid'] > 0) & rows.reshape(-1, 1)
             s1 = m['cand_obs'][mask]
             y = m['cand_r'][mask].reshape(-1, 1) + (1.0 - m['cand_done'][mask].reshape(-1, 1)) * self.gamma * self._soft_value(s1, ent_coef)
-            # candidate-level reliability (T2.4): w_k = 1 / (1 + (eps_k / sigma)^2) with the candidate's error estimate
-            # eps_k = |e_a| + |b_k|: the factual model error (transferable part, executed intent) plus the label's own
-            # outcome-model bias (entry labels: the entry outcome model's predict-then-observe bias on this environment's
-            # executed entries, at label time; stage labels: 0). No distance term: the T2.3 audit found no dependence of
-            # the label error on the candidate's distance from the executed intent.
-            eps = err.abs().reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1) + m['cand_bias'][mask].reshape(-1, 1).abs()
+            # candidate-level reliability (T2.4): w_k = 1 / (1 + (eps_k / sigma)^2), eps_k the candidate's error estimate:
+            #   eps_k = |e_a| + b_k,  b_k = 0 (stage labels; entry labels anchored to this decision's realized entry),
+            #   b_k = |current entry outcome-model bias| (entry labels on the outcome model alone; one sigma while unknown).
+            # The current bias re-weights stored labels as soon as it is measured. No distance term: the T2.3 audit
+            # found no dependence of the label error on the candidate's distance from the executed intent.
+            kind = m['cand_kind'][mask].reshape(-1, 1)
+            b_now = float(np.sqrt(self.td_ms)) if self.entry_bias_now is None else abs(float(self.entry_bias_now))
+            eps = err.abs().reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1) + (kind == 2).float() * b_now
             wk = 1.0 / (1.0 + eps ** 2 / self.td_ms)
-            entry = m['cand_done'][mask].reshape(-1, 1) > 0
+            entry = kind > 0
             rel = wk / w.reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1).clamp_min(1e-12)   # reported only
         s = data.observations[:, None, :].expand(-1, k, -1)[mask]
         qs = self.critic(s, m['cand_a'][mask])
@@ -147,7 +151,7 @@ class T2SAC(SAC):
         return loss, {'model_rows': int(mask.sum()), 'w_mean': float(wk.mean()), 'abs_err_median': float(e.abs().median()),
                       'w_err_max': float((w[rows] * e.abs()).max()), 'entry_share': float(entry.float().mean()),
                       'entry_rel_mean': float(rel[entry].mean()) if bool(entry.any()) else None,
-                      'entry_bias_mean': float(m['cand_bias'][mask].reshape(-1, 1)[entry].mean()) if bool(entry.any()) else None,
+                      'entry_unanchored_share': float((kind == 2).float().mean()), 'entry_bias_now': self.entry_bias_now,
                       'label_age_mean': float(self.replay_buffer.stored - m['created'][rows].mean())}
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
@@ -216,7 +220,7 @@ class SpacesEnv(gym.Env):
 def _slim(info: dict) -> dict:
     """What the learner needs from a step's info (the model labels without their audit fields)."""
     model = info.get('model') or {}
-    cands = [{k: c.get(k, 0.0) for k in ('a', 'reward', 'next_obs', 'done', 'bias')} for c in model.get('cands') or []]
+    cands = [{k: c.get(k, 0) for k in ('a', 'reward', 'next_obs', 'done', 'kind')} for c in model.get('cands') or []]
     diag = model.get('diag') or {}
     return {'model': {'fact': model.get('fact'), 'cands': cands, 'diag': {k: diag.get(k) for k in ('reason', 'entry_bias', 'entry_records')}},
             **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')}}
@@ -271,6 +275,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     marks = sorted(set([m for m in marks if m <= steps] + [steps]))
     model.save(out / 'checkpoints' / 'step_0')
     episodes, order, t0 = [], [], time.time()
+    bias_by_worker = {}
     rng = np.random.default_rng(seed)
     active = list(pipes)
     while active:
@@ -282,6 +287,10 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                 info = dict(info, **({'TimeLimit.truncated': True} if trunc and not term else {}))
                 model.replay_buffer.add(o[None], o1[None], act[None], np.array([r]), np.array([done]), [info])
                 model.num_timesteps += 1; order.append(pipes.index(conn))
+                b = (info['model']['diag'] or {}).get('entry_bias')
+                if b is not None:                      # latest known outcome-model bias of each environment
+                    bias_by_worker[pipes.index(conn)] = b
+                    model.entry_bias_now = float(np.mean(list(bias_by_worker.values())))
                 if done:
                     episodes.append({'steps': int(model.num_timesteps), 'worker': pipes.index(conn), **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')},
                                      'entry_bias': (info['model']['diag'] or {}).get('entry_bias')})

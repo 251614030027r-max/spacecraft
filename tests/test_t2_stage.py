@@ -204,23 +204,30 @@ def test_entry_calibration_replays_executed_entries():
     assert old.predict(25.0, 0.2, w, remaining=120.0)['p_success'] == 1.0
 
 
-def test_entry_label_reliability_uses_the_outcome_model_bias():
-    """T2.4: an entry label's weight is the factual weight times 1 / (1 + (b_E / sigma)^2), b_E the entry outcome
-    model's predict-then-observe bias; stage labels keep the factual weight."""
+def test_entry_label_reliability_uses_the_current_outcome_model_bias():
+    """T2.4: w_k = 1 / (1 + (eps_k / sigma)^2), eps_k = |e_a| + b_k. b_k is the *current* entry outcome-model bias for
+    entry labels resting on the outcome model alone (kind 2; one sigma while the bias is unknown), and 0 for entry
+    labels anchored to the decision's realized entry (kind 1) and for stage labels (kind 0)."""
     from env.t2_stage import OBS_DIM
     m = _sac(batch=4)
     for k in range(4):
         fact = {'reward': 0.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True}
-        cands = [{'a': np.zeros(2, np.float32), 'reward': 10.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True, 'bias': -20.0},
-                 {'a': np.ones(2, np.float32) * .5, 'reward': 1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True, 'bias': 0.0}]
+        cands = [{'a': np.zeros(2, np.float32), 'reward': 10.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True, 'kind': 2},
+                 {'a': np.ones(2, np.float32) * .5, 'reward': 1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True, 'kind': 1}]
         m.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([0.0]), np.array([True]),
                             [{'model': {'fact': fact, 'cands': cands}}])
-    m.td_ms = 100.0                              # sigma 10: a 20 bias gives 1 / (1 + 4) = 0.2
+    m.td_ms = 100.0                              # sigma 10
     data = m.replay_buffer.sample(4)
     with th.no_grad():
         target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
-    loss, info = m._model_loss(data, target, m.ent_coef_tensor)
-    assert abs(info['entry_rel_mean'] - (0.2 + 1.0) / 2) < 1e-6 and abs(info['w_mean'] - 0.6) < 1e-6
+    _, info = m._model_loss(data, target, m.ent_coef_tensor)       # bias unknown: one sigma -> 1 / (1 + 1) = 0.5
+    assert abs(info['w_mean'] - (0.5 + 1.0) / 2) < 1e-6 and abs(info['entry_unanchored_share'] - 0.5) < 1e-9
+    m.entry_bias_now = -20.0                     # measured now: the stored labels are re-weighted, 1 / (1 + 4) = 0.2
+    _, info = m._model_loss(data, target, m.ent_coef_tensor)
+    assert abs(info['w_mean'] - (0.2 + 1.0) / 2) < 1e-6
+    m.entry_bias_now = 0.0
+    _, info = m._model_loss(data, target, m.ent_coef_tensor)
+    assert abs(info['w_mean'] - 1.0) < 1e-6
 
 def test_anchored_replay_reproduces_the_executed_intent():
     """M1 + M2 consistency: the executed intent, predicted with its own realized residual path and the realized

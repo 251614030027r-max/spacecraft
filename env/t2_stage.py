@@ -727,21 +727,26 @@ class T2StageEnv(gym.Env):
             return nodes[k] if k in nodes else nodes[max([x for x in keys if x <= k] or [keys[0]])]
         self._model_t0 = start["t"]
         fact = self.predict_intent(plan, a, start, cal, ecal, raw, attitude)
-        offset = 0.0
+        offset, anchored_outcome = 0.0, False
         if entry_rec is not None and entry_rec["t"] >= start["t"] - 1e-6 and terminated_event(event) and ecal.ready:
+            anchored_outcome = True          # the executed entry's realized outcome residual is transported below
             offset = float(entry_rec["G"] - ecal.predict(entry_rec["tau"], entry_rec["dv_plan"], e.config.reward,
                                                          self.mission["deadline_s"] - entry_rec["t"])["reward"])
         # systematic error of the entry outcome model, measured predict-then-observe on this environment's own
-        # executed entries; the learner turns it into the entry labels' reliability (T2.4)
+        # executed entries (None until five are known). It is reported with every transition; the learner applies the
+        # *current* value to every stored entry label that rests on the outcome model alone (kind 2), so old labels are
+        # re-weighted when a bias appears. Entry labels whose outcome was anchored to this decision's realized entry
+        # (kind 1) and stage labels (kind 0) carry no outcome-model bias.
         res = self.entry_residuals[-ENTRY_CAL_MIN:]
-        entry_bias = float(np.mean(res)) if len(res) >= 5 else 0.0
+        entry_bias = float(np.mean(res)) if len(res) >= 5 else None
         cands = []
         for c in self._plan_candidates(start["q"], start["v"], start["frame"], a):
             p = self.predict_intent(c["plan"], c["a"], start, cal, ecal, anchored, attitude, entry_offset=offset)
             if p["done"]:
-                cand = {"a": c["a"], "reward": p["reward"], "next_obs": np.zeros(OBS_DIM, np.float32), "done": True, "bias": entry_bias}
+                cand = {"a": c["a"], "reward": p["reward"], "next_obs": np.zeros(OBS_DIM, np.float32), "done": True,
+                        "kind": 1 if anchored_outcome else 2}
             elif c["plan"].get("terminal_position_error_m", 1.0) <= 0.3 and 6.5 <= p["r_end"] <= 25.0:   # model domain
-                cand = {"a": c["a"], "reward": p["reward"], "next_obs": p["obs"], "done": False, "bias": 0.0}
+                cand = {"a": c["a"], "reward": p["reward"], "next_obs": p["obs"], "done": False, "kind": 0}
             else:
                 continue
             if self.diagnostics:      # label audit against truth branches: the raw (calibration-only) prediction beside it
