@@ -155,7 +155,7 @@ def main():
     p.add_argument('--seed', type=int, default=0); p.add_argument('--steps', type=int, default=2000)
     p.add_argument('--checkpoint'); p.add_argument('--label'); p.add_argument('--checkpoints', default='500,1000,1500,2000,3000,4000,5000')
     p.add_argument('--smoke', action='store_true'); p.add_argument('--no-window', action='store_true')
-    p.add_argument('--entry-stages', type=int, default=2); p.add_argument('--updates-per-transition', type=float, default=2.0)
+    p.add_argument('--entry-stages', type=int, default=None); p.add_argument('--updates-per-transition', type=float, default=2.0)
     p.add_argument('--model-beta', type=float, default=0.5)
     a = p.parse_args(); out = Path(a.output)
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')

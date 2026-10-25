@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.4"
+T2_VERSION = "t2-stage-0.4.1"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -381,7 +381,11 @@ ENTRY_NODES_S = tuple(ENTRY_NODE_S * k for k in range(1, 9))
 ENTRY_SOLVES_PER_NODE = 7        # entry-planner solves per node: every arrival time, ascending, as the executor
 ENTRY_MAX_SOLVES = 24            # per predicted action (over both stages)
 ENTRY_CAL_MIN = 20               # executed entries before entry labels are issued (5 left the success rate to the prior: labels ~55 low, T2.3 audit)
-ENTRY_STAGES = 2                 # entry horizon: the action's stage and (n - 1) more holding the same intent
+#: entry horizon of a counterfactual label. T2.4: 1 -- the label follows the critic's decision boundary: an intent
+#: whose own 16 s stage opens the entry gets the terminal entry label, every other intent its stage-end state
+#: (bootstrapped by the learner). Two stages labelled Q(s, a) with the return of *repeating* a for a second stage,
+#: which is not the Bellman target of a 16 s decision (research layer, 2026-10-25); kept as an option only.
+ENTRY_STAGES = 1
 
 
 @dataclass

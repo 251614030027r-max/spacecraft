@@ -60,12 +60,15 @@ class StageReplay(ReplayBuffer):
         self.cand_obs = np.zeros((*shape, k, d), np.float32); self.cand_done = np.zeros((*shape, k), np.float32)
         self.cand_valid = np.zeros((*shape, k), np.float32)
         self.cand_bias = np.zeros((*shape, k), np.float32)     # systematic error of the label's outcome model (entry labels)
+        self.created = np.zeros(shape, np.float32)             # stored transitions at label time (label age diagnostic)
+        self.stored = 0
         self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0, 'entry_candidates': 0, 'reason': {}}
         self._last = None
 
     def add(self, obs, next_obs, action, reward, done, infos):
         i = self.pos
         self.fact_valid[i] = 0.0; self.cand_valid[i] = 0.0; self.cand_done[i] = 0.0; self.cand_bias[i] = 0.0
+        self.created[i] = self.stored; self.stored += 1
         for e, info in enumerate(infos):
             model = info.get('model') or {}
             fact, cands = model.get('fact'), (model.get('cands') or [])[:self.k]
@@ -95,7 +98,7 @@ class StageReplay(ReplayBuffer):
     def model_batch(self):
         i, e = self._last
         return {k: self.to_torch(getattr(self, k)[i, e]) for k in
-                ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_bias')}
+                ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_bias', 'created')}
 
 
 class T2SAC(SAC):
@@ -128,11 +131,15 @@ class T2SAC(SAC):
             mask = (m['cand_valid'] > 0) & rows.reshape(-1, 1)
             s1 = m['cand_obs'][mask]
             y = m['cand_r'][mask].reshape(-1, 1) + (1.0 - m['cand_done'][mask].reshape(-1, 1)) * self.gamma * self._soft_value(s1, ent_coef)
-            # candidate reliability (T2.4): the same Cauchy rule on the label's own model bias (entry labels: the
-            # outcome model's predict-then-observe error on this environment's executed entries; stage labels: 0)
-            rel = 1.0 / (1.0 + m['cand_bias'][mask].reshape(-1, 1) ** 2 / self.td_ms)
-            wk = w.reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1) * rel
+            # candidate-level reliability (T2.4): w_k = 1 / (1 + (eps_k / sigma)^2) with the candidate's error estimate
+            # eps_k = |e_a| + |b_k|: the factual model error (transferable part, executed intent) plus the label's own
+            # outcome-model bias (entry labels: the entry outcome model's predict-then-observe bias on this environment's
+            # executed entries, at label time; stage labels: 0). No distance term: the T2.3 audit found no dependence of
+            # the label error on the candidate's distance from the executed intent.
+            eps = err.abs().reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1) + m['cand_bias'][mask].reshape(-1, 1).abs()
+            wk = 1.0 / (1.0 + eps ** 2 / self.td_ms)
             entry = m['cand_done'][mask].reshape(-1, 1) > 0
+            rel = wk / w.reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1).clamp_min(1e-12)   # reported only
         s = data.observations[:, None, :].expand(-1, k, -1)[mask]
         qs = self.critic(s, m['cand_a'][mask])
         loss = 0.5 * sum((wk * (q - y) ** 2).sum() for q in qs) / max(int(mask.sum()), 1)
@@ -140,7 +147,8 @@ class T2SAC(SAC):
         return loss, {'model_rows': int(mask.sum()), 'w_mean': float(wk.mean()), 'abs_err_median': float(e.abs().median()),
                       'w_err_max': float((w[rows] * e.abs()).max()), 'entry_share': float(entry.float().mean()),
                       'entry_rel_mean': float(rel[entry].mean()) if bool(entry.any()) else None,
-                      'entry_bias_mean': float(m['cand_bias'][mask].reshape(-1, 1)[entry].mean()) if bool(entry.any()) else None}
+                      'entry_bias_mean': float(m['cand_bias'][mask].reshape(-1, 1)[entry].mean()) if bool(entry.any()) else None,
+                      'label_age_mean': float(self.replay_buffer.stored - m['created'][rows].mean())}
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         self.policy.set_training_mode(True)

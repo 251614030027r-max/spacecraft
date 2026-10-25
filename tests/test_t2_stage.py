@@ -228,7 +228,7 @@ def test_anchored_replay_reproduces_the_executed_intent():
     executor's entry (294000, full closing: ~6 s into the stage starting at 48 s, tau 25 s) and the realized
     return. The executor model is the executor's own rule, not an imitation of it."""
     from env.t2_stage import T2StageEnv
-    env = T2StageEnv(openings=[294000], shaping=True, candidates=3, seed=1)
+    env = T2StageEnv(openings=[294000], shaping=True, candidates=3, seed=1, entry_stages=2)   # the two-stage option is still checked
     env.diagnostics = True
     env.reset(options={'opening': 294000})
     for _ in range(12):
@@ -436,3 +436,9 @@ def test_t24_decision_applies_the_preregistered_criteria():
     assert decide_t24(r)['verdict'] == 'coupling_failure'
     r['all_complete'] = False
     assert decide_t24(r)['verdict'] == 'incomplete'
+
+
+def test_counterfactual_labels_follow_the_decision_boundary():
+    """T2.4 default: an entry label only where the intent's own 16 s stage opens the entry; otherwise the stage end."""
+    from env.t2_stage import ENTRY_STAGES, T2StageEnv
+    assert ENTRY_STAGES == 1 and T2StageEnv(openings=[294000]).entry_stages == 1
