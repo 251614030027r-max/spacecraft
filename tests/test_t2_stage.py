@@ -180,22 +180,47 @@ def test_pure_row_is_the_mpc_alone():
     assert env.far_field_controls == 0 and env.generator is None
 
 
-def test_entry_calibration_prediction():
+def test_entry_calibration_replays_executed_entries():
+    """T2.4: each recorded entry's realized deviation (time beyond its plan, delta-v beyond its plan) is replayed
+    on the candidate's plan and remaining time. A timed-out record is censored: it counts as a failure only where
+    the candidate has no more slack than that record had; unsafe records always count."""
     from env.t2_stage import EntryCalibration
     from env.t1_env import T1Reward
-    c = EntryCalibration()
-    for k in range(19):
-        c.add(20.0 + k, 0.3, 60.0 + k, 0.2 + 1.5 * 0.3, k != 0, 150.0)
-    assert not c.ready
-    c.add(39.0, 0.3, 79.0, 0.2 + 1.5 * 0.3, True, 150.0)
-    assert c.ready
     w = T1Reward(time_cost_per_s=0.1, delta_v_cost_per_m_s=10.0)
-    p = c.predict(30.0, 0.3, w)
-    ps = 20.0 / 22.0
-    assert abs(p["duration"] - 70.0) < 1e-9 and abs(p["p_success"] - ps) < 1e-12
-    assert abs(p["dv"] - 0.65) < 0.05
-    assert abs(p["reward"] - (ps * 100 - (1 - ps) * 150 - 0.1 * 70 - 10 * p["dv"])) < 1e-9
+    c = EntryCalibration()
+    for k in range(19):                         # 19 captures, 40 s beyond the plan, +0.1 m/s beyond the plan
+        c.add(20.0, 0.3, 60.0, 0.4, True, 100.0, 150.0)
+    assert not c.ready
+    c.add(30.0, 0.3, 50.0, 0.4, False, 100.0, 50.0)   # timed out with 20 s of slack
+    assert c.ready
+    roomy = c.predict(25.0, 0.2, w, remaining=120.0)   # slack 95 s > 20 s: the censored record is left out
+    assert roomy['records'] == 19 and roomy['p_success'] == 1.0
+    assert abs(roomy['reward'] - (100 - 0.1 * 65.0 - 10 * 0.3)) < 1e-9
+    tight = c.predict(25.0, 0.2, w, remaining=40.0)    # 65 s needed > 40 s: every record times out here
+    assert tight['records'] == 20 and tight['p_success'] == 0.0 and abs(tight['reward'] - (-100 - 0.1 * 40.0 - 10 * 0.3)) < 1e-9
+    c.add(20.0, 0.3, 30.0, 0.5, False, 150.0, 150.0)  # an unsafe record always counts
+    assert c.predict(25.0, 0.2, w, remaining=120.0)['records'] == 20
+    old = EntryCalibration(rows=[(20.0, 0.3, 60.0, 0.4, True, 100.0)] * 20)   # rows without a remaining time still load
+    assert old.predict(25.0, 0.2, w, remaining=120.0)['p_success'] == 1.0
 
+
+def test_entry_label_reliability_uses_the_outcome_model_bias():
+    """T2.4: an entry label's weight is the factual weight times 1 / (1 + (b_E / sigma)^2), b_E the entry outcome
+    model's predict-then-observe bias; stage labels keep the factual weight."""
+    from env.t2_stage import OBS_DIM
+    m = _sac(batch=4)
+    for k in range(4):
+        fact = {'reward': 0.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True}
+        cands = [{'a': np.zeros(2, np.float32), 'reward': 10.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True, 'bias': -20.0},
+                 {'a': np.ones(2, np.float32) * .5, 'reward': 1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True, 'bias': 0.0}]
+        m.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([0.0]), np.array([True]),
+                            [{'model': {'fact': fact, 'cands': cands}}])
+    m.td_ms = 100.0                              # sigma 10: a 20 bias gives 1 / (1 + 4) = 0.2
+    data = m.replay_buffer.sample(4)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    loss, info = m._model_loss(data, target, m.ent_coef_tensor)
+    assert abs(info['entry_rel_mean'] - (0.2 + 1.0) / 2) < 1e-6 and abs(info['w_mean'] - 0.6) < 1e-6
 
 def test_anchored_replay_reproduces_the_executed_intent():
     """M1 + M2 consistency: the executed intent, predicted with its own realized residual path and the realized
@@ -284,8 +309,8 @@ def test_lost_bridge_keeps_the_entry_record_open():
     env._bridge = {"t": e.time_s, "dv": e._delta_v, "tau": 25.0, "dv_plan": 0.3}
     env._close_bridge("success")
     assert env._entry_open is None and len(env.entry_calibration.rows) == 1
-    tau, dv_plan, _, _, success, _ = env.entry_calibration.rows[0]
-    assert tau == 60.0 and dv_plan == 0.5 and success
+    tau, dv_plan, _, _, success, _, remaining = env.entry_calibration.rows[0]
+    assert tau == 60.0 and dv_plan == 0.5 and success and remaining == env.mission["deadline_s"] - e.time_s
 
 
 def test_window_commitment_retimes_a_failed_replan_inside_the_pass():

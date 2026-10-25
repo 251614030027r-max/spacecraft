@@ -59,12 +59,13 @@ class StageReplay(ReplayBuffer):
         self.cand_a = np.zeros((*shape, k, a), np.float32); self.cand_r = np.zeros((*shape, k), np.float32)
         self.cand_obs = np.zeros((*shape, k, d), np.float32); self.cand_done = np.zeros((*shape, k), np.float32)
         self.cand_valid = np.zeros((*shape, k), np.float32)
+        self.cand_bias = np.zeros((*shape, k), np.float32)     # systematic error of the label's outcome model (entry labels)
         self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0, 'entry_candidates': 0, 'reason': {}}
         self._last = None
 
     def add(self, obs, next_obs, action, reward, done, infos):
         i = self.pos
-        self.fact_valid[i] = 0.0; self.cand_valid[i] = 0.0; self.cand_done[i] = 0.0
+        self.fact_valid[i] = 0.0; self.cand_valid[i] = 0.0; self.cand_done[i] = 0.0; self.cand_bias[i] = 0.0
         for e, info in enumerate(infos):
             model = info.get('model') or {}
             fact, cands = model.get('fact'), (model.get('cands') or [])[:self.k]
@@ -77,7 +78,7 @@ class StageReplay(ReplayBuffer):
             c['with_candidates'] += 1; c['candidates'] += len(cands)
             for j, x in enumerate(cands):
                 self.cand_a[i, e, j] = x['a']; self.cand_r[i, e, j] = x['reward']; self.cand_obs[i, e, j] = x['next_obs']
-                self.cand_done[i, e, j] = float(x['done']); self.cand_valid[i, e, j] = 1.0
+                self.cand_done[i, e, j] = float(x['done']); self.cand_valid[i, e, j] = 1.0; self.cand_bias[i, e, j] = float(x.get('bias', 0.0))
                 c['entry_candidates'] += int(x['done'])
         super().add(obs, next_obs, action, reward, done, infos)
 
@@ -94,7 +95,7 @@ class StageReplay(ReplayBuffer):
     def model_batch(self):
         i, e = self._last
         return {k: self.to_torch(getattr(self, k)[i, e]) for k in
-                ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid')}
+                ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_bias')}
 
 
 class T2SAC(SAC):
@@ -127,13 +128,19 @@ class T2SAC(SAC):
             mask = (m['cand_valid'] > 0) & rows.reshape(-1, 1)
             s1 = m['cand_obs'][mask]
             y = m['cand_r'][mask].reshape(-1, 1) + (1.0 - m['cand_done'][mask].reshape(-1, 1)) * self.gamma * self._soft_value(s1, ent_coef)
-            wk = w.reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1)
+            # candidate reliability (T2.4): the same Cauchy rule on the label's own model bias (entry labels: the
+            # outcome model's predict-then-observe error on this environment's executed entries; stage labels: 0)
+            rel = 1.0 / (1.0 + m['cand_bias'][mask].reshape(-1, 1) ** 2 / self.td_ms)
+            wk = w.reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1) * rel
+            entry = m['cand_done'][mask].reshape(-1, 1) > 0
         s = data.observations[:, None, :].expand(-1, k, -1)[mask]
         qs = self.critic(s, m['cand_a'][mask])
         loss = 0.5 * sum((wk * (q - y) ** 2).sum() for q in qs) / max(int(mask.sum()), 1)
         e = err[rows]
         return loss, {'model_rows': int(mask.sum()), 'w_mean': float(wk.mean()), 'abs_err_median': float(e.abs().median()),
-                      'w_err_max': float((w[rows] * e.abs()).max())}
+                      'w_err_max': float((w[rows] * e.abs()).max()), 'entry_share': float(entry.float().mean()),
+                      'entry_rel_mean': float(rel[entry].mean()) if bool(entry.any()) else None,
+                      'entry_bias_mean': float(m['cand_bias'][mask].reshape(-1, 1)[entry].mean()) if bool(entry.any()) else None}
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         self.policy.set_training_mode(True)
@@ -155,6 +162,13 @@ class T2SAC(SAC):
                 mloss, info = self._model_loss(data, target, ent_coef)
                 if mloss is not None:
                     loss = real + self.model_beta * mloss
+                    info['loss_share'] = float(self.model_beta * mloss.item() / max(real.item(), 1e-9))
+                    if (self._n_updates + step) % 100 == 0:   # read-only: do the two critic gradients agree in direction?
+                        params = [p for p in self.critic.parameters() if p.requires_grad]
+                        g1 = th.autograd.grad(real, params, retain_graph=True, allow_unused=True)
+                        g2 = th.autograd.grad(mloss, params, retain_graph=True, allow_unused=True)
+                        v1 = th.cat([g.reshape(-1) for g in g1 if g is not None]); v2 = th.cat([g.reshape(-1) for g in g2 if g is not None])
+                        info['grad_cos'] = float(F.cosine_similarity(v1, v2, dim=0))
             self.critic.optimizer.zero_grad(); loss.backward(); self.critic.optimizer.step()
             q_pi = th.min(th.cat(self.critic(data.observations, actions_pi), dim=1), dim=1, keepdim=True).values
             actor_loss = (ent_coef * log_prob - q_pi).mean()
@@ -194,8 +208,9 @@ class SpacesEnv(gym.Env):
 def _slim(info: dict) -> dict:
     """What the learner needs from a step's info (the model labels without their audit fields)."""
     model = info.get('model') or {}
-    cands = [{k: c[k] for k in ('a', 'reward', 'next_obs', 'done')} for c in model.get('cands') or []]
-    return {'model': {'fact': model.get('fact'), 'cands': cands, 'diag': {'reason': (model.get('diag') or {}).get('reason')}},
+    cands = [{k: c.get(k, 0.0) for k in ('a', 'reward', 'next_obs', 'done', 'bias')} for c in model.get('cands') or []]
+    diag = model.get('diag') or {}
+    return {'model': {'fact': model.get('fact'), 'cands': cands, 'diag': {k: diag.get(k) for k in ('reason', 'entry_bias', 'entry_records')}},
             **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')}}
 
 
@@ -260,13 +275,17 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                 model.replay_buffer.add(o[None], o1[None], act[None], np.array([r]), np.array([done]), [info])
                 model.num_timesteps += 1; order.append(pipes.index(conn))
                 if done:
-                    episodes.append({'steps': int(model.num_timesteps), 'worker': pipes.index(conn), **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')}})
+                    episodes.append({'steps': int(model.num_timesteps), 'worker': pipes.index(conn), **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')},
+                                     'entry_bias': (info['model']['diag'] or {}).get('entry_bias')})
                 if model.num_timesteps >= model.learning_starts:
                     model.train(gradient_steps=model.gradient_steps, batch_size=model.batch_size)
                 while marks and model.num_timesteps >= marks[0]:
                     m = marks.pop(0); model.save(out / 'checkpoints' / f'step_{m}')
                     (out / 'heartbeat.json').write_text(json.dumps({'steps': int(model.num_timesteps), 'wall_s': time.time() - t0, 'episodes': len(episodes),
                                                                     'updates': int(model._n_updates), 'replay': model.replay_buffer.model_counts}), encoding='utf-8')
+                    # logs at every checkpoint (a stopped run keeps them; T2.3 seed 1 lost its logs)
+                    (out / 'episodes.json').write_text(json.dumps(episodes, default=str), encoding='utf-8')
+                    (out / 'model_stats.json').write_text(json.dumps(model.model_stats), encoding='utf-8')
             if model.num_timesteps >= steps:
                 conn.send('stop'); active.remove(conn); continue
             if model.num_timesteps < model.learning_starts:

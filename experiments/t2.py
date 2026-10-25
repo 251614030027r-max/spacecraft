@@ -108,6 +108,7 @@ def screen_job(job):
     else:
         res = run_episode(env, opening, lambda e, o: policy_action(policy, e, o))
     res['policy'] = policy; res['window'] = window; res['entries_lost'] = env.stats.get('entries_lost', 0) if env.stats else 0
+    res['window_recoveries'] = env.generator.bridge.recovery_log if env.generator is not None else []
     dump(file, res); return res
 
 
@@ -128,7 +129,8 @@ def eval_job(job):
     model = T2SAC.load(checkpoint, device='cpu')
     env = T2StageEnv(openings=[opening], shaping=False, window=window)
     res = run_episode(env, opening, lambda e, o: model.predict(o, deterministic=True)[0])
-    res.update(policy=label, checkpoint=str(checkpoint), window=window, entries_lost=env.stats.get('entries_lost', 0)); dump(file, res); return res
+    res.update(policy=label, checkpoint=str(checkpoint), window=window, entries_lost=env.stats.get('entries_lost', 0),
+               window_recoveries=env.generator.bridge.recovery_log); dump(file, res); return res
 
 
 def evaluate(out, checkpoint, label, ops, workers, window=True):

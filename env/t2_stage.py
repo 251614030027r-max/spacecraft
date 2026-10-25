@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.3"
+T2_VERSION = "t2-stage-0.4"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -155,6 +155,7 @@ class WindowGStar(ConditionalGStar):
     window_slips_s: tuple = WINDOW_SLIPS_S
     elastic: bool = True
     recoveries: int = 0
+    recovery_log: list = field(default_factory=list)   # (time, slip, reserve used, port sweep of the slip): same-pass evidence
 
     def decide(self, env, tau_s: float) -> None:
         live = self.plan is not None
@@ -184,6 +185,8 @@ class WindowGStar(ConditionalGStar):
                 self.tau_s = self.tau_effective_s = float(result["tau_s"])
                 self.hold_position, self.last_outcome = None, "accepted"
                 self.recoveries += 1
+                self.recovery_log.append({"t": float(env.time_s), "slip_s": float(slip), "reserve": planner is self.reserve_planner,
+                                          "phase_deg": float(np.degrees(slip * np.linalg.norm(target.omega)))})
                 return
         self.plan_wall_s.append(perf_counter() - started)
 
@@ -383,13 +386,22 @@ ENTRY_STAGES = 2                 # entry horizon: the action's stage and (n - 1)
 
 @dataclass
 class EntryCalibration:
-    """Execution calibration of the entry (bridge + descent) on this environment's executed entries:
-    duration beyond the planned arrival, delta-v against the plan, outcome."""
+    """Entry outcome model (bridge + descent) from this environment's executed entries, each recorded from
+    the first bridge to the terminal event: planned arrival, planned delta-v, realized duration and delta-v,
+    outcome.
+
+    T2.4: historical execution replay. A candidate entry's value is the mean over the recorded entries of
+    the outcome that entry's realized execution deviation (time beyond its planned arrival, delta-v beyond
+    its plan) would give on the candidate's own plan and remaining time: an unsafe record stays unsafe; any
+    other record succeeds if its replayed duration fits the remaining time, else times out. T2.3 pooled one
+    success rate with a Laplace prior: an entry with ample time was charged the rare late failures of others
+    (labels without an executed outcome to anchor were 23 low; T2.3 audit, every candidate entry captured)."""
 
     rows: list = field(default_factory=list)
 
-    def add(self, tau_plan: float, dv_plan: float, duration: float, dv: float, success: bool, penalty: float) -> None:
-        self.rows.append((float(tau_plan), float(dv_plan), float(duration), float(dv), bool(success), float(penalty)))
+    def add(self, tau_plan: float, dv_plan: float, duration: float, dv: float, success: bool, penalty: float,
+            remaining: float = np.inf) -> None:
+        self.rows.append((float(tau_plan), float(dv_plan), float(duration), float(dv), bool(success), float(penalty), float(remaining)))
         self.rows = self.rows[-CALIBRATION_WINDOW:]
 
     @property
@@ -399,17 +411,28 @@ class EntryCalibration:
     def frozen(self) -> "EntryCalibration":
         return EntryCalibration(rows=list(self.rows))
 
-    def predict(self, tau: float, dv_plan: float, reward) -> dict:
-        r = np.array([x[:4] for x in self.rows]); ok = np.array([x[4] for x in self.rows])
-        extra = float(np.mean(r[:, 2] - r[:, 0]))
-        A = np.c_[np.ones(len(r)), r[:, 1]]
-        coef = np.linalg.solve(A.T @ A + 1e-2 * np.eye(2), A.T @ r[:, 3] + 1e-2 * np.array([0.0, 1.0]))
-        duration = tau + extra; dv = max(0.0, float(coef[0] + coef[1] * dv_plan))
-        p = (ok.sum() + 1.0) / (len(ok) + 2.0)
-        fails = [x[5] for x in self.rows if not x[4]]
-        penalty = float(np.mean(fails)) if fails else reward.unsafe_penalty
-        value = p * reward.capture_reward - (1 - p) * penalty - reward.time_cost_per_s * duration - reward.delta_v_cost_per_m_s * dv
-        return {"duration": duration, "dv": dv, "p_success": float(p), "reward": float(value)}
+    def predict(self, tau: float, dv_plan: float, reward, remaining: float = np.inf) -> dict:
+        """A timed-out record is censored: its true time beyond the plan is at least what it had. It counts as
+        a failure where the candidate has no more slack than that record had; otherwise it is left out (its
+        outcome there is unknown). Records without a stored remaining time (before T2.4) count as failures."""
+        rows = [x if len(x) > 6 else (*x, np.inf) for x in self.rows]
+        r = np.array([x[:4] for x in rows], dtype=np.float64)
+        rem_i = np.array([x[6] for x in rows], dtype=np.float64)
+        unsafe = np.array([(not x[4]) and x[5] >= reward.unsafe_penalty for x in rows])
+        timed_out = np.array([(not x[4]) and x[5] < reward.unsafe_penalty for x in rows])
+        extra = r[:, 2] - r[:, 0]
+        duration = tau + extra
+        dv = np.maximum(0.0, dv_plan + (r[:, 3] - r[:, 1]))
+        slack, slack_i = remaining - tau, rem_i - r[:, 0]
+        informative = ~timed_out | (slack <= slack_i + 1e-9)
+        fits = (duration <= remaining) & ~timed_out
+        spent = np.minimum(duration, remaining)
+        value = np.where(unsafe, -reward.unsafe_penalty, np.where(fits, reward.capture_reward, -reward.timeout_penalty)) \
+            - reward.time_cost_per_s * spent - reward.delta_v_cost_per_m_s * dv
+        m = informative if informative.any() else np.ones_like(informative)
+        ok = (~unsafe) & fits
+        return {"duration": float(spent[m].mean()), "dv": float(dv[m].mean()), "p_success": float(ok[m].mean()),
+                "reward": float(value[m].mean()), "records": int(m.sum())}
 
 
 def terminated_event(event) -> bool:
@@ -437,6 +460,7 @@ class T2StageEnv(gym.Env):
         self.episode = 0
         self.calibration = Calibration()
         self.entry_calibration = EntryCalibration()
+        self.entry_residuals: list[float] = []   # realized minus predicted entry outcome (T2.4 entry reliability)
         self._bridge = None
         self._stage_entry = None
         self._entry_open = None
@@ -533,6 +557,9 @@ class T2StageEnv(gym.Env):
                     self._stage_entry = self._bridge
                 if self._entry_open is None:           # an entry record runs from the first bridge to the terminal event
                     self._entry_open = {**self._bridge, "G": 0.0}
+                    if self.entry_calibration.ready:   # predicted before the outcome is seen (predict-then-observe)
+                        self._entry_open["pred"] = self.entry_calibration.predict(
+                            self._bridge["tau"], self._bridge["dv_plan"], self.env.config.reward, self.mission["deadline_s"] - self.env.time_s)["reward"]
                 return True
         return False
 
@@ -547,7 +574,10 @@ class T2StageEnv(gym.Env):
         if o is None or event == "lost":
             return
         penalty = {"unsafe": w.unsafe_penalty, "timeout": w.timeout_penalty, "resource_exhausted": w.timeout_penalty}.get(event, w.timeout_penalty)
-        self.entry_calibration.add(o["tau"], o["dv_plan"], e.time_s - o["t"], e._delta_v - o["dv"], event == "success", penalty)
+        self.entry_calibration.add(o["tau"], o["dv_plan"], e.time_s - o["t"], e._delta_v - o["dv"], event == "success", penalty,
+                                   self.mission["deadline_s"] - o["t"])
+        if "pred" in o:
+            self.entry_residuals = (self.entry_residuals + [float(o["G"] - o["pred"])])[-CALIBRATION_WINDOW:]
         self._entry_open = None
 
     # ------------------------------------------------------------ EACC executor option model (M1 + M2)
@@ -617,7 +647,7 @@ class T2StageEnv(gym.Env):
         ecal_on = ecal is not None and ecal.ready
         hit = self._scan(plan, resid, attitude, 0.0, budget, brake_model) if ecal_on else None
         if hit is not None:
-            macro = ecal.predict(hit["tau"], hit["dv_plan"], w)["reward"] + entry_offset
+            macro = ecal.predict(hit["tau"], hit["dv_plan"], w, self.mission["deadline_s"] - (start["t"] + hit["s"]))["reward"] + entry_offset
             true = cost(hit["s"], self._dv_model(plan, cal, hit["s"]) + resid(hit["s"])[2] + hit["brake_dv"]) + macro
             return {"reward": float(true - (start["phi"] if self.shaping else 0.0)), "done": True, "entry": hit, "stages": 1, "true": float(true)}
         dq, dvv, ddv = resid(STAGE_S)
@@ -644,7 +674,7 @@ class T2StageEnv(gym.Env):
         hit = self._scan(nxt, raw, attitude, STAGE_S, budget, brake_model)
         if hit is None:
             return out
-        macro = ecal.predict(hit["tau"], hit["dv_plan"], w)["reward"] + entry_offset
+        macro = ecal.predict(hit["tau"], hit["dv_plan"], w, self.mission["deadline_s"] - (start["t"] + STAGE_S + hit["s"]))["reward"] + entry_offset
         r2 = cost(hit["s"], self._dv_model(nxt, cal, hit["s"]) + hit["brake_dv"]) + macro
         true = r1 + r2
         shaped = r1 + GAMMA_STAGE * r2 - (start["phi"] if self.shaping else 0.0)   # PBRS potentials cancel at the stage end
@@ -695,20 +725,26 @@ class T2StageEnv(gym.Env):
         fact = self.predict_intent(plan, a, start, cal, ecal, raw, attitude)
         offset = 0.0
         if entry_rec is not None and entry_rec["t"] >= start["t"] - 1e-6 and terminated_event(event) and ecal.ready:
-            offset = float(entry_rec["G"] - ecal.predict(entry_rec["tau"], entry_rec["dv_plan"], e.config.reward)["reward"])
+            offset = float(entry_rec["G"] - ecal.predict(entry_rec["tau"], entry_rec["dv_plan"], e.config.reward,
+                                                         self.mission["deadline_s"] - entry_rec["t"])["reward"])
+        # systematic error of the entry outcome model, measured predict-then-observe on this environment's own
+        # executed entries; the learner turns it into the entry labels' reliability (T2.4)
+        res = self.entry_residuals[-ENTRY_CAL_MIN:]
+        entry_bias = float(np.mean(res)) if len(res) >= 5 else 0.0
         cands = []
         for c in self._plan_candidates(start["q"], start["v"], start["frame"], a):
             p = self.predict_intent(c["plan"], c["a"], start, cal, ecal, anchored, attitude, entry_offset=offset)
             if p["done"]:
-                cand = {"a": c["a"], "reward": p["reward"], "next_obs": np.zeros(OBS_DIM, np.float32), "done": True}
+                cand = {"a": c["a"], "reward": p["reward"], "next_obs": np.zeros(OBS_DIM, np.float32), "done": True, "bias": entry_bias}
             elif c["plan"].get("terminal_position_error_m", 1.0) <= 0.3 and 6.5 <= p["r_end"] <= 25.0:   # model domain
-                cand = {"a": c["a"], "reward": p["reward"], "next_obs": p["obs"], "done": False}
+                cand = {"a": c["a"], "reward": p["reward"], "next_obs": p["obs"], "done": False, "bias": 0.0}
             else:
                 continue
             if self.diagnostics:      # label audit against truth branches: the raw (calibration-only) prediction beside it
                 cand["anchored"] = p; cand["raw"] = self.predict_intent(c["plan"], c["a"], start, cal, ecal, raw, attitude)
             cands.append(cand)
-        diag = {"fact_entry": bool(fact["done"]), "entered": entered is not None, "entry_offset": offset, "candidates": len(cands)}
+        diag = {"fact_entry": bool(fact["done"]), "entered": entered is not None, "entry_offset": offset, "candidates": len(cands),
+                "entry_bias": entry_bias, "entry_records": len(ecal.rows)}
         if self.diagnostics:
             diag["anchored_fact"] = self.predict_intent(plan, a, start, cal, ecal, anchored, attitude, entry_offset=offset, brake_model=False)
             diag["raw_fact"] = fact
