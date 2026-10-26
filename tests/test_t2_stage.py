@@ -558,3 +558,32 @@ def test_t25_decision_applies_the_preregistered_criteria():
     assert decide_t25(build([4, 3, 1], final=-8))['verdict'] == 'harmful'
     r = build([4, 3, -1]); r['all_complete'] = False
     assert decide_t25(r)['verdict'] == 'incomplete'
+
+
+def test_t25_validation_mode_two_seeds_two_checkpoints():
+    from experiments.t2_decide import decide_t25
+    pair = lambda m: {'mean': m, 'urgent': m, 'without_top2': m, 'capture_mve': 23, 'capture_sac': 23, 'unsafe_mve': 0, 'unsafe_sac': 0}
+    r = {'all_complete': True, 'arms': {}, 'paired': {}}
+    for s, d in ((0, 3.0), (1, -1.0)):
+        r['arms'][f'e_mve_s{s}'] = {'0': {'mean_return': -15}, '1000': {'mean_return': 40}, '2000': {'mean_return': 52}}
+        r['arms'][f'e_sac_s{s}'] = {'1000': {'mean_return': 38}, '2000': {'mean_return': 50}}     # SAC 0k not required
+        for k in (1000, 2000):
+            r['paired'][f's{s}/step_{k}'] = pair(d)
+    assert decide_t25(r, (1000, 2000), 2, False)['verdict'] == 'pass'      # 12 change > 10 would fail C if required
+    assert decide_t25(r, (1000, 2000), 2, True)['verdict'] == 'partial'
+    assert decide_t25(r, (1000, 2000), 3, False)['verdict'] == 'incomplete'
+
+
+def test_v25_validation_decision():
+    from experiments.t2_decide import decide_v25
+    arm = lambda xs: {str(k): {'mean_return': x} for k, x in zip((0, 1000, 2000, 3000, 4000), xs)}
+    pair = lambda m: {'mean': m, 'urgent': m, 'without_top2': m, 'capture_mve': 23, 'capture_sac': 23, 'unsafe_mve': 0, 'unsafe_sac': 0}
+    r = {'all_complete': True, 'arms': {'e_mve_s0': arm([-15, 40, 50, 55, 56]), 'e_sac_s0': arm([-15, 36, 45, 55, 54]),
+                                        'e_mve_s1': arm([None, 30, 45, 50, 55]), 'e_sac_s1': arm([None, 26, 44, 50])},
+         'paired': {**{f's0/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 5), (3000, 0), (4000, 2))},
+                    **{f's1/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 1), (3000, 0))}}}
+    good = {'s0': {'two_stage_share': 0.8, 'decisive_share': 0.05, 'c_mean': 0.9, 'grad_cos': 0.3}}
+    assert decide_v25(r, good)['verdict'] == 'pass'
+    assert decide_v25(r, {'s0': dict(good['s0'], decisive_share=0.0)})['verdict'] == 'mechanism_failure'
+    r['paired']['s1/step_3000'] = pair(-20)
+    assert decide_v25(r, good)['verdict'] == 'mixed'

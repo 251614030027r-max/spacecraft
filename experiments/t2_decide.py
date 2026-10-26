@@ -3,7 +3,8 @@
     python -B -m experiments.t2_decide --readout VB_READOUT.json --output DECISION.json [--final 3000]             (T2.2)
     python -B -m experiments.t2_decide --criteria t23 --readout READOUT.json --output DECISION.json [--final 4000]  (T2.3)
     python -B -m experiments.t2_decide --criteria t24 --readout READOUT.json --output DECISION.json                (T2.4)
-    python -B -m experiments.t2_decide --criteria t25 --readout READOUT.json --output DECISION.json                (T2.5)
+    python -B -m experiments.t2_decide --criteria t25 --readout READOUT.json --output DECISION.json                (T2.5 formal)
+    python -B -m experiments.t2_decide --criteria v25 --readout READOUT.json --train-root DIR --output DECISION.json  (T2.5 validation)
 
 T2.2 (research layer, 2026-10-22):
 
@@ -28,6 +29,7 @@ import numpy as np
 T2_MVE_3000 = 23.421727291070482          # evidence/T2_STAGE_B/B_READOUT.json, e_mve step 3000
 T22_SAC_3000 = 54.32                       # evidence/T2_2_TEST/seed1_final: e_sac_s1 step 3000, the best arm of T2.2
 T23_EACC_4000 = 42.36499930600538         # evidence/T2_3_TEST/B_seed0: e_mve_s0 step 4000 (T2.3 coupled arm)
+T24_EACC_4000 = 53.79                      # evidence/T2_4_TEST: e_mve_s0 step 4000 (T2.4 coupled arm, RESULT_FINAL)
 
 
 def decide(r: dict, final: int = 3000) -> dict:
@@ -158,10 +160,59 @@ def decide_t24(r: dict) -> dict:
     return out
 
 
+def decide_v25(r: dict, mech: dict | None = None) -> dict:
+    """T2.5 validation (pre-registered with its run order): EACC seeds 0 and 1 trained to 4000; SAC reused from T2.3
+    (seed 0 to 4000, seed 1 to 3000; T2.5 changes only the coupled labels, the SAC arm generates none).
+
+      C0 complete     EACC seed 0 at 0..4000 and seed 1 at 1000..3000 (and 4000), SAC as above, all 24/24, no ERROR file
+      M  mechanism    training logs of both EACC seeds (mean over probes from 1000 on): two_stage_share >= 0.5,
+                      decisive_share > 0, c_mean >= 0.5, grad_cos > 0
+      E1 efficiency   paired EACC - SAC averaged over the checkpoints: seed 0 over 1000..4000 > 0 and seed 1 over 1000..3000 > 0
+      E2 final        seed 0 at 4000: paired >= -3 and EACC > 53.79 (the T2.4 coupled arm)
+      S  safety       seed 0 at 4000: EACC captures >= SAC - 1, EACC unsafe <= SAC unsafe + 1
+    Verdict: incomplete | mechanism_failure (M fails) | pass (M, E1, E2, S) | mixed (M, S hold; E1 holds on one seed or
+    E2 fails) | no_gain (M, S hold; E1 fails on both seeds) | harmful (S fails)."""
+    out = decide_t24(r) if r else {'criteria': {}, 'values': {}, 'verdict': 'incomplete'}
+    if out['verdict'] == 'incomplete':
+        return out
+    c, v = out['criteria'], out['values']
+    mech = mech or {}
+    v['mechanism'] = mech
+    c['M_mechanism'] = bool(mech) and all(
+        (x.get('two_stage_share') or 0) >= 0.5 and (x.get('decisive_share') or 0) > 0 and (x.get('c_mean') or 0) >= 0.5
+        and (x.get('grad_cos') or 0) > 0 for x in mech.values())
+    c['E1_s0'] = v['paired_auc']['0'] > 0; c['E1_s1'] = v['paired_auc']['1'] > 0
+    c['E2_final'] = v['paired_end']['0'] >= -3.0 and v['eacc_s0_4000'] > T24_EACC_4000
+    if not c['M_mechanism']:
+        out['verdict'] = 'mechanism_failure'
+    elif not c['C5_safety']:
+        out['verdict'] = 'harmful'
+    elif c['E1_s0'] and c['E1_s1'] and c['E2_final']:
+        out['verdict'] = 'pass'
+    elif not (c['E1_s0'] or c['E1_s1']):
+        out['verdict'] = 'no_gain'
+    else:
+        out['verdict'] = 'mixed'
+    return out
+
+
+def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), start=1000) -> dict:
+    """Mean of the T2.5 mechanism probes of each EACC run from ``start`` decisions on (model_stats.json)."""
+    out = {}
+    for arm in arms:
+        f = Path(train_root) / arm / 'model_stats.json'
+        if not f.exists():
+            continue
+        ms = [m for m in json.loads(f.read_text(encoding='utf-8')) if m['steps'] >= start]
+        out[arm] = {k: (float(np.mean([m[k] for m in ms if m.get(k) is not None])) if any(m.get(k) is not None for m in ms) else None)
+                    for k in ('two_stage_share', 'decisive_share', 'c_mean', 'grad_cos', 'loss_share', 'increment_abs_mean', 'w_mean')}
+    return out
+
+
 T25_CHECKPOINTS = (500, 1000, 1500, 2000, 2500, 3000)
 
 
-def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS) -> dict:
+def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS, min_seeds: int = 3, require_converged: bool = True) -> dict:
     """T2.5 formal development test (pre-registered with its run order): SAC and EACC trained together from zero,
     seeds 0, 1, 2, 3000 decisions, checkpoints 0 and 500..3000 on the 24 development openings.
 
@@ -172,14 +223,18 @@ def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS) -> dict:
       S  safety       every seed at 3000: EACC captures >= SAC - 1; total EACC unsafe <= total SAC unsafe + 1
       C  converged    each arm: seed mean |R(3000) - R(2500)| <= 10
     Verdict: incomplete | pass (all) | partial (P1, P3, S hold; P2 or C fails) | no_gain (P1 fails; P3 and S hold) |
-    harmful (P3 or S fails)."""
+    harmful (P3 or S fails).
+
+    Validation use (``--checkpoints 1000,2000 --min-seeds 2 --no-converged``): two seeds, P1 needs the seed mean > 0
+    and at least half of the seeds > 0; C is reported, not required. The 0-step anchor is required for EACC only
+    (both arms share the initial networks of a seed)."""
     arms = r['arms']; paired = r.get('paired', {})
     seeds = sorted({a.split('_s')[-1] for a in arms if a.startswith('e_mve_s')} & {a.split('_s')[-1] for a in arms if a.startswith('e_sac_s')})
     get = lambda arm, k: (arms.get(arm) or {}).get(str(k))
     pr = lambda s, k: paired.get(f's{s}/step_{k}')
     out = {'seeds': seeds, 'criteria': {}, 'values': {}}; c = out['criteria']; v = out['values']
-    c['C0_complete'] = bool(r.get('all_complete')) and len(seeds) >= 3 and all(get(f'e_{a}_s{s}', k) for a in ('mve', 'sac') for s in seeds for k in (0, *checkpoints)) \
-        and all(pr(s, k) for s in seeds for k in checkpoints)
+    c['C0_complete'] = bool(r.get('all_complete')) and len(seeds) >= min_seeds and all(get(f'e_mve_s{s}', 0) for s in seeds) \
+        and all(get(f'e_{a}_s{s}', k) for a in ('mve', 'sac') for s in seeds for k in checkpoints) and all(pr(s, k) for s in seeds for k in checkpoints)
     if not c['C0_complete']:
         out['verdict'] = 'incomplete'; return out
     last, prev = checkpoints[-1], checkpoints[-2]
@@ -191,7 +246,7 @@ def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS) -> dict:
     v['sac_final'] = {s: get(f'e_sac_s{s}', last)['mean_return'] for s in seeds}
     v['last_change'] = {a: float(np.mean([abs(get(f'e_{a}_s{s}', last)['mean_return'] - get(f'e_{a}_s{s}', prev)['mean_return']) for s in seeds]))
                         for a in ('mve', 'sac')}
-    c['P1_efficiency'] = float(np.mean(list(v['auc'].values()))) > 0 and sum(x > 0 for x in v['auc'].values()) >= 2
+    c['P1_efficiency'] = float(np.mean(list(v['auc'].values()))) > 0 and sum(x > 0 for x in v['auc'].values()) >= (len(seeds) + 1) // 2
     c['P2_urgent'] = float(np.mean(list(v['auc_urgent'].values()))) > 0
     c['P3_final'] = float(np.mean(list(v['final'].values()))) >= -3.0
     c['S_safety'] = all(pr(s, last)['capture_mve'] >= pr(s, last)['capture_sac'] - 1 for s in seeds) \
@@ -201,7 +256,7 @@ def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS) -> dict:
         out['verdict'] = 'harmful'
     elif not c['P1_efficiency']:
         out['verdict'] = 'no_gain'
-    elif c['P2_urgent'] and c['C_converged']:
+    elif c['P2_urgent'] and (c['C_converged'] or not require_converged):
         out['verdict'] = 'pass'
     else:
         out['verdict'] = 'partial'
@@ -211,10 +266,14 @@ def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS) -> dict:
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--readout', required=True); p.add_argument('--output', required=True); p.add_argument('--final', type=int, default=None)
-    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25'], default='t22')
+    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25'], default='t22')
+    p.add_argument('--train-root', default=None, help='v25: the directory holding TRAIN_e_mve_s0 / _s1 (mechanism readings)')
+    p.add_argument('--checkpoints', default=None, help='t25: comparison checkpoints, e.g. 1000,2000')
+    p.add_argument('--min-seeds', type=int, default=3); p.add_argument('--no-converged', action='store_true')
     a = p.parse_args()
     r = json.loads(Path(a.readout).read_text(encoding='utf-8'))
-    res = decide_t25(r) if a.criteria == 't25' else decide_t24(r) if a.criteria == 't24' else decide_t23(r, a.final or 4000) if a.criteria == 't23' else decide(r, a.final or 3000)
+    ck = tuple(int(x) for x in a.checkpoints.split(',')) if a.checkpoints else T25_CHECKPOINTS
+    res = decide_t25(r, ck, a.min_seeds, not a.no_converged) if a.criteria == 't25' else decide_t24(r) if a.criteria == 't24' else decide_t23(r, a.final or 4000) if a.criteria == 't23' else decide(r, a.final or 3000)
     Path(a.output).write_text(json.dumps(res, indent=1), encoding='utf-8')
     print(json.dumps(res, indent=1))
 
