@@ -48,9 +48,12 @@ SIGMA_DECAY = 0.99        # running mean of the squared real TD residual
 #: critic / actor updates per stored real transition
 UPDATES_PER_TRANSITION = 2
 #: T2.5 two-stage labels: the policy copy in each environment is refreshed every SYNC_UPDATES critic/actor updates;
-#: a stage-2 part older than AGE_CAP stored transitions is not used (the label falls back to its stage-1 target)
+#: a stage-2 part older than AGE_CAP stored transitions is not used in the Retrace correction (the label falls back to its
+#: stage-1 target); its one-step stage-2 row (T2.5.1) has no age cap
 SYNC_UPDATES = 100
 AGE_CAP = 2000
+#: learner version recorded in the manifest (T2.5.1: one-step stage-2 rows)
+LEARNER_VERSION = "t2-learner-2.5.1"
 
 
 class StageReplay(ReplayBuffer):
@@ -169,6 +172,27 @@ class T2SAC(SAC):
         wk = 1.0 / (1.0 + eps ** 2 / self.td_ms)
         return y, c, delta, wk, idx, two, d1, age, kind1
 
+    def _stage2_rows(self, m, mask, err, ent_coef):
+        """T2.5.1 stage-2 rows: the stage-2 part of every non-terminal candidate as its own one-step label at the
+        predicted stage-1 state, Q(o1, a2) <- r2 + gamma (1 - d2) V(o2). A one-step soft Bellman target is valid for any
+        action, so these rows need no importance ratio and no age cap; their information reaches Q(s, a) through V(o1).
+        Weight as every model row: eps2 = |e_a| + b2 (b2 the current entry bias for an unanchored entry, else 0).
+        Also returns |Qbar(o1, a2) - Qbar(o1, a_pi)| / sigma, how far the label's action lies from the current policy's in value."""
+        k = mask.shape[1]
+        d1 = m['cand_done'][mask].reshape(-1, 1)
+        sel = ((m['c2_valid'][mask].reshape(-1, 1) > 0) & (d1 == 0)).reshape(-1)
+        if not bool(sel.any()):
+            return None
+        o1 = m['cand_obs'][mask][sel]; a2 = m['c2_a'][mask][sel]; d2 = m['c2_done'][mask][sel].reshape(-1, 1)
+        y2 = m['c2_r'][mask][sel].reshape(-1, 1) + (1.0 - d2) * self.gamma * self._soft_value(m['c2_obs'][mask][sel], ent_coef)
+        b_now = float(np.sqrt(self.td_ms)) if self.entry_bias_now is None else abs(float(self.entry_bias_now))
+        ea = err.abs().reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1)[sel]
+        eps2 = ea + (m['c2_kind'][mask][sel].reshape(-1, 1) == 2).float() * b_now
+        w2 = 1.0 / (1.0 + eps2 ** 2 / self.td_ms)
+        a_pi, _ = self.actor.action_log_prob(o1)
+        gap = (self._q_target_min(o1, a2) - self._q_target_min(o1, a_pi)).abs() / float(np.sqrt(self.td_ms))
+        return o1, a2, y2, w2, gap, d2
+
     def _model_loss(self, data, target, ent_coef):
         """Counterfactual labels fused into the critic regression (module docstring).
 
@@ -180,7 +204,12 @@ class T2SAC(SAC):
         mu the truncated ratio keeps it a contraction to Q^pi (Retrace, Munos et al. 2016).
         Weight: w_k = 1 / (1 + (eps_k / sigma)^2), eps_k = |e_a| + b1_k + gamma c (|e_a| + b2_k): the factual model
         error stands for each model stage's error, b the current entry outcome-model bias of entry parts resting on
-        the outcome model alone (one sigma while unknown), 0 otherwise. eps_k is an estimate, not a proven bound."""
+        the outcome model alone (one sigma while unknown), 0 otherwise. eps_k is an estimate, not a proven bound.
+        T2.5.1: the stage-2 part of every non-terminal candidate also enters as its own one-step row at the predicted
+        stage-1 state (``_stage2_rows``), Q(o1, a2) <- r2 + gamma (1 - d2) V(o2). The Retrace trace c collapses once the
+        narrow SAC policy has moved (measured c 0.01-0.55 at label ages 50-400), while the critic's value at the label's
+        action differs from that at the current policy's action by a small fraction of sigma; the one-step row keeps
+        that information without a ratio and passes it to Q(s, a) through V(o1). The loss is the mean over all model rows."""
         m = self.replay_buffer.model_batch()
         rows = m['fact_valid'] > 0
         if not bool(rows.any()) or self.td_ms is None:
@@ -193,9 +222,16 @@ class T2SAC(SAC):
             mask = (m['cand_valid'] > 0) & rows.reshape(-1, 1)
             y, c, delta, wk, idx, two, d1, age, kind1 = self._candidate_targets(m, mask, err, ent_coef)
             entry = (kind1 > 0)
+            rows2 = self._stage2_rows(m, mask, err, ent_coef)
         s = data.observations[:, None, :].expand(-1, k, -1)[mask]
         qs = self.critic(s, m['cand_a'][mask])
-        loss = 0.5 * sum((wk * (q - y) ** 2).sum() for q in qs) / max(int(mask.sum()), 1)
+        total = (sum((wk * (q - y) ** 2).sum() for q in qs))
+        n_rows = int(mask.sum())
+        if rows2 is not None:                                        # every model row counts once (stage 1 and stage 2 alike)
+            o1, a2, y2, w2, gap, d2 = rows2
+            total = total + sum((w2 * (q - y2) ** 2).sum() for q in self.critic(o1, a2))
+            n_rows += int(o1.shape[0])
+        loss = 0.5 * total / max(n_rows, 1)
         e = err[rows]
         n2 = int(idx.sum())
         dec = (m['c2_done'][mask].reshape(-1, 1) > 0) & two
@@ -206,7 +242,11 @@ class T2SAC(SAC):
                       'two_stage_share': n2 / max(int(mask.sum()), 1), 'decisive_share': float(dec.float().mean()),
                       'c_mean': float(c[idx].mean()) if n2 else None, 'c_low_share': float((c[idx] < 0.5).float().mean()) if n2 else None,
                       'increment_abs_mean': float((self.gamma * c[idx] * delta[idx]).abs().mean()) if n2 else None,
-                      'age_capped_share': float(((m['c2_valid'][mask].reshape(-1, 1) > 0) & (d1 == 0) & (age > AGE_CAP)).float().mean())}
+                      'age_capped_share': float(((m['c2_valid'][mask].reshape(-1, 1) > 0) & (d1 == 0) & (age > AGE_CAP)).float().mean()),
+                      'stage2_rows': int(rows2[0].shape[0]) if rows2 is not None else 0,
+                      'w2_mean': float(rows2[3].mean()) if rows2 is not None else None,
+                      'pi_gap_sigma_median': float(rows2[4].median()) if rows2 is not None else None,
+                      'stage2_entry_share': float(rows2[5].mean()) if rows2 is not None else None}
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         self.policy.set_training_mode(True)
@@ -331,7 +371,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
                                                    'k_candidates': candidates, 'collection': 'asynchronous', 'window': window,
                                                    'gradient_steps_per_transition': model.gradient_steps, 'entry_stages': entry_stages, 'sync_updates': SYNC_UPDATES, 'age_cap': AGE_CAP,
-                                                   'env_version': T2_VERSION}, indent=1), encoding='utf-8')
+                                                   'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION}, indent=1), encoding='utf-8')
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
     for rank in range(workers):

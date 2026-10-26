@@ -5,6 +5,7 @@
     python -B -m experiments.t2_decide --criteria t24 --readout READOUT.json --output DECISION.json                (T2.4)
     python -B -m experiments.t2_decide --criteria t25 --readout READOUT.json --output DECISION.json                (T2.5 formal)
     python -B -m experiments.t2_decide --criteria v25 --readout READOUT.json --train-root DIR --output DECISION.json  (T2.5 validation)
+    python -B -m experiments.t2_decide --criteria v251 --readout READOUT.json --train-root DIR --output DECISION.json (T2.5.1 validation)
 
 T2.2 (research layer, 2026-10-22):
 
@@ -196,6 +197,30 @@ def decide_v25(r: dict, mech: dict | None = None) -> dict:
     return out
 
 
+def decide_v251(r: dict, mech: dict | None = None) -> dict:
+    """T2.5.1 validation (pre-registered with its run order): as v25, with the mechanism criterion of the one-step
+    stage-2 rows in place of the Retrace trace (T2.5 validation measured c ~ 0.15: the trace collapses under policy drift).
+
+      M  mechanism    training logs of both EACC seeds (mean over probes from 1000 on): two_stage_share >= 0.5,
+                      decisive_share > 0, w2_mean >= 0.5 (stage-2 rows are not discounted away),
+                      pi_gap_sigma_median <= 0.25 (the label's action lies within a quarter sigma of the current policy's
+                      in critic value), grad_cos > 0; c_mean is reported only
+      C0, E1, E2, S and the verdicts as v25."""
+    out = decide_v25(r, {k: dict(x, c_mean=1.0) for k, x in (mech or {}).items()})
+    if out['verdict'] == 'incomplete':
+        return out
+    c, v = out['criteria'], out['values']
+    mech = mech or {}
+    v['mechanism'] = mech
+    c['M_mechanism'] = bool(mech) and all(
+        (x.get('two_stage_share') or 0) >= 0.5 and (x.get('decisive_share') or 0) > 0 and (x.get('w2_mean') or 0) >= 0.5
+        and x.get('pi_gap_sigma_median') is not None and x['pi_gap_sigma_median'] <= 0.25
+        and (x.get('grad_cos') or 0) > 0 for x in mech.values())
+    if not c['M_mechanism']:
+        out['verdict'] = 'mechanism_failure'
+    return out
+
+
 def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), start=1000) -> dict:
     """Mean of the T2.5 mechanism probes of each EACC run from ``start`` decisions on (model_stats.json)."""
     out = {}
@@ -205,7 +230,8 @@ def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), st
             continue
         ms = [m for m in json.loads(f.read_text(encoding='utf-8')) if m['steps'] >= start]
         out[arm] = {k: (float(np.mean([m[k] for m in ms if m.get(k) is not None])) if any(m.get(k) is not None for m in ms) else None)
-                    for k in ('two_stage_share', 'decisive_share', 'c_mean', 'grad_cos', 'loss_share', 'increment_abs_mean', 'w_mean')}
+                    for k in ('two_stage_share', 'decisive_share', 'c_mean', 'grad_cos', 'loss_share', 'increment_abs_mean', 'w_mean',
+                              'w2_mean', 'pi_gap_sigma_median', 'stage2_rows', 'stage2_entry_share')}
     return out
 
 
@@ -266,14 +292,20 @@ def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS, min_seeds: int = 3, require
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--readout', required=True); p.add_argument('--output', required=True); p.add_argument('--final', type=int, default=None)
-    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25'], default='t22')
-    p.add_argument('--train-root', default=None, help='v25: the directory holding TRAIN_e_mve_s0 / _s1 (mechanism readings)')
+    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251'], default='t22')
+    p.add_argument('--train-root', default=None, help='v25 / v251: the directory holding TRAIN_e_mve_s0 / _s1 (mechanism readings)')
     p.add_argument('--checkpoints', default=None, help='t25: comparison checkpoints, e.g. 1000,2000')
     p.add_argument('--min-seeds', type=int, default=3); p.add_argument('--no-converged', action='store_true')
     a = p.parse_args()
     r = json.loads(Path(a.readout).read_text(encoding='utf-8'))
     ck = tuple(int(x) for x in a.checkpoints.split(',')) if a.checkpoints else T25_CHECKPOINTS
-    res = decide_t25(r, ck, a.min_seeds, not a.no_converged) if a.criteria == 't25' else decide_t24(r) if a.criteria == 't24' else decide_t23(r, a.final or 4000) if a.criteria == 't23' else decide(r, a.final or 3000)
+    if a.criteria in ('v25', 'v251'):
+        if not a.train_root:
+            p.error('--criteria v25 / v251 needs --train-root (the mechanism readings)')
+        mech = mechanism_readings(a.train_root)
+        res = (decide_v25 if a.criteria == 'v25' else decide_v251)(r, mech)
+    else:
+        res = decide_t25(r, ck, a.min_seeds, not a.no_converged) if a.criteria == 't25' else decide_t24(r) if a.criteria == 't24' else decide_t23(r, a.final or 4000) if a.criteria == 't23' else decide(r, a.final or 3000)
     Path(a.output).write_text(json.dumps(res, indent=1), encoding='utf-8')
     print(json.dumps(res, indent=1))
 

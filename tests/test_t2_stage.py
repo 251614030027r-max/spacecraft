@@ -587,3 +587,75 @@ def test_v25_validation_decision():
     assert decide_v25(r, {'s0': dict(good['s0'], decisive_share=0.0)})['verdict'] == 'mechanism_failure'
     r['paired']['s1/step_3000'] = pair(-20)
     assert decide_v25(r, good)['verdict'] == 'mixed'
+
+
+def test_stage2_rows_are_one_step_labels_without_a_ratio():
+    """T2.5.1: Q(o1, a2) <- r2 + g (1 - d2) V(o2) for every non-terminal candidate with a stage 2, whatever pi/mu or the
+    label age; weight 1 / (1 + (eps2 / sigma)^2), eps2 = |e_a| + b2; none after a terminal stage 1."""
+    from train.t2_mve_sac import AGE_CAP
+    g = __import__('env.t2_stage', fromlist=['GAMMA_STAGE']).GAMMA_STAGE
+    one = th.ones(1, 1, dtype=th.bool)
+    for logp, created in ((-1.0, 0.0), (-1.0 + np.log(1e4), 0.0), (-1.0, -float(AGE_CAP) - 1)):   # c = 1, c = 1e-4, too old
+        m, b = _retrace_fixture(c2_logp=logp, created=created)
+        m.td_ms = 100.0
+        o1, a2, y2, w2, gap, d2 = m._stage2_rows(b, one, th.full((1,), 3.0), 0.05)
+        assert abs(float(y2) - (3 + g * 7)) < 1e-5 and abs(float(w2) - 1.0 / (1.0 + 9.0 / 100.0)) < 1e-6
+        assert float(gap) == 0.0                                 # Qbar is constant in the fixture
+    m, b = _retrace_fixture(c2_logp=-1.0, d2=1.0)                # stage 2 ends in the entry: no bootstrap beyond it
+    m.td_ms = 100.0; m.entry_bias_now = -20.0; b['c2_kind'] = th.full((1, 1), 2.0)
+    _, _, y2, w2, _, _ = m._stage2_rows(b, one, th.full((1,), 3.0), 0.05)
+    assert abs(float(y2) - 3.0) < 1e-6 and abs(float(w2) - 1.0 / (1.0 + 23.0 ** 2 / 100.0)) < 1e-6
+    m, b = _retrace_fixture(c2_logp=-1.0, d1=1.0)                # terminal stage 1: no stage-2 row
+    assert m._stage2_rows(b, one, th.zeros(1), 0.05) is None
+
+
+def test_model_loss_averages_over_stage1_and_stage2_rows():
+    """The model loss is the weighted mean over all model rows; the stage-2 rows enter at the predicted stage-1 state."""
+    import inspect, train.t2_mve_sac as t
+    src = inspect.getsource(t.T2SAC._model_loss)
+    assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
+    assert t.LEARNER_VERSION == 't2-learner-2.5.1'
+
+
+def test_v251_validation_decision_and_cli(tmp_path):
+    import json, subprocess, sys
+    from experiments.t2_decide import decide_v251
+    arm = lambda xs: {str(k): {'mean_return': x} for k, x in zip((0, 1000, 2000, 3000, 4000), xs)}
+    pair = lambda m: {'mean': m, 'urgent': m, 'without_top2': m, 'capture_mve': 23, 'capture_sac': 23, 'unsafe_mve': 0, 'unsafe_sac': 0}
+    r = {'all_complete': True, 'arms': {'e_mve_s0': arm([-15, 40, 50, 55, 56]), 'e_sac_s0': arm([-15, 36, 45, 55, 54]),
+                                        'e_mve_s1': arm([None, 30, 45, 50, 55]), 'e_sac_s1': arm([None, 26, 44, 50])},
+         'paired': {**{f's0/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 5), (3000, 0), (4000, 2))},
+                    **{f's1/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 1), (3000, 0))}}}
+    good = {'s0': {'two_stage_share': 0.8, 'decisive_share': 0.05, 'c_mean': 0.15, 'w2_mean': 0.8, 'pi_gap_sigma_median': 0.05, 'grad_cos': 0.3}}
+    assert decide_v251(r, good)['verdict'] == 'pass'                                     # a low c no longer fails M
+    assert decide_v251(r, {'s0': dict(good['s0'], w2_mean=0.3)})['verdict'] == 'mechanism_failure'
+    assert decide_v251(r, {'s0': dict(good['s0'], pi_gap_sigma_median=0.4)})['verdict'] == 'mechanism_failure'
+    assert decide_v251(r, {})['verdict'] == 'mechanism_failure'
+    # the command line applies the named validation criteria with the training logs (v25 was not wired before T2.5.1)
+    (tmp_path / 'TRAIN_e_mve_s0').mkdir()
+    (tmp_path / 'TRAIN_e_mve_s0' / 'model_stats.json').write_text(json.dumps([dict(good['s0'], steps=1500)]))
+    (tmp_path / 'R.json').write_text(json.dumps(r))
+    for crit, verdict in (('v251', 'pass'), ('v25', 'mechanism_failure')):
+        subprocess.run([sys.executable, '-B', '-m', 'experiments.t2_decide', '--criteria', crit, '--readout', str(tmp_path / 'R.json'),
+                        '--train-root', str(tmp_path), '--output', str(tmp_path / 'D.json')], check=True, capture_output=True)
+        assert json.loads((tmp_path / 'D.json').read_text())['verdict'] == verdict
+
+
+def test_training_step_fits_stage2_rows_end_to_end():
+    """Replay with two-stage candidates: train() runs, the stage-2 rows enter the loss and their readings are logged."""
+    from env.t2_stage import OBS_DIM
+    rng = np.random.default_rng(0)
+    m = _sac()
+    for k in range(16):
+        fact = {'reward': float(rng.normal(0, 3)), 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': False}
+        s2 = {'a': np.full(2, .2, np.float32), 'logp': -1.0, 'reward': 1.0, 'next_obs': np.ones(OBS_DIM, np.float32), 'done': bool(k % 4 == 0), 'kind': 0}
+        cands = [{'a': np.full(2, .1, np.float32), 'reward': -1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': False, 's2': s2},
+                 {'a': np.full(2, -.1, np.float32), 'reward': -2.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True, 's2': None}]
+        m.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([-1.0]), np.array([False]),
+                            [{'model': {'fact': fact, 'cands': cands, 'diag': {'reason': 'stage'}}}])
+    assert m.replay_buffer.model_counts['two_stage'] == 16
+    m.train(gradient_steps=30, batch_size=8)
+    used = [s for s in m.model_stats if s.get('model_td') is not None]
+    assert used and all(np.isfinite(s['model_td']) for s in used)
+    s = used[-1]
+    assert s['stage2_rows'] > 0 and 0 < s['w2_mean'] <= 1 and s['pi_gap_sigma_median'] >= 0 and 0 <= s['stage2_entry_share'] <= 1
