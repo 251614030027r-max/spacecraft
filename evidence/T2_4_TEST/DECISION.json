@@ -1,0 +1,66 @@
+{
+  "verdict": "scope_revised_descriptive_only",
+  "formal_t24_verdict": "NOT_APPLICABLE: latest user cancelled0/1k/2k MVE evaluations, so original C0/full-curve C2 cannot be computed",
+  "scope": "two MVE seeds3k/4k,24openings each96new;192historicalSAC retained;288total",
+  "training_effect": "3k-to4k change is late-training change, not a measured0k-to4k deployment learning gain",
+  "late_training": {
+    "e_mve_s0": {
+      "return_4k_minus_3k": 17.884596508761796,
+      "capture_3k": 21,
+      "capture_4k": 23,
+      "unsafe_3k": 0,
+      "unsafe_4k": 0
+    },
+    "e_mve_s1": {
+      "return_4k_minus_3k": -0.5058662765663442,
+      "capture_3k": 23,
+      "capture_4k": 23,
+      "unsafe_3k": 0,
+      "unsafe_4k": 0
+    }
+  },
+  "paired_vs_SAC": {
+    "s0/step_3000": {
+      "n": 24,
+      "mean": -18.84797601697529,
+      "without_top2": -21.071877734818717,
+      "urgent": -29.756379330439174,
+      "economy": -0.667303827868821,
+      "positive": 9,
+      "negative": 15,
+      "capture_mve": 21,
+      "capture_sac": 23,
+      "unsafe_mve": 0,
+      "unsafe_sac": 0
+    },
+    "s0/step_4000": {
+      "n": 24,
+      "mean": -0.6841493964997483,
+      "without_top2": -10.330988504055172,
+      "urgent": -2.7786318643226045,
+      "economy": 2.8066547165383446,
+      "positive": 14,
+      "negative": 10,
+      "capture_mve": 23,
+      "capture_sac": 23,
+      "unsafe_mve": 0,
+      "unsafe_sac": 0
+    },
+    "s1/step_3000": {
+      "n": 24,
+      "mean": 10.81059733721729,
+      "without_top2": 1.9131321051404095,
+      "urgent": 14.059940496799369,
+      "economy": 5.395025404580491,
+      "positive": 18,
+      "negative": 6,
+      "capture_mve": 23,
+      "capture_sac": 22,
+      "unsafe_mve": 0,
+      "unsafe_sac": 0
+    }
+  },
+  "missing_control": "SACseed1step4000 absent; do not fabricate final paired effect forseed1",
+  "mechanism_claim": "Audit and feedback probes describe mechanism behavior; performance evidence requires matched deployment comparisons and does not prove causal benefit alone",
+  "no_branch": true
+}
