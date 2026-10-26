@@ -235,29 +235,24 @@ def test_anchored_replay_reproduces_the_executed_intent():
     executor's entry (294000, full closing: ~6 s into the stage starting at 48 s, tau 25 s) and the realized
     return. The executor model is the executor's own rule, not an imitation of it."""
     from env.t2_stage import T2StageEnv
-    env = T2StageEnv(openings=[294000], shaping=True, candidates=3, seed=1, entry_stages=2)   # the two-stage option is still checked
+    env = T2StageEnv(openings=[294000], shaping=True, candidates=3, seed=1)
     env.diagnostics = True
     env.reset(options={'opening': 294000})
     for _ in range(12):
         env.calibration.add(0.1, 0.1, np.zeros(3), np.zeros(3))
     for _ in range(20):
         env.entry_calibration.add(25.0, 0.35, 50.0, 0.6, True, 100.0)
-    a = np.array([1.0, 0.0]); done = False; checked = 0; two_stage = False
+    a = np.array([1.0, 0.0]); done = False; checked = 0
     while not done:
         obs, r, term, trunc, info = env.step(a); done = term or trunc
         d = info['model']['diag']
         if d['reason'] in ('stage', 'entry'):
             f = d['anchored_fact']
-            if f['done'] and f['stages'] == 2:        # the entry one stage later, holding the intent: checked at that stage
-                assert not term; two_stage = True
-            else:
-                assert f['done'] == bool(term) and abs(f['reward'] - r) < 1e-6
+            assert f['done'] == bool(term) and abs(f['reward'] - r) < 1e-6
             checked += 1
     assert term and info['event'] == 'success' and d['reason'] == 'entry'
     assert d['anchored_fact']['entry']['tau'] == 25.0 and abs(d['anchored_fact']['entry']['s'] - 6.0) < 1e-9
-    assert checked == env.stats['stages'] and two_stage and info['model']['cands'] and env.entry_calibration.rows[-1][0] == 25.0
-
-
+    assert checked == env.stats['stages'] and info['model']['cands'] and env.entry_calibration.rows[-1][0] == 25.0
 def test_terminal_model_labels_do_not_bootstrap():
     from env.t2_stage import OBS_DIM
     m = _sac(batch=4)
@@ -445,7 +440,121 @@ def test_t24_decision_applies_the_preregistered_criteria():
     assert decide_t24(r)['verdict'] == 'incomplete'
 
 
-def test_counterfactual_labels_follow_the_decision_boundary():
-    """T2.4 default: an entry label only where the intent's own 16 s stage opens the entry; otherwise the stage end."""
+def test_two_stage_labels_use_the_policy_copy_and_the_executor_model():
+    """T2.5: a non-terminal candidate gets a stage-2 part flown by the policy copy's action (a2, log mu) on the
+    calibrated model from the candidate's predicted stage end; without a policy copy there is none (stage-1 label);
+    a candidate whose own stage opens the entry stays a terminal stage-1 label."""
     from env.t2_stage import ENTRY_STAGES, T2StageEnv
-    assert ENTRY_STAGES == 1 and T2StageEnv(openings=[294000]).entry_stages == 1
+    assert ENTRY_STAGES == 2
+    env = T2StageEnv(openings=[294000], shaping=True, candidates=4, seed=1)
+    env.reset(options={'opening': 294000})
+    for _ in range(12):
+        env.calibration.add(0.1, 0.1, np.zeros(3), np.zeros(3))
+    for _ in range(20):
+        env.entry_calibration.add(25.0, 0.35, 50.0, 0.6, True, 100.0)
+    _, _, _, _, info = env.step(np.array([1.0, 0.0]))                  # no policy copy yet
+    assert info['model']['cands'] and all(c['s2'] is None for c in info['model']['cands'] if not c['done'])
+    calls = []
+    env.label_policy = lambda o: (calls.append(o) or (np.array([1.0, 0.0]), -1.5))
+    _, _, term, _, info = env.step(np.array([1.0, 0.0]))
+    cands = info['model']['cands']
+    two = [c for c in cands if not c['done'] and c['s2'] is not None]
+    assert two and len(calls) >= len(two)
+    for c in two:
+        assert c['s2']['logp'] == -1.5 and np.allclose(c['s2']['a'], [1.0, 0.0]) and np.isfinite(c['s2']['reward'])
+        assert c['s2']['kind'] == (2 if c['s2']['done'] else 0)
+    assert all(c['s2'] is None for c in cands if c['done'])
+
+
+def _retrace_fixture(c2_logp, created=0.0, d1=0.0, d2=0.0):
+    """One stored candidate with a stage-2 part; value functions replaced by known constants."""
+    from env.t2_stage import OBS_DIM
+    m = _sac(batch=1)
+    m.td_ms = 1e6
+    f = lambda v: th.full((1, 1), float(v))
+    batch = {'cand_obs': th.zeros(1, 1, OBS_DIM), 'cand_done': th.full((1, 1), d1), 'cand_r': f(2.0).reshape(1, 1), 'created': th.full((1,), created),
+             'cand_valid': th.ones(1, 1), 'cand_kind': th.zeros(1, 1), 'c2_valid': th.ones(1, 1), 'c2_a': th.zeros(1, 1, 2),
+             'c2_logp': th.full((1, 1), c2_logp), 'c2_r': th.full((1, 1), 3.0), 'c2_obs': th.ones(1, 1, OBS_DIM), 'c2_done': th.full((1, 1), d2),
+             'c2_kind': th.zeros(1, 1)}
+    m._soft_value = lambda obs, ec: th.where(obs[:, :1] > 0.5, th.full_like(obs[:, :1], 7.0), th.full_like(obs[:, :1], 5.0))   # V(o1)=5, V(o2)=7
+    m._q_target_min = lambda obs, a: th.full((obs.shape[0], 1), 4.0)                                                           # Qbar(o1, a2) = 4
+    m._log_pi = lambda obs, a: th.full((obs.shape[0], 1), -1.0)                                                                 # log pi(a2|o1) = -1
+    m.replay_buffer.stored = 10
+    return m, batch
+
+
+def test_two_stage_soft_retrace_target():
+    """T2.5 target: y = r1 + g V(o1) + g c (r2 + g (1 - d2) V(o2) - Qbar(o1, a2)), c = min(1, pi/mu); c = 0 past the age
+    cap; a terminal stage 1 is the label alone."""
+    from train.t2_mve_sac import AGE_CAP
+    g = __import__('env.t2_stage', fromlist=['GAMMA_STAGE']).GAMMA_STAGE
+    err = th.zeros(1)
+    m, b = _retrace_fixture(c2_logp=-1.0)                      # mu = pi: c = 1
+    y, c, delta, wk, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert abs(float(c) - 1.0) < 1e-6 and abs(float(delta) - (3 + g * 7 - 4)) < 1e-5
+    assert abs(float(y) - (2 + g * 5 + g * (3 + g * 7 - 4))) < 1e-5
+    m, b = _retrace_fixture(c2_logp=-1.0 + np.log(4.0))        # mu = 4 pi: c = 1/4
+    y, c, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert abs(float(c) - 0.25) < 1e-6 and abs(float(y) - (2 + g * 5 + g * 0.25 * (3 + g * 7 - 4))) < 1e-5
+    m, b = _retrace_fixture(c2_logp=-5.0)                      # mu << pi: truncated at 1
+    _, c, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert abs(float(c) - 1.0) < 1e-6
+    m, b = _retrace_fixture(c2_logp=-1.0, d2=1.0)              # stage 2 ends in the entry: no bootstrap beyond it
+    y, c, delta, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert abs(float(delta) - (3 - 4)) < 1e-6
+    m, b = _retrace_fixture(c2_logp=-1.0, created=-float(AGE_CAP) - 1)   # too old: stage-1 target only
+    y, c, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert float(c) == 0.0 and abs(float(y) - (2 + g * 5)) < 1e-5
+    m, b = _retrace_fixture(c2_logp=-1.0, d1=1.0)              # terminal stage 1: the label itself
+    y, c, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert float(c) == 0.0 and abs(float(y) - 2.0) < 1e-6
+
+
+def test_two_stage_error_estimate_counts_both_model_stages():
+    """eps_k = |e_a| + b1 + g c (|e_a| + b2); w_k = 1 / (1 + (eps_k / sigma)^2)."""
+    g = __import__('env.t2_stage', fromlist=['GAMMA_STAGE']).GAMMA_STAGE
+    m, b = _retrace_fixture(c2_logp=-1.0)
+    m.td_ms = 100.0; m.entry_bias_now = -20.0
+    b['c2_kind'] = th.full((1, 1), 2.0)                        # stage 2 ends in an entry resting on the outcome model alone
+    _, c, _, wk, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), th.full((1,), 3.0), 0.05)
+    eps = 3.0 + g * 1.0 * (3.0 + 20.0)
+    assert abs(float(wk) - 1.0 / (1.0 + eps ** 2 / 100.0)) < 1e-6
+
+
+def test_learner_refreshes_the_environment_policy_copy():
+    import inspect, train.t2_mve_sac as t
+    src = inspect.getsource(t.train)
+    assert "payload = ('actor', copy.deepcopy(model.actor).cpu())" in src and 'model._n_updates - synced[w_] >= SYNC_UPDATES' in src
+    assert t.SYNC_UPDATES == 100 and t.AGE_CAP == 2000
+    w = inspect.getsource(t.worker)
+    assert 'env.label_policy = label_policy' in w and 'actor.load_state_dict(payload[1])' in w
+
+
+def test_log_pi_matches_the_actor_sampling_density():
+    from env.t2_stage import OBS_DIM
+    m = _sac()
+    obs = th.randn(16, OBS_DIM)
+    with th.no_grad():
+        a, logp = m.actor.action_log_prob(obs)
+        assert th.allclose(m._log_pi(obs, a), logp.reshape(-1, 1), atol=2e-3)
+
+
+def test_t25_decision_applies_the_preregistered_criteria():
+    from experiments.t2_decide import decide_t25
+    ks = (0, 500, 1000, 1500, 2000, 2500, 3000)
+    arm = lambda xs: {str(k): {'mean_return': x} for k, x in zip(ks, xs)}
+    pair = lambda m, u=None, cm=23, cs=23, um=0, us=0: {'mean': m, 'urgent': m if u is None else u, 'without_top2': m,
+                                                        'capture_mve': cm, 'capture_sac': cs, 'unsafe_mve': um, 'unsafe_sac': us}
+    def build(diffs, urgent=None, final=None):
+        r = {'all_complete': True, 'arms': {}, 'paired': {}}
+        for s in (0, 1, 2):
+            r['arms'][f'e_mve_s{s}'] = arm([-15, 20, 35, 45, 50, 53, 54]); r['arms'][f'e_sac_s{s}'] = arm([-15, 15, 30, 42, 48, 53, 54])
+            for k in ks[1:]:
+                r['paired'][f's{s}/step_{k}'] = pair(diffs[s] if not (final is not None and k == 3000) else final, urgent)
+        return r
+    assert decide_t25(build([4, 3, -1]))['verdict'] == 'pass'
+    assert decide_t25(build([4, 3, -1], urgent=-2))['verdict'] == 'partial'
+    assert decide_t25(build([-4, 3, -1]))['verdict'] == 'no_gain'
+    assert decide_t25(build([4, 3, 1], final=-8))['verdict'] == 'harmful'
+    r = build([4, 3, -1]); r['all_complete'] = False
+    assert decide_t25(r)['verdict'] == 'incomplete'

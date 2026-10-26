@@ -381,11 +381,11 @@ ENTRY_NODES_S = tuple(ENTRY_NODE_S * k for k in range(1, 9))
 ENTRY_SOLVES_PER_NODE = 7        # entry-planner solves per node: every arrival time, ascending, as the executor
 ENTRY_MAX_SOLVES = 24            # per predicted action (over both stages)
 ENTRY_CAL_MIN = 20               # executed entries before entry labels are issued (5 left the success rate to the prior: labels ~55 low, T2.3 audit)
-#: entry horizon of a counterfactual label. T2.4: 1 -- the label follows the critic's decision boundary: an intent
-#: whose own 16 s stage opens the entry gets the terminal entry label, every other intent its stage-end state
-#: (bootstrapped by the learner). Two stages labelled Q(s, a) with the return of *repeating* a for a second stage,
-#: which is not the Bellman target of a 16 s decision (research layer, 2026-10-25); kept as an option only.
-ENTRY_STAGES = 1
+#: horizon of a counterfactual label in stages (T2.5: 2). Stage 1 is the candidate intent's own 16 s stage (execution
+#: anchored); if it does not open the entry, stage 2 is flown by an action a2 ~ mu(.|o1) of the policy's copy in this
+#: environment (calibrated model): the learner forms the two-stage soft Retrace target with c = min(1, pi/mu). 1 = the
+#: T2.4 one-stage label. T2.3's repeat-the-intent second stage (not a Bellman target) no longer exists.
+ENTRY_STAGES = 2
 
 
 @dataclass
@@ -453,6 +453,8 @@ class T2StageEnv(gym.Env):
         self.window = bool(window)
         self.diagnostics = False            # also predict the executed intent with its own realized residual (tests)
         self.entry_stages = int(entry_stages)
+        #: obs -> (a2, log mu(a2 | obs)): the policy copy that chooses the second stage of a counterfactual label
+        self.label_policy = None
         self.mission_distribution = mission
         self.base_config = t2_env_config(mission)
         self.env = T1Env(self.base_config)
@@ -639,11 +641,11 @@ class T2StageEnv(gym.Env):
 
     def predict_intent(self, plan, action, start: dict, cal: "Calibration", ecal: "EntryCalibration", resid, attitude,
                        entry_offset: float = 0.0, brake_model: bool = True) -> dict:
-        """Executor option model of one intent from the decision state: its stage plan, corrected by ``resid``
-        (raw: the calibration's mean residual; anchored: the executed intent's realized residual path), run
-        through the executor's entry rule over ``entry_stages`` stages holding the intent. Returns the shaped
-        label: an entry is terminal (stage part + calibrated entry outcome + ``entry_offset``), otherwise the
-        stage end (reward, next observation with the realized target attitude, bootstrapped by the learner)."""
+        """Stage 1 of the executor option model of one intent from the decision state: its stage plan, corrected by
+        ``resid`` (raw: the calibration's mean residual; anchored: the executed intent's realized residual path), run
+        through the executor's entry rule. Returns the shaped label: an entry is terminal (stage part + calibrated
+        entry outcome + ``entry_offset``), otherwise the stage end (reward, next observation with the realized target
+        attitude); stage 2, if any, is ``predict_second_stage``."""
 
         e, mass, w = self.env, self.env.chaser_parameters.mass, self.env.config.reward
         cost = lambda s, dv: -w.time_cost_per_s * s - w.delta_v_cost_per_m_s * dv
@@ -664,25 +666,49 @@ class T2StageEnv(gym.Env):
                       {"position_residual_m": float(np.linalg.norm(dq)), "velocity_residual_m_s": float(np.linalg.norm(dvv)), "held": False})
         phi1 = self.potential(q1, rot1, om1)
         out = {"reward": float(r1 + (GAMMA_STAGE * phi1 - start["phi"] if self.shaping else 0.0)), "obs": obs, "done": False,
-               "q": q1, "v": v1, "dv": float(dv1), "r_end": float(np.linalg.norm(q1)), "true": float(r1)}
-        if not ecal_on or self.entry_stages < 2 or budget[0] <= 0 or float(np.linalg.norm(q1)) > BRIDGE_RANGE_M + 2 * d_authority(mass):
-            return out
-        # second stage holding the same intent (raw calibration: no realized residual exists beyond the stage)
+               "q": q1, "v": v1, "dv": float(dv1), "r_end": float(np.linalg.norm(q1)), "true": float(r1), "phi": float(phi1),
+               "rot": rot1, "omega": om1}
+        return out
+
+    def predict_second_stage(self, s1: dict, a2, start: dict, cal: "Calibration", ecal: "EntryCalibration", attitude,
+                             brake_model: bool = True) -> dict | None:
+        """Stage 2 of a counterfactual label (T2.5): from the stage-1 prediction ``s1`` the executor flies the policy's
+        action ``a2`` for one stage (calibrated model; no realized residual exists beyond stage 1; the target attitude
+        is realized where the factual trajectory recorded it, else the constant-rate forecast). Returns the shaped
+        stage-2 reward (PBRS from Phi(s1)), its next observation and whether it ends in the entry (terminal; entry
+        outcome from the replayed executed entries, never anchored to this decision's realized entry). None when the
+        stage is outside the model's domain."""
+
+        e, mass, w = self.env, self.env.chaser_parameters.mass, self.env.config.reward
+        cost = lambda s, dv: -w.time_cost_per_s * s - w.delta_v_cost_per_m_s * dv
+        q1, v1, rot1, om1 = s1["q"], s1["v"], s1["rot"], s1["omega"]
+        if not (ecal is not None and ecal.ready) or float(np.linalg.norm(q1)) > BRIDGE_RANGE_M + 2 * d_authority(mass):
+            return None
         frame1 = spin_frame(rot1, om1, q1, e.config.task.approach_axis)
-        goal = stage_goal(q1, v1, frame1, action, mass, geometry=self.geometry)
+        goal = stage_goal(q1, v1, frame1, a2, mass, geometry=self.geometry)
         nxt = self.generator.planner.solve(q1, v1, goal["q_goal"], goal["v_goal"])
-        if not nxt["feasible"]:
-            return out
+        if not nxt["feasible"] or nxt.get("terminal_position_error_m", 1.0) > 0.3:
+            return None
         dq_b, dv_b = cal.residuals(); b1 = frame1["basis"]
         raw = lambda s: (b1.T @ dq_b * (s / STAGE_S), b1.T @ dv_b * (s / STAGE_S), 0.0)
-        hit = self._scan(nxt, raw, attitude, STAGE_S, budget, brake_model)
-        if hit is None:
-            return out
-        macro = ecal.predict(hit["tau"], hit["dv_plan"], w, self.mission["deadline_s"] - (start["t"] + STAGE_S + hit["s"]))["reward"] + entry_offset
-        r2 = cost(hit["s"], self._dv_model(nxt, cal, hit["s"]) + hit["brake_dv"]) + macro
-        true = r1 + r2
-        shaped = r1 + GAMMA_STAGE * r2 - (start["phi"] if self.shaping else 0.0)   # PBRS potentials cancel at the stage end
-        return {"reward": float(shaped), "done": True, "entry": hit, "stages": 2, "true": float(true)}
+        t1 = start["t"] + STAGE_S
+        hit = self._scan(nxt, raw, attitude, STAGE_S, [ENTRY_MAX_SOLVES], brake_model)
+        if hit is not None:
+            macro = ecal.predict(hit["tau"], hit["dv_plan"], w, self.mission["deadline_s"] - (t1 + hit["s"]))["reward"]
+            true = cost(hit["s"], self._dv_model(nxt, cal, hit["s"]) + hit["brake_dv"]) + macro
+            return {"reward": float(true - (s1["phi"] if self.shaping else 0.0)), "obs": np.zeros(OBS_DIM, np.float32), "done": True,
+                    "true": float(true), "entry": hit}
+        q2, v2 = plan_state(nxt, STAGE_S, mass)
+        q2, v2 = q2 + b1.T @ dq_b, v2 + b1.T @ dv_b
+        dv2 = self._dv_model(nxt, cal, STAGE_S)
+        if not 6.5 <= float(np.linalg.norm(q2)) <= 25.0:
+            return None
+        rot2, om2 = attitude(2 * STAGE_S)
+        obs = observe(e, q2, v2, t1 + STAGE_S, start["dv"] + s1["dv"] + dv2, self.mission, rot2, om2,
+                      {"position_residual_m": float(np.linalg.norm(dq_b)), "velocity_residual_m_s": float(np.linalg.norm(dv_b)), "held": False})
+        r2 = cost(STAGE_S, dv2)
+        shaped = r2 + (GAMMA_STAGE * self.potential(q2, rot2, om2) - s1["phi"] if self.shaping else 0.0)
+        return {"reward": float(shaped), "obs": obs, "done": False, "true": float(r2), "q": q2}
 
     def _realized_attitude(self, trace):
         """Target attitude at a time after the decision: realized where the factual trajectory recorded it
@@ -746,7 +772,15 @@ class T2StageEnv(gym.Env):
                 cand = {"a": c["a"], "reward": p["reward"], "next_obs": np.zeros(OBS_DIM, np.float32), "done": True,
                         "kind": 1 if anchored_outcome else 2}
             elif c["plan"].get("terminal_position_error_m", 1.0) <= 0.3 and 6.5 <= p["r_end"] <= 25.0:   # model domain
-                cand = {"a": c["a"], "reward": p["reward"], "next_obs": p["obs"], "done": False, "kind": 0}
+                cand = {"a": c["a"], "reward": p["reward"], "next_obs": p["obs"], "done": False, "kind": 0, "s2": None}
+                if self.entry_stages >= 2 and self.label_policy is not None:
+                    a2, logp = self.label_policy(p["obs"])
+                    p2 = self.predict_second_stage(p, np.asarray(a2, dtype=np.float64), start, cal, ecal, attitude)
+                    if p2 is not None:
+                        cand["s2"] = {"a": np.asarray(a2, np.float32), "logp": float(logp), "reward": p2["reward"], "next_obs": p2["obs"],
+                                      "done": bool(p2["done"]), "kind": 2 if p2["done"] else 0}
+                        if self.diagnostics:
+                            cand["stage2"] = p2
             else:
                 continue
             if self.diagnostics:      # label audit against truth branches: the raw (calibration-only) prediction beside it

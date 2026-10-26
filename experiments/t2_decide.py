@@ -3,6 +3,7 @@
     python -B -m experiments.t2_decide --readout VB_READOUT.json --output DECISION.json [--final 3000]             (T2.2)
     python -B -m experiments.t2_decide --criteria t23 --readout READOUT.json --output DECISION.json [--final 4000]  (T2.3)
     python -B -m experiments.t2_decide --criteria t24 --readout READOUT.json --output DECISION.json                (T2.4)
+    python -B -m experiments.t2_decide --criteria t25 --readout READOUT.json --output DECISION.json                (T2.5)
 
 T2.2 (research layer, 2026-10-22):
 
@@ -157,13 +158,63 @@ def decide_t24(r: dict) -> dict:
     return out
 
 
+T25_CHECKPOINTS = (500, 1000, 1500, 2000, 2500, 3000)
+
+
+def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS) -> dict:
+    """T2.5 formal development test (pre-registered with its run order): SAC and EACC trained together from zero,
+    seeds 0, 1, 2, 3000 decisions, checkpoints 0 and 500..3000 on the 24 development openings.
+
+      C0 complete     every arm, seed and checkpoint 24/24 and no ERROR file
+      P1 efficiency   paired EACC - SAC averaged over 500..3000 (learning-curve area): seed mean > 0 and >= 2 of 3 seeds > 0
+      P2 urgent       the same area on urgent missions: seed mean > 0
+      P3 final        paired at 3000: seed mean >= -3 (not worse at the end)
+      S  safety       every seed at 3000: EACC captures >= SAC - 1; total EACC unsafe <= total SAC unsafe + 1
+      C  converged    each arm: seed mean |R(3000) - R(2500)| <= 10
+    Verdict: incomplete | pass (all) | partial (P1, P3, S hold; P2 or C fails) | no_gain (P1 fails; P3 and S hold) |
+    harmful (P3 or S fails)."""
+    arms = r['arms']; paired = r.get('paired', {})
+    seeds = sorted({a.split('_s')[-1] for a in arms if a.startswith('e_mve_s')} & {a.split('_s')[-1] for a in arms if a.startswith('e_sac_s')})
+    get = lambda arm, k: (arms.get(arm) or {}).get(str(k))
+    pr = lambda s, k: paired.get(f's{s}/step_{k}')
+    out = {'seeds': seeds, 'criteria': {}, 'values': {}}; c = out['criteria']; v = out['values']
+    c['C0_complete'] = bool(r.get('all_complete')) and len(seeds) >= 3 and all(get(f'e_{a}_s{s}', k) for a in ('mve', 'sac') for s in seeds for k in (0, *checkpoints)) \
+        and all(pr(s, k) for s in seeds for k in checkpoints)
+    if not c['C0_complete']:
+        out['verdict'] = 'incomplete'; return out
+    last, prev = checkpoints[-1], checkpoints[-2]
+    v['auc'] = {s: float(np.mean([pr(s, k)['mean'] for k in checkpoints])) for s in seeds}
+    v['auc_urgent'] = {s: float(np.mean([pr(s, k)['urgent'] for k in checkpoints])) for s in seeds}
+    v['final'] = {s: pr(s, last)['mean'] for s in seeds}
+    v['final_urgent'] = {s: pr(s, last)['urgent'] for s in seeds}
+    v['eacc_final'] = {s: get(f'e_mve_s{s}', last)['mean_return'] for s in seeds}
+    v['sac_final'] = {s: get(f'e_sac_s{s}', last)['mean_return'] for s in seeds}
+    v['last_change'] = {a: float(np.mean([abs(get(f'e_{a}_s{s}', last)['mean_return'] - get(f'e_{a}_s{s}', prev)['mean_return']) for s in seeds]))
+                        for a in ('mve', 'sac')}
+    c['P1_efficiency'] = float(np.mean(list(v['auc'].values()))) > 0 and sum(x > 0 for x in v['auc'].values()) >= 2
+    c['P2_urgent'] = float(np.mean(list(v['auc_urgent'].values()))) > 0
+    c['P3_final'] = float(np.mean(list(v['final'].values()))) >= -3.0
+    c['S_safety'] = all(pr(s, last)['capture_mve'] >= pr(s, last)['capture_sac'] - 1 for s in seeds) \
+        and sum(pr(s, last)['unsafe_mve'] for s in seeds) <= sum(pr(s, last)['unsafe_sac'] for s in seeds) + 1
+    c['C_converged'] = all(x <= 10.0 for x in v['last_change'].values())
+    if not (c['P3_final'] and c['S_safety']):
+        out['verdict'] = 'harmful'
+    elif not c['P1_efficiency']:
+        out['verdict'] = 'no_gain'
+    elif c['P2_urgent'] and c['C_converged']:
+        out['verdict'] = 'pass'
+    else:
+        out['verdict'] = 'partial'
+    return out
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--readout', required=True); p.add_argument('--output', required=True); p.add_argument('--final', type=int, default=None)
-    p.add_argument('--criteria', choices=['t22', 't23', 't24'], default='t22')
+    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25'], default='t22')
     a = p.parse_args()
     r = json.loads(Path(a.readout).read_text(encoding='utf-8'))
-    res = decide_t24(r) if a.criteria == 't24' else decide_t23(r, a.final or 4000) if a.criteria == 't23' else decide(r, a.final or 3000)
+    res = decide_t25(r) if a.criteria == 't25' else decide_t24(r) if a.criteria == 't24' else decide_t23(r, a.final or 4000) if a.criteria == 't23' else decide(r, a.final or 3000)
     Path(a.output).write_text(json.dumps(res, indent=1), encoding='utf-8')
     print(json.dumps(res, indent=1))
 

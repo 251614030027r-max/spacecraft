@@ -143,7 +143,11 @@ def curve(eval_root, train_root, screen_dir, out, expected=24):
                                        'abs_err_median': float(np.median([m['abs_err_median'] for m in used])) if used else None,
                                        'sigma_last': ms[-1].get('sigma') if ms else None,
                                        'model_td_last': used[-1]['model_td'] if used else None,
-                                       'q_pi_last_decile': float(np.mean(q_pi[-max(1, len(q_pi) // 10):])) if q_pi else None}
+                                       'q_pi_last_decile': float(np.mean(q_pi[-max(1, len(q_pi) // 10):])) if q_pi else None,
+                                       # T2.4/T2.5 mechanism readings (mean over probes that report them)
+                                       **{k: (float(np.mean([m[k] for m in used if m.get(k) is not None])) if any(m.get(k) is not None for m in used) else None)
+                                          for k in ('loss_share', 'grad_cos', 'two_stage_share', 'decisive_share', 'c_mean', 'c_low_share',
+                                                    'increment_abs_mean', 'age_capped_share', 'label_age_mean', 'entry_bias_now', 'entry_share')}}
     Path(out).write_text(json.dumps(res, indent=1), encoding='utf-8'); print(json.dumps(res, indent=1)[:4000])
 
 

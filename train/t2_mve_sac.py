@@ -24,6 +24,7 @@ for the slowest environment (a bridge + descent macro-step, ~50 s) at every deci
 """
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
 import time
@@ -46,6 +47,10 @@ ENT_COEF = 0.05
 SIGMA_DECAY = 0.99        # running mean of the squared real TD residual
 #: critic / actor updates per stored real transition
 UPDATES_PER_TRANSITION = 2
+#: T2.5 two-stage labels: the policy copy in each environment is refreshed every SYNC_UPDATES critic/actor updates;
+#: a stage-2 part older than AGE_CAP stored transitions is not used (the label falls back to its stage-1 target)
+SYNC_UPDATES = 100
+AGE_CAP = 2000
 
 
 class StageReplay(ReplayBuffer):
@@ -61,6 +66,11 @@ class StageReplay(ReplayBuffer):
         self.cand_valid = np.zeros((*shape, k), np.float32)
         #: label kind: 0 stage end, 1 entry with the executed entry's realized outcome anchored, 2 entry on the outcome model alone
         self.cand_kind = np.zeros((*shape, k), np.float32)
+        #: stage 2 of a non-terminal candidate (T2.5): a2 ~ mu(.|o1), log mu, shaped r2, o2, terminal flag, kind
+        self.c2_valid = np.zeros((*shape, k), np.float32); self.c2_a = np.zeros((*shape, k, a), np.float32)
+        self.c2_logp = np.zeros((*shape, k), np.float32); self.c2_r = np.zeros((*shape, k), np.float32)
+        self.c2_obs = np.zeros((*shape, k, d), np.float32); self.c2_done = np.zeros((*shape, k), np.float32)
+        self.c2_kind = np.zeros((*shape, k), np.float32)
         self.created = np.zeros(shape, np.float32)             # stored transitions at label time (label age diagnostic)
         self.stored = 0
         self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0, 'entry_candidates': 0, 'reason': {}}
@@ -69,6 +79,7 @@ class StageReplay(ReplayBuffer):
     def add(self, obs, next_obs, action, reward, done, infos):
         i = self.pos
         self.fact_valid[i] = 0.0; self.cand_valid[i] = 0.0; self.cand_done[i] = 0.0; self.cand_kind[i] = 0.0
+        self.c2_valid[i] = 0.0; self.c2_done[i] = 0.0; self.c2_kind[i] = 0.0
         self.created[i] = self.stored; self.stored += 1
         for e, info in enumerate(infos):
             model = info.get('model') or {}
@@ -84,6 +95,12 @@ class StageReplay(ReplayBuffer):
                 self.cand_a[i, e, j] = x['a']; self.cand_r[i, e, j] = x['reward']; self.cand_obs[i, e, j] = x['next_obs']
                 self.cand_done[i, e, j] = float(x['done']); self.cand_valid[i, e, j] = 1.0; self.cand_kind[i, e, j] = float(x.get('kind', 0))
                 c['entry_candidates'] += int(x['done'])
+                y2 = x.get('s2')
+                if y2 is not None and not x['done']:
+                    self.c2_valid[i, e, j] = 1.0; self.c2_a[i, e, j] = y2['a']; self.c2_logp[i, e, j] = y2['logp']
+                    self.c2_r[i, e, j] = y2['reward']; self.c2_obs[i, e, j] = y2['next_obs']; self.c2_done[i, e, j] = float(y2['done'])
+                    self.c2_kind[i, e, j] = float(y2.get('kind', 0))
+                    c['two_stage'] = c.get('two_stage', 0) + 1; c['two_stage_entry'] = c.get('two_stage_entry', 0) + int(y2['done'])
         super().add(obs, next_obs, action, reward, done, infos)
 
     def _get_samples(self, batch_inds, env=None):
@@ -99,7 +116,8 @@ class StageReplay(ReplayBuffer):
     def model_batch(self):
         i, e = self._last
         return {k: self.to_torch(getattr(self, k)[i, e]) for k in
-                ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_kind', 'created')}
+                ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_kind', 'created',
+                 'c2_valid', 'c2_a', 'c2_logp', 'c2_r', 'c2_obs', 'c2_done', 'c2_kind')}
 
 
 class T2SAC(SAC):
@@ -119,8 +137,50 @@ class T2SAC(SAC):
         a, logp = self.actor.action_log_prob(obs)
         return th.min(th.cat(self.critic_target(obs, a), dim=1), dim=1, keepdim=True).values - ent_coef * logp.reshape(-1, 1)
 
+    def _log_pi(self, obs, actions):
+        """log pi(a | obs) of given (squashed) actions under the current actor."""
+        mean, log_std, kwargs = self.actor.get_action_dist_params(obs)
+        dist = self.actor.action_dist.proba_distribution(mean, log_std, **kwargs)
+        return dist.log_prob(actions.clamp(-1.0 + 1e-6, 1.0 - 1e-6)).reshape(-1, 1)
+
+    def _q_target_min(self, obs, actions):
+        return th.min(th.cat(self.critic_target(obs, actions), dim=1), dim=1, keepdim=True).values
+
+    def _candidate_targets(self, m, mask, err, ent_coef):
+        """Targets and weights of the candidate labels selected by ``mask`` (see ``_model_loss``)."""
+        k = mask.shape[1]
+        o1 = m['cand_obs'][mask]; d1 = m['cand_done'][mask].reshape(-1, 1)
+        y = m['cand_r'][mask].reshape(-1, 1) + (1.0 - d1) * self.gamma * self._soft_value(o1, ent_coef)
+        age = (float(self.replay_buffer.stored) - m['created']).reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1)
+        two = (m['c2_valid'][mask].reshape(-1, 1) > 0) & (d1 == 0) & (age <= AGE_CAP)
+        c = th.zeros_like(y); delta = th.zeros_like(y)
+        idx = two.reshape(-1)
+        if bool(idx.any()):
+            a2 = m['c2_a'][mask][idx]; o1s = o1[idx]
+            c[idx] = th.exp(self._log_pi(o1s, a2) - m['c2_logp'][mask][idx].reshape(-1, 1)).clamp(max=1.0)
+            d2 = m['c2_done'][mask][idx].reshape(-1, 1)
+            delta[idx] = (m['c2_r'][mask][idx].reshape(-1, 1) + (1.0 - d2) * self.gamma * self._soft_value(m['c2_obs'][mask][idx], ent_coef)
+                          - self._q_target_min(o1s, a2))
+        y = y + self.gamma * c * delta
+        kind1 = m['cand_kind'][mask].reshape(-1, 1); kind2 = m['c2_kind'][mask].reshape(-1, 1)
+        b_now = float(np.sqrt(self.td_ms)) if self.entry_bias_now is None else abs(float(self.entry_bias_now))
+        ea = err.abs().reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1)
+        eps = ea + (kind1 == 2).float() * b_now + self.gamma * c * (ea + (kind2 == 2).float() * b_now)
+        wk = 1.0 / (1.0 + eps ** 2 / self.td_ms)
+        return y, c, delta, wk, idx, two, d1, age, kind1
+
     def _model_loss(self, data, target, ent_coef):
-        """M3 robust precision fusion of the anchored candidate labels (module docstring)."""
+        """Counterfactual labels fused into the critic regression (module docstring).
+
+        Stage-1 target (every candidate): y1 = r1 + gamma (1 - d1) V(o1), V the soft value of the target critic.
+        Two-stage soft Retrace target (T2.5; non-terminal candidates with a stage 2):
+            y = y1 + gamma c delta,  delta = r2 + gamma (1 - d2) V(o2) - Qbar(o1, a2),  c = min(1, pi(a2|o1) / mu(a2|o1)),
+        a2 ~ mu the environment's policy copy at label time; c = 0 when the stage-2 part is older than AGE_CAP (y = y1).
+        E_{a2~pi}[delta] = 0 when Qbar is the soft Q of pi, so the target is the soft Bellman target of pi; with stale
+        mu the truncated ratio keeps it a contraction to Q^pi (Retrace, Munos et al. 2016).
+        Weight: w_k = 1 / (1 + (eps_k / sigma)^2), eps_k = |e_a| + b1_k + gamma c (|e_a| + b2_k): the factual model
+        error stands for each model stage's error, b the current entry outcome-model bias of entry parts resting on
+        the outcome model alone (one sigma while unknown), 0 otherwise. eps_k is an estimate, not a proven bound."""
         m = self.replay_buffer.model_batch()
         rows = m['fact_valid'] > 0
         if not bool(rows.any()) or self.td_ms is None:
@@ -131,28 +191,22 @@ class T2SAC(SAC):
             w = 1.0 / (1.0 + err ** 2 / self.td_ms)
             b, k = m['cand_valid'].shape
             mask = (m['cand_valid'] > 0) & rows.reshape(-1, 1)
-            s1 = m['cand_obs'][mask]
-            y = m['cand_r'][mask].reshape(-1, 1) + (1.0 - m['cand_done'][mask].reshape(-1, 1)) * self.gamma * self._soft_value(s1, ent_coef)
-            # candidate-level reliability (T2.4): w_k = 1 / (1 + (eps_k / sigma)^2), eps_k the candidate's error estimate:
-            #   eps_k = |e_a| + b_k,  b_k = 0 (stage labels; entry labels anchored to this decision's realized entry),
-            #   b_k = |current entry outcome-model bias| (entry labels on the outcome model alone; one sigma while unknown).
-            # The current bias re-weights stored labels as soon as it is measured. No distance term: the T2.3 audit
-            # found no dependence of the label error on the candidate's distance from the executed intent.
-            kind = m['cand_kind'][mask].reshape(-1, 1)
-            b_now = float(np.sqrt(self.td_ms)) if self.entry_bias_now is None else abs(float(self.entry_bias_now))
-            eps = err.abs().reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1) + (kind == 2).float() * b_now
-            wk = 1.0 / (1.0 + eps ** 2 / self.td_ms)
-            entry = kind > 0
-            rel = wk / w.reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1).clamp_min(1e-12)   # reported only
+            y, c, delta, wk, idx, two, d1, age, kind1 = self._candidate_targets(m, mask, err, ent_coef)
+            entry = (kind1 > 0)
         s = data.observations[:, None, :].expand(-1, k, -1)[mask]
         qs = self.critic(s, m['cand_a'][mask])
         loss = 0.5 * sum((wk * (q - y) ** 2).sum() for q in qs) / max(int(mask.sum()), 1)
         e = err[rows]
+        n2 = int(idx.sum())
+        dec = (m['c2_done'][mask].reshape(-1, 1) > 0) & two
         return loss, {'model_rows': int(mask.sum()), 'w_mean': float(wk.mean()), 'abs_err_median': float(e.abs().median()),
                       'w_err_max': float((w[rows] * e.abs()).max()), 'entry_share': float(entry.float().mean()),
-                      'entry_rel_mean': float(rel[entry].mean()) if bool(entry.any()) else None,
-                      'entry_unanchored_share': float((kind == 2).float().mean()), 'entry_bias_now': self.entry_bias_now,
-                      'label_age_mean': float(self.replay_buffer.stored - m['created'][rows].mean())}
+                      'entry_unanchored_share': float((kind1 == 2).float().mean()), 'entry_bias_now': self.entry_bias_now,
+                      'label_age_mean': float(self.replay_buffer.stored - m['created'][rows].mean()),
+                      'two_stage_share': n2 / max(int(mask.sum()), 1), 'decisive_share': float(dec.float().mean()),
+                      'c_mean': float(c[idx].mean()) if n2 else None, 'c_low_share': float((c[idx] < 0.5).float().mean()) if n2 else None,
+                      'increment_abs_mean': float((self.gamma * c[idx] * delta[idx]).abs().mean()) if n2 else None,
+                      'age_capped_share': float(((m['c2_valid'][mask].reshape(-1, 1) > 0) & (d1 == 0) & (age > AGE_CAP)).float().mean())}
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         self.policy.set_training_mode(True)
@@ -220,7 +274,7 @@ class SpacesEnv(gym.Env):
 def _slim(info: dict) -> dict:
     """What the learner needs from a step's info (the model labels without their audit fields)."""
     model = info.get('model') or {}
-    cands = [{k: c.get(k, 0) for k in ('a', 'reward', 'next_obs', 'done', 'kind')} for c in model.get('cands') or []]
+    cands = [{**{k: c.get(k, 0) for k in ('a', 'reward', 'next_obs', 'done', 'kind')}, 's2': c.get('s2')} for c in model.get('cands') or []]
     diag = model.get('diag') or {}
     return {'model': {'fact': model.get('fact'), 'cands': cands, 'diag': {k: diag.get(k) for k in ('reason', 'entry_bias', 'entry_records')}},
             **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')}}
@@ -236,11 +290,23 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
     env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, candidates=candidates, shaping=True, seed=seed * 100 + rank,
                      entry_stages=entry_stages, window=window)
     obs, _ = env.reset(); transition = None
+    actor = None
+
+    def label_policy(o):          # mu: this environment's copy of the policy (T2.5 stage 2 of a counterfactual label)
+        with th.no_grad():
+            a, logp = actor.action_log_prob(th.as_tensor(np.asarray(o, np.float32)[None]))
+        return a[0].numpy(), float(logp.reshape(-1)[0])
     while True:
         conn.send((transition, obs))
-        action = conn.recv()
-        if isinstance(action, str):
+        msg = conn.recv()
+        if isinstance(msg, str):
             break
+        action, payload = msg
+        if payload is not None:                   # ('actor', module) once, then ('state', state_dict) every SYNC_UPDATES
+            if payload[0] == 'actor':
+                actor = payload[1]; actor.set_training_mode(False); env.label_policy = label_policy
+            else:
+                actor.load_state_dict(payload[1])
         next_obs, reward, term, trunc, info = env.step(action)
         transition = (obs, next_obs, np.asarray(action, np.float32), float(reward), bool(term), bool(trunc), _slim(info))
         obs = env.reset()[0] if (term or trunc) else next_obs
@@ -264,7 +330,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
                                                    'k_candidates': candidates, 'collection': 'asynchronous', 'window': window,
-                                                   'gradient_steps_per_transition': model.gradient_steps, 'entry_stages': entry_stages,
+                                                   'gradient_steps_per_transition': model.gradient_steps, 'entry_stages': entry_stages, 'sync_updates': SYNC_UPDATES, 'age_cap': AGE_CAP,
                                                    'env_version': T2_VERSION}, indent=1), encoding='utf-8')
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
@@ -276,6 +342,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     model.save(out / 'checkpoints' / 'step_0')
     episodes, order, t0 = [], [], time.time()
     bias_by_worker = {}
+    synced = {}                                   # worker -> update count of its policy copy
     rng = np.random.default_rng(seed)
     active = list(pipes)
     while active:
@@ -309,7 +376,15 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                 action = rng.uniform(-1.0, 1.0, size=2).astype(np.float32)
             else:
                 action = model.predict(obs, deterministic=False)[0]
-            conn.send(action)
+            payload, w_ = None, pipes.index(conn)
+            if candidates > 0 and entry_stages >= 2:     # refresh the environment's policy copy (stage 2 of the labels)
+                if w_ not in synced:
+                    payload = ('actor', copy.deepcopy(model.actor).cpu())
+                elif model._n_updates - synced[w_] >= SYNC_UPDATES:
+                    payload = ('state', {k: v.detach().clone() for k, v in model.actor.state_dict().items()})
+                if payload is not None:
+                    synced[w_] = model._n_updates
+            conn.send((action, payload))
     for p in procs:
         p.join(timeout=60)
     model.save(out / 'final')

@@ -1,7 +1,7 @@
 """T2.3 mechanism audits without training (env/t2_stage.py).
 
     python -B -m experiments.t2_audit warmup --output CAL.json [--episodes 40] [--workers W]
-    python -B -m experiments.t2_audit labels --calibration CAL.json --openings A-B --workers W --output DIR
+    python -B -m experiments.t2_audit labels --calibration CAL.json --openings A-B --workers W --output DIR [--policy-checkpoint ZIP]
     python -B -m experiments.t2_audit summary --input DIR --output LABEL_AUDIT.json
 
 ``labels`` checks the EACC model labels against the truth. At every stage decision of an episode the
@@ -103,17 +103,20 @@ def warmup(out: Path, episodes: int, workers: int = 4):
     out.write_text(json.dumps({'stage': stage, 'entry': entry, 'episodes': used}, indent=1), encoding='utf-8')
 
 
-def _truth(snapshot, a, stages: int) -> dict:
-    """Fly intent ``a`` from the decision state on its own branch for up to ``stages`` decisions."""
+def _truth(snapshot, a, a2=None) -> dict:
+    """Fly intent ``a`` from the decision state on its own branch for one decision and, when it does not end the
+    episode or open the entry, the stage-2 action ``a2`` (the label's own policy sample) for a second decision."""
     from env.t1_p_stage import relative_inertial
     b = branch(snapshot)
     out = {'true': 0.0, 'entered_stage': None, 'event': None}
-    for k in range(stages):
-        _, _, term, trunc, info = b.step(a)
+    for k, act in enumerate([a] if a2 is None else [a, a2]):
+        _, _, term, trunc, info = b.step(np.asarray(act, dtype=np.float64))
         out['true'] += info['true_reward']
+        q, v = relative_inertial(b.env)
         if k == 0:
-            q, v = relative_inertial(b.env)
             out.update(q1=q.tolist(), reward1=info['true_reward'], obs1=b.observation().tolist(), stage_s=info['stage_s'], held=info['held'])
+        else:
+            out.update(q2=q.tolist(), reward2=info['true_reward'], stage2_s=info['stage_s'])
         if b._stage_entry is not None and out['entered_stage'] is None:
             out['entered_stage'] = k + 1
         if term or trunc:
@@ -124,10 +127,12 @@ def _truth(snapshot, a, stages: int) -> dict:
 
 
 def _compare(label: dict, truth: dict) -> dict:
-    stages = label.get('stages', 0) if label['done'] else 0
-    row = {'pred_entry_stage': stages, 'true_entry_stage': truth['entered_stage'], 'pred_true': label['true']}
-    if label['done']:
-        row['label_err'] = label['true'] - truth['true'] if truth['entered_stage'] == stages and truth['event'] else None
+    """Stage-1 label against the truth of the candidate's first decision."""
+    entry = bool(label['done'])
+    row = {'pred_entry_stage': 1 if entry else 0, 'true_entry_stage': truth['entered_stage'] if truth['entered_stage'] == 1 else None,
+           'pred_true': label['true']}
+    if entry:
+        row['label_err'] = label['true'] - truth['true'] if truth['entered_stage'] == 1 and truth['event'] else None
     else:
         row['reward_err'] = label['true'] - truth['reward1']
         row['pos_err_m'] = float(np.linalg.norm(np.asarray(label['q']) - np.asarray(truth['q1'])))
@@ -135,8 +140,35 @@ def _compare(label: dict, truth: dict) -> dict:
     return row
 
 
+def _compare2(s1: dict, s2: dict, truth: dict) -> dict:
+    """Stage 2 (T2.5): the predicted entry event of the second decision and the two-decision true return."""
+    row = {'pred_entry2': bool(s2['done']), 'true_entry2': truth['entered_stage'] == 2, 'true_entry1': truth['entered_stage'] == 1}
+    if truth['entered_stage'] == 1:
+        return row                                       # the truth entered already in stage 1: stage 2 not comparable
+    if s2['done']:
+        row['label2_err'] = (s1['true'] + s2['true']) - truth['true'] if truth['entered_stage'] == 2 and truth['event'] else None
+    elif 'reward2' in truth and truth['entered_stage'] is None:
+        row['reward2_err'] = s2['true'] - truth['reward2']
+        row['pos2_err_m'] = float(np.linalg.norm(np.asarray(s2['q']) - np.asarray(truth['q2'])))
+    return row
+
+
+def label_policy_from(checkpoint, seed: int):
+    """mu for the audit: a trained SAC actor (sampling, seeded per opening), as in training."""
+    import torch
+    from train.t2_mve_sac import T2SAC
+    actor = T2SAC.load(checkpoint, device='cpu').actor
+    actor.set_training_mode(False)
+    torch.manual_seed(seed)
+    def mu(o):
+        with torch.no_grad():
+            a, logp = actor.action_log_prob(torch.as_tensor(np.asarray(o, np.float32)[None]))
+        return a[0].numpy(), float(logp.reshape(-1)[0])
+    return mu
+
+
 def audit_job(job):
-    opening, cal_path, out = job
+    opening, cal_path, out, policy_ckpt = job
     import torch; torch.set_num_threads(1)
     file = Path(out) / f'audit_{opening}.json'
     if file.exists():
@@ -148,6 +180,8 @@ def audit_job(job):
     env.diagnostics = True
     env.reset(options={'opening': opening})
     load_calibration(env, cal_path)
+    if policy_ckpt:
+        env.label_policy = label_policy_from(policy_ckpt, opening)
     rows, done, t0 = [], False, time.time()
     while not done:
         if env.generator.mode in ('bridge', 'descent'):
@@ -161,13 +195,16 @@ def audit_job(job):
         if d['reason'] in ('stage', 'entry'):
             rec['fact_raw_done'] = d['raw_fact']['done']; rec['entered'] = d['entered']
             for c in m['cands']:
-                horizon = max(c['anchored'].get('stages', 1) if c['anchored']['done'] else 1, c['raw'].get('stages', 1) if c['raw']['done'] else 1)
-                truth = _truth(snap, np.asarray(c['a'], dtype=np.float64), horizon)
-                rec['candidates'].append({'a': np.asarray(c['a']).tolist(), 'truth': {k: truth[k] for k in ('true', 'entered_stage', 'event', 'stage_s', 'held')},
-                                          'raw': _compare(c['raw'], truth), 'anchored': _compare(c['anchored'], truth)})
+                a2 = c['s2']['a'] if (not c['done'] and c.get('s2') is not None) else None
+                truth = _truth(snap, np.asarray(c['a'], dtype=np.float64), a2)
+                row = {'a': np.asarray(c['a']).tolist(), 'truth': {k: truth.get(k) for k in ('true', 'entered_stage', 'event', 'stage_s', 'held')},
+                       'raw': _compare(c['raw'], truth), 'anchored': _compare(c['anchored'], truth)}
+                if a2 is not None:
+                    row['stage2'] = _compare2(c['anchored'], c['stage2'], truth); row['a2'] = np.asarray(a2).tolist()
+                rec['candidates'].append(row)
         rows.append(rec)
         print(json.dumps({'opening': opening, 't': rec['t'], 'reason': rec['reason'], 'n': len(rec['candidates'])}), flush=True)
-    res = {'opening': opening, 'policy': name, 'event': info['event'], 'decisions': rows, 'wall_s': time.time() - t0}
+    res = {'opening': opening, 'policy': name, 'label_policy': policy_ckpt, 'event': info['event'], 'decisions': rows, 'wall_s': time.time() - t0}
     file.write_text(json.dumps(res, default=float), encoding='utf-8')
     return res
 
@@ -199,6 +236,26 @@ def summary(inp: Path) -> dict:
                      'entry_label_err_mean': float(np.mean(lab)) if lab else None, 'entry_label_abs_err_median': float(np.median(np.abs(lab))) if lab else None,
                      'stage_reward_abs_err_median': float(np.median(np.abs(rew))) if rew else None,
                      'stage_pos_err_median_m': float(np.median(pos)) if pos else None, 'stage_pos_err_p90_m': float(np.percentile(pos, 90)) if pos else None}
+    # T2.5 cross-stage information: candidates whose second decision (policy action) opens the entry, in decisions
+    # where the executed intent did not enter in its own stage ("decisive"), against the truth branch
+    decs = [d for f in files for d in json.loads(f.read_text(encoding='utf-8'))['decisions'] if d['candidates']]
+    s2 = [(d, c) for d in decs for c in d['candidates'] if 'stage2' in c]
+    st2 = [c['stage2'] for _, c in s2 if not c['stage2']['true_entry1']]
+    dec = [x for x in st2]
+    pred = [x for x in dec if x['pred_entry2']]; true_ = [x for x in dec if x['true_entry2']]
+    not_entered = [(d, c) for d, c in s2 if not d.get('entered')]
+    l2 = [x['label2_err'] for x in st2 if x.get('label2_err') is not None]
+    r2 = [x['reward2_err'] for x in st2 if 'reward2_err' in x]
+    p2 = [x['pos2_err_m'] for x in st2 if 'pos2_err_m' in x]
+    out['stage2'] = {'candidates_with_stage2': len(s2), 'non_terminal_candidates': sum(1 for d in decs for c in d['candidates'] if not c['anchored']['pred_entry_stage']),
+                     'pred_entry2': len(pred), 'true_entry2': len(true_), 'entry2_tp': sum(1 for x in dec if x['pred_entry2'] and x['true_entry2']),
+                     'entry2_fp': sum(1 for x in dec if x['pred_entry2'] and not x['true_entry2']), 'entry2_fn': sum(1 for x in dec if x['true_entry2'] and not x['pred_entry2']),
+                     'decisive_pred_where_executed_not_entered': sum(1 for d, c in not_entered if c['stage2']['pred_entry2'] and not c['stage2']['true_entry1']),
+                     'decisive_true_where_executed_not_entered': sum(1 for d, c in not_entered if c['stage2']['true_entry2']),
+                     'decisions_executed_not_entered': len({id(d) for d, _ in not_entered}),
+                     'entry2_label_err_mean': float(np.mean(l2)) if l2 else None, 'entry2_label_abs_err_median': float(np.median(np.abs(l2))) if l2 else None,
+                     'stage2_reward_abs_err_median': float(np.median(np.abs(r2))) if r2 else None,
+                     'stage2_pos_err_median_m': float(np.median(p2)) if p2 else None, 'stage2_pos_err_p90_m': float(np.percentile(p2, 90)) if p2 else None}
     out['openings'] = len(files); out['errors'] = len(list(inp.glob('ERROR_*.json')))
     return out
 
@@ -211,6 +268,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('mode', choices=['warmup', 'labels', 'summary'])
     p.add_argument('--output', required=True); p.add_argument('--calibration'); p.add_argument('--openings'); p.add_argument('--input')
     p.add_argument('--workers', type=int, default=4); p.add_argument('--episodes', type=int, default=40)
+    p.add_argument('--policy-checkpoint', default=None, help='mu of the stage-2 labels: a trained SAC checkpoint (T2.5)')
     a = p.parse_args()
     import os
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')
@@ -219,7 +277,7 @@ def main():
     elif a.mode == 'labels':
         out = Path(a.output); out.mkdir(parents=True, exist_ok=True)
         with ProcessPoolExecutor(a.workers) as pool:
-            for f in as_completed([pool.submit(guarded_audit, (o, a.calibration, str(out))) for o in openings(a.openings)]):
+            for f in as_completed([pool.submit(guarded_audit, (o, a.calibration, str(out), a.policy_checkpoint)) for o in openings(a.openings)]):
                 r = f.result(); print(json.dumps({k: r.get(k) for k in ('opening', 'policy', 'event', 'wall_s', 'error')}), flush=True)
     else:
         res = summary(Path(a.input)); Path(a.output).write_text(json.dumps(res, indent=1), encoding='utf-8'); print(json.dumps(res, indent=1))
