@@ -1,0 +1,143 @@
+{
+  "pid": 29172,
+  "started_jst": "2026-10-26T15:34:15.756414+09:00",
+  "science_SHA": "84ee9c1045f32bbbacfef6cd220fdad55c5765c8",
+  "order_collab": "4c52ece",
+  "scope": "Only two MVE seeds0/1 each4000; reuse T23 SAC; audit6; no branch/no figures",
+  "phase": "training",
+  "ancestor_proof": [
+    {
+      "pid": 26676,
+      "name": "pythonw.exe",
+      "created": 1792996455.4276924
+    },
+    {
+      "pid": 2648,
+      "name": "svchost.exe",
+      "created": 1792659408.9934297
+    },
+    {
+      "pid": 1688,
+      "name": "services.exe",
+      "created": 1792659408.6115775
+    },
+    {
+      "pid": 1548,
+      "name": "wininit.exe",
+      "created": 1792659407.8702264
+    }
+  ],
+  "deadline_jst": null,
+  "updated_jst": "2026-10-26T18:25:02.840343+09:00",
+  "memory": {
+    "commit_free_GiB": 24.041301727294922,
+    "physical_free_GiB": 5.462108612060547
+  },
+  "processes": {
+    "TRAIN_e_mve_s0_attempt0": 2604,
+    "TRAIN_e_mve_s1_attempt0": 5404,
+    "publish_mechanism1000_0": 13340
+  },
+  "rolling": {
+    "e_mve_s0": {
+      "jst": "2026-10-26T18:24:52.430425+09:00",
+      "steps": 1269,
+      "updates": 2140,
+      "episodes": 225,
+      "wall_s": 10180.233999999997,
+      "recent_decisions_per_s": 0.131552982964066,
+      "overall_decisions_per_s": 0.12465332329296168,
+      "eta_s_estimate": 20759.696499972022,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 1269,
+        "with_candidates": 558,
+        "candidates": 4327,
+        "entry_candidates": 816,
+        "reason": {
+          "off": 42,
+          "entry_calibration": 636,
+          "stage": 459,
+          "entry": 105,
+          "not_comparable": 27
+        },
+        "two_stage": 3165,
+        "two_stage_entry": 671
+      },
+      "model_probes": 86,
+      "pending_truth_records": 0,
+      "final": false
+    },
+    "e_mve_s1": {
+      "jst": "2026-10-26T18:24:47.354113+09:00",
+      "steps": 1051,
+      "updates": 1704,
+      "episodes": 195,
+      "wall_s": 10175.141000000003,
+      "recent_decisions_per_s": 0.1644412287047677,
+      "overall_decisions_per_s": 0.10329095193865123,
+      "eta_s_estimate": 17933.45880001016,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 1051,
+        "with_candidates": 526,
+        "candidates": 4021,
+        "entry_candidates": 782,
+        "reason": {
+          "off": 35,
+          "entry_calibration": 469,
+          "stage": 425,
+          "entry": 105,
+          "not_comparable": 17
+        },
+        "two_stage": 2887,
+        "two_stage_entry": 596
+      },
+      "model_probes": 69,
+      "pending_truth_records": 0,
+      "final": false
+    }
+  },
+  "preparation": {
+    "pid": 24064,
+    "science_SHA": "84ee9c1045f32bbbacfef6cd220fdad55c5765c8",
+    "order_collab": "4c52ece",
+    "started_jst": "2026-10-26T15:34:17.444813+09:00",
+    "phase": "preparation_complete_training_held_for_logging",
+    "ancestor_proof": [
+      {
+        "pid": 23824,
+        "name": "pythonw.exe",
+        "created": 1792996455.4099724
+      },
+      {
+        "pid": 2648,
+        "name": "svchost.exe",
+        "created": 1792659408.9934297
+      },
+      {
+        "pid": 1688,
+        "name": "services.exe",
+        "created": 1792659408.6115775
+      },
+      {
+        "pid": 1548,
+        "name": "wininit.exe",
+        "created": 1792659407.8702264
+      }
+    ],
+    "formal_training_started": false,
+    "logging_gate": "NOT_IMPLEMENTED_IN_FREEZE",
+    "deadline_jst": "2026-10-26T09:00:00+09:00",
+    "reuse_complete": 192,
+    "updated_jst": "2026-10-26T17:32:22.747426+09:00",
+    "active": {},
+    "audit_completed": 6,
+    "sac_s1_3k_completed": 24,
+    "finished_jst": "2026-10-26T17:32:22.747426+09:00"
+  },
+  "eval_completed": 192,
+  "logging_gate": "passed",
+  "training_done": [],
+  "current_job": "publish_mechanism1000_0"
+}
