@@ -1,1 +1,1 @@
-T2.5验证/mechanism1000；入口RESULT.md；无后续分支。
+T2.5已按用户停止，入口RESULT_STOPPED；不评估不判定，新T2.5.1优先。

@@ -4,7 +4,7 @@
   "science_SHA": "84ee9c1045f32bbbacfef6cd220fdad55c5765c8",
   "order_collab": "4c52ece",
   "scope": "Only two MVE seeds0/1 each4000; reuse T23 SAC; audit6; no branch/no figures",
-  "phase": "training",
+  "phase": "stopped_by_user_t251_priority",
   "ancestor_proof": [
     {
       "pid": 26676,
@@ -28,72 +28,68 @@
     }
   ],
   "deadline_jst": null,
-  "updated_jst": "2026-10-26T18:25:02.840343+09:00",
+  "updated_jst": "2026-10-26T20:55:35.845103+09:00",
   "memory": {
-    "commit_free_GiB": 24.041301727294922,
-    "physical_free_GiB": 5.462108612060547
+    "commit_free_GiB": 22.212608337402344,
+    "physical_free_GiB": 4.106731414794922
   },
-  "processes": {
-    "TRAIN_e_mve_s0_attempt0": 2604,
-    "TRAIN_e_mve_s1_attempt0": 5404,
-    "publish_mechanism1000_0": 13340
-  },
+  "processes": {},
   "rolling": {
     "e_mve_s0": {
-      "jst": "2026-10-26T18:24:52.430425+09:00",
-      "steps": 1269,
-      "updates": 2140,
-      "episodes": 225,
-      "wall_s": 10180.233999999997,
-      "recent_decisions_per_s": 0.131552982964066,
-      "overall_decisions_per_s": 0.12465332329296168,
-      "eta_s_estimate": 20759.696499972022,
+      "jst": "2026-10-26T20:55:12.521087+09:00",
+      "steps": 2084,
+      "updates": 3770,
+      "episodes": 417,
+      "wall_s": 19200.328000000038,
+      "recent_decisions_per_s": 0.06594566077543895,
+      "overall_decisions_per_s": 0.10853981244487051,
+      "eta_s_estimate": 29054.224000036134,
       "snapshot_not_prediction": true,
       "replay": {
-        "transitions": 1269,
-        "with_candidates": 558,
-        "candidates": 4327,
-        "entry_candidates": 816,
+        "transitions": 2084,
+        "with_candidates": 1347,
+        "candidates": 10536,
+        "entry_candidates": 2135,
         "reason": {
-          "off": 42,
+          "off": 45,
           "entry_calibration": 636,
-          "stage": 459,
-          "entry": 105,
-          "not_comparable": 27
+          "stage": 1076,
+          "entry": 279,
+          "not_comparable": 48
         },
-        "two_stage": 3165,
-        "two_stage_entry": 671
+        "two_stage": 7741,
+        "two_stage_entry": 1885
       },
-      "model_probes": 86,
+      "model_probes": 151,
       "pending_truth_records": 0,
       "final": false
     },
     "e_mve_s1": {
-      "jst": "2026-10-26T18:24:47.354113+09:00",
-      "steps": 1051,
-      "updates": 1704,
-      "episodes": 195,
-      "wall_s": 10175.141000000003,
-      "recent_decisions_per_s": 0.1644412287047677,
-      "overall_decisions_per_s": 0.10329095193865123,
-      "eta_s_estimate": 17933.45880001016,
+      "jst": "2026-10-26T20:55:08.172824+09:00",
+      "steps": 1888,
+      "updates": 3376,
+      "episodes": 378,
+      "wall_s": 19195.95299999998,
+      "recent_decisions_per_s": 0.09881748410686525,
+      "overall_decisions_per_s": 0.0983540645259968,
+      "eta_s_estimate": 21372.735999997705,
       "snapshot_not_prediction": true,
       "replay": {
-        "transitions": 1051,
-        "with_candidates": 526,
-        "candidates": 4021,
-        "entry_candidates": 782,
+        "transitions": 1888,
+        "with_candidates": 1317,
+        "candidates": 10140,
+        "entry_candidates": 1988,
         "reason": {
-          "off": 35,
+          "off": 40,
           "entry_calibration": 469,
-          "stage": 425,
-          "entry": 105,
-          "not_comparable": 17
+          "stage": 1069,
+          "entry": 266,
+          "not_comparable": 44
         },
-        "two_stage": 2887,
-        "two_stage_entry": 596
+        "two_stage": 7328,
+        "two_stage_entry": 1682
       },
-      "model_probes": 69,
+      "model_probes": 136,
       "pending_truth_records": 0,
       "final": false
     }
@@ -139,5 +135,9 @@
   "eval_completed": 192,
   "logging_gate": "passed",
   "training_done": [],
-  "current_job": "publish_mechanism1000_0"
+  "current_job": "publish_mechanism1000_0",
+  "stopped_jst": "2026-10-26T20:55:47.310952+09:00",
+  "no_evaluation": true,
+  "no_decision": true,
+  "no_more_training": true
 }
