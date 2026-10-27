@@ -1,0 +1,124 @@
+{
+ "opening": 294006,
+ "event": "timeout",
+ "return": -137.37065123062004,
+ "time_s": 170.0,
+ "delta_v": 2.037065123062002,
+ "stages": 6,
+ "holds": 1,
+ "rejected": 0,
+ "bridge_attempts": 16,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 170.0,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 166.89795422554016,
+ "decisions": [
+  {
+   "a": [
+    0.42556166648864746,
+    0.6619855165481567
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.222116771825503,
+   "planned_dv": 0.16880661211112188,
+   "executed_dv": 0.1688478069266072,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.4461183547973633,
+    0.9295713901519775
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 10.938230228250815,
+   "planned_dv": 0.051789697899202194,
+   "executed_dv": 0.051729921890330655,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.17735064029693604,
+    0.9486038684844971
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 10.26926537590456,
+   "planned_dv": 0.03105884254393422,
+   "executed_dv": 0.03106197038895156,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.6394915580749512,
+    0.3475989103317261
+   ],
+   "t": 104.0,
+   "mode": "hold",
+   "held": true,
+   "range_m": 9.949983554610755,
+   "planned_dv": 0.15777032200948832,
+   "executed_dv": 0.9513955605595181,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.9995062351226807,
+    -0.9941712021827698
+   ],
+   "t": 120.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 8.398818511011225,
+   "planned_dv": 0.1688066037817855,
+   "executed_dv": 0.16879437168322142,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.9532184600830078,
+    -0.834374189376831
+   ],
+   "t": 170.0,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.1157816252261092,
+   "planned_dv": 0.02513841815416868,
+   "executed_dv": 0.6652354916133731,
+   "model": "off",
+   "event": "timeout"
+  }
+ ],
+ "policy": "sac_s0_4000",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\T2_3_TEST_20261025\\TRAIN_e_sac_s0\\checkpoints\\step_4000.zip",
+ "window": true,
+ "entries_lost": 1,
+ "window_recoveries": [
+  {
+   "t": 76.0,
+   "slip_s": 2.0,
+   "reserve": false,
+   "phase_deg": 5.268004513982747
+  },
+  {
+   "t": 88.0,
+   "slip_s": 2.0,
+   "reserve": true,
+   "phase_deg": 5.267785659868911
+  }
+ ]
+}
