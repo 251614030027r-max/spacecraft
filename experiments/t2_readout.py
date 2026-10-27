@@ -83,7 +83,8 @@ DEADLINE_BINS = (('high', 0.0, 160.0), ('mid', 160.0, 180.0), ('low', 180.0, 1e9
 def _deadline_bins(a, b, d, ops):
     out = {}
     for name, lo, hi in DEADLINE_BINS:
-        xs = [o for o in ops if a[o]['mission']['urgent'] and lo <= a[o]['mission']['deadline_s'] < hi]
+        xs = [o for o in ops if a[o]['mission']['urgent'] and a[o]['mission'].get('deadline_s') is not None
+              and lo <= a[o]['mission']['deadline_s'] < hi]
         out[name] = {'n': len(xs), 'mean': float(np.mean([d[o] for o in xs])) if xs else None,
                      'capture_mve': sum(a[o]['event'] == 'success' for o in xs), 'capture_sac': sum(b[o]['event'] == 'success' for o in xs)}
     return out
@@ -156,6 +157,7 @@ def curve(eval_root, train_root, screen_dir, out, expected=24):
             errors = sorted(Path(f).name for f in ck_dir.glob('ERROR_*.json'))
             res['completeness'][f'{arm}/step_{k}'] = {'n': st['n'], 'errors': errors, 'complete': st['n'] == expected and not errors}
     res['all_complete'] = bool(res['completeness']) and all(c['complete'] for c in res['completeness'].values())
+    res['expected'] = int(expected)
     res['paired'] = paired(eval_root)
     res['training'] = {}
     for t in sorted(Path(train_root).glob('*')):

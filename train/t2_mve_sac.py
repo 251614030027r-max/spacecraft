@@ -52,8 +52,12 @@ UPDATES_PER_TRANSITION = 2
 #: stage-1 target); its one-step stage-2 row (T2.5.1) has no age cap
 SYNC_UPDATES = 100
 AGE_CAP = 2000
-#: learner version recorded in the manifest (T2.5.1: one-step stage-2 rows)
-LEARNER_VERSION = "t2-learner-2.5.1"
+#: learner version recorded in the manifest (T2.5.1: one-step stage-2 rows; T2.6: calibration shared by the workers)
+LEARNER_VERSION = "t2-learner-2.6"
+#: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
+#: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
+#: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
+POOL_CALIBRATION = True
 
 
 class StageReplay(ReplayBuffer):
@@ -320,6 +324,44 @@ def _slim(info: dict) -> dict:
             **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')}}
 
 
+class CalibrationPool:
+    """Learner side of the shared calibration: rows reported by the workers, forwarded to every other worker once."""
+
+    def __init__(self):
+        self.rows, self.sent = [], {}
+
+    def add(self, worker: int, rows) -> None:
+        for kind in ('stage', 'entry'):
+            for r in (rows or {}).get(kind, ()):
+                self.rows.append((worker, kind, r))
+
+    def pending(self, worker: int):
+        new = [(k, r) for w, k, r in self.rows[self.sent.get(worker, 0):] if w != worker]
+        self.sent[worker] = len(self.rows)
+        if not new:
+            return None
+        return {kind: [r for k, r in new if k == kind] for kind in ('stage', 'entry')}
+
+
+def share_calibration(env) -> dict:
+    """Worker side: from now on every row this environment adds to its own stage / entry calibration is also put in
+    the returned outbox (sent to the learner and emptied after each step)."""
+    outbox = {'stage': [], 'entry': []}
+    for kind, obj in (('stage', env.calibration), ('entry', env.entry_calibration)):
+        def add(*a, _orig=obj.add, _obj=obj, _kind=kind, **k):
+            _orig(*a, **k); outbox[_kind].append(_obj.rows[-1])
+        obj.add = add
+    return outbox
+
+
+def merge_calibration(env, rows) -> None:
+    """Worker side: the other workers' rows, appended in arrival order (the same sliding window as the own rows)."""
+    from env.t2_stage import CALIBRATION_WINDOW
+    for kind, obj in (('stage', env.calibration), ('entry', env.entry_calibration)):
+        if rows and rows.get(kind):
+            obj.rows = (obj.rows + list(rows[kind]))[-CALIBRATION_WINDOW:]
+
+
 def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool, urgent_deadline=None) -> None:
     """One environment: send (transition or None, observation to act on), receive the action; until 'stop'."""
     import os
@@ -332,17 +374,22 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
                      entry_stages=entry_stages, window=window, mission=mission)
     obs, _ = env.reset(); transition = None
     actor = None
+    outbox = share_calibration(env) if (POOL_CALIBRATION and candidates > 0) else None
 
     def label_policy(o):          # mu: this environment's copy of the policy (T2.5 stage 2 of a counterfactual label)
         with th.no_grad():
             a, logp = actor.action_log_prob(th.as_tensor(np.asarray(o, np.float32)[None]))
         return a[0].numpy(), float(logp.reshape(-1)[0])
     while True:
-        conn.send((transition, obs))
+        conn.send((transition, obs, {k: list(v) for k, v in outbox.items()} if outbox is not None else None))
+        if outbox is not None:
+            outbox['stage'].clear(); outbox['entry'].clear()
         msg = conn.recv()
         if isinstance(msg, str):
             break
-        action, payload = msg
+        action, payload, shared = msg
+        if shared is not None:
+            merge_calibration(env, shared)
         if payload is not None:                   # ('actor', module) once, then ('state', state_dict) every SYNC_UPDATES
             if payload[0] == 'actor':
                 actor = payload[1]; actor.set_training_mode(False); env.label_policy = label_policy
@@ -372,6 +419,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
                                                    'k_candidates': candidates, 'collection': 'asynchronous', 'window': window,
                                                    'gradient_steps_per_transition': model.gradient_steps, 'entry_stages': entry_stages, 'sync_updates': SYNC_UPDATES, 'age_cap': AGE_CAP,
+                                                   'pooled_calibration': bool(POOL_CALIBRATION and candidates > 0),
                                                    'urgent_deadline_s': list(urgent_deadline) if urgent_deadline is not None else [170.0, 210.0],
                                                    'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION}, indent=1), encoding='utf-8')
     ctx = mp.get_context('spawn')
@@ -386,10 +434,13 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     bias_by_worker = {}
     synced = {}                                   # worker -> update count of its policy copy
     rng = np.random.default_rng(seed)
+    pool = CalibrationPool() if (POOL_CALIBRATION and candidates > 0) else None
     active = list(pipes)
     while active:
         for conn in wait(active):
-            transition, obs = conn.recv()
+            transition, obs, rows = conn.recv()
+            if pool is not None:
+                pool.add(pipes.index(conn), rows)
             if transition is not None and model.num_timesteps < steps:
                 o, o1, act, r, term, trunc, info = transition
                 done = term or trunc
@@ -426,7 +477,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                     payload = ('state', {k: v.detach().clone() for k, v in model.actor.state_dict().items()})
                 if payload is not None:
                     synced[w_] = model._n_updates
-            conn.send((action, payload))
+            conn.send((action, payload, pool.pending(w_) if pool is not None else None))
     for p in procs:
         p.join(timeout=60)
     model.save(out / 'final')

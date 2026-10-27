@@ -230,7 +230,7 @@ def decide_t26(r: dict, mech: dict | None = None, checkpoints=T26_CHECKPOINTS) -
     """T2.6 time-pressure development test (pre-registered with its run order): SAC and EACC trained together from zero on
     the selected profile, seeds 0 and 1, 3000 decisions, checkpoints 500..3000 on the 24 development openings.
 
-      C0 complete     both arms, both seeds, every checkpoint 24/24, no ERROR file
+      C0 complete     both arms, both seeds, every checkpoint complete (the readout's ``expected`` openings, 24 by default), no ERROR file
       M  mechanism    as v251 (both EACC runs, probes from 1000 on)
       E1 efficiency   paired EACC - SAC averaged over the checkpoints: > 0 on both seeds and >= +5 averaged over the seeds
       U  urgent       urgent captures EACC - SAC summed over the checkpoints: >= +4 over both seeds, neither seed < 0
@@ -241,7 +241,8 @@ def decide_t26(r: dict, mech: dict | None = None, checkpoints=T26_CHECKPOINTS) -
     paired = r.get('paired', {}); seeds = ('0', '1'); last = checkpoints[-1]
     pr = lambda s, k: paired.get(f's{s}/step_{k}')
     out = {'criteria': {}, 'values': {}}; c = out['criteria']; v = out['values']
-    c['C0_complete'] = bool(r.get('all_complete')) and all(pr(s, k) and pr(s, k)['n'] == 24 for s in seeds for k in checkpoints)
+    n = int(r.get('expected', 24))                    # development openings per checkpoint (T2.6W: 48)
+    c['C0_complete'] = bool(r.get('all_complete')) and all(pr(s, k) and pr(s, k)['n'] == n for s in seeds for k in checkpoints)
     if not c['C0_complete']:
         out['verdict'] = 'incomplete'; return out
     v['paired_auc'] = {s: float(np.mean([pr(s, k)['mean'] for k in checkpoints])) for s in seeds}

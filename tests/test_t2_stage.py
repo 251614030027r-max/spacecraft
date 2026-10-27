@@ -359,7 +359,8 @@ def test_paired_readout_drops_the_two_largest_gains(tmp_path):
     for arm, rets in (('e_mve_s0', [10, 100, 50, 0]), ('e_sac_s0', [0, 0, 0, 5])):
         d = tmp_path / arm / 'step_100'; d.mkdir(parents=True)
         for k, ret in enumerate(rets):
-            (d / f'{k}.json').write_text(json.dumps({'opening': k, 'return': ret, 'event': 'success', 'mission': {'urgent': k % 2 == 0}}))
+            (d / f'{k}.json').write_text(json.dumps({'opening': k, 'return': ret, 'event': 'success', 'time_s': 100.0, 'delta_v': 1.0,
+                                                     'mission': {'urgent': k % 2 == 0, 'deadline_s': 180.0 if k % 2 == 0 else 300.0}}))
     p = paired(tmp_path)['s0/step_100']
     assert p['n'] == 4 and abs(p['mean'] - 38.75) < 1e-9 and abs(p['without_top2'] - 2.5) < 1e-9
     assert abs(p['urgent'] - 30.0) < 1e-9 and abs(p['economy'] - 47.5) < 1e-9 and p['positive'] == 3 and p['negative'] == 1
@@ -614,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-2.5.1'
+    assert t.LEARNER_VERSION == 't2-learner-2.6'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -710,6 +711,8 @@ def test_t26_decision_applies_the_preregistered_criteria():
     assert decide_t26(build(8, 6), {'s0': dict(mech['s0'], w2_mean=0.2)})['verdict'] == 'mechanism_failure'
     r = build(8, 6); r['paired']['s1/step_3000']['n'] = 23
     assert decide_t26(r, mech)['verdict'] == 'incomplete'
+    r = build(8, 6); r['expected'] = 48                                             # T2.6W: 48 openings expected
+    assert decide_t26(r, mech)['verdict'] == 'incomplete'
 
 
 def test_training_passes_the_mission_profile_to_every_worker():
@@ -748,3 +751,37 @@ def test_t26w_readout_bins_late_window_and_both_success(tmp_path):
     assert rep['urgent_bins_all_checkpoints']['high'] == {'openings': 4, 'capture_mve': 64, 'capture_sac': 0, 'paired_mean': 211.0}
     assert rep['late_s1']['spread'] == {'mve': 0.0, 'sac': 0.0} and rep['late_s0']['capture'][4000] == (24, 20)
     assert abs(rep['both_success']['economy']['delta_v'] + 0.2) < 1e-9
+
+
+def test_calibration_is_shared_by_the_workers():
+    """T2.6: an environment's own new stage / entry rows go to the learner; the learner forwards every other worker's
+    rows once; a worker appends them to its own calibrations (same sliding window)."""
+    from env.t2_stage import CALIBRATION_WINDOW, ENTRY_CAL_MIN, T2StageEnv
+    from train.t2_mve_sac import CalibrationPool, merge_calibration, share_calibration
+    envs = [T2StageEnv(openings=[294000], candidates=0) for _ in range(2)]
+    boxes = [share_calibration(e) for e in envs]
+    pool = CalibrationPool()
+    for k in range(12):                                   # each environment executes 12 entries and 1 stage
+        for w, e in enumerate(envs):
+            e.entry_calibration.add(20.0, 1.0, 21.0 + w, 1.1, True, 0.0, 100.0)
+    for w, e in enumerate(envs):
+        e.calibration.add(0.1, 0.12, np.zeros(3), np.zeros(3), near=False)
+    for w, b in enumerate(boxes):
+        assert len(b['entry']) == 12 and len(b['stage']) == 1
+        pool.add(w, {k: list(v) for k, v in b.items()}); b['entry'].clear(); b['stage'].clear()
+    for w, e in enumerate(envs):
+        assert not e.entry_calibration.ready             # 12 own entries < ENTRY_CAL_MIN
+        merge_calibration(e, pool.pending(w))
+        assert len(e.entry_calibration.rows) == 24 and e.entry_calibration.ready and len(e.calibration.rows) == 2
+        assert pool.pending(w) is None                   # forwarded once
+        assert not boxes[w]['entry']                     # merged rows are not reported back
+    assert ENTRY_CAL_MIN <= 24 <= CALIBRATION_WINDOW
+    e = envs[0]; merge_calibration(e, {'entry': [e.entry_calibration.rows[0]] * 100, 'stage': []})
+    assert len(e.entry_calibration.rows) == CALIBRATION_WINDOW
+
+
+def test_pooled_calibration_only_in_the_coupled_arm():
+    import inspect, train.t2_mve_sac as t
+    w = inspect.getsource(t.worker); src = inspect.getsource(t.train)
+    assert 'share_calibration(env) if (POOL_CALIBRATION and candidates > 0) else None' in w and 'merge_calibration(env, shared)' in w
+    assert 'CalibrationPool() if (POOL_CALIBRATION and candidates > 0) else None' in src and 'pool.pending(w_)' in src
