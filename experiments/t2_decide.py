@@ -6,6 +6,7 @@
     python -B -m experiments.t2_decide --criteria t25 --readout READOUT.json --output DECISION.json                (T2.5 formal)
     python -B -m experiments.t2_decide --criteria v25 --readout READOUT.json --train-root DIR --output DECISION.json  (T2.5 validation)
     python -B -m experiments.t2_decide --criteria v251 --readout READOUT.json --train-root DIR --output DECISION.json (T2.5.1 validation)
+    python -B -m experiments.t2_decide --criteria t26 --readout READOUT.json --train-root DIR --output DECISION.json  (T2.6 time pressure)
 
 T2.2 (research layer, 2026-10-22):
 
@@ -221,6 +222,54 @@ def decide_v251(r: dict, mech: dict | None = None) -> dict:
     return out
 
 
+T26_CHECKPOINTS = (500, 1000, 1500, 2000, 2500, 3000)
+
+
+def decide_t26(r: dict, mech: dict | None = None, checkpoints=T26_CHECKPOINTS) -> dict:
+    """T2.6 time-pressure development test (pre-registered with its run order): SAC and EACC trained together from zero on
+    the selected profile, seeds 0 and 1, 3000 decisions, checkpoints 500..3000 on the 24 development openings.
+
+      C0 complete     both arms, both seeds, every checkpoint 24/24, no ERROR file
+      M  mechanism    as v251 (both EACC runs, probes from 1000 on)
+      E1 efficiency   paired EACC - SAC averaged over the checkpoints: > 0 on both seeds and >= +5 averaged over the seeds
+      U  urgent       urgent captures EACC - SAC summed over the checkpoints: >= +4 over both seeds, neither seed < 0
+      E2 final        paired at the last checkpoint, seed mean >= -3
+      S  safety       each seed: EACC unsafe over the checkpoints <= SAC + 1; EACC captures at the last checkpoint >= SAC - 1
+    Verdict: incomplete | mechanism_failure | harmful (E2 or S fails) | pass (all) | partial (E1 > 0 on both seeds but below
+    +5, or U fails with E1 passing, or U passes with E1 > 0 on one seed) | no_gain."""
+    paired = r.get('paired', {}); seeds = ('0', '1'); last = checkpoints[-1]
+    pr = lambda s, k: paired.get(f's{s}/step_{k}')
+    out = {'criteria': {}, 'values': {}}; c = out['criteria']; v = out['values']
+    c['C0_complete'] = bool(r.get('all_complete')) and all(pr(s, k) and pr(s, k)['n'] == 24 for s in seeds for k in checkpoints)
+    if not c['C0_complete']:
+        out['verdict'] = 'incomplete'; return out
+    v['paired_auc'] = {s: float(np.mean([pr(s, k)['mean'] for k in checkpoints])) for s in seeds}
+    v['paired_auc_urgent'] = {s: float(np.mean([pr(s, k)['urgent'] for k in checkpoints])) for s in seeds}
+    v['urgent_capture_gain'] = {s: int(sum(pr(s, k)['urgent_capture_mve'] - pr(s, k)['urgent_capture_sac'] for k in checkpoints)) for s in seeds}
+    v['paired_end'] = {s: pr(s, last)['mean'] for s in seeds}
+    v['unsafe'] = {s: {'mve': int(sum(pr(s, k)['unsafe_mve'] for k in checkpoints)), 'sac': int(sum(pr(s, k)['unsafe_sac'] for k in checkpoints))} for s in seeds}
+    mech = mech or {}; v['mechanism'] = mech
+    c['M_mechanism'] = bool(mech) and all(
+        (x.get('two_stage_share') or 0) >= 0.5 and (x.get('decisive_share') or 0) > 0 and (x.get('w2_mean') or 0) >= 0.5
+        and x.get('pi_gap_sigma_median') is not None and x['pi_gap_sigma_median'] <= 0.25 and (x.get('grad_cos') or 0) > 0 for x in mech.values())
+    pos = [v['paired_auc'][s] > 0 for s in seeds]
+    c['E1_efficiency'] = all(pos) and float(np.mean(list(v['paired_auc'].values()))) >= 5.0
+    c['U_urgent'] = sum(v['urgent_capture_gain'].values()) >= 4 and min(v['urgent_capture_gain'].values()) >= 0
+    c['E2_final'] = float(np.mean(list(v['paired_end'].values()))) >= -3.0
+    c['S_safety'] = all(v['unsafe'][s]['mve'] <= v['unsafe'][s]['sac'] + 1 and pr(s, last)['capture_mve'] >= pr(s, last)['capture_sac'] - 1 for s in seeds)
+    if not c['M_mechanism']:
+        out['verdict'] = 'mechanism_failure'
+    elif not (c['E2_final'] and c['S_safety']):
+        out['verdict'] = 'harmful'
+    elif c['E1_efficiency'] and c['U_urgent']:
+        out['verdict'] = 'pass'
+    elif all(pos) or (c['U_urgent'] and any(pos)):
+        out['verdict'] = 'partial'
+    else:
+        out['verdict'] = 'no_gain'
+    return out
+
+
 def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), start=1000) -> dict:
     """Mean of the T2.5 mechanism probes of each EACC run from ``start`` decisions on (model_stats.json)."""
     out = {}
@@ -292,18 +341,18 @@ def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS, min_seeds: int = 3, require
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--readout', required=True); p.add_argument('--output', required=True); p.add_argument('--final', type=int, default=None)
-    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251'], default='t22')
+    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251', 't26'], default='t22')
     p.add_argument('--train-root', default=None, help='v25 / v251: the directory holding TRAIN_e_mve_s0 / _s1 (mechanism readings)')
     p.add_argument('--checkpoints', default=None, help='t25: comparison checkpoints, e.g. 1000,2000')
     p.add_argument('--min-seeds', type=int, default=3); p.add_argument('--no-converged', action='store_true')
     a = p.parse_args()
     r = json.loads(Path(a.readout).read_text(encoding='utf-8'))
     ck = tuple(int(x) for x in a.checkpoints.split(',')) if a.checkpoints else T25_CHECKPOINTS
-    if a.criteria in ('v25', 'v251'):
+    if a.criteria in ('v25', 'v251', 't26'):
         if not a.train_root:
-            p.error('--criteria v25 / v251 needs --train-root (the mechanism readings)')
+            p.error('--criteria v25 / v251 / t26 needs --train-root (the mechanism readings)')
         mech = mechanism_readings(a.train_root)
-        res = (decide_v25 if a.criteria == 'v25' else decide_v251)(r, mech)
+        res = {'v25': decide_v25, 'v251': decide_v251, 't26': decide_t26}[a.criteria](r, mech)
     else:
         res = decide_t25(r, ck, a.min_seeds, not a.no_converged) if a.criteria == 't25' else decide_t24(r) if a.criteria == 't24' else decide_t23(r, a.final or 4000) if a.criteria == 't23' else decide(r, a.final or 3000)
     Path(a.output).write_text(json.dumps(res, indent=1), encoding='utf-8')

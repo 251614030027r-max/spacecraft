@@ -659,3 +659,61 @@ def test_training_step_fits_stage2_rows_end_to_end():
     assert used and all(np.isfinite(s['model_td']) for s in used)
     s = used[-1]
     assert s['stage2_rows'] > 0 and 0 < s['w2_mean'] <= 1 and s['pi_gap_sigma_median'] >= 0 and 0 <= s['stage2_entry_share'] <= 1
+
+
+def test_time_pressure_profiles_pair_opening_by_opening():
+    """T2.6: a tighter urgent deadline range keeps every opening's mission class and deadline quantile; economy unchanged."""
+    from env.t2_stage import T2Mission
+    from experiments.t2 import mission_profile
+    std, p155 = T2Mission(), mission_profile((155, 195))
+    assert mission_profile(None) == std and p155.urgent_deadline_s == (155.0, 195.0) and p155.economy_deadline_s == std.economy_deadline_s
+    for op in range(294000, 294024):
+        a, b = std.sample(op), p155.sample(op)
+        assert a['urgent'] == b['urgent']
+        assert abs((a['deadline_s'] - b['deadline_s']) - (15.0 if a['urgent'] else 0.0)) <= 0.11
+
+
+def test_pressure_screen_selection(tmp_path):
+    """Selection: the tightest profile with G* >= 22/24, in-space reachability, safety and a drop of the learned urgent captures."""
+    import json
+    from experiments.t2_readout import pressure
+    def write(tag, gstar_fail=0, learned_fail=0, unsafe=0):
+        for sub in ('screen', 'probe'):
+            (tmp_path / tag / sub).mkdir(parents=True)
+        for o in range(24):
+            urgent = o < 12; m = {'urgent': urgent, 'deadline_s': 180.0 if urgent else 300.0}
+            rec = lambda pol, ev, ret: json.dumps({'policy': pol, 'opening': o, 'event': ev, 'return': ret, 'time_s': 100.0, 'delta_v': 1.0, 'mission': m})
+            (tmp_path / tag / 'screen' / f'gstar_{o}.json').write_text(rec('gstar', 'timeout' if o < gstar_fail else 'success', 60.0))
+            (tmp_path / tag / 'screen' / f'pure_{o}.json').write_text(rec('pure', 'success', 40.0))
+            (tmp_path / tag / 'screen' / f'rally_{o}.json').write_text(rec('rally', 'unsafe' if o < unsafe else ('success' if o % 2 else 'timeout'), 50.0 if o % 2 else -100.0))
+            (tmp_path / tag / 'screen' / f'c_10_0_{o}.json').write_text(rec('c_10_0', 'success' if o % 2 == 0 else 'timeout', 50.0 if o % 2 == 0 else -100.0))
+            (tmp_path / tag / 'probe' / f'sac_{o}.json').write_text(rec('sac', 'timeout' if o < learned_fail else 'success', 55.0))
+    write('p170'); write('p155', learned_fail=2); write('p140', gstar_fail=3, learned_fail=5)
+    pressure(tmp_path, ['p170', 'p155', 'p140'], tmp_path / 'P.json')
+    r = json.loads((tmp_path / 'P.json').read_text())
+    assert r['selected'] == 'p155' and r['profiles']['p140']['criteria']['F1_reference'] is False
+    assert r['profiles']['p155']['criteria'] == {'F1_reference': True, 'F2_reachable': True, 'F3_safe': True, 'D1_pressure': True}
+
+
+def test_t26_decision_applies_the_preregistered_criteria():
+    from experiments.t2_decide import decide_t26
+    ks = (500, 1000, 1500, 2000, 2500, 3000)
+    pair = lambda m, ug=1, um=0, us=0: {'n': 24, 'mean': m, 'urgent': m, 'capture_mve': 22, 'capture_sac': 22, 'unsafe_mve': um, 'unsafe_sac': us,
+                                        'urgent_capture_mve': 10 + ug, 'urgent_capture_sac': 10}
+    build = lambda d0, d1, ug=1, um=0: {'all_complete': True, 'paired': {**{f's0/step_{k}': pair(d0, ug, um) for k in ks}, **{f's1/step_{k}': pair(d1, ug, um) for k in ks}}}
+    mech = {'s0': {'two_stage_share': 0.6, 'decisive_share': 0.1, 'w2_mean': 0.9, 'pi_gap_sigma_median': 0.05, 'grad_cos': 0.3}}
+    assert decide_t26(build(8, 6), mech)['verdict'] == 'pass'
+    assert decide_t26(build(2, 1), mech)['verdict'] == 'partial'                   # positive but below +5
+    assert decide_t26(build(8, 6, ug=0), mech)['verdict'] == 'partial'             # no urgent capture gain
+    assert decide_t26(build(-2, -1, ug=0), mech)['verdict'] == 'no_gain'
+    assert decide_t26(build(8, 6, um=2), mech)['verdict'] == 'harmful'
+    assert decide_t26(build(8, 6), {'s0': dict(mech['s0'], w2_mean=0.2)})['verdict'] == 'mechanism_failure'
+    r = build(8, 6); r['paired']['s1/step_3000']['n'] = 23
+    assert decide_t26(r, mech)['verdict'] == 'incomplete'
+
+
+def test_training_passes_the_mission_profile_to_every_worker():
+    import inspect, train.t2_mve_sac as t
+    assert 'urgent_deadline_s=tuple(float(x) for x in urgent_deadline)' in inspect.getsource(t.worker)
+    src = inspect.getsource(t.train)
+    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline)' in src and "'urgent_deadline_s'" in src

@@ -5,6 +5,8 @@
     python -B -m experiments.t2 eval   --checkpoint ZIP --label L --openings A-B --workers W --output DIR
 
 ``--no-window`` (all modes): the T2.2 rigid entry commitment instead of the pass-window commitment (ablation).
+``--urgent-deadline LO,HI`` (all modes): the urgent missions' deadline range (default 170,210 s, ``T2Mission``); the
+urgent / economy draw and the deadline quantile of every opening are unchanged, so profiles pair opening by opening.
 
 Fixed policies (screen): ``coast`` (a = 0), ``c_PP_AA`` constant action (a_p = PP/10, a_a = AA/10),
 ``rally`` (deadline-aware rule inside the action space: close to 9.5 m, swing towards the oncoming port only when waiting would miss the deadline),
@@ -79,13 +81,19 @@ def guarded(fn):
     return run
 
 
+def mission_profile(urgent):
+    """T2Mission with the urgent deadline range ``urgent`` = (lo, hi) s, or the standard one (None)."""
+    from env.t2_stage import T2Mission
+    return T2Mission() if urgent is None else T2Mission(urgent_deadline_s=(float(urgent[0]), float(urgent[1])))
+
+
 def screen_job(job):
-    opening, policy, out, window = job
+    opening, policy, out, window, urgent = job
     import torch; torch.set_num_threads(1)
     file = Path(out) / f'{policy}_{opening}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
     from env.t2_stage import T2StageEnv
-    env = T2StageEnv(openings=[opening], shaping=False, geometry=not policy.startswith('b_'), window=window)
+    env = T2StageEnv(openings=[opening], shaping=False, geometry=not policy.startswith('b_'), window=window, mission=mission_profile(urgent))
     if policy == 'pure':
         # paper baseline: the shared MPC alone (fixed terminal set-point, no stage layer, no G*), same
         # mission, deadline, weights, budget and truth judge
@@ -112,31 +120,31 @@ def screen_job(job):
     dump(file, res); return res
 
 
-def screen(out, ops, policies, workers, window=True):
+def screen(out, ops, policies, workers, window=True, urgent=None):
     out.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(workers) as pool:
-        for f in as_completed([pool.submit(guarded_screen, (o, p, str(out), window)) for p in policies for o in ops]):
+        for f in as_completed([pool.submit(guarded_screen, (o, p, str(out), window, urgent)) for p in policies for o in ops]):
             r = f.result(); print(json.dumps({k: r.get(k) for k in STAGE_EVAL_KEYS}, default=str), flush=True)
 
 
 def eval_job(job):
-    opening, checkpoint, label, out, window = job
+    opening, checkpoint, label, out, window, urgent = job
     import torch; torch.set_num_threads(1)
     file = Path(out) / f'{label}_{opening}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
     from env.t2_stage import T2StageEnv
     from train.t2_mve_sac import T2SAC
     model = T2SAC.load(checkpoint, device='cpu')
-    env = T2StageEnv(openings=[opening], shaping=False, window=window)
+    env = T2StageEnv(openings=[opening], shaping=False, window=window, mission=mission_profile(urgent))
     res = run_episode(env, opening, lambda e, o: model.predict(o, deterministic=True)[0])
     res.update(policy=label, checkpoint=str(checkpoint), window=window, entries_lost=env.stats.get('entries_lost', 0),
                window_recoveries=env.generator.bridge.recovery_log); dump(file, res); return res
 
 
-def evaluate(out, checkpoint, label, ops, workers, window=True):
+def evaluate(out, checkpoint, label, ops, workers, window=True, urgent=None):
     out.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(workers) as pool:
-        for f in as_completed([pool.submit(guarded_eval, (o, checkpoint, label, str(out), window)) for o in ops]):
+        for f in as_completed([pool.submit(guarded_eval, (o, checkpoint, label, str(out), window, urgent)) for o in ops]):
             r = f.result(); print(json.dumps({k: r.get(k) for k in STAGE_EVAL_KEYS}, default=str), flush=True)
 
 
@@ -157,15 +165,18 @@ def main():
     p.add_argument('--smoke', action='store_true'); p.add_argument('--no-window', action='store_true')
     p.add_argument('--entry-stages', type=int, default=None); p.add_argument('--updates-per-transition', type=float, default=2.0)
     p.add_argument('--model-beta', type=float, default=0.5)
+    p.add_argument('--urgent-deadline', default=None, help='LO,HI s: urgent missions\' deadline range (default 170,210)')
     a = p.parse_args(); out = Path(a.output)
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')
     window = not a.no_window
-    if a.mode == 'screen': screen(out, openings(a.openings), a.policies.split(','), a.workers, window)
-    elif a.mode == 'eval': evaluate(out, a.checkpoint, a.label, openings(a.openings), a.workers, window)
+    urgent = tuple(float(x) for x in a.urgent_deadline.split(',')) if a.urgent_deadline else None
+    if a.mode == 'screen': screen(out, openings(a.openings), a.policies.split(','), a.workers, window, urgent)
+    elif a.mode == 'eval': evaluate(out, a.checkpoint, a.label, openings(a.openings), a.workers, window, urgent)
     else:
         from train.t2_mve_sac import train
         train(out, a.arm, a.seed, a.steps, a.workers, [int(x) for x in a.checkpoints.split(',')], a.smoke,
-              updates_per_transition=a.updates_per_transition, entry_stages=a.entry_stages, window=window, model_beta=a.model_beta)
+              updates_per_transition=a.updates_per_transition, entry_stages=a.entry_stages, window=window, model_beta=a.model_beta,
+              urgent_deadline=urgent)
 
 
 if __name__ == '__main__':

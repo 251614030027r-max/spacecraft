@@ -3,6 +3,7 @@
     python -B -m experiments.t2_readout screen --dir SCREEN_DIR --output A.json
     python -B -m experiments.t2_readout curve  --eval-root EVAL_ROOT --train-root TRAIN_ROOT --screen SCREEN_DIR --output B.json
     python -B -m experiments.t2_readout window --rigid SCREEN_RIGID --window SCREEN_WINDOW --output W.json
+    python -B -m experiments.t2_readout pressure --dir ROOT --tags p170,p155,p140 --output P.json   (T2.6 time-pressure screen)
 
 Screen (stage A, pre-registered gates):
   A1 mechanics: every episode finished; held + rejected stages <= 10 % of stages.
@@ -98,7 +99,9 @@ def paired(eval_root):
                 'urgent': mean([d[o] for o in ops if a[o]['mission']['urgent']]), 'economy': mean([d[o] for o in ops if not a[o]['mission']['urgent']]),
                 'positive': sum(x > 0 for x in srt), 'negative': sum(x < 0 for x in srt),
                 'capture_mve': sum(a[o]['event'] == 'success' for o in ops), 'capture_sac': sum(b[o]['event'] == 'success' for o in ops),
-                'unsafe_mve': sum(a[o]['event'] == 'unsafe' for o in ops), 'unsafe_sac': sum(b[o]['event'] == 'unsafe' for o in ops)}
+                'unsafe_mve': sum(a[o]['event'] == 'unsafe' for o in ops), 'unsafe_sac': sum(b[o]['event'] == 'unsafe' for o in ops),
+                'urgent_capture_mve': sum(a[o]['event'] == 'success' for o in ops if a[o]['mission']['urgent']),
+                'urgent_capture_sac': sum(b[o]['event'] == 'success' for o in ops if b[o]['mission']['urgent'])}
     return out
 
 
@@ -168,14 +171,72 @@ def window(rigid_dir, window_dir, out):
     Path(out).write_text(json.dumps(res, indent=1), encoding='utf-8'); print(json.dumps(res, indent=1))
 
 
+IN_SPACE = ('c_', 'rally')     # fixed policies inside the frozen 2-D stage action space
+
+
+def _profile(dir_):
+    """One time-pressure profile: ROOT/<tag>/screen (fixed policies, G*, pure) and ROOT/<tag>/probe (learned checkpoints)."""
+    P = load(Path(dir_) / 'screen'); L = load(Path(dir_) / 'probe')
+    ins = sorted(p for p in P if p.startswith(IN_SPACE))
+    ops = sorted(set.intersection(*[set(P[p]) for p in ins + ['gstar']]))
+    urgent = [o for o in ops if P['gstar'][o]['mission']['urgent']]
+    cap = lambda r: r['event'] == 'success'
+    pol = {p: {**stats(P[p][o] for o in ops), 'urgent_capture': int(sum(cap(P[p][o]) for o in urgent))} for p in ins + ['gstar', 'pure'] if p in P}
+    lrn = {p: {**stats(L[p][o] for o in ops if o in L[p]), 'urgent_capture': int(sum(cap(L[p][o]) for o in urgent if o in L[p]))} for p in L}
+    best = max(ins, key=lambda p: pol[p]['mean_return'])
+    reach_in = [o for o in ops if any(cap(P[p][o]) for p in ins)]
+    reach_any = [o for o in ops if o in reach_in or any(o in L[p] and cap(L[p][o]) for p in L)]
+    gain = sorted((max(P[p][o]['return'] for p in ins) - P[best][o]['return'] for o in ops), reverse=True)
+    return {'openings': len(ops), 'urgent_openings': len(urgent), 'deadlines_urgent': [P['gstar'][o]['mission']['deadline_s'] for o in urgent],
+            'policies': pol, 'learned': lrn, 'uniform_best': best,
+            'reach_in_space': len(reach_in), 'reach_any': len(reach_any), 'urgent_reach_any': sum(o in reach_any for o in urgent),
+            'unreachable': [o for o in ops if o not in reach_any],
+            'headroom_capture': len(reach_in) - pol[best]['capture'],
+            'decision_value': float(np.mean(gain)), 'decision_value_without_top1': float(np.mean(gain[1:])) if len(gain) > 1 else None,
+            'unsafe_in_space': int(sum(pol[p]['unsafe'] for p in ins)), 'unsafe_learned': int(sum(v['unsafe'] for v in lrn.values())),
+            'learned_urgent_capture': int(sum(v['urgent_capture'] for v in lrn.values())),
+            'gstar_unreached_in_time': [o for o in ops if not cap(P['gstar'][o])]}
+
+
+def pressure(root, tags, out):
+    """T2.6 time-pressure screen and its pre-registered selection (run order T2_6_SCREEN). tags[0] is the standard task.
+
+      F1 reference   G* captures >= 22/24 with no unsafe
+      F2 reachable   >= 21/24 openings captured by a policy inside the stage action space (a fixed in-space policy or a
+                     learned checkpoint), and every urgent opening but at most two
+      F3 safe        unsafe of the in-space policies <= standard + 2; pure unsafe <= standard + 1; learned unsafe <= standard + 1
+      D1 pressure    the learned checkpoints (trained on the standard task) lose >= 2 urgent captures in total against the
+                     standard task, and the decision value without its largest opening stays > 0
+    Selection: the tightest profile passing F1-F3 and D1; else none (the tightest one passing F1-F3 is reported)."""
+    R = {t: _profile(Path(root) / t) for t in tags}
+    base = R[tags[0]]; sel = None; feas = None
+    for t in tags[1:]:
+        r = R[t]
+        c = {'F1_reference': r['policies']['gstar']['capture'] >= 22 and r['policies']['gstar']['unsafe'] == 0,
+             'F2_reachable': r['reach_any'] >= 21 and r['urgent_reach_any'] >= r['urgent_openings'] - 2,
+             'F3_safe': r['unsafe_in_space'] <= base['unsafe_in_space'] + 2 and r['policies'].get('pure', {}).get('unsafe', 0) <= base['policies'].get('pure', {}).get('unsafe', 0) + 1
+                        and r['unsafe_learned'] <= base['unsafe_learned'] + 1,
+             'D1_pressure': base['learned_urgent_capture'] - r['learned_urgent_capture'] >= 2 and (r['decision_value_without_top1'] or 0) > 0}
+        r['criteria'] = c
+        if c['F1_reference'] and c['F2_reachable'] and c['F3_safe']:
+            feas = t
+            if c['D1_pressure']:
+                sel = t
+    res = {'profiles': R, 'selected': sel, 'tightest_feasible': feas, 'order': tags}
+    Path(out).write_text(json.dumps(res, indent=1), encoding='utf-8')
+    print(json.dumps({'selected': sel, 'tightest_feasible': feas, **{t: R[t].get('criteria') for t in tags[1:]}}, indent=1))
+
+
 def main():
-    p = argparse.ArgumentParser(description=__doc__); p.add_argument('mode', choices=['screen', 'curve', 'window'])
+    p = argparse.ArgumentParser(description=__doc__); p.add_argument('mode', choices=['screen', 'curve', 'window', 'pressure'])
     p.add_argument('--rigid'); p.add_argument('--window')
     p.add_argument('--dir'); p.add_argument('--eval-root'); p.add_argument('--train-root'); p.add_argument('--screen'); p.add_argument('--output', required=True)
+    p.add_argument('--tags', default='p170,p155,p140', help='pressure: profile directories under --dir, the standard task first')
     p.add_argument('--expected', type=int, default=24, help='openings every arm / checkpoint must have (completeness)')
     a = p.parse_args()
     if a.mode == 'screen': screen(a.dir, a.output)
     elif a.mode == 'window': window(a.rigid, a.window, a.output)
+    elif a.mode == 'pressure': pressure(a.dir, a.tags.split(','), a.output)
     else: curve(a.eval_root, a.train_root, a.screen, a.output, a.expected)
 
 

@@ -320,15 +320,16 @@ def _slim(info: dict) -> dict:
             **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')}}
 
 
-def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool) -> None:
+def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool, urgent_deadline=None) -> None:
     """One environment: send (transition or None, observation to act on), receive the action; until 'stop'."""
     import os
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
         os.environ.setdefault(k, '1')
     th.set_num_threads(1)
-    from env.t2_stage import T2StageEnv
+    from env.t2_stage import T2Mission, T2StageEnv
+    mission = T2Mission() if urgent_deadline is None else T2Mission(urgent_deadline_s=tuple(float(x) for x in urgent_deadline))
     env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, candidates=candidates, shaping=True, seed=seed * 100 + rank,
-                     entry_stages=entry_stages, window=window)
+                     entry_stages=entry_stages, window=window, mission=mission)
     obs, _ = env.reset(); transition = None
     actor = None
 
@@ -355,7 +356,7 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
 
 def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[int], smoke: bool = False,
           updates_per_transition: float = UPDATES_PER_TRANSITION, entry_stages: int | None = None, window: bool = True,
-          model_beta: float = MODEL_BETA) -> None:
+          model_beta: float = MODEL_BETA, urgent_deadline=None) -> None:
     import multiprocessing as mp
     from multiprocessing.connection import wait
     from stable_baselines3.common.logger import configure
@@ -371,12 +372,13 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
                                                    'k_candidates': candidates, 'collection': 'asynchronous', 'window': window,
                                                    'gradient_steps_per_transition': model.gradient_steps, 'entry_stages': entry_stages, 'sync_updates': SYNC_UPDATES, 'age_cap': AGE_CAP,
+                                                   'urgent_deadline_s': list(urgent_deadline) if urgent_deadline is not None else [170.0, 210.0],
                                                    'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION}, indent=1), encoding='utf-8')
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
     for rank in range(workers):
         a, b = ctx.Pipe()
-        p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window), daemon=True)
+        p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline), daemon=True)
         p.start(); pipes.append(a); procs.append(p)
     marks = sorted(set([m for m in marks if m <= steps] + [steps]))
     model.save(out / 'checkpoints' / 'step_0')
