@@ -4,7 +4,7 @@
   "science_SHA": "34f877e933dc78740674fc82ee0e36f918c541f4",
   "order_collab": "02c697d",
   "scope": "Only two MVE seeds0/1 each4000; reuse T23 SAC; audit6; no branch/no figures",
-  "phase": "training",
+  "phase": "final_publication",
   "ancestor_proof": [
     {
       "pid": 23856,
@@ -28,74 +28,72 @@
     }
   ],
   "deadline_jst": null,
-  "updated_jst": "2026-10-27T00:12:25.473642+09:00",
+  "updated_jst": "2026-10-27T11:24:53.357330+09:00",
   "memory": {
-    "commit_free_GiB": 22.887798309326172,
-    "physical_free_GiB": 4.485774993896484
+    "commit_free_GiB": 29.384727478027344,
+    "physical_free_GiB": 4.62750244140625
   },
   "processes": {
-    "TRAIN_e_mve_s0_attempt0": 10052,
-    "TRAIN_e_mve_s1_attempt0": 27152,
-    "publish_mechanism1000_0": 29132
+    "publish_final_0": 21476
   },
   "rolling": {
     "e_mve_s0": {
-      "jst": "2026-10-27T00:12:20.484204+09:00",
-      "steps": 1053,
-      "updates": 1708,
-      "episodes": 206,
-      "wall_s": 11154.108999999997,
-      "recent_decisions_per_s": 0.2626998982039662,
-      "overall_decisions_per_s": 0.09440467185680186,
-      "eta_s_estimate": 11218.12387499245,
-      "snapshot_not_prediction": true,
-      "replay": {
-        "transitions": 1053,
-        "with_candidates": 443,
-        "candidates": 3375,
-        "entry_candidates": 807,
-        "reason": {
-          "off": 54,
-          "entry_calibration": 508,
-          "stage": 365,
-          "entry": 103,
-          "not_comparable": 23
-        },
-        "two_stage": 2166,
-        "two_stage_entry": 577
-      },
-      "model_probes": 69,
-      "pending_truth_records": 0,
-      "final": false
-    },
-    "e_mve_s1": {
-      "jst": "2026-10-27T00:12:22.286440+09:00",
-      "steps": 1095,
-      "updates": 1792,
-      "episodes": 200,
-      "wall_s": 11155.920999999973,
+      "jst": "2026-10-27T11:03:42.238821+09:00",
+      "steps": 4000,
+      "updates": 7602,
+      "episodes": 984,
+      "wall_s": 50235.875,
       "recent_decisions_per_s": 0.0,
-      "overall_decisions_per_s": 0.09815415508948142,
+      "overall_decisions_per_s": 0.07962437202497219,
       "eta_s_estimate": null,
       "snapshot_not_prediction": true,
       "replay": {
-        "transitions": 1095,
-        "with_candidates": 521,
-        "candidates": 3931,
-        "entry_candidates": 760,
+        "transitions": 4000,
+        "with_candidates": 3238,
+        "candidates": 25219,
+        "entry_candidates": 5952,
         "reason": {
-          "off": 44,
-          "entry_calibration": 495,
-          "stage": 424,
-          "entry": 105,
-          "not_comparable": 27
+          "off": 64,
+          "entry_calibration": 508,
+          "stage": 2501,
+          "entry": 789,
+          "not_comparable": 138
         },
-        "two_stage": 2719,
-        "two_stage_entry": 647
+        "two_stage": 16542,
+        "two_stage_entry": 4604
       },
-      "model_probes": 72,
+      "model_probes": 305,
       "pending_truth_records": 0,
-      "final": false
+      "final": true
+    },
+    "e_mve_s1": {
+      "jst": "2026-10-27T10:08:45.206641+09:00",
+      "steps": 4000,
+      "updates": 7602,
+      "episodes": 886,
+      "wall_s": 46938.84299999999,
+      "recent_decisions_per_s": 0.0,
+      "overall_decisions_per_s": 0.08521726877673573,
+      "eta_s_estimate": null,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 4000,
+        "with_candidates": 3306,
+        "candidates": 25739,
+        "entry_candidates": 5480,
+        "reason": {
+          "off": 56,
+          "entry_calibration": 495,
+          "stage": 2605,
+          "entry": 732,
+          "not_comparable": 112
+        },
+        "two_stage": 17897,
+        "two_stage_entry": 4554
+      },
+      "model_probes": 305,
+      "pending_truth_records": 0,
+      "final": true
     }
   },
   "preparation": {
@@ -127,8 +125,12 @@
       }
     ]
   },
-  "eval_completed": 247,
+  "eval_completed": 432,
   "logging_gate": "passed",
-  "training_done": [],
-  "current_job": "publish_mechanism1000_0"
+  "training_done": [
+    1,
+    0
+  ],
+  "current_job": "publish_final_0",
+  "verdict": "mixed"
 }
