@@ -76,6 +76,29 @@ def screen(dir_, out):
     if 'gain_vs_rally_rule_report_only' in res: print('vs rally (report):', res['gain_vs_rally_rule_report_only'])
 
 
+#: T2.6W analysis bins of the urgent deadline (s): high / mid / low time pressure (reported, never gated)
+DEADLINE_BINS = (('high', 0.0, 160.0), ('mid', 160.0, 180.0), ('low', 180.0, 1e9))
+
+
+def _deadline_bins(a, b, d, ops):
+    out = {}
+    for name, lo, hi in DEADLINE_BINS:
+        xs = [o for o in ops if a[o]['mission']['urgent'] and lo <= a[o]['mission']['deadline_s'] < hi]
+        out[name] = {'n': len(xs), 'mean': float(np.mean([d[o] for o in xs])) if xs else None,
+                     'capture_mve': sum(a[o]['event'] == 'success' for o in xs), 'capture_sac': sum(b[o]['event'] == 'success' for o in xs)}
+    return out
+
+
+def _both_success(a, b, ops):
+    """Delta-v and time EACC - SAC on the openings both arms capture (no survivor bias), all / economy / urgent."""
+    out = {}
+    for name, sel in (('all', lambda o: True), ('economy', lambda o: not a[o]['mission']['urgent']), ('urgent', lambda o: a[o]['mission']['urgent'])):
+        xs = [o for o in ops if sel(o) and a[o]['event'] == 'success' and b[o]['event'] == 'success']
+        out[name] = {'n': len(xs), 'delta_v': float(np.mean([a[o]['delta_v'] - b[o]['delta_v'] for o in xs])) if xs else None,
+                     'time_s': float(np.mean([a[o]['time_s'] - b[o]['time_s'] for o in xs])) if xs else None}
+    return out
+
+
 def paired(eval_root):
     """E-MVE minus E-SAC per seed and checkpoint, paired by opening: mean, mean without the two largest
     per-opening gains, urgent / economy means, positive / negative counts (arms named e_mve_sN / e_sac_sN)."""
@@ -101,7 +124,8 @@ def paired(eval_root):
                 'capture_mve': sum(a[o]['event'] == 'success' for o in ops), 'capture_sac': sum(b[o]['event'] == 'success' for o in ops),
                 'unsafe_mve': sum(a[o]['event'] == 'unsafe' for o in ops), 'unsafe_sac': sum(b[o]['event'] == 'unsafe' for o in ops),
                 'urgent_capture_mve': sum(a[o]['event'] == 'success' for o in ops if a[o]['mission']['urgent']),
-                'urgent_capture_sac': sum(b[o]['event'] == 'success' for o in ops if b[o]['mission']['urgent'])}
+                'urgent_capture_sac': sum(b[o]['event'] == 'success' for o in ops if b[o]['mission']['urgent']),
+                'urgent_bins': _deadline_bins(a, b, d, ops), 'both_success': _both_success(a, b, ops)}
     return out
 
 
@@ -141,7 +165,7 @@ def curve(eval_root, train_root, screen_dir, out, expected=24):
             used = [m for m in ms if m.get('model_rows')]
             q_pi = [m['q_pi_mean'] for m in ms]
             res['training'][t.name] = {'finished': {k: v for k, v in fin.items() if k != 'worker_order'}, 'probes': len(ms),
-                                       'probes_with_model_rows': len(used),
+                                       'probes_with_model_rows': len(used), 'first_model_step': used[0]['steps'] if used else None,
                                        'w_mean': float(np.mean([m['w_mean'] for m in used])) if used else None,
                                        'abs_err_median': float(np.median([m['abs_err_median'] for m in used])) if used else None,
                                        'sigma_last': ms[-1].get('sigma') if ms else None,

@@ -717,3 +717,34 @@ def test_training_passes_the_mission_profile_to_every_worker():
     assert 'urgent_deadline_s=tuple(float(x) for x in urgent_deadline)' in inspect.getsource(t.worker)
     src = inspect.getsource(t.train)
     assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline)' in src and "'urgent_deadline_s'" in src
+
+
+def test_t26w_readout_bins_late_window_and_both_success(tmp_path):
+    """T2.6W: urgent deadline bins, delta-v / time on both-captured openings, late window; the verdict stays t26."""
+    import json
+    from experiments.t2_readout import paired
+    from experiments.t2_decide import decide_t26w
+    ks = (0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000)
+    for arm in ('e_mve', 'e_sac'):          # 2 x 2 x 9 x 24 small files
+        for s in (0, 1):
+            for k in ks:
+                d = tmp_path / f'{arm}_s{s}' / f'step_{k}'; d.mkdir(parents=True)
+                for o in range(24):
+                    urgent = o < 12; dl = (145.0, 170.0, 190.0)[o % 3] if urgent else 300.0
+                    ok = not (arm == 'e_sac' and urgent and o % 3 == 0)          # SAC misses the high-pressure urgent openings
+                    rec = {'opening': o, 'event': 'success' if ok else 'timeout', 'return': (60.0 if ok else -150.0) + (1.0 if arm == 'e_mve' else 0.0),
+                           'time_s': 100.0, 'delta_v': 1.0 if arm == 'e_mve' else 1.2, 'mission': {'urgent': urgent, 'deadline_s': dl}}
+                    (d / f'x_{o}.json').write_text(json.dumps(rec))
+    P = paired(tmp_path)
+    b = P['s0/step_500']['urgent_bins']
+    assert b['high'] == {'n': 4, 'mean': 211.0, 'capture_mve': 4, 'capture_sac': 0} and b['low']['capture_sac'] == 4
+    e = P['s0/step_500']['both_success']['economy']
+    assert e['n'] == 12 and abs(e['delta_v'] + 0.2) < 1e-9 and e['time_s'] == 0.0
+    arms = {f'e_{a}_s{s}': {str(k): {'mean_return': 50.0} for k in ks} for a in ('mve', 'sac') for s in (0, 1)}
+    mech = {'s0': {'two_stage_share': 0.6, 'decisive_share': 0.1, 'w2_mean': 0.9, 'pi_gap_sigma_median': 0.05, 'grad_cos': 0.3}}
+    res = decide_t26w({'all_complete': True, 'paired': P, 'arms': arms}, mech)
+    assert res['verdict'] == 'pass'                                                  # +36.25 per opening, +4 urgent captures per checkpoint
+    rep = res['reported']
+    assert rep['urgent_bins_all_checkpoints']['high'] == {'openings': 4, 'capture_mve': 64, 'capture_sac': 0, 'paired_mean': 211.0}
+    assert rep['late_s1']['spread'] == {'mve': 0.0, 'sac': 0.0} and rep['late_s0']['capture'][4000] == (24, 20)
+    assert abs(rep['both_success']['economy']['delta_v'] + 0.2) < 1e-9

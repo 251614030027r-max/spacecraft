@@ -7,6 +7,7 @@
     python -B -m experiments.t2_decide --criteria v25 --readout READOUT.json --train-root DIR --output DECISION.json  (T2.5 validation)
     python -B -m experiments.t2_decide --criteria v251 --readout READOUT.json --train-root DIR --output DECISION.json (T2.5.1 validation)
     python -B -m experiments.t2_decide --criteria t26 --readout READOUT.json --train-root DIR --output DECISION.json  (T2.6 time pressure)
+    python -B -m experiments.t2_decide --criteria t26w --readout READOUT.json --train-root DIR --output DECISION.json (T2.6W: t26 + late window, bins, fuel)
 
 T2.2 (research layer, 2026-10-22):
 
@@ -270,6 +271,39 @@ def decide_t26(r: dict, mech: dict | None = None, checkpoints=T26_CHECKPOINTS) -
     return out
 
 
+def decide_t26w(r: dict, mech: dict | None = None) -> dict:
+    """T2.6W (wide urgent deadline U(140, 200) s, research-layer order 2026-10-27): the verdict is t26 over 500..3000,
+    unchanged. Reported beside it, never gated: the late window 3000 / 3500 / 4000 (paired, captures, unsafe, each arm's
+    spread of mean return), urgent captures by deadline bin summed over every checkpoint, and delta-v / time on the
+    openings both arms capture (averaged over the checkpoints)."""
+    out = decide_t26(r, mech)
+    paired, arms = r.get('paired', {}), r.get('arms', {})
+    late, rep = (3000, 3500, 4000), {}
+    for s in ('0', '1'):
+        rows = {k: paired.get(f's{s}/step_{k}') for k in late}
+        ret = {a: [((arms.get(f'e_{a}_s{s}') or {}).get(str(k)) or {}).get('mean_return') for k in late] for a in ('mve', 'sac')}
+        rep[f'late_s{s}'] = {'paired': {k: (x or {}).get('mean') for k, x in rows.items()},
+                             'capture': {k: (x['capture_mve'], x['capture_sac']) if x else None for k, x in rows.items()},
+                             'unsafe': {k: (x['unsafe_mve'], x['unsafe_sac']) if x else None for k, x in rows.items()},
+                             'return': ret, 'spread': {a: (max(v) - min(v)) if all(y is not None for y in v) else None for a, v in ret.items()}}
+    ks = sorted({int(k.split('_')[-1]) for k in paired if k.split('/')[1] != 'step_0'})
+    bins = {}
+    for name in ('high', 'mid', 'low'):
+        xs = [paired[f's{s}/step_{k}']['urgent_bins'][name] for s in ('0', '1') for k in ks if f's{s}/step_{k}' in paired and 'urgent_bins' in paired[f's{s}/step_{k}']]
+        bins[name] = {'openings': xs[0]['n'] if xs else 0, 'capture_mve': sum(x['capture_mve'] for x in xs), 'capture_sac': sum(x['capture_sac'] for x in xs),
+                      'paired_mean': float(np.mean([x['mean'] for x in xs if x['mean'] is not None])) if any(x['mean'] is not None for x in xs) else None}
+    rep['urgent_bins_all_checkpoints'] = bins
+    fuel = {}
+    for name in ('economy', 'urgent'):
+        xs = [paired[f's{s}/step_{k}']['both_success'][name] for s in ('0', '1') for k in ks if f's{s}/step_{k}' in paired and 'both_success' in paired[f's{s}/step_{k}']]
+        xs = [x for x in xs if x['n']]
+        fuel[name] = {'checkpoints': len(xs), 'delta_v': float(np.mean([x['delta_v'] for x in xs])) if xs else None,
+                      'time_s': float(np.mean([x['time_s'] for x in xs])) if xs else None}
+    rep['both_success'] = fuel
+    out['reported'] = rep
+    return out
+
+
 def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), start=1000) -> dict:
     """Mean of the T2.5 mechanism probes of each EACC run from ``start`` decisions on (model_stats.json)."""
     out = {}
@@ -341,18 +375,18 @@ def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS, min_seeds: int = 3, require
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--readout', required=True); p.add_argument('--output', required=True); p.add_argument('--final', type=int, default=None)
-    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251', 't26'], default='t22')
+    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251', 't26', 't26w'], default='t22')
     p.add_argument('--train-root', default=None, help='v25 / v251: the directory holding TRAIN_e_mve_s0 / _s1 (mechanism readings)')
     p.add_argument('--checkpoints', default=None, help='t25: comparison checkpoints, e.g. 1000,2000')
     p.add_argument('--min-seeds', type=int, default=3); p.add_argument('--no-converged', action='store_true')
     a = p.parse_args()
     r = json.loads(Path(a.readout).read_text(encoding='utf-8'))
     ck = tuple(int(x) for x in a.checkpoints.split(',')) if a.checkpoints else T25_CHECKPOINTS
-    if a.criteria in ('v25', 'v251', 't26'):
+    if a.criteria in ('v25', 'v251', 't26', 't26w'):
         if not a.train_root:
-            p.error('--criteria v25 / v251 / t26 needs --train-root (the mechanism readings)')
+            p.error('--criteria v25 / v251 / t26 / t26w needs --train-root (the mechanism readings)')
         mech = mechanism_readings(a.train_root)
-        res = {'v25': decide_v25, 'v251': decide_v251, 't26': decide_t26}[a.criteria](r, mech)
+        res = {'v25': decide_v25, 'v251': decide_v251, 't26': decide_t26, 't26w': decide_t26w}[a.criteria](r, mech)
     else:
         res = decide_t25(r, ck, a.min_seeds, not a.no_converged) if a.criteria == 't25' else decide_t24(r) if a.criteria == 't24' else decide_t23(r, a.final or 4000) if a.criteria == 't23' else decide(r, a.final or 3000)
     Path(a.output).write_text(json.dumps(res, indent=1), encoding='utf-8')
