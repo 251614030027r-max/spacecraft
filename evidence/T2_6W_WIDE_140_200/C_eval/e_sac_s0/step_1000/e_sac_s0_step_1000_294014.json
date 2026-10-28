@@ -1,0 +1,110 @@
+{
+ "opening": 294014,
+ "event": "success",
+ "return": 69.00888776531289,
+ "time_s": 157.4,
+ "delta_v": 1.525111223468709,
+ "stages": 5,
+ "holds": 1,
+ "rejected": 0,
+ "bridge_attempts": 3,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 168.6,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 198.52720665931702,
+ "decisions": [
+  {
+   "a": [
+    0.37415599822998047,
+    0.8183275461196899
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.682139789643898,
+   "planned_dv": 0.1688066048410367,
+   "executed_dv": 0.16862023603614876,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.6211895942687988,
+    0.9773030281066895
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 11.278702493531473,
+   "planned_dv": 0.08577222633199356,
+   "executed_dv": 0.08553271500262291,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.8735873699188232,
+    0.9062677621841431
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 9.654713358061203,
+   "planned_dv": 0.10189839428439666,
+   "executed_dv": 0.10192614429511676,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.9676079750061035,
+    0.14191186428070068
+   ],
+   "t": 102.0,
+   "mode": "hold",
+   "held": true,
+   "range_m": 7.131469835854068,
+   "planned_dv": 0.16880660375137116,
+   "executed_dv": 0.6820199973287389,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.680048942565918,
+    0.8827657699584961
+   ],
+   "t": 157.4,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.003155698668769,
+   "planned_dv": 0.19100629728543936,
+   "executed_dv": 0.48701213080608174,
+   "model": "off",
+   "event": "success"
+  }
+ ],
+ "policy": "e_sac_s0_step_1000",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\T2_6W_WIDE_140_200\\B\\TRAIN_e_sac_s0\\checkpoints\\step_1000.zip",
+ "window": true,
+ "entries_lost": 1,
+ "window_recoveries": [
+  {
+   "t": 66.0,
+   "slip_s": 2.0,
+   "reserve": false,
+   "phase_deg": 4.761581412712718
+  },
+  {
+   "t": 80.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.519017685942938
+  }
+ ]
+}
