@@ -1,15 +1,15 @@
 {
-  "pid": 11772,
-  "created": 1793097419.409396,
+  "pid": 27848,
+  "created": 1793180094.3439128,
   "started_jst": "2026-10-27T19:36:59.827410+09:00",
   "science_SHA": "e1166eb5daee069e7f14b6f48d24dcf43c36d66f",
   "order_collab": "69d49fa",
-  "phase": "B_training",
+  "phase": "final_publication",
   "ancestor_proof": [
     {
-      "pid": 18132,
+      "pid": 24848,
       "name": "pythonw.exe",
-      "created": 1793097419.38178
+      "created": 1793180094.308401
     },
     {
       "pid": 2648,
@@ -31,128 +31,148 @@
     140.0,
     200.0
   ],
-  "scope": "No screen gate;4runs4000/2workers;48openings9points=1728;A_ref336;native t26w;no branch",
-  "updated_jst": "2026-10-27T23:58:46.219222+09:00",
+  "scope": "User fourpoint768:1000/2000/3000/4000; full native gate not applicable",
+  "updated_jst": "2026-10-28T21:16:26.600954+09:00",
   "memory": {
-    "commit_free_GiB": 14.53805160522461,
-    "physical_free_GiB": 3.388652801513672
+    "commit_free_GiB": 29.978408813476562,
+    "physical_free_GiB": 6.001041412353516
   },
   "processes": {
-    "TRAIN_e_sac_s0_attempt0": 19984,
-    "TRAIN_e_sac_s1_attempt0": 8388,
-    "TRAIN_e_mve_s0_attempt0": 29100,
-    "TRAIN_e_mve_s1_attempt0": 13984,
-    "publish_mechanism1000_0": 12280
+    "publish_final_0": 29080
   },
   "rolling": {
     "e_sac_s0": {
-      "jst": "2026-10-27T23:58:39.357398+09:00",
-      "steps": 869,
-      "updates": 1340,
-      "episodes": 169,
-      "wall_s": 15326.42200000002,
-      "recent_decisions_per_s": 0.09816111511015697,
-      "overall_decisions_per_s": 0.0566994697131528,
-      "eta_s_estimate": 31896.54066670263,
+      "jst": "2026-10-28T15:38:57.795243+09:00",
+      "steps": 4000,
+      "updates": 7602,
+      "episodes": 930,
+      "wall_s": 71742.43800000002,
+      "recent_decisions_per_s": 0.13264358668225207,
+      "overall_decisions_per_s": 0.05575500514772022,
+      "eta_s_estimate": 0.0,
       "snapshot_not_prediction": true,
       "replay": {
-        "transitions": 869,
+        "transitions": 4000,
         "with_candidates": 0,
         "candidates": 0,
         "entry_candidates": 0,
         "reason": {
-          "off": 869
+          "off": 4000
         }
       },
-      "model_probes": 54,
+      "model_probes": 305,
       "pending_truth_records": 0,
-      "final": false
+      "final": true
     },
     "e_sac_s1": {
-      "jst": "2026-10-27T23:58:42.951803+09:00",
-      "steps": 1007,
-      "updates": 1616,
-      "episodes": 174,
-      "wall_s": 15330.016000000003,
-      "recent_decisions_per_s": 0.0655393891728859,
-      "overall_decisions_per_s": 0.06568812452641927,
-      "eta_s_estimate": 45667.19400000488,
-      "snapshot_not_prediction": true,
-      "replay": {
-        "transitions": 1007,
-        "with_candidates": 0,
-        "candidates": 0,
-        "entry_candidates": 0,
-        "reason": {
-          "off": 1007
-        }
-      },
-      "model_probes": 65,
-      "pending_truth_records": 0,
-      "final": false
-    },
-    "e_mve_s0": {
-      "jst": "2026-10-27T23:58:44.058281+09:00",
-      "steps": 1056,
-      "updates": 1714,
-      "episodes": 187,
-      "wall_s": 15331.125,
-      "recent_decisions_per_s": 0.29373368146200707,
-      "overall_decisions_per_s": 0.06887948536066335,
-      "eta_s_estimate": 10022.684444449014,
-      "snapshot_not_prediction": true,
-      "replay": {
-        "transitions": 1056,
-        "with_candidates": 687,
-        "candidates": 5396,
-        "entry_candidates": 872,
-        "reason": {
-          "off": 15,
-          "entry_calibration": 314,
-          "stage": 574,
-          "entry": 118,
-          "not_comparable": 35
-        },
-        "two_stage": 4196,
-        "two_stage_entry": 679
-      },
-      "model_probes": 69,
-      "pending_truth_records": 0,
-      "final": false
-    },
-    "e_mve_s1": {
-      "jst": "2026-10-27T23:58:16.919785+09:00",
-      "steps": 1148,
-      "updates": 1898,
-      "episodes": 176,
-      "wall_s": 15303.968999999983,
+      "jst": "2026-10-28T14:55:30.385259+09:00",
+      "steps": 4000,
+      "updates": 7602,
+      "episodes": 856,
+      "wall_s": 69135.032,
       "recent_decisions_per_s": 0.0,
-      "overall_decisions_per_s": 0.07501322042667502,
+      "overall_decisions_per_s": 0.05785778764085912,
       "eta_s_estimate": null,
       "snapshot_not_prediction": true,
       "replay": {
-        "transitions": 1148,
-        "with_candidates": 600,
-        "candidates": 4509,
-        "entry_candidates": 730,
+        "transitions": 4000,
+        "with_candidates": 0,
+        "candidates": 0,
+        "entry_candidates": 0,
         "reason": {
-          "off": 22,
-          "entry_calibration": 480,
-          "stage": 516,
-          "not_comparable": 30,
-          "entry": 100
-        },
-        "two_stage": 3248,
-        "two_stage_entry": 508
+          "off": 4000
+        }
       },
-      "model_probes": 76,
+      "model_probes": 305,
       "pending_truth_records": 0,
-      "final": false
+      "final": true
+    },
+    "e_mve_s0": {
+      "jst": "2026-10-28T14:49:02.577295+09:00",
+      "steps": 4000,
+      "updates": 7602,
+      "episodes": 855,
+      "wall_s": 68747.21899999998,
+      "recent_decisions_per_s": 0.2612330198541147,
+      "overall_decisions_per_s": 0.05818417178446158,
+      "eta_s_estimate": 0.0,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 4000,
+        "with_candidates": 3457,
+        "candidates": 27025,
+        "entry_candidates": 5104,
+        "reason": {
+          "off": 32,
+          "entry_calibration": 314,
+          "stage": 2806,
+          "entry": 673,
+          "not_comparable": 175
+        },
+        "two_stage": 19450,
+        "two_stage_entry": 4366
+      },
+      "model_probes": 305,
+      "pending_truth_records": 0,
+      "final": true
+    },
+    "e_mve_s1": {
+      "jst": "2026-10-28T13:08:51.581543+09:00",
+      "steps": 4000,
+      "updates": 7602,
+      "episodes": 765,
+      "wall_s": 62736.20299999998,
+      "recent_decisions_per_s": 0.0,
+      "overall_decisions_per_s": 0.063759038780208,
+      "eta_s_estimate": null,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 4000,
+        "with_candidates": 3288,
+        "candidates": 25595,
+        "entry_candidates": 4343,
+        "reason": {
+          "off": 30,
+          "entry_calibration": 480,
+          "stage": 2741,
+          "not_comparable": 163,
+          "entry": 586
+        },
+        "two_stage": 18506,
+        "two_stage_entry": 3724
+      },
+      "model_probes": 305,
+      "pending_truth_records": 0,
+      "final": true
     }
   },
   "preparation": {},
-  "eval_completed": 0,
-  "A_ref_completed": 163,
-  "training_done": [],
-  "current_job": "publish_mechanism1000_0"
+  "eval_completed": 768,
+  "A_ref_completed": 336,
+  "training_done": [
+    "e_mve_s1",
+    "e_mve_s0",
+    "e_sac_s1",
+    "e_sac_s0"
+  ],
+  "current_job": "publish_final_0",
+  "eval_pool": {
+    "jst": "2026-10-28T21:15:45.821292+09:00",
+    "active_workers": 2,
+    "max_workers": 11,
+    "complete": 768,
+    "pending": 2,
+    "memory": {
+      "commit_free_GiB": 27.380775451660156,
+      "physical_free_GiB": 5.4740753173828125
+    },
+    "cpu_percent": 22.7,
+    "worker_pids": [
+      7320,
+      18376
+    ]
+  },
+  "expected_eval_cases": 768,
+  "original_workers_remaining": 0,
+  "verdict": "scope_revised_descriptive_only"
 }
