@@ -272,12 +272,12 @@ def decide_t26(r: dict, mech: dict | None = None, checkpoints=T26_CHECKPOINTS) -
     return out
 
 
-def decide_t26w(r: dict, mech: dict | None = None) -> dict:
+def decide_t26w(r: dict, mech: dict | None = None, checkpoints=T26_CHECKPOINTS) -> dict:
     """T2.6W (wide urgent deadline U(140, 200) s, research-layer order 2026-10-27): the verdict is t26 over 500..3000,
     unchanged. Reported beside it, never gated: the late window 3000 / 3500 / 4000 (paired, captures, unsafe, each arm's
     spread of mean return), urgent captures by deadline bin summed over every checkpoint, and delta-v / time on the
     openings both arms capture (averaged over the checkpoints)."""
-    out = decide_t26(r, mech)
+    out = decide_t26(r, mech, checkpoints)
     paired, arms = r.get('paired', {}), r.get('arms', {})
     late, rep = (3000, 3500, 4000), {}
     for s in ('0', '1'):
@@ -315,7 +315,7 @@ def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), st
         ms = [m for m in json.loads(f.read_text(encoding='utf-8')) if m['steps'] >= start]
         out[arm] = {k: (float(np.mean([m[k] for m in ms if m.get(k) is not None])) if any(m.get(k) is not None for m in ms) else None)
                     for k in ('two_stage_share', 'decisive_share', 'c_mean', 'grad_cos', 'loss_share', 'increment_abs_mean', 'w_mean',
-                              'w2_mean', 'pi_gap_sigma_median', 'stage2_rows', 'stage2_entry_share')}
+                              'w2_mean', 'pi_gap_sigma_median', 'stage2_rows', 'stage2_entry_share', 'stage1_cutoff_share', 'stage2_cutoff_share')}
     return out
 
 
@@ -378,7 +378,7 @@ def main():
     p.add_argument('--readout', required=True); p.add_argument('--output', required=True); p.add_argument('--final', type=int, default=None)
     p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251', 't26', 't26w'], default='t22')
     p.add_argument('--train-root', default=None, help='v25 / v251: the directory holding TRAIN_e_mve_s0 / _s1 (mechanism readings)')
-    p.add_argument('--checkpoints', default=None, help='t25: comparison checkpoints, e.g. 1000,2000')
+    p.add_argument('--checkpoints', default=None, help='t25 / t26 / t26w: comparison checkpoints, e.g. 1000,2000,3000,4000')
     p.add_argument('--min-seeds', type=int, default=3); p.add_argument('--no-converged', action='store_true')
     a = p.parse_args()
     r = json.loads(Path(a.readout).read_text(encoding='utf-8'))
@@ -387,7 +387,10 @@ def main():
         if not a.train_root:
             p.error('--criteria v25 / v251 / t26 / t26w needs --train-root (the mechanism readings)')
         mech = mechanism_readings(a.train_root)
-        res = {'v25': decide_v25, 'v251': decide_v251, 't26': decide_t26, 't26w': decide_t26w}[a.criteria](r, mech)
+        if a.criteria in ('t26', 't26w'):
+            res = (decide_t26 if a.criteria == 't26' else decide_t26w)(r, mech, ck if a.checkpoints else T26_CHECKPOINTS)
+        else:
+            res = {'v25': decide_v25, 'v251': decide_v251}[a.criteria](r, mech)
     else:
         res = decide_t25(r, ck, a.min_seeds, not a.no_converged) if a.criteria == 't25' else decide_t24(r) if a.criteria == 't24' else decide_t23(r, a.final or 4000) if a.criteria == 't23' else decide(r, a.final or 3000)
     Path(a.output).write_text(json.dumps(res, indent=1), encoding='utf-8')

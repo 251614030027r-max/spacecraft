@@ -713,6 +713,8 @@ def test_t26_decision_applies_the_preregistered_criteria():
     assert decide_t26(r, mech)['verdict'] == 'incomplete'
     r = build(8, 6); r['expected'] = 48                                             # T2.6W: 48 openings expected
     assert decide_t26(r, mech)['verdict'] == 'incomplete'
+    r = build(8, 6)                                                                 # T2.6.1: the four checkpoints 1000..3000 present
+    assert decide_t26(r, mech, (1000, 2000, 3000))['verdict'] == 'pass' and decide_t26(r, mech, (1000, 4000))['verdict'] == 'incomplete'
 
 
 def test_training_passes_the_mission_profile_to_every_worker():
