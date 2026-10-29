@@ -1,20 +1,100 @@
 {
-  "topic": "t1b_v6_round",
-  "scientific_commit": "ad3c7e754e3123edd6147a2652e3196b433baa6e",
-  "run_order": "docs/collaboration/upper/run_orders/T1_B_V6_ROUND_20261020.md",
-  "evidence_commit": "0cf973c5fd1ca15dd266c39430f968655f3bb0fb",
-  "execution_state": "complete_delivered_waiting_upper_review",
+  "topic": "t2_6w_wide_140_200",
+  "updated_at": "2026-10-29T11:49:57.441212+09:00",
+  "scientific_commit": "e1166eb5daee069e7f14b6f48d24dcf43c36d66f",
+  "run_order": "docs/collaboration/upper/run_orders/T2_6W_WIDE_140_200_20261027.md",
+  "evidence_commit": "605f3e49ef358418c2a7ffc35a2ce013986c50ea",
+  "collab_delivery_commit": "4ad969ae4ff67ff906f2b4e6e1ef29d91a946304",
+  "execution_state": "completed_closed_waiting_upper_order",
   "training_active": false,
-  "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V6_ROUND_20261020\\STATE.json",
-  "handoff": "docs/collaboration/lower/handoffs/t1b_v6_round_20261020/final_review_20261020_2230/FINAL_JUDGMENT.md",
+  "evaluation_active": false,
+  "automatic_followup": "DISABLED",
+  "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W_WIDE_140_200\\RUN_STATE.json",
+  "handoff": "docs/collaboration/lower/handoffs/t2_6w_wide_20261027/RESULT_FINAL.md",
+  "local_report": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\RESULT_FINAL.md",
   "all_three_research_goals_claimed": false,
-  "automatic_followup": "STOPPED",
-  "completed_training_steps": {
-    "e_sac_seed0": 10000,
-    "e_tcpf_seed0": 10000
+  "result": {
+    "registered_checkpoints": [
+      1000,
+      2000,
+      3000,
+      4000
+    ],
+    "evaluation_cases": 768,
+    "reference_cases": 336,
+    "training_steps_each": 4000,
+    "verdict": "scope_revised_descriptive_only",
+    "full_original_t26w_gate_applicable": false,
+    "stable_performance_gain_established": false,
+    "final4000_paired_return_difference": {
+      "seed0": -0.21721500849847372,
+      "seed1": -14.452282024820816
+    }
   },
-  "completed_checkpoint_evaluations": 96,
-  "completed_shared_0k": 16,
-  "seed1_eligible": false,
-  "updated_jst": "2026-10-20T22:31:08.221055+09:00"
+  "local_assets": {
+    "cleanup_state": "completed",
+    "record": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\本地资产清理_20261029\\CLEANUP_FINAL_SUMMARY.json",
+    "protected_rounds": [
+      "T2_5_1_VALIDATE_20261026",
+      "T2_6W_WIDE_140_200"
+    ],
+    "SAC_policy_index": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\本地资产清理_20261029\\SAC_MODEL_KEEP_PATHS.json",
+    "deleted_asset_receipts": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\本地资产清理_20261029\\DELETED_FILES.jsonl",
+    "no_old_training_resume": true
+  },
+  "next_action": "Wait for upper-level execution order; EACC rerun not yet authorized; retain SAC policies without claiming compatibility with an unknown future task.",
+  "Git_maintenance_owner": "Upper-directed cleanup A/B delegated to lower by GIT_CLEANUP_20261029; upper retains research-history closeout and C1/C2 approval.",
+  "previous_phase_snapshot": {
+    "topic": "t1b_v51_round",
+    "scientific_commit": "b6f5c8a22728b6ca3970d6201525cd4047cba8d8",
+    "run_order": "docs/collaboration/upper/run_orders/T1_B_V51_ROUND_20261020.md",
+    "evidence_commit": "39d75ed63d4745f0839871d354c90daebae506fa",
+    "execution_state": "effectiveness_pilot_training_and_readout",
+    "training_active": true,
+    "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V51_ROUND_20261020\\STATE.json",
+    "handoff": "docs/collaboration/lower/handoffs/t1b_v51_round_20261020/midterm_5000/RESULT.md",
+    "all_three_research_goals_claimed": false
+  },
+  "previous_phase_snapshot_exact_backup": {
+    "path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\本地资产清理_20261029\\CURRENT_BEFORE_20261029.json",
+    "SHA256": "e520140239b15d8c33d91d7cdb9b61588e4dafe24199f78b29792c5ef951ad80"
+  },
+  "scientific_commit_role": "Frozen source of last completed experiment, not an assertion of the current upper-maintained checkout.",
+  "pending_experiment": {
+    "run_order": "docs/collaboration/upper/run_orders/T2_6W1_CUTOFF_20261029.md",
+    "status": "pending_user_approval",
+    "not_started": true,
+    "science_fix_reference": "8e612e7",
+    "SAC_reuse_from": "T2_6W_WIDE_140_200"
+  },
+  "git_cleanup": {
+    "order_collab": "6bb1d66",
+    "scope": "A/B only; no history rewrite",
+    "preservation_tag": "archive/collab-pre-cleanup-20261029",
+    "tag_target": "6bb1d664fb638901c5398f930048a3b20fbc3e01",
+    "handoff": "docs/collaboration/lower/handoffs/git_cleanup_20261029/RESULT.md",
+    "C1": "pending_user_confirmation_not_executed",
+    "C2": "pending_user_confirmation_not_executed",
+    "science_B_commit": "05bf44a0b2fc0b9281c32654528bfb9ec409ed7f"
+  },
+  "previous_branch_state_snapshot": {
+    "topic": "t1b_v6_round",
+    "scientific_commit": "ad3c7e754e3123edd6147a2652e3196b433baa6e",
+    "run_order": "docs/collaboration/upper/run_orders/T1_B_V6_ROUND_20261020.md",
+    "evidence_commit": "0cf973c5fd1ca15dd266c39430f968655f3bb0fb",
+    "execution_state": "complete_delivered_waiting_upper_review",
+    "training_active": false,
+    "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V6_ROUND_20261020\\STATE.json",
+    "handoff": "docs/collaboration/lower/handoffs/t1b_v6_round_20261020/final_review_20261020_2230/FINAL_JUDGMENT.md",
+    "all_three_research_goals_claimed": false,
+    "automatic_followup": "STOPPED",
+    "completed_training_steps": {
+      "e_sac_seed0": 10000,
+      "e_tcpf_seed0": 10000
+    },
+    "completed_checkpoint_evaluations": 96,
+    "completed_shared_0k": 16,
+    "seed1_eligible": false,
+    "updated_jst": "2026-10-20T22:31:08.221055+09:00"
+  }
 }

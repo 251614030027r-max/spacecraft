@@ -1,6 +1,6 @@
 # 项目当前状态（2026-10-29）
 
-*先读 [HANDOFF.md](HANDOFF.md) 与 [研究演进](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md)（2026-10-29 更新到 T2.6.1）。本文件只记事实：正在运行什么、东西在哪里、哪些已完成、哪些未完成。由上层维护；下层现场状态见 `CURRENT.json`（**目前仍停在 T1-B V6，已滞后，以本文件与最新交付为准**）。*
+*先读 [HANDOFF.md](HANDOFF.md) 与 [研究演进](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md)（2026-10-29 更新到 T2.6.1）。本文件只记事实：正在运行什么、东西在哪里、哪些已完成、哪些未完成。由上层维护；下层现场状态见 `CURRENT.json`（下层已同步T2.6W关闭与2026-10-29本地资产状态；训练/评估均未运行）。*
 
 ## 1. 当前状态
 
