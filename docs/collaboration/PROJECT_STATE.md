@@ -92,5 +92,5 @@
 | 汇报稿 2.9 节奖励与实现的差异 | 汇报稿作思想参考；写论文时奖励一节按实现写 |
 | `docs/DEAD_ENDS.md`、`docs/HISTORY.md`、`registry`、`GIT_ASSETS` 的 T1-N / T1-B / T2 段 | 上层补齐 |
 | `CURRENT.json` 更新到 T2 现场 | 下层（已计划，见 GIT_CLEANUP A3） |
-| Git 资产整理 | 下层按 [GIT_CLEANUP_20261029](upper/run_orders/GIT_CLEANUP_20261029.md) 执行：A、B 直接做，C 须用户逐项确认 |
+| Git 资产整理 | 下层已完成 [GIT_CLEANUP_20261029](upper/run_orders/GIT_CLEANUP_20261029.md) 的A/B；C1/C2仍待用户逐项确认，[核验报告](lower/handoffs/git_cleanup_20261029/RESULT.md) |
 | 正式块 300000–999999 的评估 | 未授权 |
