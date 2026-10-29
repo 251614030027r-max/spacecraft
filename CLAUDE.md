@@ -1,23 +1,31 @@
 # Working notes for this repository
 
 High-fidelity 6-DoF SE(3) **pre-capture** of a fast-tumbling non-cooperative
-target. Current line: the **T1 task family** (chaser 106 kg, target 225 kg box,
-500 km / 45 deg orbit, RK45 truth with central gravity and J2, 0.1 s control,
-+-2 N / +-0.6 N*m per axis, 300 s). SAC chooses task intents at reviews
-(arrival delay / in-flight shift, descent pace kappa, entry speed), G* turns
-them into executable minimum-delta-v plans, the shared constrained MPC (h35)
-flies them and feeds 2 s shadow predictions back into training.
+target (chaser 106 kg, +-2 N / +-0.6 N*m per axis; target 225 kg box, spin
+2.1-2.7 deg/s, unknown inertia; 500 km / 45 deg orbit, RK45 truth with central
+gravity and J2, 0.1 s control). Current line: the **T2 staged approach**
+(`env/t2_stage.py`, `train/t2_mve_sac.py`, `experiments/t2*.py`). SAC gives a
+2-D stage intent every 16 s in the target's spin frame (closing speed, along-
+sweep speed; latitude regulated onto the port's sweep cone); a stage planner and
+a far-field tracking law fly it; when the port's pass is reachable a window-
+committed conditional G* plans the entry and the frozen MPC flies entry, descent
+and capture. **EACC** (executor-calibrated counterfactual coupling) is the
+training-time upward path: counterfactual labels for K = 8 candidate intents from
+the executor's own model (M1), anchored to the executed stage (M2), Cauchy-
+weighted (M3), entry outcomes by historical execution replay, two-stage labels
+(soft Retrace + one-step stage-2 rows), calibration shared by the workers, labels
+ending at the deadline / budget. Arms: `e_sac` (no model) and `e_mve` (EACC).
 
-**State (2026-10-18):** two learning-space checks (T1-L; T1-O V2, stopped at
-Gate C) found no observable state-dependent decision value beyond a simple
-uniform policy. The research layer's next version is **T1-N** (Research Plan
-R2: SAC chooses a neutral arrival time, conditional G* plans exactly that time,
-paired MPC shadow in the critic). It is implemented and technically reviewed
-(`evidence/T1N_R2_PRECHECK/`, collab review
-`R2_UPPER_FEASIBILITY_REVIEW_20261018.md`, ranking term `evidence/T1N_R2_RANK/`);
-frozen for Round 1 (collab run order `T1_N_R2_ROUND1_20261018.md`), **training
-waits for the user's GO**. The earlier F01 value-stopping (handoff) line is
-finished and archived (`docs/archive/06_f01_value_stopping/`).
+**State (2026-10-29):** env `t2-stage-0.4.2`, learner `t2-learner-2.6.1`, code
+`8e612e7`, 46 tests. The feedback's own gain has not been shown: on the standard
+task EACC and SAC tie (T2.5.1 `mixed`); on the time-pressure task (urgent
+deadline U(140, 200) s, T2.6W, `e1166eb`) EACC was behind (-9.6 / -13.2 paired
+over 1000-4000), all on urgent missions. The lower window found the cause that is
+confirmed: stage-2 labels did not end at the deadline (fixed in `ca96793`). The
+check run order `T2_6W1_CUTOFF_20261029` (collab) **waits for the user's GO**.
+The full story, the pre-agreed next branches and every rule are in collab
+`docs/collaboration/HANDOFF.md` (sections 1, 5, 7) and the research evolution
+(stages 20-26). The T1 line below (T1-L, T1-O, T1-N, T1-B) is finished.
 
 ## Start here
 
@@ -29,6 +37,9 @@ thinking and experiments evolved, pitfalls). Then this file and the pages below.
 
 | What | Where |
 |---|---|
+| **T2 (current): environment, labels, learner, driver, readouts, decisions, audit, figures, tests** | `env/t2_stage.py`, `train/t2_mve_sac.py`, `experiments/t2.py`, `experiments/t2_readout.py`, `experiments/t2_decide.py`, `experiments/t2_audit.py`, `experiments/t2_figures.py`, `tests/test_t2_stage.py` (map in collab HANDOFF 6.2) |
+| T2 evidence | `evidence/T2_PRECHECK`, `T2_STAGE_A/B`, `T2_2_TEST`, `T2_3_TEST`, `T2_4_TEST`, `T2_5_VALIDATE`, `T2_5_1_VALIDATE`, `T2_6_PRESSURE`, `T2_6W_WIDE_140_200` (with the lower's diagnosis) |
+| User's slides (paper narrative) | collab `docs/collaboration/wang23.pdf`; mapping to the code in HANDOFF 2.8 (the reward slide differs from the code) |
 | T1 task family, physics, G*, review interface, opening blocks | `docs/current/TASK.md` |
 | Method components (nothing frozen) | `docs/current/METHOD.md` |
 | Learning-space admission protocol (screen, Gates A-E) and results | `docs/current/EVALUATION.md` |
@@ -88,7 +99,33 @@ thinking and experiments evolved, pitfalls). Then this file and the pages below.
 
 ## Traps
 
-T1 line (current):
+T2 line (current):
+
+- **Mechanism readings are not label correctness.** w2, pi_gap / sigma, grad_cos,
+  two_stage_share passed in T2.5.1 and T2.6W while returns tied or fell. Before
+  training on a changed task distribution or label branch, audit the labels against
+  truth branches on the critical cases (near the deadline, near-field direct
+  capture, lost entry); `experiments.t2_audit` and the T2.6 timeout diagnosis are
+  the tools.
+- **Terminal semantics.** A modelled stage that crosses the deadline or the budget
+  ends there (`_stage_cutoff`, kind 0); an entry is kind 1 (anchored) / 2 (outcome
+  model only). Stage-1 labels exist only after a completed factual stage, so the
+  deadline matters in stage 2 (decisions within 32 s of it).
+- **Paired means are flips.** One capture / timeout flip is about +-200, i.e. +-8 on
+  a 24-opening mean; report medians, without-top-2, urgent / economy and deadline
+  bins; both-captured openings only for fuel / time.
+- **The standard task has no headroom:** SAC reaches ~0.9 training capture by ~1000
+  decisions and ~54 / 23-of-24 by 3000-4000.
+- **SAC arm reuse:** the SAC arm generates no labels (candidates = 0); label or
+  learner-model changes leave it bitwise on the same code path, so it may be reused
+  across EACC-only rounds -- say so in the run order.
+- **Lower hand-offs since T2.2 live in collab `lower/handoffs/` at the repository
+  root**, not under `docs/collaboration/lower/handoffs/`.
+- **Check pytest by its exit code**, not by piping to `tail`.
+- Do not fine-grid task parameters to find a profile where EACC wins (T2.6B was
+  withdrawn); widen the distribution and pre-register the bins instead.
+
+T1 line (historical):
 
 - **Solver-cache numerics.** A long-running MPC's CVXPY/CLARABEL cache carries
   its own solve history; a shadow clone cannot be bitwise equal to it (~1e-8).
@@ -153,7 +190,20 @@ F01 line (historical, `train/stopping.py` and friends):
 
 ## Trusted entry points
 
-T1 line (current; commands in `docs/current/REPRODUCE.md`):
+T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_20261029.md`):
+
+| Purpose | Entry |
+|---|---|
+| Tests | `python -B -m pytest -q tests/test_t2_stage.py` (46) |
+| Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
+| Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI]` |
+| Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` |
+| Readouts | `python -B -m experiments.t2_readout {screen,curve,window,pressure}` |
+| Pre-registered decisions | `python -B -m experiments.t2_decide --criteria {t23,t24,v25,v251,t26,t26w} [--checkpoints ...] --readout R --train-root DIR` |
+| Label audit against truth | `python -B -m experiments.t2_audit {warmup,labels,summary}` |
+| Figures | `python -B -m experiments.t2_figures {traj,plot}` |
+
+T1 line (historical; commands in `docs/current/REPRODUCE.md`):
 
 | Purpose | Entry |
 |---|---|
