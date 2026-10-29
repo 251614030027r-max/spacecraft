@@ -60,7 +60,7 @@
 | 科学代码、测试、证据、当前文档 | 分支 `claude/sac-mpc-coupling-design-ns7g6i`（`CLAUDE.md` 已更新到 T2.6.1） |
 | 分支、标签、证据目录与本机产物总表 | 科学分支 `docs/archive/GIT_ASSETS_20261018.md`（T2 段未补，见 HANDOFF 6.1） |
 | 执行单 | `upper/run_orders/`（T2 线：`T2_STAGE_AB` 至 `T2_6W1_CUTOFF`） |
-| 下层交付包 | T2.2 起在**仓库根**的 `lower/handoffs/<主题>/`；T2.1 及以前在 `docs/collaboration/lower/handoffs/` |
+| 下层交付包 | 全部在 `docs/collaboration/lower/handoffs/<主题>/`（T2 的 7 个目录已于 10-29 从仓库根迁入；旧路径对照见 `lower/README.md`） |
 | 上层审查 | `reviews/`（T2 线的审查结论直接写在本文件、HANDOFF 与研究演进中） |
 | 用户汇报稿 | `wang23.pdf`（本目录） |
 | 实验总账 | `registry/EXPERIMENT_REGISTRY_20261007.csv`（T2 段待补） |
@@ -91,6 +91,5 @@
 | 正式三种子实验与论文图（正式块 300000+） | 机制在验证中转正之后，由用户批准；执行书 `T2_5_FORMAL_20261026` 已过时，需按最终版本重写 |
 | 汇报稿 2.9 节奖励与实现的差异 | 汇报稿作思想参考；写论文时奖励一节按实现写 |
 | `docs/DEAD_ENDS.md`、`docs/HISTORY.md`、`registry`、`GIT_ASSETS` 的 T1-N / T1-B / T2 段 | 上层补齐 |
-| `CURRENT.json` 更新到 T2 现场 | 下层（已计划，见 GIT_CLEANUP A3） |
 | Git 资产整理 | 下层已完成 [GIT_CLEANUP_20261029](upper/run_orders/GIT_CLEANUP_20261029.md) 的A/B；C1/C2仍待用户逐项确认，[核验报告](lower/handoffs/git_cleanup_20261029/RESULT.md) |
 | 正式块 300000–999999 的评估 | 未授权 |
