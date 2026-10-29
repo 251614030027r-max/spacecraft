@@ -119,8 +119,11 @@ T2 line (current):
 - **SAC arm reuse:** the SAC arm generates no labels (candidates = 0); label or
   learner-model changes leave it bitwise on the same code path, so it may be reused
   across EACC-only rounds -- say so in the run order.
-- **Lower hand-offs since T2.2 live in collab `lower/handoffs/` at the repository
-  root**, not under `docs/collaboration/lower/handoffs/`.
+- **All lower hand-offs live in collab `docs/collaboration/lower/handoffs/`.** The
+  T2.2-T2.6W directories sat at the collab repository root until the 10-29
+  cleanup moved them (old paths in executed run orders: see collab
+  `docs/collaboration/lower/README.md`). The collab tree holds only
+  `docs/collaboration/`; its pre-cleanup tree is tag `archive/collab-pre-cleanup-20261029`.
 - **Check pytest by its exit code**, not by piping to `tail`.
 - Do not fine-grid task parameters to find a profile where EACC wins (T2.6B was
   withdrawn); widen the distribution and pre-register the bins instead.
