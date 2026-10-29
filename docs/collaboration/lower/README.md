@@ -24,3 +24,20 @@
 新交付放`lower/handoffs/<主题>_<日期>/`并更新本索引、CURRENT；大ZIP和模型可以留本机，登记SHA、路径和结构化审查证据。不得只提交最优检查点。
 
 T1 v4第2.1版准入和校准通过：λ_mc=0.03、λ_eq=0.1，正式训练由用户PyCharm手动启动；[准入回执](handoffs/t1_v4_s0_20261015/admission/ADMISSION.md)、[手动命令](handoffs/t1_v4_s0_20261015/admission/PyCharm手动启动.md)。
+
+
+## 2026-10-29 T2交付路径统一（已执行书不回写）
+
+仅移动目录，所有交付文件Git blob逐项相同。旧路径可由保全标签恢复；现行入口使用新路径。
+
+|原仓库根路径|现仓库根路径|
+|---|---|
+|`lower/handoffs/t2_2_test_20261022/`|`docs/collaboration/lower/handoffs/t2_2_test_20261022/`|
+|`lower/handoffs/t2_3_test_20261023/`|`docs/collaboration/lower/handoffs/t2_3_test_20261023/`|
+|`lower/handoffs/t2_4_test_20261025/`|`docs/collaboration/lower/handoffs/t2_4_test_20261025/`|
+|`lower/handoffs/t2_5_1_validate_20261026/`|`docs/collaboration/lower/handoffs/t2_5_1_validate_20261026/`|
+|`lower/handoffs/t2_5_validate_20261026/`|`docs/collaboration/lower/handoffs/t2_5_validate_20261026/`|
+|`lower/handoffs/t2_6_pressure_20261027/`|`docs/collaboration/lower/handoffs/t2_6_pressure_20261027/`|
+|`lower/handoffs/t2_6w_wide_20261027/`|`docs/collaboration/lower/handoffs/t2_6w_wide_20261027/`|
+
+逐文件对照：[MOVED.csv](handoffs/git_cleanup_20261029/MOVED.csv)。已执行的upper/run_orders文件、交付包内SHA和正文历史路径均保留原样；旧报告中的绝对本机路径不作为现行入口。
