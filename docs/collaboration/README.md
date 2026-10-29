@@ -10,6 +10,6 @@
 | 协作纪律 | [HANDOFF](HANDOFF.md) 第 7 节（摘要见 [WORKFLOW](WORKFLOW.md)） |
 | 历史实验与审查 | [registry](registry/README.md) · [reviews](reviews/README.md) |
 
-**当前（2026-10-18）：** 没有有效执行单在运行。T1-O V2 本机门控已停于 Gate C（审查 [reviews/T1O_V2_GATES_UPPER_REVIEW_20261017.md](reviews/T1O_V2_GATES_UPPER_REVIEW_20261017.md)），下一任务版本由研究层设计。科学代码只在 `claude/sac-mpc-coupling-design-ns7g6i`；全部分支与资产见科学分支 `docs/archive/GIT_ASSETS_20261018.md`。
+**当前（2026-10-29）：** 没有运行中的实验。T2.6W 已交付；标签终止修复（科学 `8e612e7`）的检验执行书 [T2_6W1_CUTOFF_20261029](upper/run_orders/T2_6W1_CUTOFF_20261029.md) 待用户批准。用户对方向与方法的理解见汇报稿 [wang23.pdf](wang23.pdf)。`CURRENT.json` 仍停在 T1-B V6，已滞后。
 
-**推进方式：**研究层定方向与授权；上层做必要实现、测试和冻结；下层完整训练、评估与交付；上层集中审查。技术正确性要检查，研究效果不要求训练前证明；旧方案筛选不能反复阻断已授权主线。细则见 HANDOFF 第 7 节。
+**推进方式：**研究层定方向与授权；T2.3 起上层主导 T2.x 迭代（诊断、设计、实现、测试、冻结、执行书）；下层完整训练、评估、诊断与交付；上层集中审查。技术正确性要检查，研究效果不要求训练前证明；旧方案筛选不能反复阻断已授权主线。细则见 HANDOFF 第 7 节。
