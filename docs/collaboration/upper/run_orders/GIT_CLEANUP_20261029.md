@@ -61,6 +61,8 @@ read_cal.py  CLAUDE.md  requirements.txt  requirements-dev.txt  requirements-mpc
 
 ## C. 需要用户逐项确认的可选项（未确认不做）
 
+**用户裁决（2026-10-29）：C1、C2 都不做。** 本机磁盘吃紧时再议 C1。
+
 **C1. 科学分支移除 T1-B 原始训练日志（工作树减少约 0.5 GB）。**
 - **对象：** `evidence/T1B_V1/training/`、`T1B_V2_PILOT/training/`、`T1B_V3_MIDTERM_20261019/training/`、`T1B_V4_RESOURCE_RESTART1_20261020/training/`、`T1B_V51_ROUND/midterm_5000/training/`，以及 `T1B_V7_SIDE_BENCH` 中的大文件（> 1 MB）。
 - **做法：** 先打 `archive/science-pre-cleanup-20261029`，再从最新提交中删除；在 `docs/archive/GIT_ASSETS_20261018.md` 记下每个文件的路径、blob SHA 与大小。各目录的汇总 JSON、README、SHA256SUMS 保留。

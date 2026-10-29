@@ -8,7 +8,7 @@
 |---|---|
 | 运行中 | 无。T2.6W 已交付（科学 `605f3e4`，collab `4ad969a`） |
 | 待批准 | [T2_6W1_CUTOFF_20261029](upper/run_orders/T2_6W1_CUTOFF_20261029.md)（collab `c4e2c0b`）：标签在期限 / 预算处终止的修复（科学 `8e612e7`）；EACC 种子 0、1 × 4000，SAC 复用 T2.6W；判定 `t26w --checkpoints 1000,2000,3000,4000` |
-| 研究阶段 | **T2.6.1**：EACC（执行校准反事实耦合）+ 窗口承诺，任务为时间压力（紧急 U(140, 200) s）。反馈的独立收益至今未立住：标准任务打平（T2.5.1 `mixed`），时间压力任务上修复前落后（−9.6 / −13.2） |
+| 研究阶段 | **T2.6.1**：EACC（执行校准反事实耦合）+ 窗口承诺，任务为时间压力（紧急 U(140, 200) s）。反馈的独立收益至今未立住：标准任务打平（T2.5.1 `mixed`），时间压力任务上修复前落后（−9.6 / −13.1） |
 | 最新科学提交 | 代码 `8e612e7`（环境 t2-stage-0.4.2，学习器 t2-learner-2.6.1，46 项测试）。T2.6W 运行用 `e1166eb` |
 | 规格与结论 | T2 以代码与证据为准（`env/t2_stage.py`、`train/t2_mve_sac.py`、`experiments/t2*.py`、`evidence/T2_*`）；论文叙事蓝本为用户汇报稿 `wang23.pdf`（与实现的差异见 HANDOFF 2.8，奖励一节不一致） |
 
@@ -91,5 +91,5 @@
 | 正式三种子实验与论文图（正式块 300000+） | 机制在验证中转正之后，由用户批准；执行书 `T2_5_FORMAL_20261026` 已过时，需按最终版本重写 |
 | 汇报稿 2.9 节奖励与实现的差异 | 汇报稿作思想参考；写论文时奖励一节按实现写 |
 | `docs/DEAD_ENDS.md`、`docs/HISTORY.md`、`registry`、`GIT_ASSETS` 的 T1-N / T1-B / T2 段 | 上层补齐 |
-| Git 资产整理 | 下层已完成 [GIT_CLEANUP_20261029](upper/run_orders/GIT_CLEANUP_20261029.md) 的A/B；C1/C2仍待用户逐项确认，[核验报告](lower/handoffs/git_cleanup_20261029/RESULT.md) |
+| Git 资产整理 | 下层已完成 [GIT_CLEANUP_20261029](upper/run_orders/GIT_CLEANUP_20261029.md) 的 A / B（[核验报告](lower/handoffs/git_cleanup_20261029/RESULT.md)）。**C1、C2 用户 10-29 决定不做**（删除只减工作树、不减克隆体积，保留更稳妥）；本机磁盘吃紧时再议 C1 |
 | 正式块 300000–999999 的评估 | 未授权 |
