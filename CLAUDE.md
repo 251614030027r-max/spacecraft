@@ -19,7 +19,7 @@ ending at the deadline / budget. Arms: `e_sac` (no model) and `e_mve` (EACC).
 **State (2026-10-29):** env `t2-stage-0.4.2`, learner `t2-learner-2.6.1`, code
 `8e612e7`, 46 tests. The feedback's own gain has not been shown: on the standard
 task EACC and SAC tie (T2.5.1 `mixed`); on the time-pressure task (urgent
-deadline U(140, 200) s, T2.6W, `e1166eb`) EACC was behind (-9.6 / -13.2 paired
+deadline U(140, 200) s, T2.6W, `e1166eb`) EACC was behind (-9.6 / -13.1 paired
 over 1000-4000), all on urgent missions. The lower window found the cause that is
 confirmed: stage-2 labels did not end at the deadline (fixed in `ca96793`). The
 check run order `T2_6W1_CUTOFF_20261029` (collab) **waits for the user's GO**.

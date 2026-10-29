@@ -273,8 +273,9 @@ def decide_t26(r: dict, mech: dict | None = None, checkpoints=T26_CHECKPOINTS) -
 
 
 def decide_t26w(r: dict, mech: dict | None = None, checkpoints=T26_CHECKPOINTS) -> dict:
-    """T2.6W (wide urgent deadline U(140, 200) s, research-layer order 2026-10-27): the verdict is t26 over 500..3000,
-    unchanged. Reported beside it, never gated: the late window 3000 / 3500 / 4000 (paired, captures, unsafe, each arm's
+    """T2.6W (wide urgent deadline U(140, 200) s, research-layer order 2026-10-27): the verdict is t26 over ``checkpoints``
+    (500..3000 by default; T2.6W1 passes 1000,2000,3000,4000 with --checkpoints), criteria unchanged. Reported beside it,
+    never gated: the late window 3000 / 3500 / 4000 (paired, captures, unsafe, each arm's
     spread of mean return), urgent captures by deadline bin summed over every checkpoint, and delta-v / time on the
     openings both arms capture (averaged over the checkpoints)."""
     out = decide_t26(r, mech, checkpoints)
