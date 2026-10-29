@@ -52,8 +52,9 @@ UPDATES_PER_TRANSITION = 2
 #: stage-1 target); its one-step stage-2 row (T2.5.1) has no age cap
 SYNC_UPDATES = 100
 AGE_CAP = 2000
-#: learner version recorded in the manifest (T2.5.1: one-step stage-2 rows; T2.6: calibration shared by the workers)
-LEARNER_VERSION = "t2-learner-2.6"
+#: learner version recorded in the manifest (T2.5.1: one-step stage-2 rows; T2.6: calibration shared by the workers;
+#: T2.6.1: labels end at the deadline / budget, env t2-stage-0.4.2)
+LEARNER_VERSION = "t2-learner-2.6.1"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -101,13 +102,15 @@ class StageReplay(ReplayBuffer):
             for j, x in enumerate(cands):
                 self.cand_a[i, e, j] = x['a']; self.cand_r[i, e, j] = x['reward']; self.cand_obs[i, e, j] = x['next_obs']
                 self.cand_done[i, e, j] = float(x['done']); self.cand_valid[i, e, j] = 1.0; self.cand_kind[i, e, j] = float(x.get('kind', 0))
-                c['entry_candidates'] += int(x['done'])
+                c['entry_candidates'] += int(x['done'] and x.get('kind', 0) > 0)
+                c['cutoff_candidates'] = c.get('cutoff_candidates', 0) + int(x['done'] and x.get('kind', 0) == 0)   # T2.6: deadline / budget
                 y2 = x.get('s2')
                 if y2 is not None and not x['done']:
                     self.c2_valid[i, e, j] = 1.0; self.c2_a[i, e, j] = y2['a']; self.c2_logp[i, e, j] = y2['logp']
                     self.c2_r[i, e, j] = y2['reward']; self.c2_obs[i, e, j] = y2['next_obs']; self.c2_done[i, e, j] = float(y2['done'])
                     self.c2_kind[i, e, j] = float(y2.get('kind', 0))
-                    c['two_stage'] = c.get('two_stage', 0) + 1; c['two_stage_entry'] = c.get('two_stage_entry', 0) + int(y2['done'])
+                    c['two_stage'] = c.get('two_stage', 0) + 1; c['two_stage_entry'] = c.get('two_stage_entry', 0) + int(y2['done'] and y2.get('kind', 0) == 2)
+                    c['two_stage_cutoff'] = c.get('two_stage_cutoff', 0) + int(y2['done'] and y2.get('kind', 0) == 0)
         super().add(obs, next_obs, action, reward, done, infos)
 
     def _get_samples(self, batch_inds, env=None):
@@ -181,7 +184,8 @@ class T2SAC(SAC):
         predicted stage-1 state, Q(o1, a2) <- r2 + gamma (1 - d2) V(o2). A one-step soft Bellman target is valid for any
         action, so these rows need no importance ratio and no age cap; their information reaches Q(s, a) through V(o1).
         Weight as every model row: eps2 = |e_a| + b2 (b2 the current entry bias for an unanchored entry, else 0).
-        Also returns |Qbar(o1, a2) - Qbar(o1, a_pi)| / sigma, how far the label's action lies from the current policy's in value."""
+        Also returns |Qbar(o1, a2) - Qbar(o1, a_pi)| / sigma, how far the label's action lies from the current policy's in value,
+        d2 and the stage-2 kind (2 entry, 0 stage end or, T2.6.1, the deadline / budget end)."""
         k = mask.shape[1]
         d1 = m['cand_done'][mask].reshape(-1, 1)
         sel = ((m['c2_valid'][mask].reshape(-1, 1) > 0) & (d1 == 0)).reshape(-1)
@@ -195,7 +199,7 @@ class T2SAC(SAC):
         w2 = 1.0 / (1.0 + eps2 ** 2 / self.td_ms)
         a_pi, _ = self.actor.action_log_prob(o1)
         gap = (self._q_target_min(o1, a2) - self._q_target_min(o1, a_pi)).abs() / float(np.sqrt(self.td_ms))
-        return o1, a2, y2, w2, gap, d2
+        return o1, a2, y2, w2, gap, d2, m['c2_kind'][mask][sel].reshape(-1, 1)
 
     def _model_loss(self, data, target, ent_coef):
         """Counterfactual labels fused into the critic regression (module docstring).
@@ -232,13 +236,13 @@ class T2SAC(SAC):
         total = (sum((wk * (q - y) ** 2).sum() for q in qs))
         n_rows = int(mask.sum())
         if rows2 is not None:                                        # every model row counts once (stage 1 and stage 2 alike)
-            o1, a2, y2, w2, gap, d2 = rows2
+            o1, a2, y2, w2, gap, d2, _ = rows2
             total = total + sum((w2 * (q - y2) ** 2).sum() for q in self.critic(o1, a2))
             n_rows += int(o1.shape[0])
         loss = 0.5 * total / max(n_rows, 1)
         e = err[rows]
         n2 = int(idx.sum())
-        dec = (m['c2_done'][mask].reshape(-1, 1) > 0) & two
+        dec = (m['c2_done'][mask].reshape(-1, 1) > 0) & (m['c2_kind'][mask].reshape(-1, 1) == 2) & two   # stage 2 opens the entry
         return loss, {'model_rows': int(mask.sum()), 'w_mean': float(wk.mean()), 'abs_err_median': float(e.abs().median()),
                       'w_err_max': float((w[rows] * e.abs()).max()), 'entry_share': float(entry.float().mean()),
                       'entry_unanchored_share': float((kind1 == 2).float().mean()), 'entry_bias_now': self.entry_bias_now,
@@ -250,7 +254,9 @@ class T2SAC(SAC):
                       'stage2_rows': int(rows2[0].shape[0]) if rows2 is not None else 0,
                       'w2_mean': float(rows2[3].mean()) if rows2 is not None else None,
                       'pi_gap_sigma_median': float(rows2[4].median()) if rows2 is not None else None,
-                      'stage2_entry_share': float(rows2[5].mean()) if rows2 is not None else None}
+                      'stage2_entry_share': float((rows2[6] == 2).float().mean()) if rows2 is not None else None,
+                      'stage2_cutoff_share': float(((m['c2_done'][mask] > 0) & (m['c2_kind'][mask] == 0) & (m['c2_valid'][mask] > 0)).float().mean()),
+                      'stage1_cutoff_share': float(((m['cand_done'][mask] > 0) & (m['cand_kind'][mask] == 0)).float().mean())}
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         self.policy.set_training_mode(True)

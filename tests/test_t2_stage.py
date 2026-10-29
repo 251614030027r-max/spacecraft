@@ -258,10 +258,10 @@ def test_terminal_model_labels_do_not_bootstrap():
     m = _sac(batch=4)
     for k in range(4):
         fact = {'reward': 0.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True}     # exact factual: w = 1
-        cands = [{'a': np.zeros(2, np.float32), 'reward': 50.0, 'next_obs': np.ones(OBS_DIM, np.float32) * 9, 'done': True}]
+        cands = [{'a': np.zeros(2, np.float32), 'reward': 50.0, 'next_obs': np.ones(OBS_DIM, np.float32) * 9, 'done': True, 'kind': 1}]
         m.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([0.0]), np.array([True]),
                             [{'model': {'fact': fact, 'cands': cands}}])
-    assert m.replay_buffer.model_counts['entry_candidates'] == 4
+    assert m.replay_buffer.model_counts['entry_candidates'] == 4                 # kind 1: an anchored entry label, no outcome-model bias (T2.6.1: kind 0 terminal = deadline)
     m.td_ms = 1.0
     data = m.replay_buffer.sample(4)
     with th.no_grad():
@@ -599,12 +599,12 @@ def test_stage2_rows_are_one_step_labels_without_a_ratio():
     for logp, created in ((-1.0, 0.0), (-1.0 + np.log(1e4), 0.0), (-1.0, -float(AGE_CAP) - 1)):   # c = 1, c = 1e-4, too old
         m, b = _retrace_fixture(c2_logp=logp, created=created)
         m.td_ms = 100.0
-        o1, a2, y2, w2, gap, d2 = m._stage2_rows(b, one, th.full((1,), 3.0), 0.05)
+        o1, a2, y2, w2, gap, d2, _ = m._stage2_rows(b, one, th.full((1,), 3.0), 0.05)
         assert abs(float(y2) - (3 + g * 7)) < 1e-5 and abs(float(w2) - 1.0 / (1.0 + 9.0 / 100.0)) < 1e-6
         assert float(gap) == 0.0                                 # Qbar is constant in the fixture
     m, b = _retrace_fixture(c2_logp=-1.0, d2=1.0)                # stage 2 ends in the entry: no bootstrap beyond it
     m.td_ms = 100.0; m.entry_bias_now = -20.0; b['c2_kind'] = th.full((1, 1), 2.0)
-    _, _, y2, w2, _, _ = m._stage2_rows(b, one, th.full((1,), 3.0), 0.05)
+    _, _, y2, w2, _, _, _ = m._stage2_rows(b, one, th.full((1,), 3.0), 0.05)
     assert abs(float(y2) - 3.0) < 1e-6 and abs(float(w2) - 1.0 / (1.0 + 23.0 ** 2 / 100.0)) < 1e-6
     m, b = _retrace_fixture(c2_logp=-1.0, d1=1.0)                # terminal stage 1: no stage-2 row
     assert m._stage2_rows(b, one, th.zeros(1), 0.05) is None
@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-2.6'
+    assert t.LEARNER_VERSION == 't2-learner-2.6.1'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -785,3 +785,54 @@ def test_pooled_calibration_only_in_the_coupled_arm():
     w = inspect.getsource(t.worker); src = inspect.getsource(t.train)
     assert 'share_calibration(env) if (POOL_CALIBRATION and candidates > 0) else None' in w and 'merge_calibration(env, shared)' in w
     assert 'CalibrationPool() if (POOL_CALIBRATION and candidates > 0) else None' in src and 'pool.pending(w_)' in src
+
+
+def _intent_fixture(deadline_left=None, budget_left=None):
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import EntryCalibration, T2StageEnv, frame_now, stage_goal
+    env = T2StageEnv(openings=[1000001], shaping=True, candidates=3)
+    env.reset(); e = env.env
+    for k in range(12):
+        env.calibration.add(0.10, 0.12, np.zeros(3), np.zeros(3))
+    q, v = relative_inertial(e); frame = frame_now(e, q); a = np.array([0.3, 0.2])
+    goal = stage_goal(q, v, frame, a, e.chaser_parameters.mass)
+    plan = env.generator.planner.solve(q, v, goal['q_goal'], goal['v_goal'])
+    start = {"rotation": e.target_state.rotation.copy(), "omega": e.target_state.omega.copy(), "t": e.time_s, "dv": e._delta_v, "phi": env._phi(),
+             "q": q, "v": v, "basis": frame['basis'], "frame": frame}
+    if deadline_left is not None:
+        env.mission = dict(env.mission, deadline_s=start['t'] + deadline_left)
+    if budget_left is not None:
+        env.mission = dict(env.mission, budget_m_s=start['dv'] + budget_left)
+    cal = env.calibration.frozen(); env._model_t0 = start['t']
+    attitude = lambda s: (start['rotation'], start['omega'])
+    zero = lambda s: (np.zeros(3), np.zeros(3), 0.0)
+    return env, env.predict_intent(plan, a, start, cal, EntryCalibration(), zero, attitude), start
+
+
+def test_labels_end_at_the_deadline_and_the_budget():
+    """T2.6.1: a modelled stage without an entry ends where the truth ends it -- the deadline (timeout) or the spent
+    budget (resource exhausted): cost up to then minus the timeout penalty, terminal, no bootstrap (before: 16 s and
+    a bootstrapped next observation past the deadline)."""
+    env, free, start = _intent_fixture()
+    assert not free['done']
+    w = env.env.config.reward; dv = free['dv']
+    env, p, start = _intent_fixture(deadline_left=10.0)
+    assert p['done'] and p['entry'] is None and p['event'] == 'timeout'
+    true = -w.time_cost_per_s * 10.0 - w.delta_v_cost_per_m_s * dv * 10.0 / 16.0 - w.timeout_penalty
+    assert abs(p['true'] - true) < 1e-9 and abs(p['reward'] - (true - start['phi'])) < 1e-9
+    env, p, start = _intent_fixture(budget_left=0.5 * dv)
+    assert p['done'] and p['event'] == 'resource_exhausted'
+    assert abs(p['true'] - (-w.time_cost_per_s * 8.0 - w.delta_v_cost_per_m_s * 0.5 * dv - w.timeout_penalty)) < 1e-9
+    assert env._stage_cutoff(start['t'], start['dv'], 0.0) is None
+    env.mission = dict(env.mission, deadline_s=start['t'] + 4.0)
+    assert env._stage_cutoff(start['t'], start['dv'], 2 * (env.mission['budget_m_s'] - start['dv']))[2] == 'timeout'   # the earlier end
+
+
+def test_stage2_labels_end_at_the_deadline_and_are_not_entries():
+    import inspect
+    from env.t2_stage import T2StageEnv
+    src = inspect.getsource(T2StageEnv.predict_second_stage)
+    assert src.index('self._stage_cutoff(t1, start["dv"] + s1["dv"], dv2)') < src.index('if not 6.5 <= float(np.linalg.norm(q2)) <= 25.0')
+    lab = inspect.getsource(T2StageEnv._labels)
+    assert '"kind": (1 if anchored_outcome else 2) if p.get("entry") is not None else 0' in lab
+    assert '"kind": 2 if p2.get("entry") is not None else 0' in lab

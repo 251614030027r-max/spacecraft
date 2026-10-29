@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.4.1"
+T2_VERSION = "t2-stage-0.4.2"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -639,6 +639,23 @@ class T2StageEnv(gym.Env):
                     return {"s": s, "tau": float(res["tau_s"]), "dv_plan": float(res["delta_v_m_s"]), "brake_dv": brake}
         return None
 
+    def _stage_cutoff(self, t_start: float, dv_start: float, dv_stage: float):
+        """T2.6 (label termination): a modelled stage without an entry ends where the truth would end it -- at the
+        mission deadline (timeout) or when the delta-v budget is spent (resource exhausted), whichever comes first.
+        Returns None, or (elapsed s, delta-v spent, event). The truth's terminal reward is the cost up to then minus the
+        timeout penalty (both events), with no bootstrap; before T2.6 the label ran the full 16 s and bootstrapped."""
+        ends = []
+        left_t = float(self.mission["deadline_s"]) - float(t_start)
+        if left_t < STAGE_S - 1e-9:
+            ends.append((max(left_t, 0.0), "timeout"))
+        left_dv = float(self.mission["budget_m_s"]) - float(dv_start)
+        if dv_stage > 1e-12 and dv_stage >= left_dv:
+            ends.append((STAGE_S * max(left_dv, 0.0) / dv_stage, "resource_exhausted"))
+        if not ends:
+            return None
+        s_end, event = min(ends)
+        return s_end, dv_stage * s_end / STAGE_S, event
+
     def predict_intent(self, plan, action, start: dict, cal: "Calibration", ecal: "EntryCalibration", resid, attitude,
                        entry_offset: float = 0.0, brake_model: bool = True) -> dict:
         """Stage 1 of the executor option model of one intent from the decision state: its stage plan, corrected by
@@ -660,6 +677,11 @@ class T2StageEnv(gym.Env):
         q1, v1 = plan_state(plan, STAGE_S, mass)
         q1, v1 = q1 + dq, v1 + dvv
         dv1 = self._dv_model(plan, cal, STAGE_S) + ddv
+        cut = self._stage_cutoff(start["t"], start["dv"], dv1)
+        if cut is not None:
+            true = cost(cut[0], cut[1]) - w.timeout_penalty
+            return {"reward": float(true - (start["phi"] if self.shaping else 0.0)), "done": True, "entry": None, "event": cut[2],
+                    "stages": 1, "true": float(true)}
         rot1, om1 = attitude(STAGE_S)
         r1 = cost(STAGE_S, dv1)
         obs = observe(e, q1, v1, start["t"] + STAGE_S, start["dv"] + dv1, self.mission, rot1, om1,
@@ -701,6 +723,11 @@ class T2StageEnv(gym.Env):
         q2, v2 = plan_state(nxt, STAGE_S, mass)
         q2, v2 = q2 + b1.T @ dq_b, v2 + b1.T @ dv_b
         dv2 = self._dv_model(nxt, cal, STAGE_S)
+        cut = self._stage_cutoff(t1, start["dv"] + s1["dv"], dv2)
+        if cut is not None:                    # the deadline or the budget ends the episode inside stage 2
+            true = cost(cut[0], cut[1]) - w.timeout_penalty
+            return {"reward": float(true - (s1["phi"] if self.shaping else 0.0)), "obs": np.zeros(OBS_DIM, np.float32), "done": True,
+                    "true": float(true), "entry": None, "event": cut[2]}
         if not 6.5 <= float(np.linalg.norm(q2)) <= 25.0:
             return None
         rot2, om2 = attitude(2 * STAGE_S)
@@ -768,9 +795,9 @@ class T2StageEnv(gym.Env):
         cands = []
         for c in self._plan_candidates(start["q"], start["v"], start["frame"], a):
             p = self.predict_intent(c["plan"], c["a"], start, cal, ecal, anchored, attitude, entry_offset=offset)
-            if p["done"]:
+            if p["done"]:                     # an entry (outcome model: kind 1 anchored / 2 not) or a deadline / budget end (kind 0)
                 cand = {"a": c["a"], "reward": p["reward"], "next_obs": np.zeros(OBS_DIM, np.float32), "done": True,
-                        "kind": 1 if anchored_outcome else 2}
+                        "kind": (1 if anchored_outcome else 2) if p.get("entry") is not None else 0}
             elif c["plan"].get("terminal_position_error_m", 1.0) <= 0.3 and 6.5 <= p["r_end"] <= 25.0:   # model domain
                 cand = {"a": c["a"], "reward": p["reward"], "next_obs": p["obs"], "done": False, "kind": 0, "s2": None}
                 if self.entry_stages >= 2 and self.label_policy is not None:
@@ -778,7 +805,7 @@ class T2StageEnv(gym.Env):
                     p2 = self.predict_second_stage(p, np.asarray(a2, dtype=np.float64), start, cal, ecal, attitude)
                     if p2 is not None:
                         cand["s2"] = {"a": np.asarray(a2, np.float32), "logp": float(logp), "reward": p2["reward"], "next_obs": p2["obs"],
-                                      "done": bool(p2["done"]), "kind": 2 if p2["done"] else 0}
+                                      "done": bool(p2["done"]), "kind": 2 if p2.get("entry") is not None else 0}
                         if self.diagnostics:
                             cand["stage2"] = p2
             else:
@@ -786,7 +813,7 @@ class T2StageEnv(gym.Env):
             if self.diagnostics:      # label audit against truth branches: the raw (calibration-only) prediction beside it
                 cand["anchored"] = p; cand["raw"] = self.predict_intent(c["plan"], c["a"], start, cal, ecal, raw, attitude)
             cands.append(cand)
-        diag = {"fact_entry": bool(fact["done"]), "entered": entered is not None, "entry_offset": offset, "candidates": len(cands),
+        diag = {"fact_entry": fact.get("entry") is not None, "fact_cutoff": bool(fact["done"]) and fact.get("entry") is None, "entered": entered is not None, "entry_offset": offset, "candidates": len(cands),
                 "entry_bias": entry_bias, "entry_records": len(ecal.rows)}
         if self.diagnostics:
             diag["anchored_fact"] = self.predict_intent(plan, a, start, cal, ecal, anchored, attitude, entry_offset=offset, brake_model=False)

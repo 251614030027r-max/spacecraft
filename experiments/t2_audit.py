@@ -128,11 +128,14 @@ def _truth(snapshot, a, a2=None) -> dict:
 
 def _compare(label: dict, truth: dict) -> dict:
     """Stage-1 label against the truth of the candidate's first decision."""
-    entry = bool(label['done'])
+    entry = bool(label['done']) and label.get('entry') is not None     # T2.6: a deadline / budget end is not an entry
     row = {'pred_entry_stage': 1 if entry else 0, 'true_entry_stage': truth['entered_stage'] if truth['entered_stage'] == 1 else None,
            'pred_true': label['true']}
     if entry:
         row['label_err'] = label['true'] - truth['true'] if truth['entered_stage'] == 1 and truth['event'] else None
+    elif label['done']:                 # T2.6: the label ends at the deadline / budget; the truth should end there too
+        row['pred_cutoff'] = label.get('event'); row['true_event'] = truth['event']
+        row['cutoff_err'] = label['true'] - truth['true'] if truth['event'] else None
     else:
         row['reward_err'] = label['true'] - truth['reward1']
         row['pos_err_m'] = float(np.linalg.norm(np.asarray(label['q']) - np.asarray(truth['q1'])))
@@ -142,7 +145,7 @@ def _compare(label: dict, truth: dict) -> dict:
 
 def _compare2(s1: dict, s2: dict, truth: dict) -> dict:
     """Stage 2 (T2.5): the predicted entry event of the second decision and the two-decision true return."""
-    row = {'pred_entry2': bool(s2['done']), 'true_entry2': truth['entered_stage'] == 2, 'true_entry1': truth['entered_stage'] == 1}
+    row = {'pred_entry2': bool(s2['done']) and s2.get('entry') is not None, 'true_entry2': truth['entered_stage'] == 2, 'true_entry1': truth['entered_stage'] == 1}
     if truth['entered_stage'] == 1:
         return row                                       # the truth entered already in stage 1: stage 2 not comparable
     if s2['done']:
