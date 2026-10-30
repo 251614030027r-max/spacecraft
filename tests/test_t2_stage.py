@@ -838,3 +838,70 @@ def test_stage2_labels_end_at_the_deadline_and_are_not_entries():
     lab = inspect.getsource(T2StageEnv._labels)
     assert '"kind": (1 if anchored_outcome else 2) if p.get("entry") is not None else 0' in lab
     assert '"kind": 2 if p2.get("entry") is not None else 0' in lab
+
+
+def _entry_fixture(budget_left=None, deadline_left=None, hit_s=6.0):
+    """The intent fixture with a ready entry calibration and the entry scan pinned: a predicted entry at ``hit_s``
+    into the stage (stage 1) and none after it (stage 2), so the event order is the only thing under test."""
+    from env.t2_stage import ENTRY_CAL_MIN, EntryCalibration
+    env, free, start = _intent_fixture()
+    ecal = EntryCalibration()
+    for k in range(ENTRY_CAL_MIN):
+        ecal.add(20.0, 0.3, 70.0, 0.35, True, 0.0, 150.0)
+    if budget_left is not None:
+        env.mission = dict(env.mission, budget_m_s=start['dv'] + budget_left)
+    if deadline_left is not None:
+        env.mission = dict(env.mission, deadline_s=start['t'] + deadline_left)
+    env._scan = lambda plan, resid, attitude, offset, budget, brake_model: (
+        {"s": hit_s, "tau": 20.0, "dv_plan": 0.3, "brake_dv": 0.0} if offset == 0.0 else None)
+    return env, free, start, ecal
+
+
+def test_budget_spent_before_a_predicted_entry_ends_the_label():
+    """T2.6.1 (env 0.4.3): the entry scan comes first, but delta-v spent before the predicted entry ends the episode
+    as in the truth -- resource exhausted, cost up to then minus the penalty, no entry, kind 0 (not an entry label)."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import frame_now, stage_goal
+    env, free, start, ecal = _entry_fixture()
+    a = np.array([0.3, 0.2])
+    e = env.env; q, v = relative_inertial(e); frame = frame_now(e, q)
+    goal = stage_goal(q, v, frame, a, e.chaser_parameters.mass)
+    plan = env.generator.planner.solve(q, v, goal['q_goal'], goal['v_goal'])
+    cal = env.calibration.frozen(); env._model_t0 = start['t']
+    attitude = lambda s: (start['rotation'], start['omega'])
+    zero = lambda s: (np.zeros(3), np.zeros(3), 0.0)
+    w = e.config.reward
+    p = env.predict_intent(plan, a, start, cal, ecal, zero, attitude)
+    assert p['done'] and p['entry'] is not None                       # ample budget: the entry label as before
+    dv6 = env._dv_model(plan, cal, 6.0)
+    env.mission = dict(env.mission, budget_m_s=start['dv'] + 0.5 * dv6)
+    p = env.predict_intent(plan, a, start, cal, ecal, zero, attitude)
+    assert p['done'] and p['entry'] is None and p['event'] == 'resource_exhausted'
+    assert abs(p['true'] - (-w.time_cost_per_s * 3.0 - w.delta_v_cost_per_m_s * 0.5 * dv6 - w.timeout_penalty)) < 1e-9
+    assert abs(p['reward'] - (p['true'] - start['phi'])) < 1e-9
+
+
+def test_stage2_labels_end_at_the_deadline_and_the_budget_when_run():
+    """T2.6.1, executed (the source-order check above only reads the code): a stage-2 prediction that the deadline
+    or the budget ends is terminal, no entry, the truth's reward; an entry predicted after the budget is spent is not
+    an entry either."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import frame_now, stage_goal
+    env, free, start, ecal = _entry_fixture(hit_s=6.0)
+    e = env.env; w = e.config.reward; a = np.array([0.3, 0.2])
+    cal = env.calibration.frozen(); attitude = lambda s: (start['rotation'], start['omega'])
+    assert not free['done']
+    env._scan = lambda *args, **kw: None
+    env.mission = dict(env.mission, deadline_s=start['t'] + 20.0)              # stage 1 fits, stage 2 ends 4 s in
+    p2 = env.predict_second_stage(free, a, start, cal, ecal, attitude)
+    assert p2 is not None and p2['done'] and p2['entry'] is None and p2['event'] == 'timeout'
+    assert float(np.abs(p2['obs']).sum()) == 0.0 and p2['true'] < -w.timeout_penalty + 1e-9
+    env.mission = dict(env.mission, deadline_s=start['t'] + 1000.0)
+    p2 = env.predict_second_stage(free, a, start, cal, ecal, attitude)
+    assert p2 is None or not p2['done']                                         # no deadline, no entry: a stage end
+    env._scan = lambda plan, resid, attitude, offset, budget, brake_model: {"s": 6.0, "tau": 20.0, "dv_plan": 0.3, "brake_dv": 0.0}
+    p2 = env.predict_second_stage(free, a, start, cal, ecal, attitude)
+    assert p2 is not None and p2['done'] and p2['entry'] is not None            # an entry in stage 2
+    env.mission = dict(env.mission, budget_m_s=start['dv'] + free['dv'] + 1e-6)  # the budget is gone at the stage-2 start
+    p2 = env.predict_second_stage(free, a, start, cal, ecal, attitude)
+    assert p2 is not None and p2['done'] and p2['entry'] is None and p2['event'] == 'resource_exhausted'

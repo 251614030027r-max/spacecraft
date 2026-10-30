@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.4.2"
+T2_VERSION = "t2-stage-0.4.3"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -639,22 +639,24 @@ class T2StageEnv(gym.Env):
                     return {"s": s, "tau": float(res["tau_s"]), "dv_plan": float(res["delta_v_m_s"]), "brake_dv": brake}
         return None
 
-    def _stage_cutoff(self, t_start: float, dv_start: float, dv_stage: float):
+    def _stage_cutoff(self, t_start: float, dv_start: float, dv_stage: float, span: float = STAGE_S):
         """T2.6 (label termination): a modelled stage without an entry ends where the truth would end it -- at the
         mission deadline (timeout) or when the delta-v budget is spent (resource exhausted), whichever comes first.
-        Returns None, or (elapsed s, delta-v spent, event). The truth's terminal reward is the cost up to then minus the
-        timeout penalty (both events), with no bootstrap; before T2.6 the label ran the full 16 s and bootstrapped."""
+        ``span``: the modelled interval (a full stage, or T2.6.1 the part of a stage before its predicted entry, which
+        delta-v spent before the entry ends just the same). Returns None, or (elapsed s, delta-v spent, event). The
+        truth's terminal reward is the cost up to then minus the timeout penalty (both events), with no bootstrap;
+        before T2.6 the label ran the full 16 s and bootstrapped."""
         ends = []
         left_t = float(self.mission["deadline_s"]) - float(t_start)
-        if left_t < STAGE_S - 1e-9:
+        if left_t < span - 1e-9:
             ends.append((max(left_t, 0.0), "timeout"))
         left_dv = float(self.mission["budget_m_s"]) - float(dv_start)
         if dv_stage > 1e-12 and dv_stage >= left_dv:
-            ends.append((STAGE_S * max(left_dv, 0.0) / dv_stage, "resource_exhausted"))
+            ends.append((span * max(left_dv, 0.0) / dv_stage, "resource_exhausted"))
         if not ends:
             return None
         s_end, event = min(ends)
-        return s_end, dv_stage * s_end / STAGE_S, event
+        return s_end, dv_stage * s_end / span, event
 
     def predict_intent(self, plan, action, start: dict, cal: "Calibration", ecal: "EntryCalibration", resid, attitude,
                        entry_offset: float = 0.0, brake_model: bool = True) -> dict:
@@ -670,8 +672,14 @@ class T2StageEnv(gym.Env):
         ecal_on = ecal is not None and ecal.ready
         hit = self._scan(plan, resid, attitude, 0.0, budget, brake_model) if ecal_on else None
         if hit is not None:
+            dv_hit = self._dv_model(plan, cal, hit["s"]) + resid(hit["s"])[2] + hit["brake_dv"]
+            cut = self._stage_cutoff(start["t"], start["dv"], dv_hit, hit["s"])   # the budget spent before the entry
+            if cut is not None:
+                true = cost(cut[0], cut[1]) - w.timeout_penalty
+                return {"reward": float(true - (start["phi"] if self.shaping else 0.0)), "done": True, "entry": None, "event": cut[2],
+                        "stages": 1, "true": float(true)}
             macro = ecal.predict(hit["tau"], hit["dv_plan"], w, self.mission["deadline_s"] - (start["t"] + hit["s"]))["reward"] + entry_offset
-            true = cost(hit["s"], self._dv_model(plan, cal, hit["s"]) + resid(hit["s"])[2] + hit["brake_dv"]) + macro
+            true = cost(hit["s"], dv_hit) + macro
             return {"reward": float(true - (start["phi"] if self.shaping else 0.0)), "done": True, "entry": hit, "stages": 1, "true": float(true)}
         dq, dvv, ddv = resid(STAGE_S)
         q1, v1 = plan_state(plan, STAGE_S, mass)
@@ -716,8 +724,14 @@ class T2StageEnv(gym.Env):
         t1 = start["t"] + STAGE_S
         hit = self._scan(nxt, raw, attitude, STAGE_S, [ENTRY_MAX_SOLVES], brake_model)
         if hit is not None:
+            dv_hit = self._dv_model(nxt, cal, hit["s"]) + hit["brake_dv"]
+            cut = self._stage_cutoff(t1, start["dv"] + s1["dv"], dv_hit, hit["s"])   # the budget spent before the entry
+            if cut is not None:
+                true = cost(cut[0], cut[1]) - w.timeout_penalty
+                return {"reward": float(true - (s1["phi"] if self.shaping else 0.0)), "obs": np.zeros(OBS_DIM, np.float32), "done": True,
+                        "true": float(true), "entry": None, "event": cut[2]}
             macro = ecal.predict(hit["tau"], hit["dv_plan"], w, self.mission["deadline_s"] - (t1 + hit["s"]))["reward"]
-            true = cost(hit["s"], self._dv_model(nxt, cal, hit["s"]) + hit["brake_dv"]) + macro
+            true = cost(hit["s"], dv_hit) + macro
             return {"reward": float(true - (s1["phi"] if self.shaping else 0.0)), "obs": np.zeros(OBS_DIM, np.float32), "done": True,
                     "true": float(true), "entry": hit}
         q2, v2 = plan_state(nxt, STAGE_S, mass)

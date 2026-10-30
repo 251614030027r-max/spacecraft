@@ -53,7 +53,7 @@ UPDATES_PER_TRANSITION = 2
 SYNC_UPDATES = 100
 AGE_CAP = 2000
 #: learner version recorded in the manifest (T2.5.1: one-step stage-2 rows; T2.6: calibration shared by the workers;
-#: T2.6.1: labels end at the deadline / budget, env t2-stage-0.4.2)
+#: T2.6.1: labels end at the deadline / budget, env t2-stage-0.4.2; env 0.4.3 adds the budget before a predicted entry)
 LEARNER_VERSION = "t2-learner-2.6.1"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
