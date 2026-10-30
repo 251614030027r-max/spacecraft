@@ -16,13 +16,14 @@ weighted (M3), entry outcomes by historical execution replay, two-stage labels
 (soft Retrace + one-step stage-2 rows), calibration shared by the workers, labels
 ending at the deadline / budget. Arms: `e_sac` (no model) and `e_mve` (EACC).
 
-**State (2026-10-29):** env `t2-stage-0.4.2`, learner `t2-learner-2.6.1`, code
-`8e612e7`, 46 tests. The feedback's own gain has not been shown: on the standard
+**State (2026-10-30):** env `t2-stage-0.4.3`, learner `t2-learner-2.6.1`, code
+`e2d4c14`, 48 tests. The feedback's own gain has not been shown: on the standard
 task EACC and SAC tie (T2.5.1 `mixed`); on the time-pressure task (urgent
 deadline U(140, 200) s, T2.6W, `e1166eb`) EACC was behind (-9.6 / -13.1 paired
 over 1000-4000), all on urgent missions. The lower window found the cause that is
-confirmed: stage-2 labels did not end at the deadline (fixed in `ca96793`). The
-check run order `T2_6W1_CUTOFF_20261029` (collab) **waits for the user's GO**.
+confirmed: stage-2 labels did not end at the deadline (fixed in `ca96793`; the
+budget spent before a predicted entry, `e2d4c14`). The check run order
+`T2_6W1_CUTOFF_20261029` (collab) was **approved and dispatched on 2026-10-30** (frozen `e2d4c14`).
 The full story, the pre-agreed next branches and every rule are in collab
 `docs/collaboration/HANDOFF.md` (sections 1, 5, 7) and the research evolution
 (stages 20-26). The T1 line below (T1-L, T1-O, T1-N, T1-B) is finished.
@@ -108,7 +109,8 @@ T2 line (current):
   capture, lost entry); `experiments.t2_audit` and the T2.6 timeout diagnosis are
   the tools.
 - **Terminal semantics.** A modelled stage that crosses the deadline or the budget
-  ends there (`_stage_cutoff`, kind 0); an entry is kind 1 (anchored) / 2 (outcome
+  ends there (`_stage_cutoff`, kind 0; so does a predicted entry reached only after
+  the budget is spent); an entry is kind 1 (anchored) / 2 (outcome
   model only). Stage-1 labels exist only after a completed factual stage, so the
   deadline matters in stage 2 (decisions within 32 s of it).
 - **Paired means are flips.** One capture / timeout flip is about +-200, i.e. +-8 on
@@ -197,7 +199,7 @@ T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_2
 
 | Purpose | Entry |
 |---|---|
-| Tests | `python -B -m pytest -q tests/test_t2_stage.py` (46) |
+| Tests | `python -B -m pytest -q tests/test_t2_stage.py` (48) |
 | Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
 | Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI]` |
 | Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` |
