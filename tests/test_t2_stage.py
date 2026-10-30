@@ -905,3 +905,22 @@ def test_stage2_labels_end_at_the_deadline_and_the_budget_when_run():
     env.mission = dict(env.mission, budget_m_s=start['dv'] + free['dv'] + 1e-6)  # the budget is gone at the stage-2 start
     p2 = env.predict_second_stage(free, a, start, cal, ecal, attitude)
     assert p2 is not None and p2['done'] and p2['entry'] is None and p2['event'] == 'resource_exhausted'
+
+
+def test_rank_audit_counts_decisive_pairs_per_scorer():
+    """experiments.t2_rank summary: decisive pairs (capture vs not, or truth returns >= 50 apart), right / wrong / tie per
+    scorer, Kendall tau, top-1 on decisions the truth separates, label errors split by event / bootstrap labels."""
+    from experiments.t2_rank import summarize
+    t = lambda g, ev=None: {'G': g, 'event': ev}
+    items = [{'executed': True, 'done': False, 'critic': 3.0, 'label1': 1.0, 'label2': 1.0, 'diff': 1.0, 'truth': t(80.0, 'success')},
+             {'executed': False, 'done': False, 'critic': 1.0, 'label1': 1.0, 'label2': 2.0, 'diff': 0.5, 'truth': t(-100.0, 'timeout')},
+             {'executed': False, 'done': True, 'critic': 2.0, 'label1': 2.0, 'label2': 3.0, 'diff': 0.0, 'truth': t(-90.0, 'timeout')}]
+    flat = [dict(x, truth=t(-10.0)) for x in items]                 # the truth separates nothing here
+    s = summarize([{'items': items}, {'items': flat}])
+    assert s['decisions'] == 2 and s['items'] == 6 and s['decisions_truth_separates'] == 1
+    assert s['critic']['decisive_pairs'] == 2 and s['critic']['right'] == 2 and s['critic']['accuracy'] == 1.0
+    assert s['label1']['right'] == 0 and s['label1']['wrong'] == 1 and s['label1']['tie'] == 1 and s['label1']['accuracy'] == 0.25
+    assert s['diff']['right'] == 2 and s['diff']['top1_on_separating'] == 1.0 and s['label2']['top1_on_separating'] == 0.0
+    assert s['label1_abs_error']['event']['n'] == 2 and s['label1_abs_error']['bootstrap']['n'] == 2
+    assert s['diff_abs_error']['bootstrap'] == {'n': 2, 'median': 55.5}           # |0.5 + 100| and |0.5 + 10|
+    assert s['critic']['kendall_tau_mean'] is not None
