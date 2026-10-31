@@ -1,16 +1,16 @@
 {
-  "topic": "t2_6w1_cutoff_20261029",
-  "updated_at": "2026-10-31T10:58:55.909174+09:00",
-  "scientific_commit": "91b346b664fe59e1f9c00af38f45e65735b27839",
-  "run_order": "docs/collaboration/upper/run_orders/T2_6W1_CUTOFF_20261029.md",
-  "evidence_commit": "7dac3ddfab51e0f8e2429475b3fbab026eeadf08",
-  "collab_delivery_commit": "c92acd4276b309aab5f359b59cf7f530f692b477",
-  "execution_state": "complete_delivered",
+  "topic": "t2_7_guide_20261031",
+  "updated_at": "2026-10-31T20:25:12.395135+09:00",
+  "scientific_commit": "2208a5176e88718c2c1db3e4a19c58853da49739",
+  "run_order": "docs/collaboration/upper/run_orders/T2_7_GUIDE_20261031.md",
+  "evidence_commit": null,
+  "collab_delivery_commit": null,
+  "execution_state": "preflight",
   "training_active": false,
   "evaluation_active": false,
-  "automatic_followup": "DISABLED",
-  "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029\\RUN_STATE.json",
-  "handoff": "docs/collaboration/lower/handoffs/t2_6w1_cutoff_20261029/RESULT_FINAL.md",
+  "automatic_followup": "OS_PIPELINE_ACTIVE",
+  "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_7_GUIDE_20261031\\RUN_STATE.json",
+  "handoff": "docs/collaboration/lower/handoffs/t2_7_guide_20261031/RESULT_FINAL.md",
   "local_report": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\RESULT_FINAL.md",
   "all_three_research_goals_claimed": false,
   "local_assets": {
@@ -24,7 +24,7 @@
     "deleted_asset_receipts": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\本地资产清理_20261029\\DELETED_FILES.jsonl",
     "no_old_training_resume": true
   },
-  "next_action": "Wait for upper review and a new authorized execution order. No additional experiments.",
+  "next_action": "Execute authorized T2.7 only; no later experiment authorized.",
   "Git_maintenance_owner": "Upper-directed cleanup A/B delegated to lower by GIT_CLEANUP_20261029; upper retains research-history closeout and C1/C2 approval.",
   "previous_phase_snapshot": {
     "topic": "t1b_v51_round",
@@ -43,9 +43,8 @@
   },
   "scientific_commit_role": "actual frozen checkout for current phase",
   "pending_experiment": {
-    "status": "completed",
-    "not_started": false,
-    "science_fix_reference": "e2d4c14bc4d3bbe385c44e65f3c3dcdbd41372d5"
+    "status": "approved_executing",
+    "not_started": true
   },
   "git_cleanup": {
     "order_collab": "6bb1d66",
@@ -85,16 +84,24 @@
     "updated_jst": "2026-10-20T22:31:08.221055+09:00"
   },
   "local_delivery_history": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\历史\\T26W_FINAL_20261028_归档20261029",
-  "order_collab_commit": "185765b",
+  "order_collab_commit": "8708f39",
   "mechanism_audit_active": false,
   "current_scope": {
-    "EACC_seeds": [
+    "arms": [
+      "e_mve",
+      "e_sac"
+    ],
+    "seeds": [
       0,
       1
     ],
+    "guide": true,
+    "guide_p0": 0.5,
+    "guide_until": 2000,
     "steps_each": 4000,
     "workers_each": 2,
-    "SAC": "reuse T2.6W; no retraining or evaluation",
+    "cpu_affinity": "CPU0-11 shared",
+    "priority": "Normal",
     "checkpoints": [
       1000,
       2000,
@@ -102,48 +109,19 @@
       4000
     ],
     "openings": "294000-294047",
-    "urgent_deadline": [
-      140,
-      200
-    ],
-    "criterion": "t26w",
-    "rank_audit": "91b346b664fe59e1f9c00af38f45e65735b27839"
+    "criterion": "t27"
   },
-  "conclusion_boundary": "Execution feedback independently improving SAC long-term decisions remains the research claim; no gain is presumed.",
+  "conclusion_boundary": "2x2: primary guided EACC vs reused SAC; guide-only, labels incremental and vs unguided EACC are reported separately. No presumed gain.",
   "previous_round_snapshot": {
-    "path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029\\记录\\CURRENT_BEFORE.json",
-    "SHA256": "06c1e86a8874d407c5730d3df67ea2c764c3a76a3ad8f00ee854654ddc1b3016"
+    "path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_7_GUIDE_20261031\\记录\\CURRENT_BEFORE.json",
+    "SHA256": "4652f4291fbb89634d073fbae4b219c019746a57081f4e514adf085fdae6f70b"
   },
   "previous_completed_result": {
-    "registered_checkpoints": [
-      1000,
-      2000,
-      3000,
-      4000
-    ],
-    "evaluation_cases": 768,
-    "reference_cases": 336,
-    "training_steps_each": 4000,
-    "verdict": "scope_revised_descriptive_only",
-    "full_original_t26w_gate_applicable": false,
-    "stable_performance_gain_established": false,
-    "final4000_paired_return_difference": {
-      "seed0": -0.21721500849847372,
-      "seed1": -14.452282024820816
-    }
-  },
-  "resource_policy_path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029/记录/RESOURCE_POLICY.json",
-  "stable_throughput_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029/记录/THROUGHPUT_ESTIMATE.json",
-  "torch_resource_verification": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029/记录/TORCH_RESOURCE_VERIFIED.json",
-  "audit_parallel_resource_change": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029\\输入\\AUDIT_PARALLEL_RESOURCE_CHANGE.json",
-  "result": {
     "verdict": "no_gain",
     "evaluation_cases": 768,
     "audit_runs": 4,
     "performance_SHA": "e2d4c14bc4d3bbe385c44e65f3c3dcdbd41372d5",
     "audit_SHA": "91b346b664fe59e1f9c00af38f45e65735b27839"
   },
-  "publication_status": "pushed_verified",
-  "reference_review": "docs/collaboration/lower/handoffs/t2_6w1_cutoff_20261029/REVIEW_REFERENCE.md",
-  "reference_review_local": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\REVIEW_REFERENCE.md"
+  "publication_status": "pushed_verified"
 }
