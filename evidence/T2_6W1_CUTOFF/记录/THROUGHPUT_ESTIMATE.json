@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-10-31T05:20:53.563872+09:00",
+  "window_seconds": 1800,
+  "stability_definition": "At least 30 min; >=128 accepted decisions; optimizer active; adjacent 15-min rates within 25%. Operational ETA qualification only, never a scientific gate.",
+  "seeds": {
+    "0": {
+      "stable": true,
+      "latest_record": "2026-10-31T05:20:47.421679+09:00",
+      "completed_steps": 3817,
+      "completed_updates": 7236,
+      "completed_episodes": 837,
+      "observed_window_seconds": 1798.5939999999973,
+      "observed_decisions": 141,
+      "observed_decisions_per_s": 0.07839456820160648,
+      "half_window_rates": [
+        0.07805147324983717,
+        0.07872620992343893
+      ],
+      "remaining_seconds_estimate": 2334.3454042553158,
+      "reason": null
+    },
+    "1": {
+      "stable": false,
+      "latest_record": "2026-10-31T05:20:45.438455+09:00",
+      "completed_steps": 3713,
+      "completed_updates": 7028,
+      "completed_episodes": 839,
+      "observed_window_seconds": 1798.9690000000046,
+      "observed_decisions": 120,
+      "observed_decisions_per_s": 0.06670487373601196,
+      "half_window_rates": [
+        0.054291948164762245,
+        0.07870056620685127
+      ],
+      "remaining_seconds_estimate": null,
+      "reason": "insufficient or changing throughput; no qualified ETA"
+    }
+  },
+  "both_seeds_stable": false,
+  "training_remaining_seconds_estimate": null,
+  "completion_basis": "slower seed; estimate is separate from completed counters"
+}

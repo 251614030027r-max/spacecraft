@@ -1,0 +1,133 @@
+{
+  "jst": "2026-10-26T20:55:46.129497+09:00",
+  "user_reason": "用户决定停止，T2.5.1优先",
+  "last_persisted_progress": {
+    "e_mve_s0": {
+      "jst": "2026-10-26T20:55:42.892192+09:00",
+      "steps": 2084,
+      "updates": 3770,
+      "episodes": 417,
+      "wall_s": 19230.703000000038,
+      "recent_decisions_per_s": 0.0,
+      "overall_decisions_per_s": 0.10836837322067716,
+      "eta_s_estimate": null,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 2084,
+        "with_candidates": 1347,
+        "candidates": 10536,
+        "entry_candidates": 2135,
+        "reason": {
+          "off": 45,
+          "entry_calibration": 636,
+          "stage": 1076,
+          "entry": 279,
+          "not_comparable": 48
+        },
+        "two_stage": 7741,
+        "two_stage_entry": 1885
+      },
+      "model_probes": 151,
+      "pending_truth_records": 0,
+      "final": false
+    },
+    "e_mve_s1": {
+      "jst": "2026-10-26T20:55:38.553520+09:00",
+      "steps": 1888,
+      "updates": 3378,
+      "episodes": 378,
+      "wall_s": 19226.343999999983,
+      "recent_decisions_per_s": 0.0,
+      "overall_decisions_per_s": 0.09819859667547827,
+      "eta_s_estimate": null,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 1888,
+        "with_candidates": 1317,
+        "candidates": 10140,
+        "entry_candidates": 1988,
+        "reason": {
+          "off": 40,
+          "entry_calibration": 469,
+          "stage": 1069,
+          "entry": 266,
+          "not_comparable": 44
+        },
+        "two_stage": 7328,
+        "two_stage_entry": 1682
+      },
+      "model_probes": 136,
+      "pending_truth_records": 0,
+      "final": false
+    }
+  },
+  "steps_semantics": "last30-second persisted accepted-decision counters; abrupt-stop exact in-memory counter unavailable; no fabricated final steps",
+  "manager": {
+    "pid": 29172,
+    "created": 1792996455.4440224
+  },
+  "training_roots": [
+    {
+      "pid": 2604,
+      "created": 1792996502.4504812,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_5_VALIDATE_20261026\\脚本\\train_with_logs.py",
+        "train",
+        "--arm",
+        "e_mve",
+        "--seed",
+        "0",
+        "--steps",
+        "4000",
+        "--workers",
+        "3",
+        "--checkpoints",
+        "1000,2000,3000",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_5_VALIDATE_20261026\\TRAIN_e_mve_s0"
+      ]
+    },
+    {
+      "pid": 5404,
+      "created": 1792996502.4906163,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_5_VALIDATE_20261026\\脚本\\train_with_logs.py",
+        "train",
+        "--arm",
+        "e_mve",
+        "--seed",
+        "1",
+        "--steps",
+        "4000",
+        "--workers",
+        "3",
+        "--checkpoints",
+        "1000,2000,3000",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_5_VALIDATE_20261026\\TRAIN_e_mve_s1"
+      ]
+    }
+  ],
+  "owned_tree": {
+    "2604": 1792996502.4504812,
+    "17824": 1792996502.47985,
+    "26032": 1792996502.535166,
+    "21812": 1792996516.2505352,
+    "20476": 1792996516.2664742,
+    "3960": 1792996516.2817898,
+    "5404": 1792996502.4906163,
+    "5368": 1792996502.5150485,
+    "24748": 1792996502.5574331,
+    "28892": 1792996516.2922764,
+    "23804": 1792996516.3066096,
+    "18384": 1792996516.323842
+  },
+  "no_evaluation_no_decision": true,
+  "stopped_jst": "2026-10-26T20:55:47.310952+09:00",
+  "remaining_owned_pids": [],
+  "original_directory_preserved": true
+}

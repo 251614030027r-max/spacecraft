@@ -11,10 +11,196 @@ from dynamics.relative import RelativeState
 from dynamics.lie import so3_log
 from env.task import (
     Phase2TaskConfig,
+    PrecaptureMetrics,
+    PrecaptureTaskConfig,
     TaskMetrics,
     compute_task_metrics,
     corridor_guidance_velocity,
 )
+
+
+@dataclass(frozen=True)
+class PrecaptureRewardConfig:
+    discount_factor: float = 0.999
+    potential_weight: float = 0.05
+    time_weight: float = 0.01
+    force_weight: float = 0.002
+    torque_weight: float = 0.002
+    safety_weight: float = 1.0
+    success_reward: float = 20.0
+    failure_penalty: float = -20.0
+
+    def __post_init__(self) -> None:
+        if not 0.0 < self.discount_factor <= 1.0:
+            raise ValueError("precapture discount factor must lie in (0, 1]")
+        if min(
+            self.potential_weight,
+            self.time_weight,
+            self.force_weight,
+            self.torque_weight,
+            self.safety_weight,
+            self.success_reward,
+            -self.failure_penalty,
+        ) <= 0.0:
+            raise ValueError("precapture reward weights must have declared signs")
+
+
+@dataclass(frozen=True)
+class PrecaptureRewardBreakdown:
+    shaping: float
+    time_penalty: float
+    force_penalty: float
+    torque_penalty: float
+    safety_penalty: float
+    event_reward: float
+    potential: float
+
+    @property
+    def total(self) -> float:
+        return (
+            self.shaping
+            + self.time_penalty
+            + self.force_penalty
+            + self.torque_penalty
+            + self.safety_penalty
+            + self.event_reward
+        )
+
+
+class PrecaptureReward:
+    """Path-neutral reward over the complete terminal residual vector."""
+
+    def __init__(
+        self,
+        *,
+        task: PrecaptureTaskConfig,
+        settings: PrecaptureRewardConfig,
+        time_step_s: float,
+    ) -> None:
+        if time_step_s <= 0.0:
+            raise ValueError("time step must be positive")
+        self.task = task
+        self.settings = settings
+        self.time_step_s = float(time_step_s)
+        self._previous_potential: float | None = None
+
+    def potential(self, metrics: PrecaptureMetrics) -> float:
+        # Each component is normalized by its completion tolerance.  No
+        # intermediate waypoint, approach axis, entry time, or guidance velocity
+        # appears here, so the shaping does not prescribe an approach sequence.
+        normalized = np.array(
+            [
+                metrics.position_error_m / self.task.completion_position_m,
+                metrics.attitude_error_rad / self.task.completion_attitude_rad,
+                metrics.target_frame_speed_m_s / self.task.completion_speed_m_s,
+                metrics.angular_velocity_error_rad_s
+                / self.task.completion_angular_velocity_rad_s,
+            ],
+            dtype=np.float64,
+        )
+        return -float(np.sum(normalized))
+
+    def reset(self, metrics: PrecaptureMetrics) -> None:
+        self._previous_potential = self.potential(metrics)
+
+    @staticmethod
+    def _warning(margin: float, scale: float, buffer_fraction: float = 0.10) -> float:
+        normalized = float(margin) / max(float(scale), np.finfo(float).eps)
+        if normalized >= buffer_fraction:
+            return 0.0
+        shortfall = buffer_fraction - max(normalized, 0.0)
+        return (shortfall / buffer_fraction) ** 2
+
+    def compute(
+        self,
+        metrics: PrecaptureMetrics,
+        normalized_action: ArrayLike,
+        *,
+        event_reward: float = 0.0,
+    ) -> PrecaptureRewardBreakdown:
+        if self._previous_potential is None:
+            raise RuntimeError("reset() must be called before compute()")
+        action = np.asarray(normalized_action, dtype=np.float64)
+        if action.shape != (6,) or not np.all(np.isfinite(action)):
+            raise ValueError("normalized_action must be finite and shape=(6,)")
+        potential = self.potential(metrics)
+        shaping = self.settings.potential_weight * (
+            self.settings.discount_factor * potential - self._previous_potential
+        )
+        warnings = [
+            self._warning(metrics.keepout_margin_m, self.task.keepout_radius_m),
+            self._warning(metrics.fov_margin_rad, self.task.fov_half_angle_rad),
+        ]
+        if metrics.terminal_region_active:
+            corridor_scale = max(
+                metrics.port_axial_distance_m * np.tan(self.task.corridor_half_angle_rad),
+                1.0e-6,
+            )
+            warnings.extend(
+                [
+                    self._warning(metrics.corridor_lateral_margin_m, corridor_scale),
+                    self._warning(
+                        metrics.terminal_total_speed_margin_m_s,
+                        self.task.terminal_total_speed_limit_m_s,
+                    ),
+                    self._warning(
+                        metrics.closing_speed_margin_m_s,
+                        self.task.closing_speed_max_m_s,
+                    ),
+                ]
+            )
+        else:
+            warnings.append(
+                self._warning(
+                    metrics.outer_inertial_speed_margin_m_s,
+                    self.task.outer_inertial_speed_limit_m_s,
+                )
+            )
+            if self.task.outer_approach_half_angle_rad is not None:
+                # Opportunity task: leaving the fixed inertial approach corridor
+                # is a safety-margin cost, so closing while the capture geometry
+                # is misaligned is discouraged and staging-until-aligned is the
+                # profitable behaviour. Off (None) for the historical task.
+                warnings.append(
+                    self._warning(
+                        metrics.outer_approach_margin_rad,
+                        self.task.outer_approach_half_angle_rad,
+                    )
+                )
+            if metrics.transition_speed_active:
+                warnings.append(
+                    self._warning(
+                        metrics.target_frame_speed_margin_m_s,
+                        metrics.target_frame_speed_limit_m_s,
+                    )
+                )
+        result = PrecaptureRewardBreakdown(
+            shaping=shaping,
+            time_penalty=-self.settings.time_weight * self.time_step_s,
+            force_penalty=-self.settings.force_weight
+            * self.time_step_s
+            * float(np.mean(np.clip(action[3:], -1.0, 1.0) ** 2)),
+            torque_penalty=-self.settings.torque_weight
+            * self.time_step_s
+            * float(np.mean(np.clip(action[:3], -1.0, 1.0) ** 2)),
+            # Dimensional consistency: like the time/force/torque terms above,
+            # the safety proximity warning is a *rate* integrated over the step,
+            # so it carries `time_step_s`. Without it the warning accrued as a
+            # raw per-step sum, i.e. 10x too heavy per second at dt=0.1 s, and a
+            # legal terminal approach that merely grazes the 10% buffer for the
+            # ~40 s it spends in the terminal region banked ~-100 -- swamping the
+            # +20 completion event, so a do-nothing hover (+4) out-scored a
+            # successful legal capture (-75). This is a units fix, not a weight
+            # tune: `safety_weight` is unchanged and a clean MPC completion,
+            # which never enters the buffer, still scores its full +26.
+            safety_penalty=-self.settings.safety_weight
+            * self.time_step_s
+            * float(sum(warnings)),
+            event_reward=float(event_reward),
+            potential=potential,
+        )
+        self._previous_potential = potential
+        return result
 
 
 @dataclass(frozen=True)
@@ -314,6 +500,7 @@ class Phase2MissionReward:
         terminal_lateral_gain_per_s: float = 0.4,
         terminal_total_speed_fraction: float = 0.6,
         discount_factor: float = 0.997,
+        guidance_free: bool = False,
     ) -> None:
         values = (
             position_scale_m,
@@ -368,6 +555,7 @@ class Phase2MissionReward:
         if max(terminal_closing_speed_fraction, terminal_total_speed_fraction) >= 1.0:
             raise ValueError("terminal guidance fractions must stay below one")
         self.discount_factor = float(discount_factor)
+        self.guidance_free = bool(guidance_free)
         if self.discount_factor > 1.0:
             raise ValueError("discount_factor must not exceed one")
         self._previous_potential: float | None = None
@@ -455,6 +643,8 @@ class Phase2MissionReward:
         the numbers this reward was built with.
         """
 
+        if self.guidance_free:
+            return np.zeros(3, dtype=np.float64)
         return corridor_guidance_velocity(
             relative.position,
             self.task,
@@ -477,7 +667,7 @@ class Phase2MissionReward:
             return self.terminal_desired_velocity(relative)
         return self.phase1_desired_velocity(relative, reference_position_m)
 
-    def settings(self) -> dict[str, float]:
+    def settings(self) -> dict[str, float | bool]:
         """Every weight and guidance constant that shapes this reward.
 
         These are constructor defaults rather than environment-config fields,
@@ -486,6 +676,7 @@ class Phase2MissionReward:
         """
 
         return {
+            "guidance_free": self.guidance_free,
             "progress_weight": self.progress_weight,
             "actuation_weight": self.actuation_weight,
             "warning_weight": self.warning_weight,

@@ -1,0 +1,70 @@
+{
+  "arm": "e_sac",
+  "seed": 0,
+  "scope": "global5k to10k same frozen method; no extra seeds",
+  "science_commit": "636b65517bf73985b4e544c67decf857b4fffc19",
+  "driver_sha256": "2839a06c77fddfbc1a16cd2711dfe5fe10ce720b336bd3cae0c32174b373b042",
+  "source_models": {
+    "final.zip": "cefb9a007fe6861a111aafb4d84aa70a648dea10af552ddd7f0e63a00e0a5b14",
+    "replay_final.pkl": "43a04cadf1b3f33b90142c06e5fa7ae85137a3b4fd3aba08059e00af5da4a965",
+    "rng_final.pkl": "d3f554d23c04124dabf7a6643a6aa4dbf8ded73b6c9d2a3008fbd59eef8244b7"
+  },
+  "source_steps": 5000,
+  "start_critic_updates": 4500,
+  "start_actor_updates": 1500,
+  "same_expert_fraction": 0.2,
+  "BC_updates": 0,
+  "learning_rate_continuation": 1e-05,
+  "lr_reason": "original5k cosine floor, no optimizer reset",
+  "completed_episodes_before_boundary": [
+    20,
+    22,
+    22,
+    20
+  ],
+  "next_openings": [
+    1000021,
+    1100023,
+    1200023,
+    1300021
+  ],
+  "boundary": {
+    "open_intervals_dropped": 3,
+    "pending_model_prefixes_dropped": 0,
+    "unfinished_MC_lists_dropped": [
+      26,
+      0,
+      4,
+      51
+    ]
+  },
+  "boundary_semantics": "Original5k closed process. Abandon remaining unfinished episodes without reward/done fabrication. Retain all old real transitions; unclosed review intervals remain ineligible. No cross-opening folding.",
+  "delta_calibration_preserved": {
+    "ratios": [],
+    "decisions": [],
+    "median_ratio": null,
+    "lambda": null,
+    "frozen_at_decisions": null
+  },
+  "evaluation_fixed_openings": [
+    292140,
+    292141,
+    292142,
+    292143,
+    292144,
+    292145,
+    292146,
+    292147
+  ],
+  "expanded_development_openings": [
+    292120,
+    292121,
+    292122,
+    292123,
+    292124,
+    292125,
+    292126,
+    292127
+  ],
+  "no_posthoc_checkpoint_selection": true
+}

@@ -1,0 +1,120 @@
+{
+ "interval_audit": {
+  "counts": {
+   "closed_by_review": 29,
+   "closed_by_terminal": 0,
+   "closed_by_truncation": 0,
+   "dropped_overwritten": 0
+  },
+  "lengths": {
+   "3": 29
+  },
+  "actor_updates": 23,
+  "critic_updates": 70
+ },
+ "delta_calibration": {
+  "ratios": [
+   0.008102764505075424,
+   0.01371936949217465,
+   0.006963196516403501,
+   0.010807791040628333,
+   0.0068579426073676585,
+   0.005264928096362736,
+   0.008290355156407608,
+   0.005830668686366937,
+   0.007768667565861874,
+   0.008688947145488004,
+   0.005540641562297059,
+   0.007171187911022066,
+   0.007221399933018373,
+   0.005882021901210448
+  ],
+  "decisions": [
+   21,
+   26,
+   31,
+   36,
+   41,
+   46,
+   51,
+   56,
+   61,
+   66,
+   71,
+   76,
+   81,
+   86
+  ],
+  "median_ratio": null,
+  "lambda": null,
+  "frozen_at_decisions": null
+ },
+ "finished": {
+  "finished_utc": "2026-10-18T09:27:38.682838+00:00",
+  "decisions": 90
+ },
+ "delta_stats": {
+  "update": [
+   0.0,
+   50.0
+  ],
+  "decisions": [
+   21.0,
+   71.0
+  ],
+  "valid_fraction": [
+   0.33203125,
+   0.25390625
+  ],
+  "loss": [
+   0.02659057080745697,
+   0.02244061604142189
+  ],
+  "g_td": [
+   1.778806209564209,
+   1.5865601301193237
+  ],
+  "g_delta": [
+   0.01441324781626463,
+   0.008790560998022556
+  ],
+  "abs_target_mean": [
+   0.31709980964660645,
+   0.35209792852401733
+  ],
+  "abs_dq_mean": [
+   0.021026290953159332,
+   0.008737783879041672
+  ],
+  "applied_lambda": [
+   0.0,
+   0.0
+  ],
+  "applied_share": [
+   0.0,
+   0.0
+  ],
+  "capped": [
+   0.0,
+   0.0
+  ]
+ },
+ "manifest_argv": {
+  "arm": "tcpf",
+  "steps": 90,
+  "seed": 0,
+  "run_name": "tcpf_smoke",
+  "log_root": "/tmp/claude-0/-home-user-spacecraft/bc85fbf5-725d-5c89-990b-cb6f6a76397b/scratchpad/smoke",
+  "n_envs": 1,
+  "shadow_steps": 2,
+  "checkpoint_freq": 45,
+  "extra_checkpoints": "",
+  "audit_every": 10,
+  "learning_starts": 20,
+  "net_arch": "16,16",
+  "delta_warmup": 40,
+  "delta_calibration_steps": 30,
+  "allow_dirty": true
+ },
+ "note": "smoke only (90 steps, 16x16 net, learning_starts 20, delta warm-up 40): checks that every term runs; not a learning result"
+}

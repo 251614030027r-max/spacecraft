@@ -1,0 +1,193 @@
+{
+ "monitors": {
+  "v3c_262420": {
+   "episodes": 198,
+   "decisions": 22458,
+   "rate_all": 0.00027010978511762053,
+   "rate_last100": 0.0005822761074348764,
+   "burst_episodes": [
+    {
+     "episode_index": 132,
+     "fallback_steps": 104
+    }
+   ],
+   "share_of_fallbacks_in_bursts": 0.859504132231405,
+   "completed_last100": 81
+  },
+  "v3c_262421": {
+   "episodes": 186,
+   "decisions": 22361,
+   "rate_all": 0.0002599527154974397,
+   "rate_last100": 0.0003460036577529534,
+   "burst_episodes": [
+    {
+     "episode_index": 57,
+     "fallback_steps": 39
+    },
+    {
+     "episode_index": 113,
+     "fallback_steps": 68
+    }
+   ],
+   "share_of_fallbacks_in_bursts": 0.9224137931034483,
+   "completed_last100": 55
+  },
+  "v3c_262422": {
+   "episodes": 189,
+   "decisions": 22283,
+   "rate_all": 0.0009221606448826832,
+   "rate_last100": 0.0013192437512409274,
+   "burst_episodes": [
+    {
+     "episode_index": 70,
+     "fallback_steps": 39
+    },
+    {
+     "episode_index": 80,
+     "fallback_steps": 52
+    },
+    {
+     "episode_index": 116,
+     "fallback_steps": 166
+    },
+    {
+     "episode_index": 151,
+     "fallback_steps": 70
+    },
+    {
+     "episode_index": 162,
+     "fallback_steps": 37
+    }
+   ],
+   "share_of_fallbacks_in_bursts": 0.8878048780487805,
+   "completed_last100": 59
+  }
+ },
+ "rollouts_262422": {
+  "episodes": 72,
+  "fallback_steps": 113,
+  "control_steps": 163420,
+  "rate": 0.0006914698323338636,
+  "episodes_with_fallback": [
+   {
+    "file": "k15_264038.json",
+    "checkpoint": "k15",
+    "seed": 264038,
+    "completed": false,
+    "failure": [
+     "fov_failure"
+    ],
+    "decisions": 54,
+    "fallback_steps": 108,
+    "burst_t_s": [
+     87.9,
+     98.60000000000001
+    ],
+    "range_m_first_last": [
+     6.651724695089054,
+     4.415742852481759
+    ],
+    "range_m_min_max": [
+     4.415742852481759,
+     6.651724695089054
+    ],
+    "steps_behind_port_plane": 108,
+    "steps_gate_active_at_current_position": 76,
+    "steps_latched": 0,
+    "commitment_values": [
+     0.0
+    ],
+    "reference_radius_m_min": 6.500000000000001,
+    "reference_off_axis_deg_min_max": [
+     112.68740965219662,
+     119.10179539604614
+    ],
+    "min_truth_normalized_margin": 0.051611613864638625
+   },
+   {
+    "file": "k20_264005.json",
+    "checkpoint": "k20",
+    "seed": 264005,
+    "completed": false,
+    "failure": [
+     "fov_failure"
+    ],
+    "decisions": 63,
+    "fallback_steps": 5,
+    "burst_t_s": [
+     122.60000000000001,
+     123.80000000000001
+    ],
+    "range_m_first_last": [
+     5.369249383631743,
+     5.031697204573197
+    ],
+    "range_m_min_max": [
+     5.031697204573197,
+     5.369249383631743
+    ],
+    "steps_behind_port_plane": 0,
+    "steps_gate_active_at_current_position": 5,
+    "steps_latched": 0,
+    "commitment_values": [
+     0.442
+    ],
+    "reference_radius_m_min": 6.500000000000001,
+    "reference_off_axis_deg_min_max": [
+     64.83058536807711,
+     64.83058536807711
+    ],
+    "min_truth_normalized_margin": 0.03116447159497543
+   }
+  ]
+ },
+ "corridor_rows_forced_active": {
+  "slack_limit": 2.0,
+  "points": [
+   {
+    "range_m": 6.652,
+    "port_axial_m": -4.375,
+    "axial_row": -1.4583333333333333,
+    "worst_facet_row": -2.9429476747189676
+   },
+   {
+    "range_m": 4.437,
+    "port_axial_m": -3.039,
+    "axial_row": -1.0130000000000001,
+    "worst_facet_row": -2.0424985241849223
+   },
+   {
+    "range_m": 5.37,
+    "port_axial_m": 0.5,
+    "axial_row": 0.16666666666666666,
+    "worst_facet_row": -1.5534032015763561
+   }
+  ]
+ },
+ "pure_mpc_gate_differences": {
+  "per_block": {
+   "pure_262000.json.gatecount.json": {
+    "calls": 678545,
+    "differ": 0,
+    "min_back_range_m": 18.44560331811641
+   },
+   "pure_262012.json.gatecount.json": {
+    "calls": 451010,
+    "differ": 0,
+    "min_back_range_m": null
+   },
+   "pure_262024.json.gatecount.json": {
+    "calls": 751800,
+    "differ": 0,
+    "min_back_range_m": 10.132113680723768
+   },
+   "pure_262036.json.gatecount.json": {
+    "calls": 563430,
+    "differ": 0,
+    "min_back_range_m": null
+   }
+  },
+  "calls": 2444785,
+  "differ": 0
+ }
+}

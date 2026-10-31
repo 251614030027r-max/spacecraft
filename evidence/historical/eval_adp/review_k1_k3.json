@@ -1,0 +1,372 @@
+{
+  "inputs": {
+    "baseline": "eval\\adp\\pure_mpc_nominal.json",
+    "models": {
+      "262410": "eval\\adp\\final_v2_nominal_262410.json",
+      "262411": "eval\\adp\\final_v2_nominal_262411.json",
+      "262412": "eval\\adp\\final_v2_nominal_262412.json"
+    }
+  },
+  "k1": {
+    "baseline_failure_count": 12,
+    "failure_first_crossing_rows": [
+      {
+        "seed": 262001,
+        "time_s": 3.1,
+        "legal": false,
+        "radial_distance_m": 19.527962234609635,
+        "final_position_error_m": 0.000459955295886944
+      },
+      {
+        "seed": 262005,
+        "time_s": 49.0,
+        "legal": false,
+        "radial_distance_m": 6.033805273774388,
+        "final_position_error_m": 0.0007748379392879599
+      },
+      {
+        "seed": 262006,
+        "time_s": 9.1,
+        "legal": false,
+        "radial_distance_m": 21.27069038534967,
+        "final_position_error_m": 0.0004883146755068267
+      },
+      {
+        "seed": 262011,
+        "time_s": 27.200000000000003,
+        "legal": false,
+        "radial_distance_m": 16.821158481591805,
+        "final_position_error_m": 0.0003525901092068745
+      },
+      {
+        "seed": 262022,
+        "time_s": 36.4,
+        "legal": false,
+        "radial_distance_m": 8.345456199095393,
+        "final_position_error_m": 0.00039069432672401755
+      },
+      {
+        "seed": 262025,
+        "time_s": 60.300000000000004,
+        "legal": false,
+        "radial_distance_m": 4.735431315586042,
+        "final_position_error_m": 0.00046144626196175834
+      },
+      {
+        "seed": 262027,
+        "time_s": 54.400000000000006,
+        "legal": false,
+        "radial_distance_m": 4.426251787560417,
+        "final_position_error_m": 0.00043366317821325094
+      },
+      {
+        "seed": 262029,
+        "time_s": 21.8,
+        "legal": false,
+        "radial_distance_m": 11.756083535680682,
+        "final_position_error_m": 0.0004713714891167671
+      },
+      {
+        "seed": 262034,
+        "time_s": 8.5,
+        "legal": false,
+        "radial_distance_m": 22.02887876735784,
+        "final_position_error_m": 0.0005013848007404351
+      },
+      {
+        "seed": 262035,
+        "time_s": 70.8,
+        "legal": false,
+        "radial_distance_m": 5.695198649012322,
+        "final_position_error_m": 0.0004496480998878473
+      },
+      {
+        "seed": 262038,
+        "time_s": 32.5,
+        "legal": false,
+        "radial_distance_m": 9.113410994746625,
+        "final_position_error_m": 0.0003615143490369854
+      },
+      {
+        "seed": 262039,
+        "time_s": 36.4,
+        "legal": false,
+        "radial_distance_m": 5.573134084717509,
+        "final_position_error_m": 0.0005790563389227465
+      }
+    ],
+    "illegal_crossing_event_count": 13,
+    "illegal_crossing_events_radial_gt_10m": 5,
+    "illegal_crossing_events_radial_gt_10m_fraction": 0.38461538461538464
+  },
+  "models": {
+    "262410": {
+      "quadrants": {
+        "retained": 0,
+        "rescued": 0,
+        "destroyed": 36,
+        "both_failed": 12
+      },
+      "k2_rescued": [],
+      "k3_retained_time_ratio": {
+        "count": 0,
+        "median": null,
+        "minimum": null,
+        "records": []
+      }
+    },
+    "262411": {
+      "quadrants": {
+        "retained": 19,
+        "rescued": 5,
+        "destroyed": 17,
+        "both_failed": 7
+      },
+      "k2_rescued": [
+        {
+          "seed": 262001,
+          "baseline_first_illegal_radial_distance_m": 19.527962234609635,
+          "v2_illegal_entry_crossing_count": 1
+        },
+        {
+          "seed": 262005,
+          "baseline_first_illegal_radial_distance_m": 6.033805273774388,
+          "v2_illegal_entry_crossing_count": 0
+        },
+        {
+          "seed": 262011,
+          "baseline_first_illegal_radial_distance_m": 16.821158481591805,
+          "v2_illegal_entry_crossing_count": 1
+        },
+        {
+          "seed": 262022,
+          "baseline_first_illegal_radial_distance_m": 8.345456199095393,
+          "v2_illegal_entry_crossing_count": 1
+        },
+        {
+          "seed": 262039,
+          "baseline_first_illegal_radial_distance_m": 5.573134084717509,
+          "v2_illegal_entry_crossing_count": 0
+        }
+      ],
+      "k3_retained_time_ratio": {
+        "count": 19,
+        "median": 2.0882838283828384,
+        "minimum": 1.2956152758132957,
+        "records": [
+          {
+            "seed": 262003,
+            "baseline_survival_s": 118.80000000000001,
+            "v2_survival_s": 195.60000000000002,
+            "ratio": 1.6464646464646464
+          },
+          {
+            "seed": 262008,
+            "baseline_survival_s": 89.7,
+            "v2_survival_s": 243.3,
+            "ratio": 2.7123745819397995
+          },
+          {
+            "seed": 262009,
+            "baseline_survival_s": 106.4,
+            "v2_survival_s": 149.6,
+            "ratio": 1.4060150375939848
+          },
+          {
+            "seed": 262012,
+            "baseline_survival_s": 87.4,
+            "v2_survival_s": 161.5,
+            "ratio": 1.8478260869565217
+          },
+          {
+            "seed": 262013,
+            "baseline_survival_s": 84.0,
+            "v2_survival_s": 197.5,
+            "ratio": 2.3511904761904763
+          },
+          {
+            "seed": 262014,
+            "baseline_survival_s": 112.0,
+            "v2_survival_s": 241.4,
+            "ratio": 2.155357142857143
+          },
+          {
+            "seed": 262016,
+            "baseline_survival_s": 109.2,
+            "v2_survival_s": 177.60000000000002,
+            "ratio": 1.6263736263736266
+          },
+          {
+            "seed": 262018,
+            "baseline_survival_s": 78.5,
+            "v2_survival_s": 195.0,
+            "ratio": 2.484076433121019
+          },
+          {
+            "seed": 262021,
+            "baseline_survival_s": 88.60000000000001,
+            "v2_survival_s": 127.10000000000001,
+            "ratio": 1.4345372460496613
+          },
+          {
+            "seed": 262023,
+            "baseline_survival_s": 87.4,
+            "v2_survival_s": 223.5,
+            "ratio": 2.55720823798627
+          },
+          {
+            "seed": 262030,
+            "baseline_survival_s": 121.2,
+            "v2_survival_s": 253.10000000000002,
+            "ratio": 2.0882838283828384
+          },
+          {
+            "seed": 262031,
+            "baseline_survival_s": 70.7,
+            "v2_survival_s": 91.60000000000001,
+            "ratio": 1.2956152758132957
+          },
+          {
+            "seed": 262032,
+            "baseline_survival_s": 91.80000000000001,
+            "v2_survival_s": 257.6,
+            "ratio": 2.8061002178649237
+          },
+          {
+            "seed": 262033,
+            "baseline_survival_s": 92.4,
+            "v2_survival_s": 167.5,
+            "ratio": 1.8127705627705626
+          },
+          {
+            "seed": 262040,
+            "baseline_survival_s": 107.30000000000001,
+            "v2_survival_s": 269.8,
+            "ratio": 2.5144454799627214
+          },
+          {
+            "seed": 262041,
+            "baseline_survival_s": 99.9,
+            "v2_survival_s": 217.60000000000002,
+            "ratio": 2.1781781781781784
+          },
+          {
+            "seed": 262042,
+            "baseline_survival_s": 94.2,
+            "v2_survival_s": 199.60000000000002,
+            "ratio": 2.118895966029724
+          },
+          {
+            "seed": 262044,
+            "baseline_survival_s": 84.80000000000001,
+            "v2_survival_s": 145.70000000000002,
+            "ratio": 1.7181603773584906
+          },
+          {
+            "seed": 262046,
+            "baseline_survival_s": 127.10000000000001,
+            "v2_survival_s": 233.60000000000002,
+            "ratio": 1.8379228953579858
+          }
+        ]
+      }
+    },
+    "262412": {
+      "quadrants": {
+        "retained": 10,
+        "rescued": 4,
+        "destroyed": 26,
+        "both_failed": 8
+      },
+      "k2_rescued": [
+        {
+          "seed": 262005,
+          "baseline_first_illegal_radial_distance_m": 6.033805273774388,
+          "v2_illegal_entry_crossing_count": 1
+        },
+        {
+          "seed": 262027,
+          "baseline_first_illegal_radial_distance_m": 4.426251787560417,
+          "v2_illegal_entry_crossing_count": 1
+        },
+        {
+          "seed": 262038,
+          "baseline_first_illegal_radial_distance_m": 9.113410994746625,
+          "v2_illegal_entry_crossing_count": 0
+        },
+        {
+          "seed": 262039,
+          "baseline_first_illegal_radial_distance_m": 5.573134084717509,
+          "v2_illegal_entry_crossing_count": 0
+        }
+      ],
+      "k3_retained_time_ratio": {
+        "count": 10,
+        "median": 2.352679781238864,
+        "minimum": 1.4672686230248306,
+        "records": [
+          {
+            "seed": 262002,
+            "baseline_survival_s": 75.7,
+            "v2_survival_s": 221.5,
+            "ratio": 2.9260237780713343
+          },
+          {
+            "seed": 262013,
+            "baseline_survival_s": 84.0,
+            "v2_survival_s": 274.40000000000003,
+            "ratio": 3.266666666666667
+          },
+          {
+            "seed": 262021,
+            "baseline_survival_s": 88.60000000000001,
+            "v2_survival_s": 130.0,
+            "ratio": 1.4672686230248306
+          },
+          {
+            "seed": 262024,
+            "baseline_survival_s": 82.0,
+            "v2_survival_s": 143.5,
+            "ratio": 1.75
+          },
+          {
+            "seed": 262026,
+            "baseline_survival_s": 102.10000000000001,
+            "v2_survival_s": 247.3,
+            "ratio": 2.4221351616062683
+          },
+          {
+            "seed": 262032,
+            "baseline_survival_s": 91.80000000000001,
+            "v2_survival_s": 209.60000000000002,
+            "ratio": 2.2832244008714597
+          },
+          {
+            "seed": 262033,
+            "baseline_survival_s": 92.4,
+            "v2_survival_s": 141.9,
+            "ratio": 1.5357142857142856
+          },
+          {
+            "seed": 262044,
+            "baseline_survival_s": 84.80000000000001,
+            "v2_survival_s": 295.90000000000003,
+            "ratio": 3.48938679245283
+          },
+          {
+            "seed": 262046,
+            "baseline_survival_s": 127.10000000000001,
+            "v2_survival_s": 237.60000000000002,
+            "ratio": 1.8693941778127459
+          },
+          {
+            "seed": 262047,
+            "baseline_survival_s": 94.9,
+            "v2_survival_s": 237.70000000000002,
+            "ratio": 2.5047418335089566
+          }
+        ]
+      }
+    }
+  }
+}

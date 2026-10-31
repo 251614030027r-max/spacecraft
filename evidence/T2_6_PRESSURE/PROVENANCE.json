@@ -1,0 +1,31 @@
+{
+  "science_SHA": "f4d660aa820a2e3b08c8be310aeac7a55d641318",
+  "order_collab": "c1a962c",
+  "profiles": {
+    "p170": [
+      170,
+      210
+    ],
+    "p155": [
+      155,
+      195
+    ],
+    "p140": [
+      140,
+      180
+    ]
+  },
+  "A_cases": 648,
+  "fixed_in_space": [
+    "rally",
+    "c_10_0",
+    "c_10_-5",
+    "c_6_5",
+    "c_10_5"
+  ],
+  "gstar": "internal reference only; not baseline",
+  "selection": "native experiments.t2_readout pressure; no hand edits",
+  "training": "Only if native selected non-null, both arms seed0/1 each3000/2workers from zero on selected profile; no branches",
+  "logging": "External read-only adapter preserves native worker output; urgent_deadline passed unchanged; same-batch weights/RNG equality and actual EACC+SAC pressure smoke event growth required before training",
+  "standard_results": "Historical standard curves retained by fixed version/hash; no standard retraining; A p170 same-commit concurrent screen is explicitly required by order"
+}

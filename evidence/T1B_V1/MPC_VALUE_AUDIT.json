@@ -1,0 +1,39 @@
+{
+  "scope": "Same-time factual Bellman audit using frozen5k target critic and logged true factual prefixes. No updates and no counterfactual RK45. Not historical update-time targets.",
+  "closed_prefixes": 1084,
+  "valid_pairs_exported": 1003,
+  "invalid_reasons": {
+    "velocity_m_s": 10,
+    "observation": 15,
+    "effect_below_factual_error": 28,
+    "unequal_prefix_horizon": 38,
+    "return": 4,
+    "no_physical_effect": 2
+  },
+  "abs_relative_Bellman_quantiles": {
+    "0": 0.004970550537109375,
+    "0.25": 1.8198161125183105,
+    "0.5": 3.9991626739501953,
+    "0.75": 6.861324310302734,
+    "0.95": 11.394211769104004,
+    "1": 23.759525299072266
+  },
+  "abs_factual_Bellman_error_quantiles": {
+    "0": 0.0001888275146484375,
+    "0.25": 0.056191444396972656,
+    "0.5": 0.16096878051757812,
+    "0.75": 0.34786510467529297,
+    "0.95": 0.7035928964614868,
+    "1": 1.5603885650634766
+  },
+  "abs_relative_reward_signal_quantiles": {
+    "0": 0.0005130502363581702,
+    "0.25": 0.2448221008054159,
+    "0.5": 0.5775568810723026,
+    "0.75": 1.0890208516359587,
+    "0.95": 1.834784606399772,
+    "1": 2.395039188792027
+  },
+  "fraction_factual_abs_error_exceeds_relative_signal": 0.026919242273180457,
+  "caution": "Factual common model error may cancel in paired differences; this ratio alone cannot establish wrong relative ordering or independent task benefit."
+}

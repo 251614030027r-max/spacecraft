@@ -1,0 +1,173 @@
+{
+  "phase": "complete",
+  "evaluation_artifact_detected": false,
+  "pass_for_seed1": true,
+  "tcpf_learning_decisions": 2,
+  "tcpf_recovery_non_earliest_count": 0,
+  "historical_fixed_teacher_scan": {
+    "opening": 292126,
+    "first_index": 1,
+    "first_candidates_s": [
+      100.0,
+      120.00000762939453,
+      140.0
+    ],
+    "skipped": false,
+    "mission": {
+      "deadline_s": 166.3,
+      "budget_m_s": 2.1061188874046817,
+      "urgent": true,
+      "distribution": {
+        "version": "t1b-public-urgency-resource-v3",
+        "urgent_deadline": [
+          145.0,
+          175.0
+        ],
+        "urgent_budget": [
+          1.85,
+          2.25
+        ],
+        "economy_deadline": [
+          230.0,
+          300.0
+        ],
+        "economy_budget": [
+          1.3,
+          1.7
+        ],
+        "descent_reserve_s": 0.0
+      }
+    },
+    "continuation": "V1 teacher (keep a live plan, earliest without plan)",
+    "event": "timeout",
+    "discounted_return": -137.08880943392987,
+    "time_s": 166.3,
+    "delta_v": 1.9254896909722201
+  },
+  "v7_teacher_result": {
+    "mode": "teacher_first_middle",
+    "event": "success",
+    "discounted_return": 45.60450548864637,
+    "time_s": 165.3,
+    "delta_v": 2.004346860086416,
+    "decisions": [
+      {
+        "macro_step": 0,
+        "time_before_s": 0.0,
+        "candidates_s": [
+          100.0,
+          120.0,
+          140.0
+        ],
+        "j": 1
+      },
+      {
+        "macro_step": 40,
+        "time_before_s": 80.00000762939453,
+        "candidates_s": [
+          50.0,
+          70.0
+        ],
+        "j": 0
+      }
+    ]
+  },
+  "deterministic_reproductions": [
+    {
+      "mode": "e_sac",
+      "event": "resource_exhausted",
+      "discounted_return": -140.67244609085253,
+      "time_s": 156.5,
+      "delta_v": 2.1061188874046817,
+      "decisions": [
+        {
+          "macro_step": 0,
+          "time_before_s": 0.0,
+          "candidates_s": [
+            100.0,
+            120.0,
+            140.0
+          ],
+          "j": 0
+        },
+        {
+          "macro_step": 20,
+          "time_before_s": 40.000003814697266,
+          "candidates_s": [
+            80.0,
+            100.0,
+            120.0
+          ],
+          "j": 0
+        },
+        {
+          "macro_step": 39,
+          "time_before_s": 78.0,
+          "candidates_s": [
+            50.0,
+            70.0
+          ],
+          "j": 0
+        },
+        {
+          "macro_step": 47,
+          "time_before_s": 94.0,
+          "candidates_s": [
+            40.0,
+            60.0
+          ],
+          "j": 0
+        }
+      ],
+      "return_difference": 0.0,
+      "time_difference": 0.0,
+      "dv_difference": 0.0,
+      "event_matches": true,
+      "decision_indices_match": true,
+      "reproduced": true
+    },
+    {
+      "mode": "e_tcpf",
+      "event": "success",
+      "discounted_return": 45.60450548864637,
+      "time_s": 165.3,
+      "delta_v": 2.004346860086416,
+      "decisions": [
+        {
+          "macro_step": 0,
+          "time_before_s": 0.0,
+          "candidates_s": [
+            100.0,
+            120.0,
+            140.0
+          ],
+          "j": 1
+        },
+        {
+          "macro_step": 40,
+          "time_before_s": 80.00000762939453,
+          "candidates_s": [
+            50.0,
+            70.0
+          ],
+          "j": 0
+        }
+      ],
+      "return_difference": 0.0,
+      "time_difference": 0.0,
+      "dv_difference": 0.0,
+      "event_matches": true,
+      "decision_indices_match": true,
+      "reproduced": true
+    }
+  ],
+  "scientific_changes": false,
+  "attribution_limit": "Fixed first intent does not isolate all later state differences. Distinguish actual recovery choices, interface version and reproduced teacher result; do not infer non-earliest recovery without evidence.",
+  "source_sha256": {
+    "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V7_ROUND_20261020_restart1\\eval_e_sac_s0_10000\\e_sac_s0_10000_292126.trace.jsonl": "739c8d3538ac92d053446da1105e6659749f728b094ac83b240ad2906f2e128a",
+    "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V7_ROUND_20261020_restart1\\eval_e_tcpf_s0_10000\\e_tcpf_s0_10000_292126.trace.jsonl": "ee38e916132478ac61c35f0ea317f4dc98800479acedfaec9f49e8f6be58d9ab",
+    "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V7_ROUND_20261020_restart1\\TRAIN_e_tcpf_s0\\checkpoints\\step_5000.zip": "e2c276733f913f6271181f6cfe05cc3d904555e77831766752f33e3ae06c556e",
+    "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V7_ROUND_20261020_restart1\\TRAIN_e_tcpf_s0\\checkpoints\\step_10000.zip": "d5a576f8fc53a15744a9f89e9449f5e6fb006a78ae6b82b09b5fe71d96bb8476",
+    "historical_scan": "7b54190b4f3358356544f4ce6266d4b089fda92b45c3c51bf90e48cd840358bc"
+  }
+}

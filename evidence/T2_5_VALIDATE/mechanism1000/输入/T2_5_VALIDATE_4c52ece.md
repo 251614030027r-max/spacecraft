@@ -1,0 +1,109 @@
+# 执行书：T2_5_VALIDATE_20261026（下层本机，约 13–15 h；方法验证训练）
+
+**状态：用户 2026-10-26 批准，立即执行。**
+
+**用途：** 验证 T2.5 的机制是否在训练中正常工作、改动是否有效。这不是论文正式结果。正式结果在机制收敛后，另跑三种子 4k（SAC 与 EACC 同时从零训练）。
+
+**科学提交（冻结）：** `84ee9c1045f32bbbacfef6cd220fdad55c5765c8`。代码与 `94e7390` 相同，只多了验证判据。下层不得改任何代码。
+
+**训练范围：**
+- 只训练 EACC，种子 0、1，各 4000 决策。两个进程同时启动，每个 3 个 worker。
+- SAC 复用 T2.3 的结果（种子 0 为 0–4000，种子 1 为 1000–3000），理由是 T2.5 只改耦合臂的标签，SAC 臂不生成候选。
+
+## 0. 准备
+
+```powershell
+cd D:\py\DRL2; git fetch origin claude/sac-mpc-coupling-design-ns7g6i; git checkout --detach 84ee9c1045f32bbbacfef6cd220fdad55c5765c8
+$py  = "D:\py\DRL2\.venv\Scripts\python.exe"
+$R   = "C:\Users\35884\Documents\Spacecraft\过程文件\T2_5_VALIDATE_20261026"
+$R23 = "C:\Users\35884\Documents\Spacecraft\过程文件\T2_3_TEST_20261023"
+$R24 = "C:\Users\35884\Documents\Spacecraft\过程文件\T2_4_TEST_20261025"
+New-Item -ItemType Directory -Force $R | Out-Null
+$env:OMP_NUM_THREADS = "1"; $env:MKL_NUM_THREADS = "1"; $env:OPENBLAS_NUM_THREADS = "1"
+& $py -B -m pytest -q tests/test_t2_stage.py *> "$R\pytest.log"          # 须 32 passed
+```
+
+## 1. 训练
+
+```powershell
+foreach ($s in 0,1) {
+  Start-Process -FilePath $py -WorkingDirectory "D:\py\DRL2" -WindowStyle Hidden `
+    -ArgumentList "-B","-m","experiments.t2","train","--arm","e_mve","--seed",$s,"--steps","4000","--workers","3",
+                  "--checkpoints","1000,2000,3000","--output","$R\TRAIN_e_mve_s$s" `
+    -RedirectStandardOutput "$R\TRAIN_e_mve_s$s.out.log" -RedirectStandardError "$R\TRAIN_e_mve_s$s.err.log"
+}
+```
+
+**早期机制检查（只记录，不中止训练）：** 两个训练都过 1000 步后，读两个 `model_stats.json` 中 1000 步之后的探针，记录以下字段的均值：`two_stage_share`、`decisive_share`、`c_mean`、`grad_cos`。若 `decisive_share` 为 0 或 `two_stage_share` < 0.5，立即在 collab 报告。
+
+## 2. 训练期间（低优先级）
+
+**2a. SAC 对照：** 复制 T2.3 的评估结果；SAC 种子 1 的 3000 步沿用 T2.4 补评估的结果。
+
+```powershell
+New-Item -ItemType Directory -Force "$R\B_eval\e_sac_s1" | Out-Null
+Copy-Item -Recurse "$R23\B_eval\e_sac_s0" "$R\B_eval\e_sac_s0"
+foreach ($k in 1000,2000) { Copy-Item -Recurse "$R23\B_eval_s1_partial\e_sac_s1\step_$k" "$R\B_eval\e_sac_s1\step_$k" }
+Copy-Item -Recurse "$R24\B_eval\e_sac_s1\step_3000" "$R\B_eval\e_sac_s1\step_3000"
+```
+
+若某个目录位置与此不同，按 T2.3、T2.4 的交付记录找到后复制，不重算。
+
+**2b. 机制审计复核：** 6 个开局；μ 取 T2.4 EACC 种子 0 训练完的策略。
+
+```powershell
+$p = Start-Process -FilePath $py -WorkingDirectory "D:\py\DRL2" -WindowStyle Hidden -PassThru `
+  -ArgumentList "-B","-m","experiments.t2_audit","labels","--calibration","$R24\A1_CAL.json","--openings","2910000-2910005","--workers","2",
+                "--policy-checkpoint","$R24\TRAIN_e_mve_s0\checkpoints\step_4000.zip","--output","$R\A_audit" `
+  -RedirectStandardOutput "$R\A_audit.log" -RedirectStandardError "$R\A_audit.err"
+$p.PriorityClass = "BelowNormal"; $p.WaitForExit()
+& $py -B -m experiments.t2_audit summary --input "$R\A_audit" --output "$R\A_LABEL_AUDIT.json" *> "$R\A_summary.log"
+```
+
+## 3. 训练结束后：评估、读出、判定（约 0.5 h）
+
+```powershell
+foreach ($s in 0,1) { foreach ($k in 0,1000,2000,3000,4000) {
+  & $py -B -m experiments.t2 eval --checkpoint "$R\TRAIN_e_mve_s$s\checkpoints\step_$k.zip" --label "e_mve_s${s}_step_$k" `
+    --openings 294000-294023 --workers 10 --output "$R\B_eval\e_mve_s$s\step_$k" *>> "$R\eval.log" } }
+& $py -B -m experiments.t2_readout curve --eval-root "$R\B_eval" --train-root "$R" --screen "$R23\A2_window" --output "$R\B_READOUT.json" *> "$R\B_readout.log"
+& $py -B -m experiments.t2_decide --criteria v25 --readout "$R\B_READOUT.json" --train-root "$R" --output "$R\DECISION.json" *> "$R\decide.log"
+```
+
+## 预先登记的判据（`t2_decide --criteria v25`，事后不得修改）
+
+| 项 | 标准 |
+|---|---|
+| C0 完整 | EACC 种子 0 有 0–4000，种子 1 有 1000–3000；SAC 如上；全部 24/24，且没有 ERROR 文件 |
+| M 机制 | 两个 EACC 训练 1000 步之后的探针均值：`two_stage_share` ≥ 0.5，`decisive_share` > 0，`c_mean` ≥ 0.5，`grad_cos` > 0 |
+| E1 效率 | 配对 EACC − SAC 的检查点平均：种子 0 取 1000–4000 > 0，种子 1 取 1000–3000 > 0 |
+| E2 终点 | 种子 0 在 4000 步：配对差 ≥ −3，且 EACC > 53.79（T2.4 耦合臂） |
+| S 安全 | 种子 0 在 4000 步：EACC 捕获 ≥ SAC − 1，且 EACC 不安全 ≤ SAC + 1 |
+
+判定结果：
+- `mechanism_failure`：M 不满足；
+- `harmful`：S 不满足；
+- `pass`：M、E1、E2、S 全部满足；
+- `mixed`：只有一个种子满足 E1，或 E2 不满足；
+- `no_gain`：两个种子都不满足 E1；
+- `incomplete`：C0 不满足。
+
+## 交付（不跑后续分支）
+
+- 科学分支 `evidence/T2_5_VALIDATE/`，附 SHA256SUMS：
+  - `B_READOUT.json`、`DECISION.json`、`B_eval/**`；
+  - `A_LABEL_AUDIT.json`、`A_audit/*.json`；
+  - 两个训练目录的 `manifest.json`、`finished.json`、`episodes.json`、`model_stats.json`、`heartbeat.json`；
+  - `pytest.log`。
+- collab `lower/handoffs/t2_5_validate_20261026/RESULT.md`：
+  - 判定与各项取值；
+  - 两个种子的配对曲线，按紧急 / 经济拆分；
+  - 机制读数；
+  - 墙钟。
+- 只报告事实。
+
+## 下层可以自行处理
+
+- 驱动层问题、单个回合报错补跑、评估与审计的 worker 数，事后写明。
+- 训练崩溃：同配置从零重启一次；第二次仍崩溃就停下，交付已有结果。
+- 不得改代码、步数、开局、判据，不得挑选检查点。

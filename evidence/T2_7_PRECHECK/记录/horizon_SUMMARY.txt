@@ -1,0 +1,49 @@
+openings 40 urgent 19 urgent outcomes (rule behaviour) {'timeout': 8, 'success': 11}
+critical decisions 52 candidates 416
+
+truth within 4 decisions (holding the intent): {'alive': 261, 'capture_direct': 5, 'timeout': 100, 'entered_open': 6, 'capture_entry': 44}
+
+H=1 (16 s) model view of each truth class:
+   capture_entry {'entry': 32, 'alive': 12}
+   capture_direct {'alive': 5}
+   timeout {'alive': 100}
+   entered_open {'entry': 5, 'alive': 1}
+   alive {'alive': 261}
+
+H=2 (32 s) model view of each truth class:
+   capture_entry {'entry': 41, 'alive': 3}
+   capture_direct {'alive': 5}
+   timeout {'alive': 94, 'blind': 6}
+   entered_open {'entry': 5, 'alive': 1}
+   alive {'alive': 251, 'blind': 10}
+
+H=3 (48 s) model view of each truth class:
+   capture_entry {'entry': 41, 'blind': 2, 'alive': 1}
+   capture_direct {'blind': 3, 'alive': 2}
+   timeout {'alive': 55, 'blind': 14, 'cutoff': 31}
+   entered_open {'entry': 5, 'alive': 1}
+   alive {'alive': 226, 'blind': 35}
+
+H=4 (64 s) model view of each truth class:
+   capture_entry {'entry': 41, 'blind': 2, 'alive': 1}
+   capture_direct {'blind': 4, 'alive': 1}
+   timeout {'alive': 1, 'blind': 14, 'cutoff': 85}
+   entered_open {'entry': 5, 'blind': 1}
+   alive {'alive': 204, 'blind': 57}
+
+H=1: decisions truth separates 10/52, model separates by entry 2/52; decisive pairs right 21 wrong 0 undecided 78
+H=2: decisions truth separates 10/52, model separates by entry 3/52; decisive pairs right 34 wrong 0 undecided 65
+H=3: decisions truth separates 10/52, model separates by entry 3/52; decisive pairs right 34 wrong 0 undecided 65
+H=4: decisions truth separates 10/52, model separates by entry 3/52; decisive pairs right 34 wrong 0 undecided 65
+
+stage 1: position error n=364 median 0.000 m p90 0.026 m
+stage 2: position error n=345 median 0.202 m p90 0.245 m
+stage 3: position error n=282 median 0.681 m p90 0.804 m
+stage 4: position error n=204 median 1.226 m p90 1.465 m
+
+undecided decisive pairs at H=2 by (good truth, good model | bad truth, bad model):
+   33 ('capture_direct', 'alive', 'alive', 'alive') openings [2910001, 2910012, 2910032]
+   15 ('capture_entry', 'entry', 'entered_open', 'entry') openings [2910008]
+   15 ('capture_entry', 'alive', 'alive', 'alive') openings [2910032]
+   1 ('capture_direct', 'alive', 'timeout', 'alive') openings [2910001]
+   1 ('capture_direct', 'alive', 'entered_open', 'alive') openings [2910032]

@@ -1,0 +1,297 @@
+{
+ "what": "T1-L-S integration smoke in the upper sandbox (4 cores, three runs concurrently; timings contended, not the user's machine): 240 real steps per arm, learning starts 60, NDelta warm-up 150 / calibration window 80 (smoke-only settings)",
+ "sb2": {
+  "command": [
+   "/home/user/spacecraft/train/train_t1_option.py",
+   "--arm",
+   "sb2",
+   "--trainer",
+   "A",
+   "--n-envs",
+   "1",
+   "--steps",
+   "240",
+   "--seed",
+   "0",
+   "--run-name",
+   "sb2",
+   "--log-root",
+   "/tmp/claude-0/-home-user-spacecraft/ccc14f45-0208-5d61-a364-c44595227073/scratchpad/tls/runs",
+   "--learning-starts",
+   "60",
+   "--delta-warmup",
+   "150",
+   "--delta-calibration-steps",
+   "80",
+   "--checkpoint-freq",
+   "240",
+   "--extra-checkpoints",
+   "",
+   "--audit-every",
+   "20",
+   "--allow-dirty"
+  ],
+  "trainer": {
+   "name": "A",
+   "updates_per_transition": 4,
+   "actor_every_transitions": null,
+   "learning_rate": "constant 1e-4",
+   "critic_updates_per_vector_step": 4,
+   "actor_clock": "global real transitions (num_timesteps) minus learning_starts"
+  },
+  "n_envs": 1,
+  "real_transitions": 240,
+  "heartbeat": {
+   "decisions": 200,
+   "wall_s": 822.0284445550001,
+   "utc": "2026-10-16T12:17:40.252331+00:00",
+   "parameters_finite": true
+  },
+  "reviews_logged": 240,
+  "interval_audit": {
+   "counts": {
+    "closed_by_review": 238,
+    "closed_by_terminal": 1,
+    "closed_by_truncation": 0,
+    "dropped_overwritten": 0
+   },
+   "lengths": {
+    "1": 239
+   },
+   "actor_updates": 720,
+   "critic_updates": 720
+  },
+  "learning_rate_samples": [
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001,
+   0.0001
+  ],
+  "interval_ready_fraction_last": 0.99609375,
+  "td_review_last": 3.9561495780944824,
+  "td_continue_last": 0.0,
+  "expected": {
+   "critic_updates": 720,
+   "actor_updates": 720
+  }
+ },
+ "sn0": {
+  "command": [
+   "/home/user/spacecraft/train/train_t1_option.py",
+   "--arm",
+   "sn0",
+   "--trainer",
+   "B",
+   "--n-envs",
+   "2",
+   "--steps",
+   "240",
+   "--seed",
+   "0",
+   "--run-name",
+   "sn0",
+   "--log-root",
+   "/tmp/claude-0/-home-user-spacecraft/ccc14f45-0208-5d61-a364-c44595227073/scratchpad/tls/runs",
+   "--learning-starts",
+   "60",
+   "--delta-warmup",
+   "150",
+   "--delta-calibration-steps",
+   "80",
+   "--checkpoint-freq",
+   "240",
+   "--extra-checkpoints",
+   "",
+   "--audit-every",
+   "20",
+   "--allow-dirty"
+  ],
+  "trainer": {
+   "name": "B",
+   "updates_per_transition": 1,
+   "actor_every_transitions": 3,
+   "learning_rate": "cosine 1e-4 -> 1e-5 over real transitions",
+   "critic_updates_per_vector_step": 2,
+   "actor_clock": "global real transitions (num_timesteps) minus learning_starts"
+  },
+  "n_envs": 2,
+  "real_transitions": 240,
+  "heartbeat": {
+   "decisions": 200,
+   "wall_s": 452.45775596600004,
+   "utc": "2026-10-16T12:11:40.838767+00:00",
+   "parameters_finite": true
+  },
+  "reviews_logged": 81,
+  "interval_audit": {
+   "counts": {
+    "closed_by_review": 79,
+    "closed_by_terminal": 0,
+    "closed_by_truncation": 0,
+    "dropped_overwritten": 0
+   },
+   "lengths": {
+    "2": 1,
+    "3": 78
+   },
+   "actor_updates": 60,
+   "critic_updates": 180
+  },
+  "learning_rate_samples": [
+   8.597595590621893e-05,
+   5.9703780847044414e-05,
+   3.1487564587782306e-05,
+   1.2988880807625927e-05
+  ],
+  "interval_ready_fraction_last": 0.9714285731315613,
+  "td_review_last": 0.03809881582856178,
+  "td_continue_last": 0.00849953480064869,
+  "expected": {
+   "critic_updates": 180,
+   "actor_updates": 60
+  }
+ },
+ "sndelta": {
+  "command": [
+   "/home/user/spacecraft/train/train_t1_option.py",
+   "--arm",
+   "sndelta",
+   "--trainer",
+   "B",
+   "--n-envs",
+   "2",
+   "--steps",
+   "240",
+   "--seed",
+   "0",
+   "--run-name",
+   "sndelta",
+   "--log-root",
+   "/tmp/claude-0/-home-user-spacecraft/ccc14f45-0208-5d61-a364-c44595227073/scratchpad/tls/runs",
+   "--learning-starts",
+   "60",
+   "--delta-warmup",
+   "150",
+   "--delta-calibration-steps",
+   "80",
+   "--checkpoint-freq",
+   "240",
+   "--extra-checkpoints",
+   "",
+   "--audit-every",
+   "20",
+   "--allow-dirty"
+  ],
+  "trainer": {
+   "name": "B",
+   "updates_per_transition": 1,
+   "actor_every_transitions": 3,
+   "learning_rate": "cosine 1e-4 -> 1e-5 over real transitions",
+   "critic_updates_per_vector_step": 2,
+   "actor_clock": "global real transitions (num_timesteps) minus learning_starts"
+  },
+  "n_envs": 2,
+  "real_transitions": 240,
+  "heartbeat": {
+   "decisions": 200,
+   "wall_s": 487.22076362099995,
+   "utc": "2026-10-16T12:12:15.143294+00:00",
+   "parameters_finite": true
+  },
+  "reviews_logged": 81,
+  "interval_audit": {
+   "counts": {
+    "closed_by_review": 79,
+    "closed_by_terminal": 0,
+    "closed_by_truncation": 0,
+    "dropped_overwritten": 0
+   },
+   "lengths": {
+    "2": 1,
+    "3": 78
+   },
+   "actor_updates": 60,
+   "critic_updates": 180
+  },
+  "learning_rate_samples": [
+   8.597595590621893e-05,
+   5.9703780847044414e-05,
+   3.1487564587782306e-05,
+   1.2988880807625927e-05
+  ],
+  "interval_ready_fraction_last": 0.9714285731315613,
+  "td_review_last": 0.03809881582856178,
+  "td_continue_last": 0.00849953480064869,
+  "expected": {
+   "critic_updates": 180,
+   "actor_updates": 60
+  },
+  "delta_calibration": {
+   "probes": 30,
+   "median_ratio": 0.010405749717981753,
+   "lambda": 4.805035807616729,
+   "frozen_at": 218
+  },
+  "counterfactual": {
+   "kinds": {
+    "entry_speed": 38,
+    "keep_vs_shift": 17,
+    "replan_vs_keep": 19,
+    "descent_mode": 7
+   },
+   "gate_valid": 18
+  }
+ },
+ "t1r_eval_of_sndelta_checkpoint": {
+  "policy": "/tmp/claude-0/-home-user-spacecraft/ccc14f45-0208-5d61-a364-c44595227073/scratchpad/tls/runs/sndelta/checkpoints/sndelta_240_decisions.zip",
+  "episodes": 1,
+  "clean_capture": 1,
+  "timeout": 0,
+  "unsafe": 0,
+  "mean_discounted_return": 76.36255843219328,
+  "mean_time_s_fail_as_300": 166.6,
+  "mean_delta_v_m_s": 1.5991592887390067,
+  "mean_reviews_per_step": 0.3333333333333333,
+  "failures": {},
+  "openings_sha256": "a0a8580d1ae3a5451a2b71a4d84e33c1dcd07b4f40ef87f19ac43695dc035dff",
+  "review_period_steps": 3,
+  "task": "t1r"
+ },
+ "reload_sn0": {
+  "sn0_0_decisions.zip": {
+   "action": [
+    0.0019000000320374966,
+    0.0551999993622303,
+    0.04600000008940697
+   ],
+   "finite": true
+  },
+  "sn0_240_decisions.zip": {
+   "action": [
+    0.1867000013589859,
+    -0.13210000097751617,
+    -0.026200000196695328
+   ],
+   "finite": true
+  },
+  "final.zip": {
+   "action": [
+    0.18719999492168427,
+    -0.13179999589920044,
+    -0.027499999850988388
+   ],
+   "finite": true
+  }
+ }
+}
