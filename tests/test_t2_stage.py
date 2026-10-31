@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-2.6.1'
+    assert t.LEARNER_VERSION == 't2-learner-2.7'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -924,3 +924,54 @@ def test_rank_audit_counts_decisive_pairs_per_scorer():
     assert s['label1_abs_error']['event']['n'] == 2 and s['label1_abs_error']['bootstrap']['n'] == 2
     assert s['diff_abs_error']['bootstrap'] == {'n': 2, 'median': 55.5}           # |0.5 + 100| and |0.5 + 10|
     assert s['critic']['kendall_tau_mean'] is not None
+
+
+def test_executor_guidance_schedule_and_collector():
+    """T2.7: the guidance probability decays linearly from GUIDE_P0 to 0 at GUIDE_UNTIL stored transitions and is 0
+    when off; the collector draws from its own stream only when guidance is on, flies the executor's intent when it
+    has one and stores the executed action; the manifest records the setting; evaluation is untouched."""
+    import inspect, experiments.t2 as x, train.t2_mve_sac as t
+    assert t.guide_probability(0, 0.5, 2000) == 0.5 and t.guide_probability(1000, 0.5, 2000) == 0.25
+    assert t.guide_probability(2000, 0.5, 2000) == 0.0 and t.guide_probability(5000, 0.5, 2000) == 0.0 and t.guide_probability(10, 0.0, 2000) == 0.0
+    w = inspect.getsource(t.worker)
+    assert 'if guide_p > 0 and guide_rng.uniform() < guide_p:' in w and 'action, guided = np.asarray(a_exec, np.float32), True' in w
+    assert w.index('a_exec = env.track_intent()') < w.index('next_obs, reward, term, trunc, info = env.step(action)')
+    assert 'np.asarray(action, np.float32), float(reward)' in w                    # the replay keeps the executed action
+    tr = inspect.getsource(t.train)
+    assert "guide_probability(model.num_timesteps, GUIDE_P0, GUIDE_UNTIL) if guide else 0.0" in tr and "'guide': bool(guide)" in tr
+    assert 'guide' not in inspect.getsource(x.eval_job) and 'track_intent' not in inspect.getsource(x.run_episode)
+
+
+def test_track_intent_projects_the_executors_plan_onto_the_action_space():
+    """T2.7: at a stage decision the executor's earliest feasible plan (direct grid, arrivals before deadline - margin)
+    projected onto the stage action grid; nothing when no arrival fits the deadline or outside a stage decision."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import BRIDGE_DEADLINE_MARGIN_S, OPPORTUNITY_TAUS_S, T2Mission, T2StageEnv, TRACK_GRID
+    env = T2StageEnv(openings=[2910001], seed_base=2_910_000, mission=T2Mission(urgent_deadline_s=(140.0, 200.0)))
+    env.reset(options={'opening': 2910001}); e = env.env
+    q, v = relative_inertial(e)
+    opp = env._opportunity(q, v, e.time_s, e.target_state.rotation, e.target_state.omega)
+    assert opp is not None and opp['tau'] in OPPORTUNITY_TAUS_S and opp['tau'] <= env.mission['deadline_s'] - BRIDGE_DEADLINE_MARGIN_S
+    assert env._opportunity(q, v, env.mission['deadline_s'] - BRIDGE_DEADLINE_MARGIN_S - 10.0, e.target_state.rotation, e.target_state.omega) is None
+    a = env.track_intent()
+    assert a is not None and tuple(float(x) for x in a) in TRACK_GRID
+    env.generator.mode = 'bridge'
+    assert env.track_intent() is None
+
+
+def test_t27_verdict_is_t26w_plus_the_guidance_check(tmp_path):
+    """t27: efficiency, urgent captures, final and safety exactly as t26w over 1000..4000 (on the T2.6W1 readout it
+    reproduces the native no_gain); the mechanism also needs the guidance to have flown (guided_share >= 0.03)."""
+    import json
+    from pathlib import Path
+    from experiments.t2_decide import decide_t26w, decide_t27, mechanism_readings
+    r = json.loads(Path('evidence/T2_6W1_CUTOFF/C_READOUT.json').read_text(encoding='utf-8'))
+    good = {'two_stage_share': 0.6, 'decisive_share': 0.1, 'w2_mean': 0.9, 'pi_gap_sigma_median': 0.05, 'grad_cos': 0.3}
+    mech = {'TRAIN_e_mve_s0': dict(good, guided_share=0.12), 'TRAIN_e_mve_s1': dict(good, guided_share=0.10)}
+    v, ref = decide_t27(r, mech), decide_t26w(r, mech, (1000, 2000, 3000, 4000))
+    assert v['verdict'] == ref['verdict'] == 'no_gain' and v['values']['paired_auc'] == ref['values']['paired_auc']
+    assert decide_t27(r, {k: dict(x, guided_share=0.0) for k, x in mech.items()})['verdict'] == 'mechanism_failure'
+    d = tmp_path / 'TRAIN_e_mve_s0'; d.mkdir()
+    (d / 'model_stats.json').write_text(json.dumps([dict(good, steps=1500)]))
+    (d / 'finished.json').write_text(json.dumps({'steps': 4000, 'replay': {'guided': 400}}))
+    assert mechanism_readings(tmp_path)['TRAIN_e_mve_s0']['guided_share'] == 0.1

@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.4.3"
+T2_VERSION = "t2-stage-0.5.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -386,6 +386,14 @@ ENTRY_CAL_MIN = 20               # executed entries before entry labels are issu
 #: environment (calibrated model): the learner forms the two-stage soft Retrace target with c = min(1, pi/mu). 1 = the
 #: T2.4 one-stage label. T2.3's repeat-the-intent second stage (not a Bellman target) no longer exists.
 ENTRY_STAGES = 2
+#: T2.7 executor guidance (training only; ``track_intent``): the executor's conditional G* plans its earliest feasible
+#: entry from the current state on the direct grid (start_direct_gstar's, arrivals before deadline - margin, the
+#: estimated inertia), and the plan is projected onto the stage action space -- the intent whose stage goal lies nearest
+#: the plan 16 s ahead. Sandbox (exploratory): flown at every decision it captured 19/19 urgent audit missions (rally
+#: rule 9/19, direct G* 18/19) and matched the best converged SAC on the development openings.
+OPPORTUNITY_TAUS_S = (20., 30., 40., 50., 60., 70., 80., 90., 100., 110., 120., 140., 160., 180., 200., 220.)
+TRACK_GRID = tuple((float(p), float(z)) for p in np.linspace(-1.0, 1.0, 9) for z in np.linspace(-1.0, 1.0, 9))
+TRACK_VELOCITY_WEIGHT = 10.0      # s: velocity mismatch of a stage goal weighed against position (m) in the projection
 
 
 @dataclass
@@ -638,6 +646,45 @@ class T2StageEnv(gym.Env):
                 if res["feasible"]:
                     return {"s": s, "tau": float(res["tau_s"]), "dv_plan": float(res["delta_v_m_s"]), "brake_dv": brake}
         return None
+
+    def _opportunity(self, q, v, t_abs: float, rot, omega) -> dict | None:
+        """T2.7: the executor's earliest feasible entry from a relative state at absolute time ``t_abs`` -- its
+        conditional G* on the direct grid, arrivals up to deadline - margin, the constant-rate attitude model from
+        ``rot`` / ``omega`` and the estimated (not the true) inertia: the executor's own inputs, as start_direct_gstar.
+        Returns {tau, dv_plan, plan} or None (no capture opportunity left)."""
+        from env.t1_gstar import free_body_rotations
+        g = self.generator.bridge
+        horizon = float(self.mission["deadline_s"]) - BRIDGE_DEADLINE_MARGIN_S - float(t_abs)
+        taus = [t for t in OPPORTUNITY_TAUS_S if t <= horizon]
+        if not taus:
+            return None
+        history = free_body_rotations(rot, omega, np.asarray(self.info_env.target_parameters.inertia), max(taus) + 1.0)
+        for tau in taus:
+            res = g.planner.solve(np.asarray(q, float), np.asarray(v, float), tau, history, None, entry_speed_m_s=g.entry_speed_m_s)
+            if res["feasible"]:
+                return {"tau": float(res["tau_s"]), "dv_plan": float(res["delta_v_m_s"]), "plan": res}
+        return None
+
+    def track_intent(self) -> np.ndarray | None:
+        """T2.7 executor guidance: the executor's capture plan from the current state projected onto the stage action
+        space (TRACK_GRID: the intent whose stage goal lies nearest the plan's state 16 s ahead); None without a plan or
+        outside a stage decision. Used only by the training collector; it never replaces the policy at evaluation."""
+        e = self.env
+        if self.generator is None or self.generator.mode not in ("stage", "hold"):
+            return None
+        q, v = relative_inertial(e)
+        opp = self._opportunity(q, v, e.time_s, e.target_state.rotation, e.target_state.omega)
+        if opp is None:
+            return None
+        mass, frame = e.chaser_parameters.mass, frame_now(e, q)
+        q16, v16 = plan_state(opp["plan"], STAGE_S, mass)
+        best, cost = None, np.inf
+        for a in TRACK_GRID:
+            goal = stage_goal(q, v, frame, np.asarray(a), mass, geometry=self.geometry)
+            c = float(np.linalg.norm(goal["q_goal"] - q16) + TRACK_VELOCITY_WEIGHT * np.linalg.norm(goal["v_goal"] - v16))
+            if c < cost:
+                best, cost = np.asarray(a, dtype=np.float64), c
+        return best
 
     def _stage_cutoff(self, t_start: float, dv_start: float, dv_stage: float, span: float = STAGE_S):
         """T2.6 (label termination): a modelled stage without an entry ends where the truth would end it -- at the

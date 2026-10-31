@@ -166,6 +166,7 @@ def main():
     p.add_argument('--entry-stages', type=int, default=None); p.add_argument('--updates-per-transition', type=float, default=2.0)
     p.add_argument('--model-beta', type=float, default=0.5)
     p.add_argument('--urgent-deadline', default=None, help='LO,HI s: urgent missions\' deadline range (default 170,210)')
+    p.add_argument('--guide', action='store_true', help='T2.7: the collector flies the executor\'s projected capture plan (training only)')
     a = p.parse_args(); out = Path(a.output)
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')
     window = not a.no_window
@@ -176,7 +177,7 @@ def main():
         from train.t2_mve_sac import train
         train(out, a.arm, a.seed, a.steps, a.workers, [int(x) for x in a.checkpoints.split(',')], a.smoke,
               updates_per_transition=a.updates_per_transition, entry_stages=a.entry_stages, window=window, model_beta=a.model_beta,
-              urgent_deadline=urgent)
+              urgent_deadline=urgent, guide=a.guide)
 
 
 if __name__ == '__main__':

@@ -306,6 +306,37 @@ def decide_t26w(r: dict, mech: dict | None = None, checkpoints=T26_CHECKPOINTS) 
     return out
 
 
+def decide_t27(r: dict, mech: dict | None = None, checkpoints=(1000, 2000, 3000, 4000)) -> dict:
+    """T2.7 executor feedback through guidance and labels (pre-registered with its run order): EACC (the T2.6.1 labels,
+    unchanged) whose collector flies the executor's projected capture plan with probability 0.5 (1 - t / 2000), seeds 0
+    and 1 from zero, 4000 decisions, against the T2.6W SAC (reused: same task; the SAC arm's code path is unchanged),
+    checkpoints 1000..4000 on the 48 development openings, urgent deadlines U(140, 200) s.
+
+      C0, E1, U, E2, S   as t26w (unchanged thresholds)
+      M  mechanism       as v251 for the EACC labels (both runs, probes from 1000 on), and the guidance happened:
+                         guided_share >= 0.03 of the stored transitions in both runs (finished.json)
+    Reported, never gated (from the readouts of the other pairings): guidance alone (SAC + guidance - SAC) and the
+    labels' increment under guidance (EACC + guidance - SAC + guidance)."""
+    out = decide_t26w(r, mech, checkpoints)
+    if out['verdict'] == 'incomplete':
+        return out
+    mech = mech or {}
+    out['criteria']['M_mechanism'] = out['criteria']['M_mechanism'] and all((x.get('guided_share') or 0) >= 0.03 for x in mech.values())
+    c, v = out['criteria'], out['values']
+    pos = [v['paired_auc'][s] > 0 for s in ('0', '1')]
+    if not c['M_mechanism']:
+        out['verdict'] = 'mechanism_failure'
+    elif not (c['E2_final'] and c['S_safety']):
+        out['verdict'] = 'harmful'
+    elif c['E1_efficiency'] and c['U_urgent']:
+        out['verdict'] = 'pass'
+    elif all(pos) or (c['U_urgent'] and any(pos)):
+        out['verdict'] = 'partial'
+    else:
+        out['verdict'] = 'no_gain'
+    return out
+
+
 def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), start=1000) -> dict:
     """Mean of the T2.5 mechanism probes of each EACC run from ``start`` decisions on (model_stats.json)."""
     out = {}
@@ -317,6 +348,10 @@ def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), st
         out[arm] = {k: (float(np.mean([m[k] for m in ms if m.get(k) is not None])) if any(m.get(k) is not None for m in ms) else None)
                     for k in ('two_stage_share', 'decisive_share', 'c_mean', 'grad_cos', 'loss_share', 'increment_abs_mean', 'w_mean',
                               'w2_mean', 'pi_gap_sigma_median', 'stage2_rows', 'stage2_entry_share', 'stage1_cutoff_share', 'stage2_cutoff_share')}
+        fin = Path(train_root) / arm / 'finished.json'          # T2.7: share of stored transitions the executor's plan flew
+        if fin.exists():
+            fz = json.loads(fin.read_text(encoding='utf-8'))
+            out[arm]['guided_share'] = float((fz.get('replay') or {}).get('guided', 0)) / max(int(fz.get('steps', 0)), 1)
     return out
 
 
@@ -377,18 +412,20 @@ def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS, min_seeds: int = 3, require
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--readout', required=True); p.add_argument('--output', required=True); p.add_argument('--final', type=int, default=None)
-    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251', 't26', 't26w'], default='t22')
+    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251', 't26', 't26w', 't27'], default='t22')
     p.add_argument('--train-root', default=None, help='v25 / v251: the directory holding TRAIN_e_mve_s0 / _s1 (mechanism readings)')
     p.add_argument('--checkpoints', default=None, help='t25 / t26 / t26w: comparison checkpoints, e.g. 1000,2000,3000,4000')
     p.add_argument('--min-seeds', type=int, default=3); p.add_argument('--no-converged', action='store_true')
     a = p.parse_args()
     r = json.loads(Path(a.readout).read_text(encoding='utf-8'))
     ck = tuple(int(x) for x in a.checkpoints.split(',')) if a.checkpoints else T25_CHECKPOINTS
-    if a.criteria in ('v25', 'v251', 't26', 't26w'):
+    if a.criteria in ('v25', 'v251', 't26', 't26w', 't27'):
         if not a.train_root:
             p.error('--criteria v25 / v251 / t26 / t26w needs --train-root (the mechanism readings)')
         mech = mechanism_readings(a.train_root)
-        if a.criteria in ('t26', 't26w'):
+        if a.criteria == 't27':
+            res = decide_t27(r, mech, ck if a.checkpoints else (1000, 2000, 3000, 4000))
+        elif a.criteria in ('t26', 't26w'):
             res = (decide_t26 if a.criteria == 't26' else decide_t26w)(r, mech, ck if a.checkpoints else T26_CHECKPOINTS)
         else:
             res = {'v25': decide_v25, 'v251': decide_v251}[a.criteria](r, mech)

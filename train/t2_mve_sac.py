@@ -47,14 +47,21 @@ ENT_COEF = 0.05
 SIGMA_DECAY = 0.99        # running mean of the squared real TD residual
 #: critic / actor updates per stored real transition
 UPDATES_PER_TRANSITION = 2
+#: T2.7 executor guidance: at a stage decision the collector flies the executor's projected capture plan
+#: (T2StageEnv.track_intent) instead of the policy's action with probability GUIDE_P0 * max(0, 1 - t / GUIDE_UNTIL),
+#: t the stored transitions; the replay keeps the executed action (off-policy SAC learns from it like any behaviour).
+#: Training only: evaluation flies the deterministic actor alone. Pre-registered with the T2.7 run order.
+GUIDE_P0 = 0.5
+GUIDE_UNTIL = 2000
 #: T2.5 two-stage labels: the policy copy in each environment is refreshed every SYNC_UPDATES critic/actor updates;
 #: a stage-2 part older than AGE_CAP stored transitions is not used in the Retrace correction (the label falls back to its
 #: stage-1 target); its one-step stage-2 row (T2.5.1) has no age cap
 SYNC_UPDATES = 100
 AGE_CAP = 2000
 #: learner version recorded in the manifest (T2.5.1: one-step stage-2 rows; T2.6: calibration shared by the workers;
-#: T2.6.1: labels end at the deadline / budget, env t2-stage-0.4.2; env 0.4.3 adds the budget before a predicted entry)
-LEARNER_VERSION = "t2-learner-2.6.1"
+#: T2.6.1: labels end at the deadline / budget, env t2-stage-0.4.2; env 0.4.3 adds the budget before a predicted entry;
+#: T2.7: executor guidance in the collector (``guide_probability``; off by default), env 0.5.0)
+LEARNER_VERSION = "t2-learner-2.7"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -321,13 +328,18 @@ class SpacesEnv(gym.Env):
         return np.zeros(OBS_DIM, np.float32), 0.0, True, False, {}
 
 
+def guide_probability(t: int, p0: float, until: int) -> float:
+    """T2.7: probability that the collector flies the executor's projected plan at stored transition t (linear decay)."""
+    return float(p0) * max(0.0, 1.0 - float(t) / float(until)) if p0 > 0 and until > 0 else 0.0
+
+
 def _slim(info: dict) -> dict:
     """What the learner needs from a step's info (the model labels without their audit fields)."""
     model = info.get('model') or {}
     cands = [{**{k: c.get(k, 0) for k in ('a', 'reward', 'next_obs', 'done', 'kind')}, 's2': c.get('s2')} for c in model.get('cands') or []]
     diag = model.get('diag') or {}
     return {'model': {'fact': model.get('fact'), 'cands': cands, 'diag': {k: diag.get(k) for k in ('reason', 'entry_bias', 'entry_records')}},
-            **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')}}
+            **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission', 'guided')}}
 
 
 class CalibrationPool:
@@ -380,6 +392,7 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
                      entry_stages=entry_stages, window=window, mission=mission)
     obs, _ = env.reset(); transition = None
     actor = None
+    guide_rng = np.random.default_rng([seed, rank, 2707])        # T2.7 guidance draws (own stream)
     outbox = share_calibration(env) if (POOL_CALIBRATION and candidates > 0) else None
 
     def label_policy(o):          # mu: this environment's copy of the policy (T2.5 stage 2 of a counterfactual label)
@@ -393,7 +406,7 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
         msg = conn.recv()
         if isinstance(msg, str):
             break
-        action, payload, shared = msg
+        action, payload, shared, guide_p = msg if len(msg) == 4 else (*msg, 0.0)
         if shared is not None:
             merge_calibration(env, shared)
         if payload is not None:                   # ('actor', module) once, then ('state', state_dict) every SYNC_UPDATES
@@ -401,7 +414,13 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
                 actor = payload[1]; actor.set_training_mode(False); env.label_policy = label_policy
             else:
                 actor.load_state_dict(payload[1])
+        guided = False
+        if guide_p > 0 and guide_rng.uniform() < guide_p:           # T2.7: the executor's projected capture plan flies instead
+            a_exec = env.track_intent()
+            if a_exec is not None:
+                action, guided = np.asarray(a_exec, np.float32), True
         next_obs, reward, term, trunc, info = env.step(action)
+        info = dict(info, guided=guided)
         transition = (obs, next_obs, np.asarray(action, np.float32), float(reward), bool(term), bool(trunc), _slim(info))
         obs = env.reset()[0] if (term or trunc) else next_obs
     conn.close()
@@ -409,7 +428,7 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
 
 def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[int], smoke: bool = False,
           updates_per_transition: float = UPDATES_PER_TRANSITION, entry_stages: int | None = None, window: bool = True,
-          model_beta: float = MODEL_BETA, urgent_deadline=None) -> None:
+          model_beta: float = MODEL_BETA, urgent_deadline=None, guide: bool = False) -> None:
     import multiprocessing as mp
     from multiprocessing.connection import wait
     from stable_baselines3.common.logger import configure
@@ -427,6 +446,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'gradient_steps_per_transition': model.gradient_steps, 'entry_stages': entry_stages, 'sync_updates': SYNC_UPDATES, 'age_cap': AGE_CAP,
                                                    'pooled_calibration': bool(POOL_CALIBRATION and candidates > 0),
                                                    'urgent_deadline_s': list(urgent_deadline) if urgent_deadline is not None else [170.0, 210.0],
+                                                   'guide': bool(guide), 'guide_p0': GUIDE_P0 if guide else 0.0, 'guide_until': GUIDE_UNTIL if guide else 0,
                                                    'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION}, indent=1), encoding='utf-8')
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
@@ -441,6 +461,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     synced = {}                                   # worker -> update count of its policy copy
     rng = np.random.default_rng(seed)
     pool = CalibrationPool() if (POOL_CALIBRATION and candidates > 0) else None
+    guided_by_worker = {}                         # T2.7: guided decisions of each worker's current episode
     active = list(pipes)
     while active:
         for conn in wait(active):
@@ -453,13 +474,16 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                 info = dict(info, **({'TimeLimit.truncated': True} if trunc and not term else {}))
                 model.replay_buffer.add(o[None], o1[None], act[None], np.array([r]), np.array([done]), [info])
                 model.num_timesteps += 1; order.append(pipes.index(conn))
+                if info.get('guided'):
+                    guided_by_worker[pipes.index(conn)] = guided_by_worker.get(pipes.index(conn), 0) + 1
+                    c_ = model.replay_buffer.model_counts; c_['guided'] = c_.get('guided', 0) + 1
                 b = (info['model']['diag'] or {}).get('entry_bias')
                 if b is not None:                      # latest known outcome-model bias of each environment
                     bias_by_worker[pipes.index(conn)] = b
                     model.entry_bias_now = float(np.mean(list(bias_by_worker.values())))
                 if done:
                     episodes.append({'steps': int(model.num_timesteps), 'worker': pipes.index(conn), **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')},
-                                     'entry_bias': (info['model']['diag'] or {}).get('entry_bias')})
+                                     'entry_bias': (info['model']['diag'] or {}).get('entry_bias'), 'guided': guided_by_worker.pop(pipes.index(conn), 0)})
                 if model.num_timesteps >= model.learning_starts:
                     model.train(gradient_steps=model.gradient_steps, batch_size=model.batch_size)
                 while marks and model.num_timesteps >= marks[0]:
@@ -483,7 +507,8 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                     payload = ('state', {k: v.detach().clone() for k, v in model.actor.state_dict().items()})
                 if payload is not None:
                     synced[w_] = model._n_updates
-            conn.send((action, payload, pool.pending(w_) if pool is not None else None))
+            conn.send((action, payload, pool.pending(w_) if pool is not None else None,
+                       guide_probability(model.num_timesteps, GUIDE_P0, GUIDE_UNTIL) if guide else 0.0))
     for p in procs:
         p.join(timeout=60)
     model.save(out / 'final')
