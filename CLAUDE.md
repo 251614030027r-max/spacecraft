@@ -16,14 +16,17 @@ weighted (M3), entry outcomes by historical execution replay, two-stage labels
 (soft Retrace + one-step stage-2 rows), calibration shared by the workers, labels
 ending at the deadline / budget. Arms: `e_sac` (no model) and `e_mve` (EACC).
 
-**State (2026-10-30):** env `t2-stage-0.4.3`, learner `t2-learner-2.6.1`, code
-`e2d4c14`, 48 tests. The feedback's own gain has not been shown: on the standard
+**State (2026-10-31):** env `t2-stage-0.5.0`, learner `t2-learner-2.7`, code
+`2208a51`, 52 tests. The feedback's own gain has not been shown: on the standard
 task EACC and SAC tie (T2.5.1 `mixed`); on the time-pressure task (urgent
 deadline U(140, 200) s, T2.6W, `e1166eb`) EACC was behind (-9.6 / -13.1 paired
 over 1000-4000), all on urgent missions. The lower window found the cause that is
 confirmed: stage-2 labels did not end at the deadline (fixed in `ca96793`; the
 budget spent before a predicted entry, `e2d4c14`). The check run order
-`T2_6W1_CUTOFF_20261029` (collab) was **approved and dispatched on 2026-10-30** (frozen `e2d4c14`).
+`T2_6W1_CUTOFF_20261029` delivered `no_gain` (-8.21 / +19.69 paired; run-to-run variance exceeds
+the effect). T2.7 (`evidence/T2_7_PRECHECK`): the executor's plan projected onto stage intents
+captures inside the action space; a value-bound design failed its truth audit; executor guidance
+(training-time, `--guide`) on top of the labels, run order `T2_7_GUIDE_20261031` dispatched 2026-10-31.
 The full story, the pre-agreed next branches and every rule are in collab
 `docs/collaboration/HANDOFF.md` (sections 1, 5, 7) and the research evolution
 (stages 20-26). The T1 line below (T1-L, T1-O, T1-N, T1-B) is finished.
@@ -199,7 +202,7 @@ T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_2
 
 | Purpose | Entry |
 |---|---|
-| Tests | `python -B -m pytest -q tests/test_t2_stage.py` (48) |
+| Tests | `python -B -m pytest -q tests/test_t2_stage.py` (52) |
 | Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
 | Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI]` |
 | Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` |
