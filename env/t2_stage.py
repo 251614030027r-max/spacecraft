@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.5.0"
+T2_VERSION = "t2-stage-0.6.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -286,8 +286,37 @@ def action_for_velocity(frame: dict[str, Any], v_c: float, v_z: float) -> np.nda
     return np.clip([(v_c - CLOSING_M_S[0]) / CLOSING_M_S[1], v_z / AZIMUTH_M_S], -1.0, 1.0)
 
 
+#: T2.8 executor safety projection of a stage goal (named defect, T2.7 evaluation): the stage layer flew intents that
+#: closed faster than the truth's radial braking envelope near the far / near boundary (7.5-7.7 m, outside the cone)
+#: and stages that ended inside the mouth band without the entry (6.3-6.5 m, in the cone, unsynchronized with the
+#: rotating port). A stage now ends no closer than STAGE_RANGE_FLOOR_M (the operation sphere is entered by the entry
+#: and descent, i.e. the MPC) and no faster inward than the envelope at its end range less the bridge's own margin.
+STAGE_RANGE_FLOOR_M = 6.0 + 0.5 + 0.3          # operation sphere + mouth band + margin
+STAGE_ENVELOPE_MARGIN_M_S = BRIDGE_ENVELOPE_MARGIN_M_S
+
+
+def _safe_stage_end(q, v, v_goal, h, task):
+    """Radial projection of the stage-end velocity: range floor first, then the braking envelope at the end range
+    (two passes: the end range depends on the projected velocity). Only the inward radial component is reduced."""
+    projected = False
+    for _ in range(2):
+        q_end = q + h * (v + v_goal) / 2.0
+        r_end = float(np.linalg.norm(q_end))
+        u = q_end / max(r_end, 1e-9)
+        closing = -float(v_goal @ u)
+        if r_end < STAGE_RANGE_FLOOR_M:            # keep the stage end outside the mouth band: shorten the inward travel
+            need = (STAGE_RANGE_FLOOR_M - r_end) * 2.0 / h
+            v_goal = v_goal + need * u; projected = True; continue
+        cap = float(task.outer_radial_closing_speed_limit(r_end)) - STAGE_ENVELOPE_MARGIN_M_S
+        if closing > max(cap, 0.0):
+            v_goal = v_goal + (closing - max(cap, 0.0)) * u; projected = True
+    return v_goal, projected
+
+
 def stage_goal(q: np.ndarray, v: np.ndarray, frame: dict[str, Any], action: np.ndarray, mass: float,
-               h: float = STAGE_S, geometry: bool = True) -> dict[str, Any]:
+               h: float = STAGE_S, geometry: bool = True, task=None) -> dict[str, Any]:
+    """The stage layer's goal for an intent: the target velocity, rate-limited to the stage authority; with ``task``
+    (the executor's own task, T2.8) projected onto the stage safety set (``_safe_stage_end``)."""
     d = d_authority(mass, h)
     v_target = target_velocity(frame, action, geometry)
     dv = v_target - v
@@ -297,8 +326,11 @@ def stage_goal(q: np.ndarray, v: np.ndarray, frame: dict[str, Any], action: np.n
     if limited:
         dv = dv * (limit / n)
     v_goal = v + dv
+    safe = False
+    if task is not None:
+        v_goal, safe = _safe_stage_end(q, v, v_goal, h, task)
     return {"a": np.clip(np.asarray(action, dtype=np.float64).reshape(-1)[:2], -1, 1), "v_target": v_target, "d": d,
-            "rate_limited": bool(limited), "q_goal": q + h * (v + v_goal) / 2.0, "v_goal": v_goal}
+            "rate_limited": bool(limited), "safety_projected": bool(safe), "q_goal": q + h * (v + v_goal) / 2.0, "v_goal": v_goal}
 
 
 def angle_deg(a: np.ndarray, b: np.ndarray) -> float:
@@ -680,7 +712,7 @@ class T2StageEnv(gym.Env):
         q16, v16 = plan_state(opp["plan"], STAGE_S, mass)
         best, cost = None, np.inf
         for a in TRACK_GRID:
-            goal = stage_goal(q, v, frame, np.asarray(a), mass, geometry=self.geometry)
+            goal = stage_goal(q, v, frame, np.asarray(a), mass, geometry=self.geometry, task=self.env.config.task)
             c = float(np.linalg.norm(goal["q_goal"] - q16) + TRACK_VELOCITY_WEIGHT * np.linalg.norm(goal["v_goal"] - v16))
             if c < cost:
                 best, cost = np.asarray(a, dtype=np.float64), c
@@ -762,7 +794,7 @@ class T2StageEnv(gym.Env):
         if not (ecal is not None and ecal.ready) or float(np.linalg.norm(q1)) > BRIDGE_RANGE_M + 2 * d_authority(mass):
             return None
         frame1 = spin_frame(rot1, om1, q1, e.config.task.approach_axis)
-        goal = stage_goal(q1, v1, frame1, a2, mass, geometry=self.geometry)
+        goal = stage_goal(q1, v1, frame1, a2, mass, geometry=self.geometry, task=self.env.config.task)
         nxt = self.generator.planner.solve(q1, v1, goal["q_goal"], goal["v_goal"])
         if not nxt["feasible"] or nxt.get("terminal_position_error_m", 1.0) > 0.3:
             return None
@@ -979,7 +1011,7 @@ class T2StageEnv(gym.Env):
             return []
         out, mass = [], self.env.chaser_parameters.mass
         for ac in self.candidate_actions(action):
-            goal = stage_goal(q, v, frame, ac, mass, geometry=self.geometry)
+            goal = stage_goal(q, v, frame, ac, mass, geometry=self.geometry, task=self.env.config.task)
             plan = self.generator.planner.solve(q, v, goal["q_goal"], goal["v_goal"])
             if not plan["feasible"]:
                 continue
@@ -1015,7 +1047,7 @@ class T2StageEnv(gym.Env):
         a = np.clip(np.asarray(action, dtype=np.float64).reshape(-1)[:2], -1.0, 1.0)
         q, v = relative_inertial(e)
         frame = frame_now(e, q); basis = frame["basis"]
-        goal = stage_goal(q, v, frame, a, mass, geometry=self.geometry)
+        goal = stage_goal(q, v, frame, a, mass, geometry=self.geometry, task=self.env.config.task)
         plan = g.planner.solve(q, v, goal["q_goal"], goal["v_goal"])
         t0, dv0, phi0 = e.time_s, e._delta_v, self._phi()
         self.stats["stages"] += 1

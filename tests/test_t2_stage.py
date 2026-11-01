@@ -975,3 +975,25 @@ def test_t27_verdict_is_t26w_plus_the_guidance_check(tmp_path):
     (d / 'model_stats.json').write_text(json.dumps([dict(good, steps=1500)]))
     (d / 'finished.json').write_text(json.dumps({'steps': 4000, 'replay': {'guided': 400}}))
     assert mechanism_readings(tmp_path)['TRAIN_e_mve_s0']['guided_share'] == 0.1
+
+
+def test_stage_goal_is_projected_onto_the_truth_safety_set():
+    """T2.8 executor safety (named defect from T2.7): with the executor's task the stage goal ends no closer than
+    STAGE_RANGE_FLOOR_M and closes no faster than the radial braking envelope at its end range less the margin; far out
+    nothing changes; without a task (other callers) the goal is the T2.7 one."""
+    from env.t2_stage import STAGE_ENVELOPE_MARGIN_M_S, STAGE_RANGE_FLOOR_M, STAGE_S, T2StageEnv, spin_frame, stage_goal
+    env = T2StageEnv(); env.reset(); e = env.env; task = e.config.task; mass = e.chaser_parameters.mass
+    rot, om = e.target_state.rotation, e.target_state.omega
+    for r0, v_in in ((8.0, 0.18), (7.4, 0.15), (15.0, 0.10)):
+        q = np.array([r0, 0.0, 0.0]); v = np.array([-v_in, 0.0, 0.0])
+        f = spin_frame(rot, om, q, task.approach_axis)
+        old = stage_goal(q, v, f, np.array([1.0, 0.0]), mass)
+        g = stage_goal(q, v, f, np.array([1.0, 0.0]), mass, task=task)
+        r_end = float(np.linalg.norm(g['q_goal'])); u = g['q_goal'] / r_end
+        assert r_end >= STAGE_RANGE_FLOOR_M - 1e-9
+        assert -float(g['v_goal'] @ u) <= task.outer_radial_closing_speed_limit(r_end) - STAGE_ENVELOPE_MARGIN_M_S + 1e-9
+        if r0 >= 15.0:
+            assert not g['safety_projected'] and np.allclose(g['v_goal'], old['v_goal'])
+        else:
+            assert g['safety_projected'] and np.linalg.norm(g['q_goal']) > np.linalg.norm(old['q_goal'])
+    assert abs(np.linalg.norm(old['q_goal'] - (q + STAGE_S * (v + old['v_goal']) / 2.0))) < 1e-12
