@@ -1,17 +1,17 @@
 {
   "topic": "t2_7_guide_20261031",
-  "updated_at": "2026-11-01T15:58:02.318171+09:00",
+  "updated_at": "2026-11-01T17:07:26.649473+09:00",
   "scientific_commit": "2208a5176e88718c2c1db3e4a19c58853da49739",
   "run_order": "docs/collaboration/upper/run_orders/T2_7_GUIDE_20261031.md",
-  "evidence_commit": null,
+  "evidence_commit": "ae96fa2512df973db5c3741431904a3f259bc758",
   "collab_delivery_commit": "ee3a1edbf4716c0d0a169a683edd2b38b24ebcd2",
-  "execution_state": "evaluation_all_four_trainings_complete",
+  "execution_state": "complete_delivered",
   "training_active": false,
-  "evaluation_active": true,
-  "automatic_followup": "OS_PIPELINE_ACTIVE",
+  "evaluation_active": false,
+  "automatic_followup": "DISABLED",
   "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_7_GUIDE_20261031\\RUN_STATE.json",
   "handoff": "docs/collaboration/lower/handoffs/t2_7_guide_20261031/RESULT_FINAL.md",
-  "local_report": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\RESULT_INTERIM_EVAL.md",
+  "local_report": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\RESULT_FINAL.md",
   "all_three_research_goals_claimed": false,
   "local_assets": {
     "cleanup_state": "completed",
@@ -24,7 +24,7 @@
     "deleted_asset_receipts": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\本地资产清理_20261029\\DELETED_FILES.jsonl",
     "no_old_training_resume": true
   },
-  "next_action": "Execute authorized T2.7 only; no later experiment authorized.",
+  "next_action": "Wait for upper review and a new execution order. No additional science authorized.",
   "Git_maintenance_owner": "Upper-directed cleanup A/B delegated to lower by GIT_CLEANUP_20261029; upper retains research-history closeout and C1/C2 approval.",
   "previous_phase_snapshot": {
     "topic": "t1b_v51_round",
@@ -43,7 +43,7 @@
   },
   "scientific_commit_role": "actual frozen checkout for current phase",
   "pending_experiment": {
-    "status": "approved_executing",
+    "status": "completed",
     "not_started": false
   },
   "git_cleanup": {
@@ -101,7 +101,7 @@
     "steps_each": 4000,
     "workers_each": 2,
     "cpu_affinity": "CPU0-11 shared",
-    "priority": "AboveNormal for existing training; future eval Normal",
+    "priority": "Normal",
     "checkpoints": [
       1000,
       2000,
@@ -149,5 +149,11 @@
     "e_sac_s1"
   ],
   "interim_science_evidence_commit": "07be8f9d4c67ab885e1a31a96b0d107786002606",
-  "interim_native_preview": "harmful"
+  "interim_native_preview": "harmful",
+  "result": {
+    "verdict": "harmful",
+    "new_evaluation_cases": 768,
+    "reused_reference_cases": 768,
+    "training_runs": 4
+  }
 }
