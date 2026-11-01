@@ -15,7 +15,7 @@ def _as_vector(value: ArrayLike, size: int, name: str) -> FloatArray:
     array = np.asarray(value, dtype=np.float64)
     if array.shape != (size,):
         raise ValueError(f"{name} 必须为 shape=({size},)，实际为 {array.shape}")
-    if not np.all(np.isfinite(array)):
+    if not np.isfinite(array).all():
         raise ValueError(f"{name} 含有非有限数")
     return array
 
@@ -62,13 +62,19 @@ def project_to_so3(matrix: ArrayLike) -> FloatArray:
     return rotation
 
 
+_EYE3 = np.eye(3)
+_ISCLOSE_RTOL = 1e-05      # numpy.allclose / isclose default
+
+
 def is_so3(matrix: ArrayLike, atol: float = 1e-9) -> bool:
+    """np.allclose(R^T R, I, atol) and np.isclose(det R, 1, atol), with numpy's own comparison
+    |x - y| <= atol + rtol |y| written out (the reference is finite, so the result is the same boolean)."""
     value = np.asarray(matrix, dtype=np.float64)
-    return bool(
-        value.shape == (3, 3)
-        and np.allclose(value.T @ value, np.eye(3), atol=atol)
-        and np.isclose(np.linalg.det(value), 1.0, atol=atol)
-    )
+    if value.shape != (3, 3):
+        return False
+    if not (np.abs(value.T @ value - _EYE3) <= atol + _ISCLOSE_RTOL * np.abs(_EYE3)).all():
+        return False
+    return bool(abs(np.linalg.det(value) - 1.0) <= atol + _ISCLOSE_RTOL * abs(1.0))
 
 
 def so3_exp(rotation_vector: ArrayLike) -> FloatArray:
