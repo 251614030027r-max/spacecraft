@@ -8,6 +8,8 @@
     python -B -m experiments.t2_decide --criteria v251 --readout READOUT.json --train-root DIR --output DECISION.json (T2.5.1 validation)
     python -B -m experiments.t2_decide --criteria t26 --readout READOUT.json --train-root DIR --output DECISION.json  (T2.6 time pressure)
     python -B -m experiments.t2_decide --criteria t26w --readout READOUT.json --train-root DIR --output DECISION.json (T2.6W: t26 + late window, bins, fuel)
+    python -B -m experiments.t2_decide --criteria t28 --readout READOUT.json [--checkpoints 1000,2000] [--train-root DIR] --output DECISION.json
+                                                                                     (T2.8 V1: arm-level, not seed-paired)
 
 T2.2 (research layer, 2026-10-22):
 
@@ -337,6 +339,59 @@ def decide_t27(r: dict, mech: dict | None = None, checkpoints=(1000, 2000, 3000,
     return out
 
 
+def decide_t28(r: dict, checkpoints=(1000, 2000), mech: dict | None = None) -> dict:
+    """T2.8 V1 (pre-registered with run order T2_8_NIGHT_20261101): arm-level comparison, not seed-paired (runs with the
+    same seed number share no randomness once they diverge). Per run, AUC = mean over ``checkpoints`` of the mean return
+    on the development openings; arms are every ``e_mve_s*`` (EACC) and ``e_sac_s*`` (SAC) run in the readout.
+
+      C  complete     every run has every checkpoint complete (expected openings, no ERROR file)
+      L  learning     mean EACC AUC - mean SAC AUC >= +5
+      R  reliability  worst EACC AUC >= worst SAC AUC + 5, and all but at most one EACC run above the SAC arm mean
+      S  safety       EACC unsafe total <= SAC unsafe total + 1 (over the checkpoints)
+
+    pass = C, L, R, S; partial = C, S and one of L / R; harmful = not S, or the EACC arm mean below the SAC arm mean by
+    more than 5; no_gain otherwise; incomplete = not C. Reported, never gated: per-checkpoint arm means and spreads, urgent
+    / economy captures, mean delta-v and time of successful episodes, the EACC mechanism readings if given."""
+    arms, comp = r.get('arms', {}), r.get('completeness', {})
+    runs = {a: sorted(k for k in arms if k.startswith(f'e_{a}_s')) for a in ('mve', 'sac')}
+    out = {'checkpoints': list(checkpoints), 'runs': runs, 'criteria': {}, 'values': {}, 'reported': {}}
+    c, v, rep = out['criteria'], out['values'], out['reported']
+    c['C_complete'] = bool(runs['mve']) and bool(runs['sac']) and all(
+        (comp.get(f'{k}/step_{ck}') or {}).get('complete', False) for a in runs for k in runs[a] for ck in checkpoints)
+    if not c['C_complete']:
+        out['verdict'] = 'incomplete'
+        return out
+    cell = lambda k, ck: arms[k].get(str(ck)) or arms[k].get(ck)
+    auc = {a: {k: float(np.mean([cell(k, ck)['mean_return'] for ck in checkpoints])) for k in runs[a]} for a in runs}
+    mean = {a: float(np.mean(list(auc[a].values()))) for a in auc}
+    worst = {a: min(auc[a].values()) for a in auc}
+    unsafe = {a: int(sum(cell(k, ck)['unsafe'] for k in runs[a] for ck in checkpoints)) for a in runs}
+    above = sum(x > mean['sac'] for x in auc['mve'].values())
+    v.update(auc=auc, arm_mean=mean, arm_diff=mean['mve'] - mean['sac'], worst=worst, eacc_above_sac_mean=above, unsafe=unsafe)
+    c['L_learning'] = v['arm_diff'] >= 5.0
+    c['R_reliability'] = worst['mve'] >= worst['sac'] + 5.0 and above >= len(runs['mve']) - 1
+    c['S_safety'] = unsafe['mve'] <= unsafe['sac'] + 1
+    if not c['S_safety'] or v['arm_diff'] < -5.0:
+        out['verdict'] = 'harmful'
+    elif c['L_learning'] and c['R_reliability']:
+        out['verdict'] = 'pass'
+    elif c['L_learning'] or c['R_reliability']:
+        out['verdict'] = 'partial'
+    else:
+        out['verdict'] = 'no_gain'
+    every = sorted({int(ck) for k in arms for ck in arms[k]})
+    for a in runs:
+        rep[a] = {ck: {'mean_return': [cell(k, ck)['mean_return'] for k in runs[a] if cell(k, ck)],
+                       'urgent_capture': [cell(k, ck)['urgent']['capture'] for k in runs[a] if cell(k, ck)],
+                       'economy_capture': [cell(k, ck)['economy']['capture'] for k in runs[a] if cell(k, ck)],
+                       'unsafe': [cell(k, ck)['unsafe'] for k in runs[a] if cell(k, ck)],
+                       'delta_v_success': [cell(k, ck)['mean_delta_v_success'] for k in runs[a] if cell(k, ck)],
+                       'time_success': [cell(k, ck)['mean_time_success'] for k in runs[a] if cell(k, ck)]} for ck in every}
+    if mech:
+        rep['mechanism'] = mech
+    return out
+
+
 def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), start=1000) -> dict:
     """Mean of the T2.5 mechanism probes of each EACC run from ``start`` decisions on (model_stats.json)."""
     out = {}
@@ -412,14 +467,19 @@ def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS, min_seeds: int = 3, require
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--readout', required=True); p.add_argument('--output', required=True); p.add_argument('--final', type=int, default=None)
-    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251', 't26', 't26w', 't27'], default='t22')
+    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251', 't26', 't26w', 't27', 't28'], default='t22')
     p.add_argument('--train-root', default=None, help='v25 / v251: the directory holding TRAIN_e_mve_s0 / _s1 (mechanism readings)')
     p.add_argument('--checkpoints', default=None, help='t25 / t26 / t26w: comparison checkpoints, e.g. 1000,2000,3000,4000')
     p.add_argument('--min-seeds', type=int, default=3); p.add_argument('--no-converged', action='store_true')
     a = p.parse_args()
     r = json.loads(Path(a.readout).read_text(encoding='utf-8'))
     ck = tuple(int(x) for x in a.checkpoints.split(',')) if a.checkpoints else T25_CHECKPOINTS
-    if a.criteria in ('v25', 'v251', 't26', 't26w', 't27'):
+    if a.criteria == 't28':
+        mech = None
+        if a.train_root:
+            mech = mechanism_readings(a.train_root, arms=tuple(sorted(x.name for x in Path(a.train_root).glob('TRAIN_e_mve_s*'))))
+        res = decide_t28(r, ck if a.checkpoints else (1000, 2000), mech)
+    elif a.criteria in ('v25', 'v251', 't26', 't26w', 't27'):
         if not a.train_root:
             p.error('--criteria v25 / v251 / t26 / t26w needs --train-root (the mechanism readings)')
         mech = mechanism_readings(a.train_root)

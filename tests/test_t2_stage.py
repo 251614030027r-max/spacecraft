@@ -997,3 +997,28 @@ def test_stage_goal_is_projected_onto_the_truth_safety_set():
         else:
             assert g['safety_projected'] and np.linalg.norm(g['q_goal']) > np.linalg.norm(old['q_goal'])
     assert abs(np.linalg.norm(old['q_goal'] - (q + STAGE_S * (v + old['v_goal']) / 2.0))) < 1e-12
+
+
+def test_t28_arm_level_verdict():
+    """t28: arm means of per-run AUC (mean return over the checkpoints), not seed pairs; reliability needs the worst
+    EACC run 5 above the worst SAC run and all but one EACC run above the SAC mean; safety by arm unsafe totals."""
+    from experiments.t2_decide import decide_t28
+
+    def readout(mve, sac, unsafe_mve=0):
+        arms, comp = {}, {}
+        for a, xs in (('mve', mve), ('sac', sac)):
+            for i, x in enumerate(xs):
+                k = f'e_{a}_s{i}'
+                arms[k] = {str(ck): {'mean_return': x + (ck - 1000) / 100, 'unsafe': unsafe_mve if (a == 'mve' and i == 0) else 0,
+                                     'mean_delta_v_success': 1.0, 'mean_time_success': 100.0,
+                                     'urgent': {'capture': 20}, 'economy': {'capture': 23}} for ck in (1000, 2000)}
+                comp.update({f'{k}/step_{ck}': {'complete': True} for ck in (1000, 2000)})
+        return {'arms': arms, 'completeness': comp}
+    assert decide_t28(readout([30, 32, 34], [20, 30, 25]))['verdict'] == 'pass'          # +7, worst 30 vs 20
+    v = decide_t28(readout([45, 12, 40], [20, 30, 25]))                                    # +7.3 on average, one EACC run collapsed
+    assert v['verdict'] == 'partial' and v['criteria']['L_learning'] and not v['criteria']['R_reliability']
+    assert decide_t28(readout([40, 12, 35], [20, 30, 25]))['verdict'] == 'no_gain'       # +4, worst run below
+    assert decide_t28(readout([26, 24, 25], [20, 30, 25]))['verdict'] == 'no_gain'
+    assert decide_t28(readout([30, 32, 34], [20, 30, 25], unsafe_mve=2))['verdict'] == 'harmful'
+    r = readout([30, 32, 34], [20, 30, 25]); r['completeness']['e_mve_s1/step_2000']['complete'] = False
+    assert decide_t28(r)['verdict'] == 'incomplete'
