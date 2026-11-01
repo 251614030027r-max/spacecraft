@@ -221,6 +221,6 @@ SAC+引导辅助对照未齐，暂不能区分引导本身与标签增量。下�
 
 ## 附件与缺项
 
-C_primary提供完整主比较768个逐例JSON；SAC_guided_partial仅提供已完成的辅助结果，未完成标MISSING。B包含四条训练manifest、finished、episodes、model_stats、heartbeat与完整外部回合/滚动日志；模型ZIP不上传。PRIMARY_READOUT含逐开局配对、紧急/经济、分档、共同成功燃料时间。正式四配对最终读出与本轮最终交付：MISSING、仍在评估。SHA256SUMS固定本包，不能用于推断后续活动目录完整性。
+C_primary提供完整主比较768个逐例JSON；SAC_guided_partial仅提供已完成的辅助结果，未完成标MISSING。B包含四条训练manifest、finished、episodes、model_stats、heartbeat；外部逐回合/30秒滚动日志和原始TensorBoard事件留在本机，不在本即时推送载荷中；模型ZIP不上传。PRIMARY_READOUT含逐开局配对、紧急/经济、分档、共同成功燃料时间。正式四配对最终读出与本轮最终交付：MISSING、仍在评估。SHA256SUMS固定本包，不能用于推断后续活动目录完整性。
 
 本即时交付不停止评估、不改训练、不改变预登记门槛。正式最终报告将在全部辅助评估及四种配对完整后另外交付。
