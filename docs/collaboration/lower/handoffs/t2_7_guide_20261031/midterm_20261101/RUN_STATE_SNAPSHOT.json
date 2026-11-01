@@ -1,0 +1,148 @@
+{
+  "phase": "training",
+  "started_jst": "2026-10-31T20:25:12.404294+09:00",
+  "order_collab": "8708f39",
+  "science_SHA": "2208a5176e88718c2c1db3e4a19c58853da49739",
+  "updated_jst": "2026-11-01T11:30:28.739451+09:00",
+  "pid": 18740,
+  "processes": {
+    "train_e_mve_s0_attempt0": {
+      "pid": 3768,
+      "running": true
+    },
+    "train_e_mve_s1_attempt0": {
+      "pid": 1516,
+      "running": true
+    },
+    "train_e_sac_s0_attempt0": {
+      "pid": 20128,
+      "running": true
+    },
+    "train_e_sac_s1_attempt0": {
+      "pid": 7580,
+      "running": true
+    }
+  },
+  "rolling": {
+    "e_mve_s0": {
+      "jst": "2026-11-01T11:30:19.787639+09:00",
+      "steps": 3264,
+      "updates": 6130,
+      "episodes": 764,
+      "wall_s": 53509.70300000001,
+      "recent_decisions_per_s": 0.0,
+      "overall_decisions_per_s": 0.06099828287217366,
+      "eta_s_estimate": null,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 3264,
+        "with_candidates": 2719,
+        "candidates": 20905,
+        "entry_candidates": 4123,
+        "reason": {
+          "off": 51,
+          "entry_calibration": 192,
+          "stage": 2274,
+          "entry": 558,
+          "not_comparable": 189
+        },
+        "guided": 356,
+        "cutoff_candidates": 0,
+        "two_stage": 14018,
+        "two_stage_entry": 3402,
+        "two_stage_cutoff": 53
+      },
+      "model_probes": 246,
+      "pending_truth_records": 0,
+      "final": false
+    },
+    "e_mve_s1": {
+      "jst": "2026-11-01T11:30:03.102837+09:00",
+      "steps": 3327,
+      "updates": 6256,
+      "episodes": 755,
+      "wall_s": 53493.094,
+      "recent_decisions_per_s": 0.06594348643213223,
+      "overall_decisions_per_s": 0.062194944267011366,
+      "eta_s_estimate": 10205.708499999295,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 3327,
+        "with_candidates": 2841,
+        "candidates": 21895,
+        "entry_candidates": 4318,
+        "reason": {
+          "off": 57,
+          "entry_calibration": 190,
+          "stage": 2332,
+          "not_comparable": 163,
+          "entry": 585
+        },
+        "guided": 375,
+        "cutoff_candidates": 0,
+        "two_stage": 15335,
+        "two_stage_entry": 3598,
+        "two_stage_cutoff": 177
+      },
+      "model_probes": 251,
+      "pending_truth_records": 0,
+      "final": false
+    },
+    "e_sac_s0": {
+      "jst": "2026-11-01T11:30:17.029067+09:00",
+      "steps": 3744,
+      "updates": 7090,
+      "episodes": 790,
+      "wall_s": 53506.95300000001,
+      "recent_decisions_per_s": 0.06594566077550224,
+      "overall_decisions_per_s": 0.06997221463909559,
+      "eta_s_estimate": 3881.9840000011027,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 3744,
+        "with_candidates": 0,
+        "candidates": 0,
+        "entry_candidates": 0,
+        "reason": {
+          "off": 3744
+        },
+        "guided": 313
+      },
+      "model_probes": 284,
+      "pending_truth_records": 0,
+      "final": false
+    },
+    "e_sac_s1": {
+      "jst": "2026-11-01T11:30:03.727602+09:00",
+      "steps": 3412,
+      "updates": 6426,
+      "episodes": 794,
+      "wall_s": 53493.641,
+      "recent_decisions_per_s": 0.09825756583254813,
+      "overall_decisions_per_s": 0.06378328220358004,
+      "eta_s_estimate": 5984.272000001278,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 3412,
+        "with_candidates": 0,
+        "candidates": 0,
+        "entry_candidates": 0,
+        "reason": {
+          "off": 3412
+        },
+        "guided": 405
+      },
+      "model_probes": 258,
+      "pending_truth_records": 0,
+      "final": false
+    }
+  },
+  "current_job": "four_guided_trainings",
+  "training_done": [],
+  "attempts": {
+    "e_mve_s0": 0,
+    "e_mve_s1": 0,
+    "e_sac_s0": 0,
+    "e_sac_s1": 0
+  }
+}
