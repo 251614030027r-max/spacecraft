@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.7.0"
+T2_VERSION = "t2-stage-0.8.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -85,7 +85,11 @@ OBS_DIM = 24
 #: phase, rate, port direction, cone angles), the relative state, the mission clock and fuel stay, so the policy keeps
 #: what it learns from; the executor's predictions reach it only through training (EACC). 'raw': ``observe_raw``, also
 #: without the spin-aligned frame and phase angles (harder; not the T2.9 default).
-OBS_PROFILES = ("engineered", "geometric", "raw")
+#: 'reduced' (T2.10, research layer 2026-11-02: moderate change): only the three features that hand the policy the
+#: planner's answer are zeroed -- time to the port's pass, entry-window reachability, deadline slack after the pass
+#: (PLANNER_FEATURES); the relative state, target geometry, clock, fuel, braking margin and execution state stay.
+OBS_PROFILES = ("engineered", "reduced", "geometric", "raw")
+PLANNER_FEATURES = (8, 17, 19)
 #: indices in ``observe``: time to the port's pass, last stage's position / velocity residual and hold, entry-window
 #: reachability (bridge angle), braking margin, deadline slack after the pass
 EXECUTOR_FEATURES = (8, 14, 15, 16, 17, 18, 19)
@@ -457,6 +461,8 @@ ENTRY_STAGES = 2
 #: estimated inertia), and the plan is projected onto the stage action space -- the intent whose stage goal lies nearest
 #: the plan 16 s ahead. Sandbox (exploratory): flown at every decision it captured 19/19 urgent audit missions (rally
 #: rule 9/19, direct G* 18/19) and matched the best converged SAC on the development openings.
+#: T2.10 candidate intents of the opportunity preference (the 3 x 3 grid P4 validated) -- the executed intent is added
+PREF_GRID = tuple((p, z) for p in (-0.5, 0.25, 1.0) for z in (-1.0, 0.0, 1.0))
 OPPORTUNITY_TAUS_S = (20., 30., 40., 50., 60., 70., 80., 90., 100., 110., 120., 140., 160., 180., 200., 220.)
 TRACK_GRID = tuple((float(p), float(z)) for p in np.linspace(-1.0, 1.0, 9) for z in np.linspace(-1.0, 1.0, 9))
 TRACK_VELOCITY_WEIGHT = 10.0      # s: velocity mismatch of a stage goal weighed against position (m) in the projection
@@ -522,10 +528,12 @@ class T2StageEnv(gym.Env):
 
     def __init__(self, openings: list[int] | None = None, seed_base: int = 1_000_000, candidates: int = 0,
                  mission: T2Mission = T2Mission(), shaping: bool = True, seed: int = 0, geometry: bool = True,
-                 entry_stages: int = ENTRY_STAGES, window: bool = True, obs_profile: str = "engineered") -> None:
+                 entry_stages: int = ENTRY_STAGES, window: bool = True, obs_profile: str = "engineered", pref: bool = False) -> None:
         if obs_profile not in OBS_PROFILES:
             raise ValueError(f"obs_profile must be one of {OBS_PROFILES}")
         self.obs_profile = obs_profile
+        #: T2.10: at every stage decision, the executor-calibrated opportunity value of PREF_GRID and the executed intent
+        self.pref = bool(pref)
         self.geometry = bool(geometry)
         self.window = bool(window)
         self.diagnostics = False            # also predict the executed intent with its own realized residual (tests)
@@ -582,7 +590,40 @@ class T2StageEnv(gym.Env):
         o = observe(*args)
         if self.obs_profile == "geometric":
             o[list(EXECUTOR_FEATURES)] = 0.0
+        elif self.obs_profile == "reduced":
+            o[list(PLANNER_FEATURES)] = 0.0
         return o
+
+    def opportunity_value(self, action) -> float | None:
+        """T2.10 executor-calibrated opportunity value of a stage intent at the current decision (``opp2`` of
+        evidence/T2_8_PRECHECK/脚本/opp2_probe.py, the signal P4 validates): from the intent's stage goal (the planner's
+        own goal; target attitude 16 s ahead from the constant-rate model and the estimated inertia) the earliest
+        feasible conditional G* entry arriving within the time left (no planning margin -- the executor's own entry has
+        none), valued by the entry outcome model's historical execution replay (EntryCalibration.predict: capture or
+        timeout, time and delta-v) less the stage's time cost; no feasible entry: -timeout penalty - time cost of the
+        time left. None until the entry calibration is ready. Used only as a ranking between intents of one decision."""
+        from env.t1_gstar import free_body_rotations
+        if not self.entry_calibration.ready:
+            return None
+        e = self.env; w = e.config.reward
+        q, v = relative_inertial(e)
+        goal = stage_goal(q, v, frame_now(e, q), np.asarray(action, float).reshape(-1)[:2], e.chaser_parameters.mass,
+                          geometry=self.geometry, task=e.config.task)
+        remaining = float(self.mission["deadline_s"]) - (e.time_s + STAGE_S)
+        taus = [t for t in OPPORTUNITY_TAUS_S if t <= remaining]
+        if not taus:
+            return float(-w.timeout_penalty - w.time_cost_per_s * max(remaining + STAGE_S, 0.0))
+        inertia = np.asarray(self.info_env.target_parameters.inertia)
+        _, rots, rates = free_body_rotations(e.target_state.rotation, e.target_state.omega, inertia, STAGE_S)
+        history = free_body_rotations(rots[-1], rates[-1], inertia, max(taus) + 1.0)
+        g = self.generator.bridge
+        for tau in taus:
+            res = g.planner.solve(np.asarray(goal["q_goal"], float), np.asarray(goal["v_goal"], float), tau, history, None,
+                                  entry_speed_m_s=g.entry_speed_m_s)
+            if res["feasible"]:
+                pr = self.entry_calibration.frozen().predict(float(res["tau_s"]), float(res["delta_v_m_s"]), w, remaining)
+                return float(pr["reward"] - w.time_cost_per_s * STAGE_S)
+        return float(-w.timeout_penalty - w.time_cost_per_s * (remaining + STAGE_S))
 
     def potential(self, q: np.ndarray, t_rotation: np.ndarray, omega: np.ndarray) -> float:
         mouth = t_rotation @ so3_exp(24.0 * omega) @ (ENTRY_RADIUS_M * self.env.config.task.approach_axis)
@@ -1091,6 +1132,10 @@ class T2StageEnv(gym.Env):
         if g.mode in ("bridge", "descent"):
             return self._macro_to_end()
         a = np.clip(np.asarray(action, dtype=np.float64).reshape(-1)[:2], -1.0, 1.0)
+        pref = None
+        if self.pref and self.entry_calibration.ready:      # T2.10: before the stage is flown (the decision's own state)
+            acts = [np.asarray(x, np.float64) for x in PREF_GRID] + [a]
+            pref = {"a": [x.tolist() for x in acts], "v": [self.opportunity_value(x) for x in acts]}
         q, v = relative_inertial(e)
         frame = frame_now(e, q); basis = frame["basis"]
         goal = stage_goal(q, v, frame, a, mass, geometry=self.geometry, task=self.env.config.task)
@@ -1166,10 +1211,10 @@ class T2StageEnv(gym.Env):
             self.stats["macro"] = g.mode
         info = {"event": event, "true_reward": reward, "stage_s": e.time_s - t0, "held": held, "mode": g.mode,
                 "plan_status": plan["status"], "rate_limited": goal["rate_limited"], "planned_dv": plan.get("delta_v_m_s"), "executed_dv": e._delta_v - dv0,
-                "model": model, "time_s": e.time_s, "delta_v": e._delta_v,
+                "model": model, "pref": pref, "time_s": e.time_s, "delta_v": e._delta_v,
                 "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission), "far_field_controls": self.far_field_controls}
         return self.observation(), float(shaped), terminated, truncated, info
 
 
-__all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "OBS_PROFILES", "EXECUTOR_FEATURES", "observe_raw", "GAMMA_STAGE", "InfoEnv", "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
+__all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "OBS_PROFILES", "EXECUTOR_FEATURES", "PLANNER_FEATURES", "PREF_GRID", "observe_raw", "GAMMA_STAGE", "InfoEnv", "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
            "d_authority", "observe", "Calibration", "t2_env_config"]

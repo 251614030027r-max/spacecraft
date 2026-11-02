@@ -341,7 +341,8 @@ def decide_t27(r: dict, mech: dict | None = None, checkpoints=(1000, 2000, 3000,
 
 def decide_t28(r: dict, checkpoints=(1000, 2000), mech: dict | None = None) -> dict:
     """T2.8 V1 (pre-registered with run order T2_8_NIGHT_20261101): arm-level comparison, not seed-paired (runs with the
-    same seed number share no randomness once they diverge). Per run, AUC = mean over ``checkpoints`` of the mean return
+    same seed number share no randomness once they diverge). The method arm is every ``e_mve_s*`` or (T2.10) ``e_pref_s*``
+    run. Per run, AUC = mean over ``checkpoints`` of the mean return
     on the development openings; arms are every ``e_mve_s*`` (EACC) and ``e_sac_s*`` (SAC) run in the readout.
 
       C  complete     every run has every checkpoint complete (expected openings, no ERROR file)
@@ -353,7 +354,7 @@ def decide_t28(r: dict, checkpoints=(1000, 2000), mech: dict | None = None) -> d
     more than 5; no_gain otherwise; incomplete = not C. Reported, never gated: per-checkpoint arm means and spreads, urgent
     / economy captures, mean delta-v and time of successful episodes, the EACC mechanism readings if given."""
     arms, comp = r.get('arms', {}), r.get('completeness', {})
-    runs = {a: sorted(k for k in arms if k.startswith(f'e_{a}_s')) for a in ('mve', 'sac')}
+    runs = {a: sorted(k for k in arms if k.startswith(f'e_{a}_s') or (a == 'mve' and k.startswith('e_pref_s'))) for a in ('mve', 'sac')}
     out = {'checkpoints': list(checkpoints), 'runs': runs, 'criteria': {}, 'values': {}, 'reported': {}}
     c, v, rep = out['criteria'], out['values'], out['reported']
     c['C_complete'] = bool(runs['mve']) and bool(runs['sac']) and all(
@@ -402,7 +403,8 @@ def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), st
         ms = [m for m in json.loads(f.read_text(encoding='utf-8')) if m['steps'] >= start]
         out[arm] = {k: (float(np.mean([m[k] for m in ms if m.get(k) is not None])) if any(m.get(k) is not None for m in ms) else None)
                     for k in ('two_stage_share', 'decisive_share', 'c_mean', 'grad_cos', 'loss_share', 'increment_abs_mean', 'w_mean',
-                              'w2_mean', 'pi_gap_sigma_median', 'stage2_rows', 'stage2_entry_share', 'stage1_cutoff_share', 'stage2_cutoff_share')}
+                              'w2_mean', 'pi_gap_sigma_median', 'stage2_rows', 'stage2_entry_share', 'stage1_cutoff_share', 'stage2_cutoff_share',
+                              'pref_pairs', 'pref_ordered', 'pref_loss', 'pref_share')}
         fin = Path(train_root) / arm / 'finished.json'          # T2.7: share of stored transitions the executor's plan flew
         if fin.exists():
             fz = json.loads(fin.read_text(encoding='utf-8'))
@@ -477,7 +479,8 @@ def main():
     if a.criteria == 't28':
         mech = None
         if a.train_root:
-            mech = mechanism_readings(a.train_root, arms=tuple(sorted(x.name for x in Path(a.train_root).glob('TRAIN_e_mve_s*'))))
+            mech = mechanism_readings(a.train_root, arms=tuple(sorted(x.name for x in Path(a.train_root).glob('TRAIN_e_mve_s*'))
+                                                               + sorted(x.name for x in Path(a.train_root).glob('TRAIN_e_pref_s*'))))
         res = decide_t28(r, ck if a.checkpoints else (1000, 2000), mech)
     elif a.criteria in ('v25', 'v251', 't26', 't26w', 't27'):
         if not a.train_root:

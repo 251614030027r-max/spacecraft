@@ -61,12 +61,29 @@ AGE_CAP = 2000
 #: learner version recorded in the manifest (T2.5.1: one-step stage-2 rows; T2.6: calibration shared by the workers;
 #: T2.6.1: labels end at the deadline / budget, env t2-stage-0.4.2; env 0.4.3 adds the budget before a predicted entry;
 #: T2.7: executor guidance in the collector (``guide_probability``; off by default), env 0.5.0;
-#: T2.9: the decision-layer interface ``obs_profile`` passed to every environment and recorded, env 0.7.0)
-LEARNER_VERSION = "t2-learner-2.8"
+#: T2.9: the decision-layer interface ``obs_profile`` passed to every environment and recorded, env 0.7.0;
+#: T2.10: arm e_pref, the executor-calibrated opportunity preference on the critic, env 0.8.0)
+LEARNER_VERSION = "t2-learner-2.9"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
 POOL_CALIBRATION = True
+#: T2.10 executor-calibrated opportunity preference (arm e_pref; research layer 2026-11-02: relative advantage / ranking
+#: from the executor on the decision's candidates instead of more short Bellman labels). At every stage decision the
+#: environment values PREF_GRID and the executed intent with T2StageEnv.opportunity_value (earliest feasible entry within
+#: the time left, valued by the entry outcome model's historical execution replay). For every pair whose values differ by
+#: at least PREF_DELTA the critic is asked to order them, by a margin that grows with the executor's value gap:
+#:     L_pref = mean over such pairs and both critics of relu(min(PREF_KAPPA dv, PREF_MARGIN_CAP) - (Q_i(s, a_hi) - Q_i(s, a_lo)))
+#: and the critic loss is L_real + PREF_LAMBDA * L_pref. A one-sided hinge: a pair the critic already separates by the
+#: margin costs nothing, and no value is regressed on the executor's number, so its optimism cannot enter the Bellman
+#: targets; the actor follows the critic as in SAC. PREF_DELTA = the tie threshold P4 validated the signal with. Scale:
+#: the hinge's gradient is O(1) per pair while the TD regression's is O(TD error ~ 10-30), hence PREF_LAMBDA = 10
+#: (sandbox integration, T2.10: with a fixed margin of 2 and weight 1 the term was 0.15 % of the critic loss).
+PREF_LAMBDA = 10.0
+PREF_DELTA = 5.0
+PREF_KAPPA = 0.5
+PREF_MARGIN_CAP = 100.0
+PREF_K = 10            # PREF_GRID (9) + the executed intent
 
 
 class StageReplay(ReplayBuffer):
@@ -88,6 +105,9 @@ class StageReplay(ReplayBuffer):
         self.c2_obs = np.zeros((*shape, k, d), np.float32); self.c2_done = np.zeros((*shape, k), np.float32)
         self.c2_kind = np.zeros((*shape, k), np.float32)
         self.created = np.zeros(shape, np.float32)             # stored transitions at label time (label age diagnostic)
+        #: T2.10 opportunity preference: intents and their executor-calibrated opportunity values at the decision
+        self.pref_a = np.zeros((*shape, PREF_K, a), np.float32); self.pref_v = np.zeros((*shape, PREF_K), np.float32)
+        self.pref_valid = np.zeros((*shape, PREF_K), np.float32)
         self.stored = 0
         self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0, 'entry_candidates': 0, 'reason': {}}
         self._last = None
@@ -95,9 +115,15 @@ class StageReplay(ReplayBuffer):
     def add(self, obs, next_obs, action, reward, done, infos):
         i = self.pos
         self.fact_valid[i] = 0.0; self.cand_valid[i] = 0.0; self.cand_done[i] = 0.0; self.cand_kind[i] = 0.0
-        self.c2_valid[i] = 0.0; self.c2_done[i] = 0.0; self.c2_kind[i] = 0.0
+        self.c2_valid[i] = 0.0; self.c2_done[i] = 0.0; self.c2_kind[i] = 0.0; self.pref_valid[i] = 0.0
         self.created[i] = self.stored; self.stored += 1
         for e, info in enumerate(infos):
+            pref = info.get('pref')
+            if pref:
+                for j, (pa, pv) in enumerate(zip(pref['a'][:PREF_K], pref['v'][:PREF_K])):
+                    if pv is not None:
+                        self.pref_a[i, e, j] = pa; self.pref_v[i, e, j] = pv; self.pref_valid[i, e, j] = 1.0
+                self.model_counts['pref_decisions'] = self.model_counts.get('pref_decisions', 0) + 1
             model = info.get('model') or {}
             fact, cands = model.get('fact'), (model.get('cands') or [])[:self.k]
             reason = (model.get('diag') or {}).get('reason', 'none')
@@ -135,12 +161,13 @@ class StageReplay(ReplayBuffer):
         i, e = self._last
         return {k: self.to_torch(getattr(self, k)[i, e]) for k in
                 ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_kind', 'created',
-                 'c2_valid', 'c2_a', 'c2_logp', 'c2_r', 'c2_obs', 'c2_done', 'c2_kind')}
+                 'c2_valid', 'c2_a', 'c2_logp', 'c2_r', 'c2_obs', 'c2_done', 'c2_kind', 'pref_a', 'pref_v', 'pref_valid')}
 
 
 class T2SAC(SAC):
-    def __init__(self, *args, model_beta: float = 0.0, model_start: int = MODEL_START, **kwargs):
+    def __init__(self, *args, model_beta: float = 0.0, model_start: int = MODEL_START, pref_lambda: float = 0.0, **kwargs):
         self.model_beta, self.model_start = float(model_beta), int(model_start)
+        self.pref_lambda = float(pref_lambda)
         self.model_stats = []
         self.td_ms = None          # running mean of the squared real TD residual (sigma^2)
         self.entry_bias_now = None # current entry outcome-model bias (mean over environments that know it), None = unknown
@@ -266,6 +293,30 @@ class T2SAC(SAC):
                       'stage2_cutoff_share': float(((m['c2_done'][mask] > 0) & (m['c2_kind'][mask] == 0) & (m['c2_valid'][mask] > 0)).float().mean()),
                       'stage1_cutoff_share': float(((m['cand_done'][mask] > 0) & (m['cand_kind'][mask] == 0)).float().mean())}
 
+    def _pref_loss(self, data):
+        """T2.10 opportunity preference (module constants): hinge on the critic's order of every decisive pair of the
+        decision's intents. Returns (loss or None, readings): pairs used and the share the critic already orders."""
+        m = self.replay_buffer.model_batch()
+        valid = m['pref_valid'] > 0                                          # (B, K)
+        rows = valid.sum(dim=1) >= 2
+        if not bool(rows.any()):
+            return None, {'pref_pairs': 0}
+        a, v, valid = m['pref_a'][rows], m['pref_v'][rows], valid[rows]
+        b, k = v.shape
+        s = data.observations[rows][:, None, :].expand(-1, k, -1).reshape(b * k, -1)
+        qs = [q.reshape(b, k) for q in self.critic(s, a.reshape(b * k, -1))]
+        dv = v[:, :, None] - v[:, None, :]                                   # (B, K, K): hi - lo
+        mask = (dv >= PREF_DELTA) & valid[:, :, None] & valid[:, None, :]
+        n = int(mask.sum())
+        if n == 0:
+            return None, {'pref_pairs': 0}
+        margin = (PREF_KAPPA * dv).clamp(max=PREF_MARGIN_CAP)
+        loss = sum(F.relu(margin - (q[:, :, None] - q[:, None, :]))[mask].mean() for q in qs) / len(qs)
+        with th.no_grad():
+            qmin = th.min(th.stack(qs), dim=0).values
+            ordered = float(((qmin[:, :, None] - qmin[:, None, :]) > 0)[mask].float().mean())
+        return loss, {'pref_pairs': n, 'pref_ordered': ordered, 'pref_states': int(rows.sum())}
+
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         self.policy.set_training_mode(True)
         self._update_learning_rate([self.actor.optimizer, self.critic.optimizer])
@@ -293,6 +344,12 @@ class T2SAC(SAC):
                         g2 = th.autograd.grad(mloss, params, retain_graph=True, allow_unused=True)
                         v1 = th.cat([g.reshape(-1) for g in g1 if g is not None]); v2 = th.cat([g.reshape(-1) for g in g2 if g is not None])
                         info['grad_cos'] = float(F.cosine_similarity(v1, v2, dim=0))
+            if self.pref_lambda > 0:
+                ploss, pinfo = self._pref_loss(data)
+                info.update(pinfo)
+                if ploss is not None:
+                    loss = loss + self.pref_lambda * ploss
+                    info['pref_loss'] = float(ploss.item()); info['pref_share'] = float(self.pref_lambda * ploss.item() / max(real.item(), 1e-9))
             self.critic.optimizer.zero_grad(); loss.backward(); self.critic.optimizer.step()
             q_pi = th.min(th.cat(self.critic(data.observations, actions_pi), dim=1), dim=1, keepdim=True).values
             actor_loss = (ent_coef * log_prob - q_pi).mean()
@@ -312,7 +369,8 @@ def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transi
     return T2SAC('MlpPolicy', env, seed=seed, device='cpu', verbose=0, policy_kwargs={'net_arch': [256, 256]},
                  gamma=GAMMA_STAGE, learning_rate=3e-4, buffer_size=100_000, batch_size=64 if smoke else 256,
                  learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=max(1, int(round(updates_per_transition))),
-                 ent_coef=ENT_COEF, tau=0.005, model_beta=model_beta if arm == 'e_mve' else 0.0, model_start=16 if smoke else MODEL_START)
+                 ent_coef=ENT_COEF, tau=0.005, model_beta=model_beta if arm == 'e_mve' else 0.0, model_start=16 if smoke else MODEL_START,
+                 pref_lambda=PREF_LAMBDA if arm == 'e_pref' else 0.0)
 
 
 # ---------------------------------------------------------------------- asynchronous collection
@@ -340,7 +398,7 @@ def _slim(info: dict) -> dict:
     cands = [{**{k: c.get(k, 0) for k in ('a', 'reward', 'next_obs', 'done', 'kind')}, 's2': c.get('s2')} for c in model.get('cands') or []]
     diag = model.get('diag') or {}
     return {'model': {'fact': model.get('fact'), 'cands': cands, 'diag': {k: diag.get(k) for k in ('reason', 'entry_bias', 'entry_records')}},
-            **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission', 'guided')}}
+            **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission', 'guided', 'pref')}}
 
 
 class CalibrationPool:
@@ -382,7 +440,7 @@ def merge_calibration(env, rows) -> None:
 
 
 def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool, urgent_deadline=None,
-           obs_profile: str = 'engineered') -> None:
+           obs_profile: str = 'engineered', pref: bool = False) -> None:
     """One environment: send (transition or None, observation to act on), receive the action; until 'stop'."""
     import os
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
@@ -391,11 +449,11 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
     from env.t2_stage import T2Mission, T2StageEnv
     mission = T2Mission() if urgent_deadline is None else T2Mission(urgent_deadline_s=tuple(float(x) for x in urgent_deadline))
     env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, candidates=candidates, shaping=True, seed=seed * 100 + rank,
-                     entry_stages=entry_stages, window=window, mission=mission, obs_profile=obs_profile)
+                     entry_stages=entry_stages, window=window, mission=mission, obs_profile=obs_profile, pref=pref)
     obs, _ = env.reset(); transition = None
     actor = None
     guide_rng = np.random.default_rng([seed, rank, 2707])        # T2.7 guidance draws (own stream)
-    outbox = share_calibration(env) if (POOL_CALIBRATION and candidates > 0) else None
+    outbox = share_calibration(env) if (POOL_CALIBRATION and (candidates > 0 or pref)) else None
 
     def label_policy(o):          # mu: this environment's copy of the policy (T2.5 stage 2 of a counterfactual label)
         with th.no_grad():
@@ -442,20 +500,23 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     model = make_model(SpacesEnv(), arm, seed, smoke, updates_per_transition=updates_per_transition, model_beta=model_beta)
     model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
     candidates = K_CANDIDATES if arm == 'e_mve' else 0      # the SAC arm computes no model
+    pref = arm == 'e_pref'                                   # T2.10: the opportunity preference (no Bellman labels)
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
                                                    'k_candidates': candidates, 'collection': 'asynchronous', 'window': window,
                                                    'gradient_steps_per_transition': model.gradient_steps, 'entry_stages': entry_stages, 'sync_updates': SYNC_UPDATES, 'age_cap': AGE_CAP,
-                                                   'pooled_calibration': bool(POOL_CALIBRATION and candidates > 0),
+                                                   'pooled_calibration': bool(POOL_CALIBRATION and (candidates > 0 or pref)),
                                                    'urgent_deadline_s': list(urgent_deadline) if urgent_deadline is not None else [170.0, 210.0],
                                                    'guide': bool(guide), 'guide_p0': GUIDE_P0 if guide else 0.0, 'guide_until': GUIDE_UNTIL if guide else 0,
-                                                   'obs_profile': obs_profile,
+                                                   'obs_profile': obs_profile, 'pref': pref,
+                                                   'pref_lambda': PREF_LAMBDA if pref else 0.0, 'pref_delta': PREF_DELTA, 'pref_kappa': PREF_KAPPA,
+                                                   'pref_margin_cap': PREF_MARGIN_CAP,
                                                    'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION}, indent=1), encoding='utf-8')
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
     for rank in range(workers):
         a, b = ctx.Pipe()
-        p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile), daemon=True)
+        p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref), daemon=True)
         p.start(); pipes.append(a); procs.append(p)
     marks = sorted(set([m for m in marks if m <= steps] + [steps]))
     model.save(out / 'checkpoints' / 'step_0')
@@ -463,7 +524,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     bias_by_worker = {}
     synced = {}                                   # worker -> update count of its policy copy
     rng = np.random.default_rng(seed)
-    pool = CalibrationPool() if (POOL_CALIBRATION and candidates > 0) else None
+    pool = CalibrationPool() if (POOL_CALIBRATION and (candidates > 0 or pref)) else None
     guided_by_worker = {}                         # T2.7: guided decisions of each worker's current episode
     active = list(pipes)
     while active:

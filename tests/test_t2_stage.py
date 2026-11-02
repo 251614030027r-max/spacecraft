@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-2.8'
+    assert t.LEARNER_VERSION == 't2-learner-2.9'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -721,7 +721,7 @@ def test_training_passes_the_mission_profile_to_every_worker():
     import inspect, train.t2_mve_sac as t
     assert 'urgent_deadline_s=tuple(float(x) for x in urgent_deadline)' in inspect.getsource(t.worker)
     src = inspect.getsource(t.train)
-    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile)' in src and "'urgent_deadline_s'" in src
+    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref)' in src and "'urgent_deadline_s'" in src
     assert "'obs_profile': obs_profile" in src and 'obs_profile=obs_profile' in inspect.getsource(t.worker)
 
 
@@ -784,10 +784,12 @@ def test_calibration_is_shared_by_the_workers():
 
 
 def test_pooled_calibration_only_in_the_coupled_arm():
+    """The SAC arm uses no executor model, so it shares no calibration; the coupled arms (EACC labels, T2.10 preference) do."""
     import inspect, train.t2_mve_sac as t
     w = inspect.getsource(t.worker); src = inspect.getsource(t.train)
-    assert 'share_calibration(env) if (POOL_CALIBRATION and candidates > 0) else None' in w and 'merge_calibration(env, shared)' in w
-    assert 'CalibrationPool() if (POOL_CALIBRATION and candidates > 0) else None' in src and 'pool.pending(w_)' in src
+    assert 'share_calibration(env) if (POOL_CALIBRATION and (candidates > 0 or pref)) else None' in w and 'merge_calibration(env, shared)' in w
+    assert 'CalibrationPool() if (POOL_CALIBRATION and (candidates > 0 or pref)) else None' in src and 'pool.pending(w_)' in src
+    assert "pref = arm == 'e_pref'" in src
 
 
 def _intent_fixture(deadline_left=None, budget_left=None):
@@ -1069,3 +1071,60 @@ def test_geometric_interface_zeroes_only_the_executor_features():
     g = env.observation(); keep = [i for i in range(len(full)) if i not in EXECUTOR_FEATURES]
     assert not np.any(g[list(EXECUTOR_FEATURES)]) and np.array_equal(g[keep], full[keep])
     assert np.any(full[list(EXECUTOR_FEATURES)])                       # the engineered vector does carry them
+
+
+def test_reduced_interface_zeroes_only_the_planner_answers():
+    """T2.10 'reduced': only the time to the pass, window reachability and slack after the pass are zeroed."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import PLANNER_FEATURES, T2StageEnv, observe
+    env = T2StageEnv(obs_profile='reduced'); env.reset(options={'opening': 294003})
+    q, v = relative_inertial(env.env); t = env.env.target_state
+    full = observe(env.env, q, v, env.env.time_s, env.env._delta_v, env.mission, t.rotation, t.omega, env.last)
+    o = env.observation(); keep = [i for i in range(len(full)) if i not in PLANNER_FEATURES]
+    assert not np.any(o[list(PLANNER_FEATURES)]) and np.array_equal(o[keep], full[keep]) and np.any(full[list(PLANNER_FEATURES)])
+
+
+def test_opportunity_value_is_the_validated_signal_and_reaches_the_step_info():
+    """T2.10: T2StageEnv.opportunity_value is opp2 of the P4 addendum (same state, same number), None until the entry
+    calibration is ready, and a pref environment reports the grid and the executed intent at every stage decision."""
+    import importlib.util, sys
+    from pathlib import Path
+    from env.t2_stage import PREF_GRID, T2Mission, T2StageEnv
+    from experiments.t2_audit import load_calibration
+    cal = Path('evidence/T2_8_PRECHECK/输入/CAL.json')
+    argv = sys.argv; sys.argv = ['opp2_probe', str(cal), 'unused', '0', '1', '1']
+    try:
+        spec = importlib.util.spec_from_file_location('opp2_probe', 'evidence/T2_8_PRECHECK/脚本/opp2_probe.py')
+        probe = importlib.util.module_from_spec(spec); spec.loader.exec_module(probe)
+    finally:
+        sys.argv = argv
+    env = T2StageEnv(openings=[2910012], seed_base=2_910_000, mission=T2Mission(urgent_deadline_s=(140.0, 200.0)), pref=True)
+    env.reset(options={'opening': 2910012})
+    assert env.opportunity_value((1.0, 0.0)) is None                 # no executed entries yet
+    load_calibration(env, cal)
+    for a in PREF_GRID[:4]:
+        assert env.opportunity_value(a) == probe.opp2_signal(env, a)['value']
+    _, _, _, _, info = env.step(np.array([1.0, 0.0], np.float32))
+    assert len(info['pref']['a']) == len(PREF_GRID) + 1 and info['pref']['a'][-1] == [1.0, 0.0] and all(x is not None for x in info['pref']['v'])
+
+
+def test_pref_loss_orders_the_critic_by_the_executor_values():
+    """T2.10: the hinge counts only pairs at least PREF_DELTA apart, and a few critic steps on it order those pairs."""
+    import torch as th
+    import train.t2_mve_sac as t
+    model = t.make_model(t.SpacesEnv(), 'e_pref', 0, smoke=True)
+    assert model.pref_lambda == t.PREF_LAMBDA and model.model_beta == 0.0
+    rb = model.replay_buffer; rng = np.random.default_rng(0)
+    for i in range(64):
+        o = rng.normal(size=(1, 24)).astype(np.float32)
+        acts = rng.uniform(-1, 1, size=(10, 2)).tolist(); vals = [100.0 * x[0] for x in acts]   # prefers a large first component
+        vals[3] = None
+        rb.add(o, o, np.zeros((1, 2), np.float32), np.zeros(1), np.zeros(1), [{'model': {}, 'pref': {'a': acts, 'v': vals}}])
+    assert rb.pref_valid[:64, 0].sum() == 64 * 9
+    data = rb.sample(64)
+    loss0, info0 = model._pref_loss(data)
+    assert loss0 is not None and info0['pref_pairs'] > 0
+    for _ in range(200):
+        data = rb.sample(64); loss, info = model._pref_loss(data)
+        model.critic.optimizer.zero_grad(); loss.backward(); model.critic.optimizer.step()
+    assert info['pref_ordered'] > max(info0['pref_ordered'], 0.9) and float(loss) < float(loss0)
