@@ -2,9 +2,12 @@
 
     python -B evidence/T2_8_PRECHECK/脚本/info_probe.py CAL.json STATES_DIR OUT_DIR LO HI WORKERS
 
-Re-flies the key-state probe's episodes (rule rally, hold 7.5 m, urgent missions U(140, 200) s on audit openings
-2,910,000 + [LO, HI), the same environment configuration and calibration) and checks at each key decision that the
-observation equals the stored one (``obs_match``). For every 3 x 3 grid intent it adds:
+Re-flies the key-state probe's episodes (rule rally, hold 7.5 m, mission profile with urgent deadlines U(140, 200) s,
+audit openings 2,910,000 + [LO, HI), the same environment configuration and calibration). Key decisions: urgent
+missions as the key-state probe (first two decisions and 40-140 s before the deadline; the observation is checked
+against the stored one, ``obs_match``); economy missions (added in P4: the night run's fuel loss came from late entries
+on economy missions) the first ECONOMY_DECISIONS stage decisions. The observation is stored for critic scoring
+(experiments.t2_keyscore). For every 3 x 3 grid intent it adds:
 
   truth_track  truth branch: the intent for one stage, then the executor's own capture plan projected onto the stage
                action space (T2StageEnv.track_intent) at every later decision, the intent itself when the executor has
@@ -31,6 +34,7 @@ LO, HI, WORKERS = int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6])
 WINDOW = (40.0, 140.0)
 GRID = [(p, z) for p in (-0.5, 0.25, 1.0) for z in (-1.0, 0.0, 1.0)]
 MAX_STEPS = 40
+ECONOMY_DECISIONS = 4
 
 
 def truth_track(snapshot, a):
@@ -43,7 +47,8 @@ def truth_track(snapshot, a):
         tracked += int(t is not None)
         _, _, term, trunc, info = b.step(np.asarray(a if t is None else t, dtype=np.float64))
         g += info['true_reward']; n += 1; done = term or trunc
-    return {'true': float(g), 'event': info.get('event'), 'time_s': float(b.env.time_s), 'decisions': n, 'tracked': tracked}
+    return {'true': float(g), 'event': info.get('event'), 'terminal': bool(done), 'time_s': float(b.env.time_s),
+            'delta_v': float(b.env._delta_v), 'decisions': n, 'tracked': tracked}
 
 
 def opp_signal(env, a):
@@ -75,25 +80,26 @@ def job(opening):
             stored[round(d['t'], 3)] = d['obs']
     env = T2StageEnv(openings=[opening], seed_base=2_910_000, candidates=8, shaping=True, mission=T2Mission(urgent_deadline_s=(140.0, 200.0)))
     env.reset(options={'opening': opening})
-    if not env.mission['urgent']:
-        return {'opening': opening, 'urgent': False}
+    urgent = bool(env.mission['urgent'])
     load_calibration(env, CAL)
     recs, done, t0, n_dec, info = [], False, time.time(), 0, {}
     while not done:
         left = env.mission['deadline_s'] - env.env.time_s
         a = rally_action(env, hold_m=7.5)
-        critical = env.generator.mode in ('stage', 'hold') and (WINDOW[0] <= left <= WINDOW[1] or n_dec < 2)
+        stage = env.generator.mode in ('stage', 'hold')
+        critical = stage and ((WINDOW[0] <= left <= WINDOW[1] or n_dec < 2) if urgent else n_dec < ECONOMY_DECISIONS)
         if critical:
             n_dec += 1
             obs = env.observation().tolist(); ref = stored.get(round(env.env.time_s, 3))
             snap = branch(env)
             rows = [{'a': list(g), 'truth_track': truth_track(snap, g), 'opp': opp_signal(env, g)} for g in GRID]
-            recs.append({'t': env.env.time_s, 'left_s': left, 'obs_match': ref is not None and np.array_equal(np.asarray(ref), np.asarray(obs)),
+            recs.append({'t': env.env.time_s, 'left_s': left, 'urgent': urgent, 'obs': obs,
+                         'obs_match': (ref is not None and np.array_equal(np.asarray(ref), np.asarray(obs))) if urgent else None,
                          'cands': rows})
             print(json.dumps({'opening': opening, 't': env.env.time_s, 'left': round(left), 'match': recs[-1]['obs_match'],
                               'wall': round(time.time() - t0)}), flush=True)
         _, _, term, trunc, info = env.step(a); done = term or trunc
-    return {'opening': opening, 'urgent': True, 'event': info.get('event'), 'decisions': recs, 'wall_s': time.time() - t0}
+    return {'opening': opening, 'urgent': urgent, 'mission': env.mission, 'event': info.get('event'), 'decisions': recs, 'wall_s': time.time() - t0}
 
 
 if __name__ == '__main__':
