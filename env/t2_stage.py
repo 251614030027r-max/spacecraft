@@ -80,10 +80,15 @@ BRIDGE_DEADLINE_MARGIN_S = 45.0
 OBS_DIM = 24
 #: T2.9 decision-layer interface. 'engineered' (T2.0-T2.8): the 24 features of ``observe``, among them quantities the
 #: executor's own models compute (time to the port's pass, entry-window reachability, braking margin, deadline slack
-#: after the pass, last stage's execution residuals / hold) and frame-aligned phase angles. 'raw': ``observe_raw``, the
-#: relative state and the target's attitude state in a neutral line-of-sight frame plus the mission clock and fuel --
-#: no executor-derived feature; the executor's knowledge reaches the policy only through training (EACC).
-OBS_PROFILES = ("engineered", "raw")
+#: after the pass, last stage's execution residuals / hold) and frame-aligned phase angles. 'geometric': the same vector
+#: with the seven executor-derived features set to zero (EXECUTOR_FEATURES) -- the target's geometric state (spin frame,
+#: phase, rate, port direction, cone angles), the relative state, the mission clock and fuel stay, so the policy keeps
+#: what it learns from; the executor's predictions reach it only through training (EACC). 'raw': ``observe_raw``, also
+#: without the spin-aligned frame and phase angles (harder; not the T2.9 default).
+OBS_PROFILES = ("engineered", "geometric", "raw")
+#: indices in ``observe``: time to the port's pass, last stage's position / velocity residual and hold, entry-window
+#: reachability (bridge angle), braking margin, deadline slack after the pass
+EXECUTOR_FEATURES = (8, 14, 15, 16, 17, 18, 19)
 CALIBRATION_MIN_STAGES = 10
 CALIBRATION_WINDOW = 60
 CALIBRATION_REGIME_MIN = 5       # stages of one execution regime before its own calibration is used
@@ -572,7 +577,12 @@ class T2StageEnv(gym.Env):
 
     def _observe(self, *args) -> np.ndarray:
         """The decision layer's observation in this environment's interface (actual and modelled states alike)."""
-        return (observe_raw if self.obs_profile == "raw" else observe)(*args)
+        if self.obs_profile == "raw":
+            return observe_raw(*args)
+        o = observe(*args)
+        if self.obs_profile == "geometric":
+            o[list(EXECUTOR_FEATURES)] = 0.0
+        return o
 
     def potential(self, q: np.ndarray, t_rotation: np.ndarray, omega: np.ndarray) -> float:
         mouth = t_rotation @ so3_exp(24.0 * omega) @ (ENTRY_RADIUS_M * self.env.config.task.approach_axis)
@@ -1161,5 +1171,5 @@ class T2StageEnv(gym.Env):
         return self.observation(), float(shaped), terminated, truncated, info
 
 
-__all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "OBS_PROFILES", "observe_raw", "GAMMA_STAGE", "InfoEnv", "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
+__all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "OBS_PROFILES", "EXECUTOR_FEATURES", "observe_raw", "GAMMA_STAGE", "InfoEnv", "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
            "d_authority", "observe", "Calibration", "t2_env_config"]

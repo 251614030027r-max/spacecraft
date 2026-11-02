@@ -177,7 +177,7 @@ def main():
     p.add_argument('--model-beta', type=float, default=0.5)
     p.add_argument('--urgent-deadline', default=None, help='LO,HI s: urgent missions\' deadline range (default 170,210)')
     p.add_argument('--guide', action='store_true', help='T2.7: the collector flies the executor\'s projected capture plan (training only)')
-    p.add_argument('--obs', choices=['engineered', 'raw'], default='engineered', help='T2.9: decision-layer interface (training; evaluation reads the manifest)')
+    p.add_argument('--obs', choices=['engineered', 'geometric', 'raw'], default='engineered', help='T2.9: decision-layer interface (training; evaluation reads the manifest)')
     a = p.parse_args(); out = Path(a.output)
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')
     window = not a.no_window

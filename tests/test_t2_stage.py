@@ -1055,3 +1055,17 @@ def test_raw_interface_has_no_executor_features(tmp_path):
     assert obs_profile_of(run / 'checkpoints' / 'step_1000.zip') == 'engineered'
     with pytest.raises(FileNotFoundError):
         obs_profile_of(tmp_path / 'nowhere' / 'checkpoints' / 'step_1.zip')
+
+
+def test_geometric_interface_zeroes_only_the_executor_features():
+    """T2.9 default for the interface study: 'geometric' is the engineered vector with the seven executor-derived
+    features (pass time, residuals, hold, window reachability, braking margin, slack) zeroed; every other feature equal."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import EXECUTOR_FEATURES, T2StageEnv, observe
+    env = T2StageEnv(obs_profile='geometric'); env.reset(options={'opening': 294003})
+    env.last = {'position_residual_m': 1.0, 'velocity_residual_m_s': 0.05, 'held': True}
+    q, v = relative_inertial(env.env); t = env.env.target_state
+    full = observe(env.env, q, v, env.env.time_s, env.env._delta_v, env.mission, t.rotation, t.omega, env.last)
+    g = env.observation(); keep = [i for i in range(len(full)) if i not in EXECUTOR_FEATURES]
+    assert not np.any(g[list(EXECUTOR_FEATURES)]) and np.array_equal(g[keep], full[keep])
+    assert np.any(full[list(EXECUTOR_FEATURES)])                       # the engineered vector does carry them
