@@ -29,56 +29,41 @@
     "no_experiment_started": true
   },
   "previous_completed_delivery": {
-    "topic": "t2_8_night_20261101",
-    "scientific_commit": "24a342f85001fa2aff4d9db3b52de04558992ff2",
-    "evidence_commit": "3d215b6711f02d1af91a34100cb05ce98188363f",
-    "collab_delivery_commit": "9b4536745f67f13ae4d573117f9438be7796fe4d",
-    "local_report": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\历史\\T28_NIGHT_before_P4_MIDTERM_20261102_160407\\RESULT.md"
+    "topic": "t2_8_p4_info_20261102",
+    "evidence_commit": "27d59a5878b3181d1710c9c9ab1bf21d1b24bb0f",
+    "collab_delivery_commit": "c2ca3e98f656c3b9ef946129fbb9da9d094bb55c",
+    "local_report": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\RESULT.md"
   },
-  "topic": "t2_8_p4_info_20261102",
-  "updated_at": "2026-11-02T19:59:40.568287+09:00",
-  "scientific_commit": "0dfdb8a8ad144a55635523612d245097ee541130",
-  "order_collab_commit": "5358d0f3efadc78bdc19e2964bfd197aaaea85a7",
-  "run_order": "docs/collaboration/upper/run_orders/T2_8_P4_INFO_20261102.md",
-  "execution_state": "complete_delivered_with_section4",
-  "training_active": false,
+  "topic": "t2_11_eacca_20261102",
+  "updated_at": "2026-11-02T23:37:39.379197+09:00",
+  "scientific_commit": "ec394efcaaeadbb5305f4f9e289addb58517dca7",
+  "run_order": "docs/collaboration/upper/run_orders/T2_11_EACCA_20261102.md",
+  "order_collab_commit": "b64fb92b",
+  "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_11_EACCA_20261102\\RUN_STATE.json",
+  "execution_state": "training",
+  "training_active": true,
   "evaluation_active": false,
   "mechanism_audit_active": false,
-  "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_8_P4_INFO_20261102\\RUN_STATE.json",
   "current_scope": {
-    "training": false,
-    "probe": "info_probe.py CAL keystates info 0 40 10",
-    "openings": "2910000-2910039",
-    "workers": 10,
-    "checkpoints": 16,
-    "marks": [
-      500,
-      1000,
-      1500,
-      2000
+    "arms": [
+      "e_acc",
+      "e_sac"
     ],
-    "score": "existing T2.8 night four runs only"
+    "seeds": [
+      0,
+      1
+    ],
+    "steps_each": 2000,
+    "workers_each": 2,
+    "obs": "reduced_priv",
+    "criterion": "t28",
+    "quick_openings": "294000-294023",
+    "full_openings": "294000-294047",
+    "time_rules_hours": {
+      "training": 8.5,
+      "new_evaluations": 10.75,
+      "hard_stop": 12
+    }
   },
-  "automatic_followup": "DISABLED",
-  "next_action": "Wait for upper review and new user authorization; no training authorized.",
-  "conclusion_boundary": "Native P4 feedback information audit; upper determines interpretation, no training, no changed criteria.",
-  "current_delivery_phase": "final_with_section4",
-  "current_delivery_report": "docs/collaboration/lower/handoffs/t2_8_p4_info_20261102/RESULT.md",
-  "local_report": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\RESULT.md",
-  "midterm_snapshot": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_8_P4_INFO_20261102\\发布快照\\MIDTERM_20261102_160407",
-  "authorized_addendum": {
-    "collab": "5358d0f3efadc78bdc19e2964bfd197aaaea85a7",
-    "section": 4,
-    "state": "queued_until_original_complete_preserved_and_exited",
-    "scientific_commit": "0dfdb8a8ad144a55635523612d245097ee541130",
-    "OS_task": "Spacecraft-T28-P4-Section4-20261102",
-    "training_authorized": false
-  },
-  "evidence_commit": "27d59a5878b3181d1710c9c9ab1bf21d1b24bb0f",
-  "publication_status": "pushed_verified",
-  "archived_previous_latest": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\历史\\P4_prior_latest_before_FINAL_20261102_194845",
-  "collab_delivery_commit": "c2ca3e98f656c3b9ef946129fbb9da9d094bb55c",
-  "base_scientific_commit": "8016b16df994ed2b206c3eea7096084494006288",
-  "section4_scientific_commit": "0dfdb8a8ad144a55635523612d245097ee541130",
-  "base_delivery_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_8_P4_INFO_20261102\\记录\\BASE_DELIVERY_RECEIPT.json"
+  "next_action": "Run approved T2.11 through1000 stop check and timed delivery; no other experiments."
 }
