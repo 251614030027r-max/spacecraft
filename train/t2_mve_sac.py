@@ -76,11 +76,13 @@ POOL_CALIBRATION = True
 #:     L_pref = mean over such pairs and both critics of relu(min(PREF_KAPPA dv, PREF_MARGIN_CAP) - (Q_i(s, a_hi) - Q_i(s, a_lo)))
 #: and the critic loss is L_real + PREF_LAMBDA * L_pref. A one-sided hinge: a pair the critic already separates by the
 #: margin costs nothing, and no value is regressed on the executor's number, so its optimism cannot enter the Bellman
-#: targets; the actor follows the critic as in SAC. PREF_DELTA = the tie threshold P4 validated the signal with. Scale:
+#: targets; the actor follows the critic as in SAC. PREF_DELTA = 50: only the executor's capture-versus-timeout calls
+#: (P4, evidence/T2_8_P4_INFO: opp2 calls >= 50 apart are right 59/59 on the selection openings and 76/94 = 0.81 on the
+#: held-out ones, breaking 0 / 1.5 % of the pairs the critic orders right; calls 5-20 apart are near chance). Scale:
 #: the hinge's gradient is O(1) per pair while the TD regression's is O(TD error ~ 10-30), hence PREF_LAMBDA = 10
 #: (sandbox integration, T2.10: with a fixed margin of 2 and weight 1 the term was 0.15 % of the critic loss).
 PREF_LAMBDA = 10.0
-PREF_DELTA = 5.0
+PREF_DELTA = 50.0
 PREF_KAPPA = 0.5
 PREF_MARGIN_CAP = 100.0
 PREF_K = 10            # PREF_GRID (9) + the executed intent
