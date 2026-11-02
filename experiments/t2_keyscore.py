@@ -15,7 +15,18 @@ from pathlib import Path
 import numpy as np
 
 
-def score(checkpoint, decisions):
+def as_profile(obs, profile):
+    """T2.11: key states are stored with the engineered observation; 'reduced_priv' checkpoints read the reduced vector
+    followed by the engineered one (env.t2_stage)."""
+    o = np.asarray(obs, np.float32)
+    if profile != 'reduced_priv' or o.shape[0] != 24:
+        return o
+    from env.t2_stage import PLANNER_FEATURES
+    r = o.copy(); r[list(PLANNER_FEATURES)] = 0.0
+    return np.concatenate([r, o])
+
+
+def score(checkpoint, decisions, profile='engineered'):
     import torch as th
     th.set_num_threads(1)
     from train.t2_mve_sac import T2SAC
@@ -23,11 +34,11 @@ def score(checkpoint, decisions):
     out = []
     with th.no_grad():
         for d in decisions:
-            o = th.as_tensor(np.asarray(d['obs'], np.float32)[None])
+            ob = as_profile(d['obs'], profile); o = th.as_tensor(ob[None])
             acts = np.asarray([c['a'] for c in d['cands']], np.float32)
             oo = o.repeat(len(acts), 1)
             q = th.min(th.cat(model.critic(oo, th.as_tensor(acts)), dim=1), dim=1).values.numpy()
-            a_pi = model.predict(np.asarray(d['obs'], np.float32), deterministic=True)[0]
+            a_pi = model.predict(ob, deterministic=True)[0]
             q_pi = float(th.min(th.cat(model.critic(o, th.as_tensor(np.asarray(a_pi, np.float32)[None])), dim=1)))
             out.append({'opening': d['opening'], 't': d['t'], 'q': q.tolist(), 'actor': np.asarray(a_pi).tolist(), 'q_actor': q_pi})
     return out
@@ -48,7 +59,12 @@ def main(argv=None):
     result = {'states': len(decisions), 'scores': {}}
     for item in a.checkpoints:
         label, zip_ = item.split('=', 1)
-        result['scores'][label] = {'checkpoint': zip_, 'rows': score(zip_, decisions)}
+        from experiments.t2 import obs_profile_of
+        try:
+            profile = obs_profile_of(zip_)
+        except FileNotFoundError:
+            profile = 'engineered'
+        result['scores'][label] = {'checkpoint': zip_, 'profile': profile, 'rows': score(zip_, decisions, profile)}
         print(label, len(decisions), flush=True)
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(result), encoding='utf-8')

@@ -36,9 +36,11 @@ import torch as th
 import torch.nn.functional as F
 from stable_baselines3 import SAC
 from stable_baselines3.common.buffers import ReplayBuffer
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.utils import polyak_update
+from stable_baselines3.sac.policies import SACPolicy
 
-from env.t2_stage import GAMMA_STAGE, OBS_DIM
+from env.t2_stage import GAMMA_STAGE, OBS_DIM, OBS_DIM_PRIV
 
 K_CANDIDATES = 8          # 3 structured alternatives + 1 global + 4 local (T2StageEnv.candidate_actions)
 MODEL_BETA = 0.5
@@ -62,8 +64,9 @@ AGE_CAP = 2000
 #: T2.6.1: labels end at the deadline / budget, env t2-stage-0.4.2; env 0.4.3 adds the budget before a predicted entry;
 #: T2.7: executor guidance in the collector (``guide_probability``; off by default), env 0.5.0;
 #: T2.9: the decision-layer interface ``obs_profile`` passed to every environment and recorded, env 0.7.0;
-#: T2.10: arm e_pref, the executor-calibrated opportunity preference on the critic, env 0.8.0)
-LEARNER_VERSION = "t2-learner-2.9"
+#: T2.10: arm e_pref, the executor-calibrated opportunity preference on the critic, env 0.8.0;
+#: T2.11: arm e_acc, EACC-A -- decision-level execution calibration and calibrated advantage to critic and actor, env 0.9.0)
+LEARNER_VERSION = "t2-learner-3.0"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -85,7 +88,79 @@ PREF_LAMBDA = 10.0
 PREF_DELTA = 50.0
 PREF_KAPPA = 0.5
 PREF_MARGIN_CAP = 100.0
-PREF_K = 10            # PREF_GRID (9) + the executed intent
+PREF_K = 11            # PREF_GRID (9) + the executed intent + (T2.11) the policy's deterministic intent
+PREF_EXEC, PREF_PI = 9, 10
+#: T2.11 EACC-A (arm e_acc): the original EACC labels (M1-M3, two stages, model_beta) plus a decision-level execution-
+#: calibrated advantage. Diagnosis (evidence/T2_8_P4_INFO_UPPER): the executor's planner judges an intent's capture
+#: opportunity from the stage end as if it could enter directly, while the executor enters only within 12 m and 35 deg
+#: -- 210 of the 221 capture-versus-timeout pairs the planner left undecided were such inconsistencies; a logistic
+#: calibration of the planner's judgement against realized outcomes predicts capture at 0.93 on held-out openings (raw
+#: 0.70). EACC-A learns that calibration online from the agent's own executed decisions (DecisionCalibration: the
+#: executed intent's opportunity features -> did the episode end in capture), trusts it once its predict-then-observe
+#: accuracy is >= ACC_MIN_ACC over >= ACC_MIN_LABELS outcomes, and at every decision compares the policy's own intent
+#: with the grid and the executed intent: P_k = calibrated capture probability, dP_k = P_k - P_pi. Where dP_k >= ACC_DP
+#: (a decisive, trusted advantage):
+#:   critic  relu(ACC_KAPPA * ACC_SCALE * dP_k - (Q(s, a_k) - Q(s, a_pi))), weight ACC_LAMBDA_Q   (both critics)
+#:   actor   ACC_ETA * dP_* * ||tanh(mu(s)) - a_*||^2 with a_* the most probable capture among the decisive candidates
+#: so the information reaches the deployed actor directly, not only through the critic's local gradient (P4: labelled
+#: critics ranked key decisions better while the actor chose no better). Training only; the actor alone is deployed.
+ACC_F = 7              # calibration features (dec_features)
+ACC_DP = 0.4
+ACC_KAPPA = 0.5
+ACC_SCALE = 200.0      # capture reward + timeout penalty
+ACC_LAMBDA_Q = 10.0
+ACC_ETA = 10.0
+ACC_MIN_LABELS = 200
+ACC_MIN_ACC = 0.8
+CAL_REFIT = 50
+CAL_WINDOW = 3000
+CAL_L2 = 1e-2
+
+
+def dec_features(f) -> list:
+    """Calibration features of one opportunity judgement (T2StageEnv.opportunity_features): bias, feasible, slack of the
+    planned arrival to the time left (two scales), the entry outcome model's success share, range / 15, urgency. The
+    same features as the offline check (evidence/T2_8_P4_INFO_UPPER/calib.py)."""
+    if f is None:
+        return [0.0] * ACC_F
+    rem = float(f['remaining_s']); tau = float(f['tau']) if f.get('feasible') else 300.0
+    return [1.0, float(bool(f.get('feasible'))), float(np.clip((rem - tau) / 100.0, -3, 3)), float(np.clip((rem - tau - 90.0) / 50.0, -3, 3)),
+            float(f.get('p_success') or 0.0) if f.get('feasible') else 0.0, float(f['range_m']) / 15.0, float(bool(f.get('urgent')))]
+
+
+class DecisionCalibration:
+    """T2.11 decision-level execution calibration: logistic P(capture | opportunity features) fitted on executed decisions
+    and their realized episode outcomes (sliding window CAL_WINDOW, refit every CAL_REFIT outcomes, L2 CAL_L2). Accuracy
+    is measured predict-then-observe on each outcome before it is added (the last ACC_MIN_LABELS outcomes)."""
+
+    def __init__(self):
+        self.x, self.y, self.hits, self.w, self.since = [], [], [], np.zeros(ACC_F), 0
+
+    def observe(self, feats, captured: bool) -> None:
+        x = np.asarray(feats, np.float64)
+        if self.w.any():
+            self.hits = (self.hits + [float((float(x @ self.w) > 0) == bool(captured))])[-ACC_MIN_LABELS:]
+        self.x = (self.x + [x])[-CAL_WINDOW:]; self.y = (self.y + [float(captured)])[-CAL_WINDOW:]
+        self.since += 1
+        if self.since >= CAL_REFIT:
+            self.fit(); self.since = 0
+
+    def fit(self, iters: int = 300, lr: float = 0.5) -> None:
+        if len(set(self.y)) < 2:
+            return
+        X, Y, w = np.asarray(self.x), np.asarray(self.y), self.w.copy()
+        for _ in range(iters):
+            p = 1.0 / (1.0 + np.exp(-(X @ w)))
+            w -= lr * (X.T @ (p - Y) / len(Y) + CAL_L2 * w)
+        self.w = w
+
+    @property
+    def accuracy(self):
+        return float(np.mean(self.hits)) if self.hits else None
+
+    @property
+    def trusted(self) -> bool:
+        return len(self.hits) >= ACC_MIN_LABELS and self.accuracy >= ACC_MIN_ACC
 
 
 class StageReplay(ReplayBuffer):
@@ -110,6 +185,7 @@ class StageReplay(ReplayBuffer):
         #: T2.10 opportunity preference: intents and their executor-calibrated opportunity values at the decision
         self.pref_a = np.zeros((*shape, PREF_K, a), np.float32); self.pref_v = np.zeros((*shape, PREF_K), np.float32)
         self.pref_valid = np.zeros((*shape, PREF_K), np.float32)
+        self.pref_f = np.zeros((*shape, PREF_K, ACC_F), np.float32)     # T2.11 calibration features per candidate
         self.stored = 0
         self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0, 'entry_candidates': 0, 'reason': {}}
         self._last = None
@@ -122,9 +198,11 @@ class StageReplay(ReplayBuffer):
         for e, info in enumerate(infos):
             pref = info.get('pref')
             if pref:
-                for j, (pa, pv) in enumerate(zip(pref['a'][:PREF_K], pref['v'][:PREF_K])):
+                feats = pref.get('f') or [None] * len(pref['a'])
+                for j, (pa, pv, pf) in enumerate(zip(pref['a'][:PREF_K], pref['v'][:PREF_K], feats[:PREF_K])):
                     if pv is not None:
                         self.pref_a[i, e, j] = pa; self.pref_v[i, e, j] = pv; self.pref_valid[i, e, j] = 1.0
+                        self.pref_f[i, e, j] = dec_features(pf)
                 self.model_counts['pref_decisions'] = self.model_counts.get('pref_decisions', 0) + 1
             model = info.get('model') or {}
             fact, cands = model.get('fact'), (model.get('cands') or [])[:self.k]
@@ -163,13 +241,16 @@ class StageReplay(ReplayBuffer):
         i, e = self._last
         return {k: self.to_torch(getattr(self, k)[i, e]) for k in
                 ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_kind', 'created',
-                 'c2_valid', 'c2_a', 'c2_logp', 'c2_r', 'c2_obs', 'c2_done', 'c2_kind', 'pref_a', 'pref_v', 'pref_valid')}
+                 'c2_valid', 'c2_a', 'c2_logp', 'c2_r', 'c2_obs', 'c2_done', 'c2_kind', 'pref_a', 'pref_v', 'pref_valid', 'pref_f')}
 
 
 class T2SAC(SAC):
-    def __init__(self, *args, model_beta: float = 0.0, model_start: int = MODEL_START, pref_lambda: float = 0.0, **kwargs):
+    def __init__(self, *args, model_beta: float = 0.0, model_start: int = MODEL_START, pref_lambda: float = 0.0,
+                 acc: bool = False, **kwargs):
         self.model_beta, self.model_start = float(model_beta), int(model_start)
         self.pref_lambda = float(pref_lambda)
+        self.acc = bool(acc)                         # T2.11 EACC-A
+        self.dec_cal = DecisionCalibration() if self.acc else None
         self.model_stats = []
         self.td_ms = None          # running mean of the squared real TD residual (sigma^2)
         self.entry_bias_now = None # current entry outcome-model bias (mean over environments that know it), None = unknown
@@ -178,7 +259,7 @@ class T2SAC(SAC):
         super().__init__(*args, **kwargs)
 
     def _excluded_save_params(self):
-        return [*super()._excluded_save_params(), 'model_stats']
+        return [*super()._excluded_save_params(), 'model_stats', 'dec_cal']
 
     def _soft_value(self, obs, ent_coef):
         a, logp = self.actor.action_log_prob(obs)
@@ -319,6 +400,39 @@ class T2SAC(SAC):
             ordered = float(((qmin[:, :, None] - qmin[:, None, :]) > 0)[mask].float().mean())
         return loss, {'pref_pairs': n, 'pref_ordered': ordered, 'pref_states': int(rows.sum())}
 
+    def _acc_terms(self, data):
+        """T2.11 EACC-A (module constants): the critic's advantage hinge and the actor's pull target from the calibrated
+        capture probabilities of the decision's candidates. Returns (critic loss or None, actor rows, actor targets,
+        actor weights, readings)."""
+        cal = self.dec_cal
+        if cal is None or not cal.trusted:
+            return None, None, None, None, {'acc_trusted': 0.0}
+        m = self.replay_buffer.model_batch()
+        valid = m['pref_valid'] > 0
+        w = th.as_tensor(cal.w, dtype=th.float32)
+        prob = th.sigmoid(m['pref_f'] @ w)                                    # (B, K)
+        dp = prob - prob[:, PREF_PI:PREF_PI + 1]
+        dec = (dp >= ACC_DP) & valid & valid[:, PREF_PI:PREF_PI + 1]
+        dec[:, PREF_PI] = False
+        rows = dec.any(dim=1)
+        if not bool(rows.any()):
+            return None, None, None, None, {'acc_trusted': 1.0, 'acc_rows': 0}
+        b, k = dec.shape
+        s = data.observations[:, None, :].expand(-1, k, -1)[dec]
+        a_pi = m['pref_a'][:, PREF_PI, :][:, None, :].expand(-1, k, -1)[dec]
+        s_pi = data.observations[:, None, :].expand(-1, k, -1)[dec]
+        margin = (ACC_KAPPA * ACC_SCALE * dp[dec]).reshape(-1, 1)
+        q_c = self.critic(s, m['pref_a'][dec]); q_p = self.critic(s_pi, a_pi)
+        loss = sum(F.relu(margin - (qc - qp)).mean() for qc, qp in zip(q_c, q_p)) / len(q_c)
+        score = th.where(dec, prob, th.full_like(prob, -1.0))
+        best = score.argmax(dim=1)
+        target = m['pref_a'][th.arange(b), best][rows]
+        weight = dp[th.arange(b), best][rows].clamp(0.0, 1.0)
+        with th.no_grad():
+            ordered = float(((th.min(th.cat(q_c, dim=1), dim=1).values - th.min(th.cat(q_p, dim=1), dim=1).values) > 0).float().mean())
+        return loss, rows, target, weight, {'acc_trusted': 1.0, 'acc_rows': int(rows.sum()), 'acc_pairs': int(dec.sum()),
+                                            'acc_q_ordered': ordered, 'acc_dp_mean': float(dp[dec].mean())}
+
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         self.policy.set_training_mode(True)
         self._update_learning_rate([self.actor.optimizer, self.critic.optimizer])
@@ -346,6 +460,14 @@ class T2SAC(SAC):
                         g2 = th.autograd.grad(mloss, params, retain_graph=True, allow_unused=True)
                         v1 = th.cat([g.reshape(-1) for g in g1 if g is not None]); v2 = th.cat([g.reshape(-1) for g in g2 if g is not None])
                         info['grad_cos'] = float(F.cosine_similarity(v1, v2, dim=0))
+            acc_rows = None
+            if self.acc:
+                aloss, acc_rows, acc_target, acc_w, ainfo = self._acc_terms(data)
+                info.update(ainfo)
+                info['cal_acc'] = self.dec_cal.accuracy; info['cal_n'] = len(self.dec_cal.y)
+                if aloss is not None:
+                    loss = loss + ACC_LAMBDA_Q * aloss
+                    info['acc_q_loss'] = float(aloss.item()); info['acc_q_share'] = float(ACC_LAMBDA_Q * aloss.item() / max(real.item(), 1e-9))
             if self.pref_lambda > 0:
                 ploss, pinfo = self._pref_loss(data)
                 info.update(pinfo)
@@ -355,6 +477,12 @@ class T2SAC(SAC):
             self.critic.optimizer.zero_grad(); loss.backward(); self.critic.optimizer.step()
             q_pi = th.min(th.cat(self.critic(data.observations, actions_pi), dim=1), dim=1, keepdim=True).values
             actor_loss = (ent_coef * log_prob - q_pi).mean()
+            if acc_rows is not None:                  # T2.11: pull the actor's mean intent to the trusted better candidate
+                mean_a, _, _ = self.actor.get_action_dist_params(data.observations[acc_rows])
+                dist = ((th.tanh(mean_a) - acc_target) ** 2).sum(dim=1)
+                bc = (acc_w * dist).mean()
+                actor_loss = actor_loss + ACC_ETA * bc
+                info['acc_bc'] = float(bc.item()); info['acc_actor_dist'] = float(dist.sqrt().mean().item())
             self.actor.optimizer.zero_grad(); actor_loss.backward(); self.actor.optimizer.step()
             if step % self.target_update_interval == 0:
                 polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
@@ -368,25 +496,65 @@ class T2SAC(SAC):
 
 def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transition: float = UPDATES_PER_TRANSITION,
                model_beta: float = MODEL_BETA) -> T2SAC:
-    return T2SAC('MlpPolicy', env, seed=seed, device='cpu', verbose=0, policy_kwargs={'net_arch': [256, 256]},
+    obs_dim = int(env.observation_space.shape[0])
+    if obs_dim == OBS_DIM_PRIV:      # T2.11: split views; only EACC-A's critic reads the executor's judgements
+        policy, kw = SplitViewPolicy, {'net_arch': [256, 256], 'actor_dim': OBS_DIM, 'critic_dim': OBS_DIM_PRIV if arm == 'e_acc' else OBS_DIM}
+    else:
+        policy, kw = 'MlpPolicy', {'net_arch': [256, 256]}
+    return T2SAC(policy, env, seed=seed, device='cpu', verbose=0, policy_kwargs=kw,
                  gamma=GAMMA_STAGE, learning_rate=3e-4, buffer_size=100_000, batch_size=64 if smoke else 256,
                  learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=max(1, int(round(updates_per_transition))),
-                 ent_coef=ENT_COEF, tau=0.005, model_beta=model_beta if arm == 'e_mve' else 0.0, model_start=16 if smoke else MODEL_START,
-                 pref_lambda=PREF_LAMBDA if arm == 'e_pref' else 0.0)
+                 ent_coef=ENT_COEF, tau=0.005, model_beta=model_beta if arm in ('e_mve', 'e_acc') else 0.0, model_start=16 if smoke else MODEL_START,
+                 pref_lambda=PREF_LAMBDA if arm == 'e_pref' else 0.0, acc=arm == 'e_acc')
 
 
 # ---------------------------------------------------------------------- asynchronous collection
 class SpacesEnv(gym.Env):
     """Observation / action spaces of the stage decision, for the learner process (no physics)."""
 
-    observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(OBS_DIM,), dtype=np.float32)
     action_space = gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
 
+    def __init__(self, obs_dim: int = OBS_DIM):
+        self.obs_dim = int(obs_dim)
+        self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
+
     def reset(self, seed=None, options=None):
-        return np.zeros(OBS_DIM, np.float32), {}
+        return np.zeros(self.obs_dim, np.float32), {}
 
     def step(self, action):
-        return np.zeros(OBS_DIM, np.float32), 0.0, True, False, {}
+        return np.zeros(self.obs_dim, np.float32), 0.0, True, False, {}
+
+
+class SliceExtractor(BaseFeaturesExtractor):
+    """The first ``dim`` values of the observation (T2.11: the actor's reduced interface, or the critic's view)."""
+
+    def __init__(self, observation_space, dim: int):
+        super().__init__(observation_space, features_dim=int(dim))
+        self.dim = int(dim)
+
+    def forward(self, obs):
+        return obs[..., :self.dim]
+
+
+class SplitViewPolicy(SACPolicy):
+    """T2.11: one observation (OBS_DIM_PRIV: reduced interface followed by the executor's judgements), two views. The
+    actor reads the first ``actor_dim`` values -- the deployed policy never sees the executor's information; the critic
+    reads the first ``critic_dim`` -- all of it for EACC-A (the executor's judgements as training-time information), the
+    actor's view for the SAC baseline (so the baseline is SAC on the reduced interface, the same environment process)."""
+
+    def __init__(self, *args, actor_dim: int = OBS_DIM, critic_dim: int = OBS_DIM, **kwargs):
+        self.actor_dim, self.critic_dim = int(actor_dim), int(critic_dim)
+        kwargs['share_features_extractor'] = False
+        super().__init__(*args, **kwargs)
+
+    def make_actor(self, features_extractor=None):
+        return super().make_actor(SliceExtractor(self.observation_space, self.actor_dim))
+
+    def make_critic(self, features_extractor=None):
+        return super().make_critic(SliceExtractor(self.observation_space, self.critic_dim))
+
+    def _get_constructor_parameters(self):
+        return {**super()._get_constructor_parameters(), 'actor_dim': self.actor_dim, 'critic_dim': self.critic_dim}
 
 
 def guide_probability(t: int, p0: float, until: int) -> float:
@@ -468,7 +636,8 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
         msg = conn.recv()
         if isinstance(msg, str):
             break
-        action, payload, shared, guide_p = msg if len(msg) == 4 else (*msg, 0.0)
+        action, payload, shared, guide_p, a_det = (*msg, None) if len(msg) == 4 else (msg if len(msg) == 5 else (*msg, 0.0, None))
+        env.policy_action = a_det                 # T2.11: the policy's deterministic intent, a candidate of the advantage
         if shared is not None:
             merge_calibration(env, shared)
         if payload is not None:                   # ('actor', module) once, then ('state', state_dict) every SYNC_UPDATES
@@ -499,10 +668,11 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     out.mkdir(parents=True, exist_ok=False); (out / 'checkpoints').mkdir()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     th.set_num_threads(1)
-    model = make_model(SpacesEnv(), arm, seed, smoke, updates_per_transition=updates_per_transition, model_beta=model_beta)
+    model = make_model(SpacesEnv(OBS_DIM_PRIV if obs_profile == 'reduced_priv' else OBS_DIM), arm, seed, smoke,
+                       updates_per_transition=updates_per_transition, model_beta=model_beta)
     model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
-    candidates = K_CANDIDATES if arm == 'e_mve' else 0      # the SAC arm computes no model
-    pref = arm == 'e_pref'                                   # T2.10: the opportunity preference (no Bellman labels)
+    candidates = K_CANDIDATES if arm in ('e_mve', 'e_acc') else 0      # the SAC arm computes no model
+    pref = arm in ('e_pref', 'e_acc')                        # T2.10 preference / T2.11 EACC-A opportunity judgements
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
                                                    'k_candidates': candidates, 'collection': 'asynchronous', 'window': window,
@@ -510,7 +680,10 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'pooled_calibration': bool(POOL_CALIBRATION and (candidates > 0 or pref)),
                                                    'urgent_deadline_s': list(urgent_deadline) if urgent_deadline is not None else [170.0, 210.0],
                                                    'guide': bool(guide), 'guide_p0': GUIDE_P0 if guide else 0.0, 'guide_until': GUIDE_UNTIL if guide else 0,
-                                                   'obs_profile': obs_profile, 'pref': pref,
+                                                   'obs_profile': obs_profile, 'pref': pref, 'acc': arm == 'e_acc',
+                                                   'actor_view': OBS_DIM, 'critic_view': int(getattr(model.policy, 'critic_dim', OBS_DIM)),
+                                                   'acc_dp': ACC_DP, 'acc_kappa': ACC_KAPPA, 'acc_lambda_q': ACC_LAMBDA_Q, 'acc_eta': ACC_ETA,
+                                                   'acc_min_labels': ACC_MIN_LABELS, 'acc_min_acc': ACC_MIN_ACC,
                                                    'pref_lambda': PREF_LAMBDA if pref else 0.0, 'pref_delta': PREF_DELTA, 'pref_kappa': PREF_KAPPA,
                                                    'pref_margin_cap': PREF_MARGIN_CAP,
                                                    'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION}, indent=1), encoding='utf-8')
@@ -528,6 +701,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     rng = np.random.default_rng(seed)
     pool = CalibrationPool() if (POOL_CALIBRATION and (candidates > 0 or pref)) else None
     guided_by_worker = {}                         # T2.7: guided decisions of each worker's current episode
+    cal_pending = {}                              # T2.11: each worker's executed-decision features of the current episode
     active = list(pipes)
     while active:
         for conn in wait(active):
@@ -547,7 +721,13 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                 if b is not None:                      # latest known outcome-model bias of each environment
                     bias_by_worker[pipes.index(conn)] = b
                     model.entry_bias_now = float(np.mean(list(bias_by_worker.values())))
+                if model.acc and (info.get('pref') or {}).get('f'):
+                    cal_pending.setdefault(pipes.index(conn), []).append(dec_features(info['pref']['f'][PREF_EXEC]))
                 if done:
+                    if model.acc and info.get('event') in ('success', 'timeout', 'resource_exhausted', 'unsafe'):
+                        for fx in cal_pending.get(pipes.index(conn), []):     # predict-then-observe, then add
+                            model.dec_cal.observe(fx, info.get('event') == 'success')
+                    cal_pending.pop(pipes.index(conn), None)
                     episodes.append({'steps': int(model.num_timesteps), 'worker': pipes.index(conn), **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')},
                                      'entry_bias': (info['model']['diag'] or {}).get('entry_bias'), 'guided': guided_by_worker.pop(pipes.index(conn), 0)})
                 if model.num_timesteps >= model.learning_starts:
@@ -555,7 +735,9 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                 while marks and model.num_timesteps >= marks[0]:
                     m = marks.pop(0); model.save(out / 'checkpoints' / f'step_{m}')
                     (out / 'heartbeat.json').write_text(json.dumps({'steps': int(model.num_timesteps), 'wall_s': time.time() - t0, 'episodes': len(episodes),
-                                                                    'updates': int(model._n_updates), 'replay': model.replay_buffer.model_counts}), encoding='utf-8')
+                                                                    'updates': int(model._n_updates), 'replay': model.replay_buffer.model_counts,
+                                                                    'calibration': None if model.dec_cal is None else {'n': len(model.dec_cal.y), 'accuracy': model.dec_cal.accuracy,
+                                                                                                                       'trusted': model.dec_cal.trusted, 'w': model.dec_cal.w.tolist()}}), encoding='utf-8')
                     # logs at every checkpoint (a stopped run keeps them; T2.3 seed 1 lost its logs)
                     (out / 'episodes.json').write_text(json.dumps(episodes, default=str), encoding='utf-8')
                     (out / 'model_stats.json').write_text(json.dumps(model.model_stats), encoding='utf-8')
@@ -573,12 +755,15 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                     payload = ('state', {k: v.detach().clone() for k, v in model.actor.state_dict().items()})
                 if payload is not None:
                     synced[w_] = model._n_updates
+            a_det = model.predict(obs, deterministic=True)[0] if model.acc else None   # T2.11: the policy's own intent
             conn.send((action, payload, pool.pending(w_) if pool is not None else None,
-                       guide_probability(model.num_timesteps, GUIDE_P0, GUIDE_UNTIL) if guide else 0.0))
+                       guide_probability(model.num_timesteps, GUIDE_P0, GUIDE_UNTIL) if guide else 0.0, a_det))
     for p in procs:
         p.join(timeout=60)
     model.save(out / 'final')
     (out / 'episodes.json').write_text(json.dumps(episodes, default=str), encoding='utf-8')
     (out / 'model_stats.json').write_text(json.dumps(model.model_stats), encoding='utf-8')
     (out / 'finished.json').write_text(json.dumps({'steps': int(model.num_timesteps), 'updates': int(model._n_updates), 'wall_s': time.time() - t0,
-                                                   'worker_order': order, 'replay': model.replay_buffer.model_counts}), encoding='utf-8')
+                                                   'worker_order': order, 'replay': model.replay_buffer.model_counts,
+                                                   'calibration': None if model.dec_cal is None else {'n': len(model.dec_cal.y), 'accuracy': model.dec_cal.accuracy,
+                                                                                                      'trusted': model.dec_cal.trusted, 'w': model.dec_cal.w.tolist()}}), encoding='utf-8')

@@ -169,7 +169,7 @@ def guarded_eval(job):
 def main():
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('mode', choices=['screen', 'train', 'eval'])
     p.add_argument('--output', required=True); p.add_argument('--openings'); p.add_argument('--policies')
-    p.add_argument('--workers', type=int, default=4); p.add_argument('--arm', choices=['e_sac', 'e_mve', 'e_pref'], default='e_sac')
+    p.add_argument('--workers', type=int, default=4); p.add_argument('--arm', choices=['e_sac', 'e_mve', 'e_pref', 'e_acc'], default='e_sac')
     p.add_argument('--seed', type=int, default=0); p.add_argument('--steps', type=int, default=2000)
     p.add_argument('--checkpoint'); p.add_argument('--label'); p.add_argument('--checkpoints', default='500,1000,1500,2000,3000,4000,5000')
     p.add_argument('--smoke', action='store_true'); p.add_argument('--no-window', action='store_true')
@@ -177,7 +177,7 @@ def main():
     p.add_argument('--model-beta', type=float, default=0.5)
     p.add_argument('--urgent-deadline', default=None, help='LO,HI s: urgent missions\' deadline range (default 170,210)')
     p.add_argument('--guide', action='store_true', help='T2.7: the collector flies the executor\'s projected capture plan (training only)')
-    p.add_argument('--obs', choices=['engineered', 'reduced', 'geometric', 'raw'], default='engineered', help='T2.9: decision-layer interface (training; evaluation reads the manifest)')
+    p.add_argument('--obs', choices=['engineered', 'reduced', 'geometric', 'raw', 'reduced_priv'], default='engineered', help='T2.9: decision-layer interface (training; evaluation reads the manifest)')
     a = p.parse_args(); out = Path(a.output)
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')
     window = not a.no_window

@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-2.9'
+    assert t.LEARNER_VERSION == 't2-learner-3.0'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -789,7 +789,7 @@ def test_pooled_calibration_only_in_the_coupled_arm():
     w = inspect.getsource(t.worker); src = inspect.getsource(t.train)
     assert 'share_calibration(env) if (POOL_CALIBRATION and (candidates > 0 or pref)) else None' in w and 'merge_calibration(env, shared)' in w
     assert 'CalibrationPool() if (POOL_CALIBRATION and (candidates > 0 or pref)) else None' in src and 'pool.pending(w_)' in src
-    assert "pref = arm == 'e_pref'" in src
+    assert "pref = arm in ('e_pref', 'e_acc')" in src
 
 
 def _intent_fixture(deadline_left=None, budget_left=None):
@@ -1104,8 +1104,11 @@ def test_opportunity_value_is_the_validated_signal_and_reaches_the_step_info():
     load_calibration(env, cal)
     for a in PREF_GRID[:4]:
         assert env.opportunity_value(a) == probe.opp2_signal(env, a)['value']
+    env.policy_action = np.array([-0.5, 0.5])
     _, _, _, _, info = env.step(np.array([1.0, 0.0], np.float32))
-    assert len(info['pref']['a']) == len(PREF_GRID) + 1 and info['pref']['a'][-1] == [1.0, 0.0] and all(x is not None for x in info['pref']['v'])
+    assert len(info['pref']['a']) == len(PREF_GRID) + 2 and info['pref']['a'][-2] == [1.0, 0.0] and info['pref']['a'][-1] == [-0.5, 0.5]
+    assert all(x is not None for x in info['pref']['v']) and all(f['value'] == v for f, v in zip(info['pref']['f'], info['pref']['v']))
+    assert env.policy_action is None                                 # one decision only
 
 
 def test_pref_loss_orders_the_critic_by_the_executor_values():
@@ -1120,7 +1123,7 @@ def test_pref_loss_orders_the_critic_by_the_executor_values():
         acts = rng.uniform(-1, 1, size=(10, 2)).tolist(); vals = [100.0 * x[0] for x in acts]   # prefers a large first component
         vals[3] = None
         rb.add(o, o, np.zeros((1, 2), np.float32), np.zeros(1), np.zeros(1), [{'model': {}, 'pref': {'a': acts, 'v': vals}}])
-    assert rb.pref_valid[:64, 0].sum() == 64 * 9
+    assert rb.pref_valid[:64, 0].sum() == 64 * 9 and t.PREF_K == 11
     data = rb.sample(64)
     loss0, info0 = model._pref_loss(data)
     assert loss0 is not None and info0['pref_pairs'] > 0
@@ -1128,3 +1131,85 @@ def test_pref_loss_orders_the_critic_by_the_executor_values():
         data = rb.sample(64); loss, info = model._pref_loss(data)
         model.critic.optimizer.zero_grad(); loss.backward(); model.critic.optimizer.step()
     assert info['pref_ordered'] > max(info0['pref_ordered'], 0.9) and float(loss) < float(loss0)
+
+
+
+def test_decision_calibration_learns_and_is_trusted_only_when_accurate():
+    """T2.11: the decision-level execution calibration fits capture from the opportunity features of executed decisions,
+    measures its accuracy predict-then-observe, and is trusted only after ACC_MIN_LABELS outcomes at >= ACC_MIN_ACC."""
+    import train.t2_mve_sac as t
+    rng = np.random.default_rng(0); cal = t.DecisionCalibration()
+    for i in range(600):
+        rem, tau = rng.uniform(20, 200), rng.uniform(20, 150); feas = rng.uniform() < 0.8
+        f = {'remaining_s': rem, 'range_m': rng.uniform(7, 20), 'urgent': True, 'feasible': feas, 'tau': tau, 'p_success': 0.9}
+        cal.observe(t.dec_features(f), bool(feas and rem - tau > 60))
+        if i == 100:
+            assert not cal.trusted
+    assert cal.trusted and cal.accuracy >= 0.9 and len(cal.y) == 600
+    noise = t.DecisionCalibration()
+    for i in range(600):
+        noise.observe(t.dec_features({'remaining_s': 100, 'range_m': 10, 'urgent': True, 'feasible': True, 'tau': 50, 'p_success': 0.9}), bool(rng.uniform() < 0.5))
+    assert not noise.trusted                                         # an uninformative calibration is never used
+
+
+def test_acc_terms_order_the_critic_and_pull_the_actor_to_the_trusted_better_candidate():
+    """T2.11: with a trusted calibration that says candidate 0 captures and the policy's own intent does not, the critic
+    hinge orders Q(s, a_0) above Q(s, a_pi) and the actor's mean intent moves to a_0; untrusted, nothing happens."""
+    import torch as th
+    from stable_baselines3.common.logger import configure
+    import train.t2_mve_sac as t
+    model = t.make_model(t.SpacesEnv(), 'e_acc', 0, smoke=True)
+    model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
+    assert model.acc and model.model_beta == t.MODEL_BETA and model.pref_lambda == 0.0
+    rb = model.replay_buffer; rng = np.random.default_rng(1)
+    good = {'remaining_s': 150, 'range_m': 10, 'urgent': True, 'feasible': True, 'tau': 40, 'p_success': 1.0}
+    bad = {'remaining_s': 150, 'range_m': 10, 'urgent': True, 'feasible': False, 'tau': None, 'p_success': 0.0}
+    target = [0.8, -0.6]
+    for i in range(64):
+        o = rng.normal(size=(1, 24)).astype(np.float32)
+        acts = [target] + [rng.uniform(-1, 1, 2).tolist() for _ in range(10)]
+        feats = [good] + [bad] * 10
+        rb.add(o, o, np.zeros((1, 2), np.float32), np.zeros(1), np.zeros(1),
+               [{'model': {}, 'pref': {'a': acts, 'v': [0.0] * 11, 'f': feats}}])
+    data = rb.sample(32)
+    assert model._acc_terms(data)[0] is None                         # untrusted: no term
+    model.dec_cal.w = np.array([-2.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0]); model.dec_cal.hits = [1.0] * t.ACC_MIN_LABELS
+    assert model.dec_cal.trusted
+    obs = th.as_tensor(rb.observations[:64, 0])
+    d0 = float(((th.tanh(model.actor.get_action_dist_params(obs)[0]) - th.tensor(target)) ** 2).sum(1).sqrt().mean())
+    for _ in range(150):
+        data = rb.sample(32)
+        loss, rows, tgt, wt, info = model._acc_terms(data)
+        assert loss is not None and bool(rows.all()) and th.allclose(tgt, th.tensor(target).expand_as(tgt))
+        model.critic.optimizer.zero_grad(); (t.ACC_LAMBDA_Q * loss).backward(); model.critic.optimizer.step()
+        mean_a, _, _ = model.actor.get_action_dist_params(data.observations[rows])
+        bc = (wt * ((th.tanh(mean_a) - tgt) ** 2).sum(1)).mean()
+        model.actor.optimizer.zero_grad(); (t.ACC_ETA * bc).backward(); model.actor.optimizer.step()
+    d1 = float(((th.tanh(model.actor.get_action_dist_params(obs)[0]) - th.tensor(target)) ** 2).sum(1).sqrt().mean())
+    assert info['acc_q_ordered'] > 0.9 and d1 < 0.25 * d0
+
+
+def test_split_views_keep_the_executor_information_out_of_the_actor(tmp_path):
+    """T2.11: 'reduced_priv' = the reduced interface followed by the executor's judgements (the engineered vector); the
+    actor of every arm reads only the reduced part; EACC-A's critic reads both, the SAC baseline's critic only the reduced
+    part; the split survives save / load."""
+    import torch as th
+    import train.t2_mve_sac as t
+    from env.t2_stage import OBS_DIM, OBS_DIM_PRIV, PLANNER_FEATURES, T2StageEnv
+    env = T2StageEnv(obs_profile='reduced_priv'); o = env.reset(options={'opening': 294003})[0]
+    eng = T2StageEnv(); e = eng.reset(options={'opening': 294003})[0]
+    red = e.copy(); red[list(PLANNER_FEATURES)] = 0.0
+    assert o.shape == (OBS_DIM_PRIV,) and np.array_equal(o[:OBS_DIM], red) and np.array_equal(o[OBS_DIM:], e)
+    x = th.as_tensor(np.stack([o, o]))
+    x[1, OBS_DIM:] += 5.0                                            # change only the executor's information
+    a = th.zeros((2, 2))
+    for arm, critic_sees in (('e_acc', True), ('e_sac', False)):
+        m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True)
+        with th.no_grad():
+            mu = m.actor.get_action_dist_params(x)[0]; q = m.critic(x, a)[0]
+        assert th.allclose(mu[0], mu[1])                             # the deployed actor never reads it
+        assert (not th.allclose(q[0], q[1])) == critic_sees
+    m.save(tmp_path / 'm.zip'); m2 = t.T2SAC.load(tmp_path / 'm.zip', device='cpu')
+    assert m2.policy.actor_dim == OBS_DIM and m2.policy.critic_dim == OBS_DIM
+    with th.no_grad():
+        assert th.allclose(m2.actor.get_action_dist_params(x)[0], m.actor.get_action_dist_params(x)[0])

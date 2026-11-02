@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.8.0"
+T2_VERSION = "t2-stage-0.9.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -88,7 +88,12 @@ OBS_DIM = 24
 #: 'reduced' (T2.10, research layer 2026-11-02: moderate change): only the three features that hand the policy the
 #: planner's answer are zeroed -- time to the port's pass, entry-window reachability, deadline slack after the pass
 #: (PLANNER_FEATURES); the relative state, target geometry, clock, fuel, braking margin and execution state stay.
-OBS_PROFILES = ("engineered", "reduced", "geometric", "raw")
+#: 'reduced_priv' (T2.11 EACC-A): the 'reduced' vector followed by the executor's own state-wise judgements -- the full
+#: engineered vector (pass time, window reachability, slack, braking margin, execution residuals / hold, ...) -- for
+#: OBS_DIM_PRIV values in all. The actor reads only the first OBS_DIM (the reduced interface); a critic may read the
+#: rest during training (the executor's information); deployment uses the actor alone.
+OBS_PROFILES = ("engineered", "reduced", "geometric", "raw", "reduced_priv")
+OBS_DIM_PRIV = 2 * 24
 PLANNER_FEATURES = (8, 17, 19)
 #: indices in ``observe``: time to the port's pass, last stage's position / velocity residual and hold, entry-window
 #: reachability (bridge angle), braking margin, deadline slack after the pass
@@ -534,6 +539,8 @@ class T2StageEnv(gym.Env):
         self.obs_profile = obs_profile
         #: T2.10: at every stage decision, the executor-calibrated opportunity value of PREF_GRID and the executed intent
         self.pref = bool(pref)
+        #: T2.11: the policy's deterministic intent for the next decision (set by the collector; one decision only)
+        self.policy_action = None
         self.geometry = bool(geometry)
         self.window = bool(window)
         self.diagnostics = False            # also predict the executed intent with its own realized residual (tests)
@@ -547,7 +554,8 @@ class T2StageEnv(gym.Env):
         self.openings, self.seed_base, self.candidates, self.shaping = openings, int(seed_base), int(candidates), bool(shaping)
         self.rng = np.random.default_rng(seed)
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
-        self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(OBS_DIM,), dtype=np.float32)
+        self.obs_dim = OBS_DIM_PRIV if self.obs_profile == "reduced_priv" else OBS_DIM
+        self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
         self.episode = 0
         self.calibration = Calibration()
         self.entry_calibration = EntryCalibration()
@@ -588,6 +596,9 @@ class T2StageEnv(gym.Env):
         if self.obs_profile == "raw":
             return observe_raw(*args)
         o = observe(*args)
+        if self.obs_profile == "reduced_priv":
+            r = o.copy(); r[list(PLANNER_FEATURES)] = 0.0
+            return np.concatenate([r, o]).astype(np.float32)
         if self.obs_profile == "geometric":
             o[list(EXECUTOR_FEATURES)] = 0.0
         elif self.obs_profile == "reduced":
@@ -602,6 +613,14 @@ class T2StageEnv(gym.Env):
         none), valued by the entry outcome model's historical execution replay (EntryCalibration.predict: capture or
         timeout, time and delta-v) less the stage's time cost; no feasible entry: -timeout penalty - time cost of the
         time left. None until the entry calibration is ready. Used only as a ranking between intents of one decision."""
+        f = self.opportunity_features(action)
+        return None if f is None else f["value"]
+
+    def opportunity_features(self, action) -> dict | None:
+        """T2.11 the executor's opportunity judgement of a stage intent with the raw quantities the decision-level
+        execution calibration uses (``value`` = ``opportunity_value``): feasible, planned arrival tau, planned entry
+        delta-v, the entry outcome model's success share p_success; plus the decision's context (time left at the
+        stage end, range, urgency). None until the entry calibration is ready."""
         from env.t1_gstar import free_body_rotations
         if not self.entry_calibration.ready:
             return None
@@ -610,9 +629,12 @@ class T2StageEnv(gym.Env):
         goal = stage_goal(q, v, frame_now(e, q), np.asarray(action, float).reshape(-1)[:2], e.chaser_parameters.mass,
                           geometry=self.geometry, task=e.config.task)
         remaining = float(self.mission["deadline_s"]) - (e.time_s + STAGE_S)
+        ctx = {"remaining_s": remaining, "range_m": float(np.linalg.norm(q)), "urgent": bool(self.mission["urgent"])}
+        none = {**ctx, "feasible": False, "tau": None, "dv_plan": None, "p_success": 0.0,
+                "value": float(-w.timeout_penalty - w.time_cost_per_s * max(remaining + STAGE_S, 0.0))}
         taus = [t for t in OPPORTUNITY_TAUS_S if t <= remaining]
         if not taus:
-            return float(-w.timeout_penalty - w.time_cost_per_s * max(remaining + STAGE_S, 0.0))
+            return none
         inertia = np.asarray(self.info_env.target_parameters.inertia)
         _, rots, rates = free_body_rotations(e.target_state.rotation, e.target_state.omega, inertia, STAGE_S)
         history = free_body_rotations(rots[-1], rates[-1], inertia, max(taus) + 1.0)
@@ -622,8 +644,9 @@ class T2StageEnv(gym.Env):
                                   entry_speed_m_s=g.entry_speed_m_s)
             if res["feasible"]:
                 pr = self.entry_calibration.frozen().predict(float(res["tau_s"]), float(res["delta_v_m_s"]), w, remaining)
-                return float(pr["reward"] - w.time_cost_per_s * STAGE_S)
-        return float(-w.timeout_penalty - w.time_cost_per_s * (remaining + STAGE_S))
+                return {**ctx, "feasible": True, "tau": float(res["tau_s"]), "dv_plan": float(res["delta_v_m_s"]),
+                        "p_success": float(pr["p_success"]), "value": float(pr["reward"] - w.time_cost_per_s * STAGE_S)}
+        return none
 
     def potential(self, q: np.ndarray, t_rotation: np.ndarray, omega: np.ndarray) -> float:
         mouth = t_rotation @ so3_exp(24.0 * omega) @ (ENTRY_RADIUS_M * self.env.config.task.approach_axis)
@@ -894,11 +917,11 @@ class T2StageEnv(gym.Env):
             cut = self._stage_cutoff(t1, start["dv"] + s1["dv"], dv_hit, hit["s"])   # the budget spent before the entry
             if cut is not None:
                 true = cost(cut[0], cut[1]) - w.timeout_penalty
-                return {"reward": float(true - (s1["phi"] if self.shaping else 0.0)), "obs": np.zeros(OBS_DIM, np.float32), "done": True,
+                return {"reward": float(true - (s1["phi"] if self.shaping else 0.0)), "obs": np.zeros(self.obs_dim, np.float32), "done": True,
                         "true": float(true), "entry": None, "event": cut[2]}
             macro = ecal.predict(hit["tau"], hit["dv_plan"], w, self.mission["deadline_s"] - (t1 + hit["s"]))["reward"]
             true = cost(hit["s"], dv_hit) + macro
-            return {"reward": float(true - (s1["phi"] if self.shaping else 0.0)), "obs": np.zeros(OBS_DIM, np.float32), "done": True,
+            return {"reward": float(true - (s1["phi"] if self.shaping else 0.0)), "obs": np.zeros(self.obs_dim, np.float32), "done": True,
                     "true": float(true), "entry": hit}
         q2, v2 = plan_state(nxt, STAGE_S, mass)
         q2, v2 = q2 + b1.T @ dq_b, v2 + b1.T @ dv_b
@@ -906,7 +929,7 @@ class T2StageEnv(gym.Env):
         cut = self._stage_cutoff(t1, start["dv"] + s1["dv"], dv2)
         if cut is not None:                    # the deadline or the budget ends the episode inside stage 2
             true = cost(cut[0], cut[1]) - w.timeout_penalty
-            return {"reward": float(true - (s1["phi"] if self.shaping else 0.0)), "obs": np.zeros(OBS_DIM, np.float32), "done": True,
+            return {"reward": float(true - (s1["phi"] if self.shaping else 0.0)), "obs": np.zeros(self.obs_dim, np.float32), "done": True,
                     "true": float(true), "entry": None, "event": cut[2]}
         if not 6.5 <= float(np.linalg.norm(q2)) <= 25.0:
             return None
@@ -976,7 +999,7 @@ class T2StageEnv(gym.Env):
         for c in self._plan_candidates(start["q"], start["v"], start["frame"], a):
             p = self.predict_intent(c["plan"], c["a"], start, cal, ecal, anchored, attitude, entry_offset=offset)
             if p["done"]:                     # an entry (outcome model: kind 1 anchored / 2 not) or a deadline / budget end (kind 0)
-                cand = {"a": c["a"], "reward": p["reward"], "next_obs": np.zeros(OBS_DIM, np.float32), "done": True,
+                cand = {"a": c["a"], "reward": p["reward"], "next_obs": np.zeros(self.obs_dim, np.float32), "done": True,
                         "kind": (1 if anchored_outcome else 2) if p.get("entry") is not None else 0}
             elif c["plan"].get("terminal_position_error_m", 1.0) <= 0.3 and 6.5 <= p["r_end"] <= 25.0:   # model domain
                 cand = {"a": c["a"], "reward": p["reward"], "next_obs": p["obs"], "done": False, "kind": 0, "s2": None}
@@ -998,7 +1021,7 @@ class T2StageEnv(gym.Env):
         if self.diagnostics:
             diag["anchored_fact"] = self.predict_intent(plan, a, start, cal, ecal, anchored, attitude, entry_offset=offset, brake_model=False)
             diag["raw_fact"] = fact
-        return {"fact": {"reward": fact["reward"], "next_obs": fact.get("obs", np.zeros(OBS_DIM, np.float32)), "done": bool(fact["done"])},
+        return {"fact": {"reward": fact["reward"], "next_obs": fact.get("obs", np.zeros(self.obs_dim, np.float32)), "done": bool(fact["done"])},
                 "cands": cands, "diag": diag}
 
     def step_pure(self):
@@ -1133,9 +1156,13 @@ class T2StageEnv(gym.Env):
             return self._macro_to_end()
         a = np.clip(np.asarray(action, dtype=np.float64).reshape(-1)[:2], -1.0, 1.0)
         pref = None
-        if self.pref and self.entry_calibration.ready:      # T2.10: before the stage is flown (the decision's own state)
-            acts = [np.asarray(x, np.float64) for x in PREF_GRID] + [a]
-            pref = {"a": [x.tolist() for x in acts], "v": [self.opportunity_value(x) for x in acts]}
+        if self.pref and self.entry_calibration.ready:      # T2.10 / T2.11: before the stage is flown (the decision's own state)
+            # candidates: the grid, the executed intent and (T2.11) the policy's own deterministic intent at this decision
+            pi = a if self.policy_action is None else np.clip(np.asarray(self.policy_action, np.float64).reshape(-1)[:2], -1.0, 1.0)
+            acts = [np.asarray(x, np.float64) for x in PREF_GRID] + [a, pi]
+            feats = [self.opportunity_features(x) for x in acts]
+            pref = {"a": [x.tolist() for x in acts], "v": [f["value"] for f in feats], "f": feats}
+        self.policy_action = None
         q, v = relative_inertial(e)
         frame = frame_now(e, q); basis = frame["basis"]
         goal = stage_goal(q, v, frame, a, mass, geometry=self.geometry, task=self.env.config.task)
@@ -1216,5 +1243,5 @@ class T2StageEnv(gym.Env):
         return self.observation(), float(shaped), terminated, truncated, info
 
 
-__all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "OBS_PROFILES", "EXECUTOR_FEATURES", "PLANNER_FEATURES", "PREF_GRID", "observe_raw", "GAMMA_STAGE", "InfoEnv", "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
+__all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "OBS_DIM_PRIV", "OBS_PROFILES", "EXECUTOR_FEATURES", "PLANNER_FEATURES", "PREF_GRID", "observe_raw", "GAMMA_STAGE", "InfoEnv", "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
            "d_authority", "observe", "Calibration", "t2_env_config"]
