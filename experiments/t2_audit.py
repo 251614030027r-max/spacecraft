@@ -33,7 +33,8 @@ def branch(r, candidates: int = 0):
     from env.t1_counterfactual import _ENV_FIELDS, copy_controller_state, copy_generator_state
     from env.t2_stage import T2StageEnv
     s = T2StageEnv(openings=[r.current_opening], seed_base=r.seed_base, candidates=candidates, mission=r.mission_distribution,
-                   shaping=r.shaping, geometry=r.geometry, entry_stages=r.entry_stages, window=r.window)
+                   shaping=r.shaping, geometry=r.geometry, entry_stages=r.entry_stages, window=r.window,
+                   obs_profile=getattr(r, 'obs_profile', 'engineered'))
     s.reset(options={'opening': r.current_opening})
     s.env.config = r.env.config
     s.env.target_state = r.env.target_state.copy(); s.env.chaser_state = r.env.chaser_state.copy()

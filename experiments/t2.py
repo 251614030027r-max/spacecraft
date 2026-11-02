@@ -127,6 +127,16 @@ def screen(out, ops, policies, workers, window=True, urgent=None):
             r = f.result(); print(json.dumps({k: r.get(k) for k in STAGE_EVAL_KEYS}, default=str), flush=True)
 
 
+def obs_profile_of(checkpoint) -> str:
+    """T2.9: the interface a checkpoint was trained with, from the run's manifest (RUN/checkpoints/step_N.zip or
+    RUN/final.zip); runs before T2.9 have no field and used 'engineered'."""
+    c = Path(checkpoint)
+    for m in (c.parent.parent / 'manifest.json', c.parent / 'manifest.json'):
+        if m.exists():
+            return json.loads(m.read_text(encoding='utf-8')).get('obs_profile', 'engineered')
+    raise FileNotFoundError(f'no manifest.json beside {checkpoint}: the decision interface of the checkpoint is unknown')
+
+
 def eval_job(job):
     opening, checkpoint, label, out, window, urgent = job
     import torch; torch.set_num_threads(1)
@@ -135,7 +145,7 @@ def eval_job(job):
     from env.t2_stage import T2StageEnv
     from train.t2_mve_sac import T2SAC
     model = T2SAC.load(checkpoint, device='cpu')
-    env = T2StageEnv(openings=[opening], shaping=False, window=window, mission=mission_profile(urgent))
+    env = T2StageEnv(openings=[opening], shaping=False, window=window, mission=mission_profile(urgent), obs_profile=obs_profile_of(checkpoint))
     res = run_episode(env, opening, lambda e, o: model.predict(o, deterministic=True)[0])
     res.update(policy=label, checkpoint=str(checkpoint), window=window, entries_lost=env.stats.get('entries_lost', 0),
                window_recoveries=env.generator.bridge.recovery_log); dump(file, res); return res
@@ -167,6 +177,7 @@ def main():
     p.add_argument('--model-beta', type=float, default=0.5)
     p.add_argument('--urgent-deadline', default=None, help='LO,HI s: urgent missions\' deadline range (default 170,210)')
     p.add_argument('--guide', action='store_true', help='T2.7: the collector flies the executor\'s projected capture plan (training only)')
+    p.add_argument('--obs', choices=['engineered', 'raw'], default='engineered', help='T2.9: decision-layer interface (training; evaluation reads the manifest)')
     a = p.parse_args(); out = Path(a.output)
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')
     window = not a.no_window
@@ -177,7 +188,7 @@ def main():
         from train.t2_mve_sac import train
         train(out, a.arm, a.seed, a.steps, a.workers, [int(x) for x in a.checkpoints.split(',')], a.smoke,
               updates_per_transition=a.updates_per_transition, entry_stages=a.entry_stages, window=window, model_beta=a.model_beta,
-              urgent_deadline=urgent, guide=a.guide)
+              urgent_deadline=urgent, guide=a.guide, obs_profile=a.obs)
 
 
 if __name__ == '__main__':

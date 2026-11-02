@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-2.7'
+    assert t.LEARNER_VERSION == 't2-learner-2.8'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -721,7 +721,8 @@ def test_training_passes_the_mission_profile_to_every_worker():
     import inspect, train.t2_mve_sac as t
     assert 'urgent_deadline_s=tuple(float(x) for x in urgent_deadline)' in inspect.getsource(t.worker)
     src = inspect.getsource(t.train)
-    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline)' in src and "'urgent_deadline_s'" in src
+    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile)' in src and "'urgent_deadline_s'" in src
+    assert "'obs_profile': obs_profile" in src and 'obs_profile=obs_profile' in inspect.getsource(t.worker)
 
 
 def test_t26w_readout_bins_late_window_and_both_success(tmp_path):
@@ -1022,3 +1023,35 @@ def test_t28_arm_level_verdict():
     assert decide_t28(readout([30, 32, 34], [20, 30, 25], unsafe_mve=2))['verdict'] == 'harmful'
     r = readout([30, 32, 34], [20, 30, 25]); r['completeness']['e_mve_s1/step_2000']['complete'] = False
     assert decide_t28(r)['verdict'] == 'incomplete'
+
+
+def test_raw_interface_has_no_executor_features(tmp_path):
+    """T2.9: the 'raw' decision interface is range, relative velocity, port direction and spin vector in a neutral
+    line-of-sight frame, the mission clock and fuel (14 values, zero-padded); it ignores the execution residuals and is
+    used for actual and modelled observations alike; evaluation reads the interface from the run's manifest."""
+    import json
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import OBS_DIM, RAW_FEATURES, T2StageEnv, observe, observe_raw
+    from experiments.t2 import obs_profile_of
+    env = T2StageEnv(obs_profile='raw'); env.reset(options={'opening': 294000})
+    o = env.observation()
+    assert o.shape == (OBS_DIM,) and np.all(np.isfinite(o)) and not np.any(o[RAW_FEATURES:])
+    q, v = relative_inertial(env.env); t = env.env.target_state
+    a = observe_raw(env.env, q, v, env.env.time_s, 0.3, env.mission, t.rotation, t.omega, {'position_residual_m': 0.0})
+    b = observe_raw(env.env, q, v, env.env.time_s, 0.3, env.mission, t.rotation, t.omega, {'position_residual_m': 2.0, 'held': True})
+    assert np.array_equal(a, b)
+    assert abs(float(np.linalg.norm(o[4:7])) - 1.0) < 1e-5            # the port direction is a unit vector
+    assert env._observe.__func__ is T2StageEnv._observe and np.array_equal(env._observe(env.env, q, v, env.env.time_s, env.env._delta_v,
+                                                                                         env.mission, t.rotation, t.omega, None), o)
+    eng = T2StageEnv(); eng.reset(options={'opening': 294000})
+    assert np.array_equal(eng.observation(), observe(eng.env, q, v, eng.env.time_s, eng.env._delta_v, eng.mission, t.rotation, t.omega, eng.last))
+    import pytest
+    with pytest.raises(ValueError):
+        T2StageEnv(obs_profile='oracle')
+    run = tmp_path / 'RUN'; (run / 'checkpoints').mkdir(parents=True)
+    (run / 'manifest.json').write_text(json.dumps({'obs_profile': 'raw'}))
+    assert obs_profile_of(run / 'checkpoints' / 'step_1000.zip') == 'raw'
+    (run / 'manifest.json').write_text(json.dumps({}))
+    assert obs_profile_of(run / 'checkpoints' / 'step_1000.zip') == 'engineered'
+    with pytest.raises(FileNotFoundError):
+        obs_profile_of(tmp_path / 'nowhere' / 'checkpoints' / 'step_1.zip')

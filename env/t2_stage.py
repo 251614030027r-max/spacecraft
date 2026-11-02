@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.6.0"
+T2_VERSION = "t2-stage-0.7.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -78,6 +78,12 @@ BRIDGE_TAUS_S = (15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0)
 BRIDGE_ENVELOPE_MARGIN_M_S = 0.02
 BRIDGE_DEADLINE_MARGIN_S = 45.0
 OBS_DIM = 24
+#: T2.9 decision-layer interface. 'engineered' (T2.0-T2.8): the 24 features of ``observe``, among them quantities the
+#: executor's own models compute (time to the port's pass, entry-window reachability, braking margin, deadline slack
+#: after the pass, last stage's execution residuals / hold) and frame-aligned phase angles. 'raw': ``observe_raw``, the
+#: relative state and the target's attitude state in a neutral line-of-sight frame plus the mission clock and fuel --
+#: no executor-derived feature; the executor's knowledge reaches the policy only through training (EACC).
+OBS_PROFILES = ("engineered", "raw")
 CALIBRATION_MIN_STAGES = 10
 CALIBRATION_WINDOW = 60
 CALIBRATION_REGIME_MIN = 5       # stages of one execution regime before its own calibration is used
@@ -364,6 +370,29 @@ def observe(env, q: np.ndarray, v: np.ndarray, t_s: float, dv_used: float, missi
     ], dtype=np.float32)
 
 
+
+RAW_FEATURES = 14
+
+
+def observe_raw(env, q: np.ndarray, v: np.ndarray, t_s: float, dv_used: float, mission: dict, rotation: np.ndarray,
+                omega_body: np.ndarray, last: dict | None = None) -> np.ndarray:
+    """T2.9 'raw' interface (padded to OBS_DIM with zeros): range; relative velocity, the port direction and the
+    target's spin vector in a neutral line-of-sight frame (e_r, the inertial z axis -- y near the pole -- made
+    orthogonal to it, their cross product); deadline left, urgency, delta-v used and left. No spin-aligned frame,
+    phase, pass time, window reachability, braking margin, slack or execution residual (``last`` is ignored)."""
+    task = env.config.task
+    r = float(np.linalg.norm(q)); e_r = q / max(r, 1e-9)
+    ref = np.array([0.0, 0.0, 1.0]) if abs(e_r[2]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    e2 = ref - float(ref @ e_r) * e_r; e2 = e2 / np.linalg.norm(e2)
+    basis = np.vstack([e_r, e2, np.cross(e_r, e2)])
+    spin = rotation @ omega_body
+    port = rotation @ task.approach_axis
+    x = np.zeros(OBS_DIM, dtype=np.float32)
+    x[:RAW_FEATURES] = [r / 15.0, *(basis @ v / 0.2), *(basis @ port), *(basis @ spin / np.radians(2.7)),
+                        (mission["deadline_s"] - t_s) / 300.0, float(mission["urgent"]), dv_used / 2.5,
+                        (mission["budget_m_s"] - dv_used) / 3.0]
+    return x
+
 @dataclass
 class Calibration:
     """Execution calibration of the stage planner on this environment's executed stages."""
@@ -488,7 +517,10 @@ class T2StageEnv(gym.Env):
 
     def __init__(self, openings: list[int] | None = None, seed_base: int = 1_000_000, candidates: int = 0,
                  mission: T2Mission = T2Mission(), shaping: bool = True, seed: int = 0, geometry: bool = True,
-                 entry_stages: int = ENTRY_STAGES, window: bool = True) -> None:
+                 entry_stages: int = ENTRY_STAGES, window: bool = True, obs_profile: str = "engineered") -> None:
+        if obs_profile not in OBS_PROFILES:
+            raise ValueError(f"obs_profile must be one of {OBS_PROFILES}")
+        self.obs_profile = obs_profile
         self.geometry = bool(geometry)
         self.window = bool(window)
         self.diagnostics = False            # also predict the executed intent with its own realized residual (tests)
@@ -536,7 +568,11 @@ class T2StageEnv(gym.Env):
     def observation(self) -> np.ndarray:
         q, v = relative_inertial(self.env)
         t = self.env.target_state
-        return observe(self.env, q, v, self.env.time_s, self.env._delta_v, self.mission, t.rotation, t.omega, self.last)
+        return self._observe(self.env, q, v, self.env.time_s, self.env._delta_v, self.mission, t.rotation, t.omega, self.last)
+
+    def _observe(self, *args) -> np.ndarray:
+        """The decision layer's observation in this environment's interface (actual and modelled states alike)."""
+        return (observe_raw if self.obs_profile == "raw" else observe)(*args)
 
     def potential(self, q: np.ndarray, t_rotation: np.ndarray, omega: np.ndarray) -> float:
         mouth = t_rotation @ so3_exp(24.0 * omega) @ (ENTRY_RADIUS_M * self.env.config.task.approach_axis)
@@ -771,7 +807,7 @@ class T2StageEnv(gym.Env):
                     "stages": 1, "true": float(true)}
         rot1, om1 = attitude(STAGE_S)
         r1 = cost(STAGE_S, dv1)
-        obs = observe(e, q1, v1, start["t"] + STAGE_S, start["dv"] + dv1, self.mission, rot1, om1,
+        obs = self._observe(e, q1, v1, start["t"] + STAGE_S, start["dv"] + dv1, self.mission, rot1, om1,
                       {"position_residual_m": float(np.linalg.norm(dq)), "velocity_residual_m_s": float(np.linalg.norm(dvv)), "held": False})
         phi1 = self.potential(q1, rot1, om1)
         out = {"reward": float(r1 + (GAMMA_STAGE * phi1 - start["phi"] if self.shaping else 0.0)), "obs": obs, "done": False,
@@ -824,7 +860,7 @@ class T2StageEnv(gym.Env):
         if not 6.5 <= float(np.linalg.norm(q2)) <= 25.0:
             return None
         rot2, om2 = attitude(2 * STAGE_S)
-        obs = observe(e, q2, v2, t1 + STAGE_S, start["dv"] + s1["dv"] + dv2, self.mission, rot2, om2,
+        obs = self._observe(e, q2, v2, t1 + STAGE_S, start["dv"] + s1["dv"] + dv2, self.mission, rot2, om2,
                       {"position_residual_m": float(np.linalg.norm(dq_b)), "velocity_residual_m_s": float(np.linalg.norm(dv_b)), "held": False})
         r2 = cost(STAGE_S, dv2)
         shaped = r2 + (GAMMA_STAGE * self.potential(q2, rot2, om2) - s1["phi"] if self.shaping else 0.0)
@@ -1125,5 +1161,5 @@ class T2StageEnv(gym.Env):
         return self.observation(), float(shaped), terminated, truncated, info
 
 
-__all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "GAMMA_STAGE", "InfoEnv", "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
+__all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "OBS_PROFILES", "observe_raw", "GAMMA_STAGE", "InfoEnv", "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
            "d_authority", "observe", "Calibration", "t2_env_config"]

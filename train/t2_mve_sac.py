@@ -60,8 +60,9 @@ SYNC_UPDATES = 100
 AGE_CAP = 2000
 #: learner version recorded in the manifest (T2.5.1: one-step stage-2 rows; T2.6: calibration shared by the workers;
 #: T2.6.1: labels end at the deadline / budget, env t2-stage-0.4.2; env 0.4.3 adds the budget before a predicted entry;
-#: T2.7: executor guidance in the collector (``guide_probability``; off by default), env 0.5.0)
-LEARNER_VERSION = "t2-learner-2.7"
+#: T2.7: executor guidance in the collector (``guide_probability``; off by default), env 0.5.0;
+#: T2.9: the decision-layer interface ``obs_profile`` passed to every environment and recorded, env 0.7.0)
+LEARNER_VERSION = "t2-learner-2.8"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -380,7 +381,8 @@ def merge_calibration(env, rows) -> None:
             obj.rows = (obj.rows + list(rows[kind]))[-CALIBRATION_WINDOW:]
 
 
-def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool, urgent_deadline=None) -> None:
+def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool, urgent_deadline=None,
+           obs_profile: str = 'engineered') -> None:
     """One environment: send (transition or None, observation to act on), receive the action; until 'stop'."""
     import os
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
@@ -389,7 +391,7 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
     from env.t2_stage import T2Mission, T2StageEnv
     mission = T2Mission() if urgent_deadline is None else T2Mission(urgent_deadline_s=tuple(float(x) for x in urgent_deadline))
     env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, candidates=candidates, shaping=True, seed=seed * 100 + rank,
-                     entry_stages=entry_stages, window=window, mission=mission)
+                     entry_stages=entry_stages, window=window, mission=mission, obs_profile=obs_profile)
     obs, _ = env.reset(); transition = None
     actor = None
     guide_rng = np.random.default_rng([seed, rank, 2707])        # T2.7 guidance draws (own stream)
@@ -428,7 +430,7 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
 
 def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[int], smoke: bool = False,
           updates_per_transition: float = UPDATES_PER_TRANSITION, entry_stages: int | None = None, window: bool = True,
-          model_beta: float = MODEL_BETA, urgent_deadline=None, guide: bool = False) -> None:
+          model_beta: float = MODEL_BETA, urgent_deadline=None, guide: bool = False, obs_profile: str = 'engineered') -> None:
     import multiprocessing as mp
     from multiprocessing.connection import wait
     from stable_baselines3.common.logger import configure
@@ -447,12 +449,13 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'pooled_calibration': bool(POOL_CALIBRATION and candidates > 0),
                                                    'urgent_deadline_s': list(urgent_deadline) if urgent_deadline is not None else [170.0, 210.0],
                                                    'guide': bool(guide), 'guide_p0': GUIDE_P0 if guide else 0.0, 'guide_until': GUIDE_UNTIL if guide else 0,
+                                                   'obs_profile': obs_profile,
                                                    'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION}, indent=1), encoding='utf-8')
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
     for rank in range(workers):
         a, b = ctx.Pipe()
-        p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline), daemon=True)
+        p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile), daemon=True)
         p.start(); pipes.append(a); procs.append(p)
     marks = sorted(set([m for m in marks if m <= steps] + [steps]))
     model.save(out / 'checkpoints' / 'step_0')
