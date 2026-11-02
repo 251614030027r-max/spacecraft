@@ -1,0 +1,145 @@
+{
+ "decisions": 154,
+ "phases": {
+  "urgent_window": 52,
+  "urgent_early": 34,
+  "economy": 68
+ },
+ "decisive_pairs": {
+  "urgent_window": 204,
+  "urgent_early": 298,
+  "economy": 367
+ },
+ "obs_mismatch": 67,
+ "nonterminal_branches": 0,
+ "alignment": {
+  "label_used": 69,
+  "label_dropped": 17,
+  "opp2_used": 154,
+  "opp2_dropped": 0,
+  "label_drift_max": 0.04277169704437256,
+  "label_drift_median": 2.2819403966423124e-06
+ },
+ "critic_by_arm_phase": {
+  "mve/urgent_window": {
+   "checkpoints": 6,
+   "accuracy_mean": 0.7058823529411765,
+   "accuracy_min": 0.6519607843137255
+  },
+  "mve/urgent_early": {
+   "checkpoints": 6,
+   "accuracy_mean": 0.7628635346756152,
+   "accuracy_min": 0.7315436241610739
+  },
+  "mve/economy": {
+   "checkpoints": 6,
+   "accuracy_mean": 0.6684831970935514,
+   "accuracy_min": 0.6321525885558583
+  },
+  "sac/urgent_window": {
+   "checkpoints": 6,
+   "accuracy_mean": 0.6037581699346405,
+   "accuracy_min": 0.5245098039215687
+  },
+  "sac/urgent_early": {
+   "checkpoints": 6,
+   "accuracy_mean": 0.7393736017897092,
+   "accuracy_min": 0.714765100671141
+  },
+  "sac/economy": {
+   "checkpoints": 6,
+   "accuracy_mean": 0.6012715712988193,
+   "accuracy_min": 0.5231607629427792
+  }
+ },
+ "signals": {
+  "label": {
+   "selection": {
+    "critic_right": 1271,
+    "broken": 0,
+    "net": 17,
+    "pairs_urgent_early": 1116,
+    "critic_wrong": 613,
+    "fixed": 17,
+    "pairs_urgent_window": 768,
+    "fix": 0.02773246329526917,
+    "break": 0.0,
+    "pass": false
+   },
+   "heldout": {
+    "critic_wrong": 910,
+    "fixed": 134,
+    "net": 134,
+    "pairs_urgent_early": 2460,
+    "critic_right": 2786,
+    "broken": 0,
+    "pairs_urgent_window": 1236,
+    "fix": 0.14725274725274726,
+    "break": 0.0,
+    "pass": false
+   },
+   "checkpoints_net_positive": "12/12",
+   "carries_missing_information": false
+  },
+  "opp": {
+   "selection": {
+    "critic_wrong": 1978,
+    "fixed": 589,
+    "net": 402,
+    "pairs_economy": 2940,
+    "critic_right": 3158,
+    "broken": 187,
+    "pairs_urgent_early": 1116,
+    "pairs_urgent_window": 1080,
+    "fix": 0.29777553083923153,
+    "break": 0.05921469284357188,
+    "pass": false
+   },
+   "heldout": {
+    "critic_right": 3927,
+    "broken": 69,
+    "net": 225,
+    "pairs_economy": 1464,
+    "critic_wrong": 1365,
+    "fixed": 294,
+    "pairs_urgent_early": 2460,
+    "pairs_urgent_window": 1368,
+    "fix": 0.2153846153846154,
+    "break": 0.01757066462948816,
+    "pass": false
+   },
+   "checkpoints_net_positive": "12/12",
+   "carries_missing_information": false
+  },
+  "opp2": {
+   "selection": {
+    "critic_wrong": 1978,
+    "fixed": 644,
+    "net": 433,
+    "pairs_economy": 2940,
+    "critic_right": 3158,
+    "broken": 211,
+    "pairs_urgent_early": 1116,
+    "pairs_urgent_window": 1080,
+    "fix": 0.32558139534883723,
+    "break": 0.06681443951868271,
+    "pass": false
+   },
+   "heldout": {
+    "critic_right": 3927,
+    "broken": 142,
+    "net": 197,
+    "pairs_economy": 1464,
+    "critic_wrong": 1365,
+    "fixed": 339,
+    "pairs_urgent_early": 2460,
+    "pairs_urgent_window": 1368,
+    "fix": 0.24835164835164836,
+    "break": 0.03615991851285969,
+    "pass": false
+   },
+   "checkpoints_net_positive": "12/12",
+   "carries_missing_information": false
+  }
+ }
+}
