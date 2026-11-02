@@ -892,17 +892,9 @@
 ## 实际训练及每决策墙钟
 
 - TRAIN_e_mve_s0: steps=2000, finished=True, wall_s=26843.988698244095, seconds/decision=13.421994349122047.
-- TRAIN_e_mve_s0.err.log: steps=0, finished=False, wall_s=None, seconds/decision=None.
-- TRAIN_e_mve_s0.out.log: steps=0, finished=False, wall_s=None, seconds/decision=None.
 - TRAIN_e_mve_s1: steps=2000, finished=True, wall_s=23746.444969654083, seconds/decision=11.873222484827041.
-- TRAIN_e_mve_s1.err.log: steps=0, finished=False, wall_s=None, seconds/decision=None.
-- TRAIN_e_mve_s1.out.log: steps=0, finished=False, wall_s=None, seconds/decision=None.
 - TRAIN_e_sac_s0: steps=2000, finished=True, wall_s=25926.183851718903, seconds/decision=12.963091925859452.
-- TRAIN_e_sac_s0.err.log: steps=0, finished=False, wall_s=None, seconds/decision=None.
-- TRAIN_e_sac_s0.out.log: steps=0, finished=False, wall_s=None, seconds/decision=None.
 - TRAIN_e_sac_s1: steps=2000, finished=True, wall_s=21585.80560541153, seconds/decision=10.792902802705765.
-- TRAIN_e_sac_s1.err.log: steps=0, finished=False, wall_s=None, seconds/decision=None.
-- TRAIN_e_sac_s1.out.log: steps=0, finished=False, wall_s=None, seconds/decision=None.
 
 ## night.log 时间线
 
