@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.10.0"
+T2_VERSION = "t2-stage-0.11.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -104,6 +104,14 @@ CALIBRATION_REGIME_MIN = 5       # stages of one execution regime before its own
 #: a stage starting within this range is (at least partly) flown by the near-field MPC
 NEAR_REGIME_M = 7.5 + 2.0
 CANDIDATE_RADIUS = 0.5          # local candidates (``candidate_actions``: 3 structured + 1 global + local)
+#: EACC iteration (env 0.11.0, label arm e_rel only): candidates are compared in the executor's terms. An intent whose
+#: stage goal (the executor's projected, rate-limited stage-end velocity; it fixes the executed stage plan) lies within
+#: CANDIDATE_MIN_SEP_M_S of the executed intent's or of an already chosen candidate's is redrawn (its kind: local stays
+#: local, a structured alternative falls back to a global draw), at most CANDIDATE_RESAMPLES times. 0.01 m/s = 0.08 m at
+#: the stage end, above the anchored model's stage-end position error (P90 0.057 m, evidence/T2_12_PRECHECK): a smaller
+#: difference is below the model's resolution and carries no comparison. 0 keeps the T2.11 / a3f4c65 generator exactly.
+CANDIDATE_MIN_SEP_M_S = 0.01
+CANDIDATE_RESAMPLES = 4
 #: SMDP discount of one stage (0.999 per 2 s); the same constant is the learner's gamma and the
 #: potential-shaping discount of every non-terminal real and model transition
 GAMMA_STAGE = 0.999 ** (16.0 / 2.0)
@@ -533,12 +541,16 @@ class T2StageEnv(gym.Env):
 
     def __init__(self, openings: list[int] | None = None, seed_base: int = 1_000_000, candidates: int = 0,
                  mission: T2Mission = T2Mission(), shaping: bool = True, seed: int = 0, geometry: bool = True,
-                 entry_stages: int = ENTRY_STAGES, window: bool = True, obs_profile: str = "engineered", pref: bool = False) -> None:
+                 entry_stages: int = ENTRY_STAGES, window: bool = True, obs_profile: str = "engineered", pref: bool = False,
+                 cand_min_sep: float = 0.0) -> None:
         if obs_profile not in OBS_PROFILES:
             raise ValueError(f"obs_profile must be one of {OBS_PROFILES}")
         self.obs_profile = obs_profile
         #: T2.10: at every stage decision, the executor-calibrated opportunity value of PREF_GRID and the executed intent
         self.pref = bool(pref)
+        #: EACC iteration: minimum separation of the candidates' stage goals (m/s; 0 = the T2.11 generator)
+        self.cand_min_sep = float(cand_min_sep)
+        self.last_resampled = 0
         #: T2.11: the policy's deterministic intent for the next decision (set by the collector; one decision only)
         self.policy_action = None
         self.geometry = bool(geometry)
@@ -1016,7 +1028,7 @@ class T2StageEnv(gym.Env):
             if self.diagnostics:      # label audit against truth branches: the raw (calibration-only) prediction beside it
                 cand["anchored"] = p; cand["raw"] = self.predict_intent(c["plan"], c["a"], start, cal, ecal, raw, attitude)
             cands.append(cand)
-        diag = {"fact_entry": fact.get("entry") is not None, "fact_cutoff": bool(fact["done"]) and fact.get("entry") is None, "entered": entered is not None, "entry_offset": offset, "candidates": len(cands),
+        diag = {"resampled": int(self.last_resampled), "fact_entry": fact.get("entry") is not None, "fact_cutoff": bool(fact["done"]) and fact.get("entry") is None, "entered": entered is not None, "entry_offset": offset, "candidates": len(cands),
                 "entry_bias": entry_bias, "entry_records": len(ecal.rows)}
         # T2.12 (EACC relative labels): the executed intent through exactly the candidates' treatment (same function, the
         # same anchored residual path, entry rule with the brake model, entry outcome offset). A candidate's relative label
@@ -1110,11 +1122,15 @@ class T2StageEnv(gym.Env):
                     self._try_bridge(m)
         return float(r), event, info
 
-    def candidate_actions(self, action) -> list[np.ndarray]:
+    def candidate_actions(self, action, goal_of=None) -> list[np.ndarray]:
         """K counterfactual intents: the decisive alternatives of the scenario (no along-sweep motion, the
         opposite along-sweep sense, a slower close), one anywhere in the box, the rest local (radius 0.5).
-        A structured alternative within 0.15 of the executed intent is replaced by a global one."""
+        A structured alternative within 0.15 of the executed intent is replaced by a global one.
+        With ``cand_min_sep`` > 0 and ``goal_of`` (intent -> stage-goal velocity) the candidates are separated in the
+        executor's terms instead (``_separated_candidates``)."""
         a = np.clip(np.asarray(action, dtype=np.float64).reshape(-1)[:2], -1.0, 1.0)
+        if self.cand_min_sep > 0 and goal_of is not None:
+            return self._separated_candidates(a, goal_of)
         out = []
         for alt in ([a[0], 0.0], [a[0], -a[1] if abs(a[1]) > 0.25 else -0.5], [a[0] - 0.6, a[1]]):
             alt = np.clip(np.asarray(alt, dtype=np.float64), -1.0, 1.0)
@@ -1125,11 +1141,41 @@ class T2StageEnv(gym.Env):
             out.append(np.clip(a + step, -1.0, 1.0))
         return out[:self.candidates]
 
+    def _separated_candidates(self, a, goal_of) -> list[np.ndarray]:
+        """The same three kinds of candidates as ``candidate_actions``; a draw whose stage goal lies within
+        ``cand_min_sep`` of the executed intent's or an accepted candidate's is redrawn (CANDIDATE_RESAMPLES at most;
+        the last draw is kept so that every decision has K candidates). ``last_resampled`` counts the redraws."""
+        def draw(kind):
+            if kind == 'global':
+                return self.rng.uniform(-1.0, 1.0, size=2)
+            step = self.rng.normal(size=2); step = CANDIDATE_RADIUS * step / max(np.linalg.norm(step), 1e-9) * self.rng.uniform(0.3, 1.0)
+            return np.clip(a + step, -1.0, 1.0)
+        props = [('structured', np.clip(np.asarray(x, dtype=np.float64), -1.0, 1.0))
+                 for x in ([a[0], 0.0], [a[0], -a[1] if abs(a[1]) > 0.25 else -0.5], [a[0] - 0.6, a[1]])]
+        props.append(('global', None))
+        props += [('local', None)] * max(self.candidates - 4, 0)
+        goals = [np.asarray(goal_of(a), dtype=np.float64)]
+        out, redraws = [], 0
+        for kind, c in props[:self.candidates]:
+            if c is None:
+                c = draw(kind)
+            fresh = 'global' if kind == 'structured' else kind
+            g = np.asarray(goal_of(c), dtype=np.float64)
+            tries = 0
+            while min(float(np.linalg.norm(g - x)) for x in goals) < self.cand_min_sep and tries < CANDIDATE_RESAMPLES:
+                c = draw(fresh); g = np.asarray(goal_of(c), dtype=np.float64); tries += 1
+            redraws += tries
+            out.append(c); goals.append(g)
+        self.last_resampled = redraws
+        return out
+
     def _plan_candidates(self, q, v, frame, action) -> list[dict]:
         if self.candidates <= 0:
             return []
         out, mass = [], self.env.chaser_parameters.mass
-        for ac in self.candidate_actions(action):
+        goal_of = lambda x: stage_goal(q, v, frame, x, mass, geometry=self.geometry, task=self.env.config.task)["v_goal"]
+        self.last_resampled = 0
+        for ac in self.candidate_actions(action, goal_of if self.cand_min_sep > 0 else None):
             goal = stage_goal(q, v, frame, ac, mass, geometry=self.geometry, task=self.env.config.task)
             plan = self.generator.planner.solve(q, v, goal["q_goal"], goal["v_goal"])
             if not plan["feasible"]:

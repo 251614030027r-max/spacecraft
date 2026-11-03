@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-4.0'
+    assert t.LEARNER_VERSION == 't2-learner-4.1'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -721,7 +721,7 @@ def test_training_passes_the_mission_profile_to_every_worker():
     import inspect, train.t2_mve_sac as t
     assert 'urgent_deadline_s=tuple(float(x) for x in urgent_deadline)' in inspect.getsource(t.worker)
     src = inspect.getsource(t.train)
-    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref)' in src and "'urgent_deadline_s'" in src
+    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref, cand_min_sep)' in src and "'urgent_deadline_s'" in src
     assert "'obs_profile': obs_profile" in src and 'obs_profile=obs_profile' in inspect.getsource(t.worker)
 
 
@@ -1407,3 +1407,52 @@ def test_relative_reference_is_the_real_value_across_outcome_classes():
         th.manual_seed(5); out[name] = m._relative_loss(data, cur, target, m.ent_coef_tensor)[1]
     assert out['small']['class_differs_share'] == 1.0
     assert abs(out['large']['delta_abs_mean_sigma'] - out['small']['delta_abs_mean_sigma']) < 1e-6
+
+
+def test_common_random_numbers_soft_value_matches_sb3_and_cancels_in_differences():
+    """learner 4.1: the soft value with a given noise equals SB3's squashed-Gaussian sample and log-probability, and a
+    candidate whose predicted transition equals the reference's gets D_j = 0 exactly."""
+    import torch as th
+    from env.t2_stage import OBS_DIM_PRIV
+    m = _rel_model()
+    obs = th.randn((6, OBS_DIM_PRIV)); noise = th.randn((6, 2))
+    with th.no_grad():
+        v = m._soft_value_noise(obs, noise, m.ent_coef_tensor)
+        mean, log_std, kw = m.actor.get_action_dist_params(obs)
+        a = th.tanh(mean + log_std.exp() * noise)
+        dist = m.actor.action_dist.proba_distribution(mean, log_std, **kw)
+        ref = th.min(th.cat(m.critic_target(obs, a), dim=1), dim=1, keepdim=True).values - m.ent_coef_tensor * dist.log_prob(a).reshape(-1, 1)
+    assert float((v - ref).abs().max()) < 1e-3
+    rng = np.random.default_rng(0)
+    for i in range(16):
+        o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+        same = {'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}
+        cands = [{'a': rng.uniform(-1, 1, 2).astype(np.float32), 'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0} for _ in range(3)]
+        m.replay_buffer.add(o, o1[None], np.zeros((1, 2), np.float32), np.array([-2.0]), np.array([False]),
+                            [{'model': {'fact': {'reward': -2.0, 'next_obs': o1, 'done': False, 'same': same}, 'cands': cands, 'diag': {'reason': 'stage'}}}])
+    m.td_ms = 100.0
+    data = m.replay_buffer.sample(8)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    info = m._relative_loss(data, m.critic(data.observations, data.actions), target, m.ent_coef_tensor)[1]
+    assert info['delta_abs_mean_sigma'] == 0.0
+
+
+def test_candidates_are_separated_in_the_executors_terms():
+    """env 0.11.0: with cand_min_sep > 0 the candidates' stage goals keep that distance from the executed intent's and
+    from each other (unless the redraw budget runs out); with 0 the T2.11 generator is unchanged, draw for draw."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import T2StageEnv, CANDIDATE_MIN_SEP_M_S, CANDIDATE_RESAMPLES, frame_now, stage_goal
+    old = T2StageEnv(openings=[1000003], candidates=8, seed=7); old.reset()
+    new = T2StageEnv(openings=[1000003], candidates=8, seed=7, cand_min_sep=0.0); new.reset()
+    a = np.array([0.95, 0.9])
+    assert all(np.array_equal(x, y) for x, y in zip(old.candidate_actions(a), new.candidate_actions(a)))
+    env = T2StageEnv(openings=[1000003], candidates=8, seed=7, cand_min_sep=CANDIDATE_MIN_SEP_M_S); env.reset(); e = env.env
+    q, v = relative_inertial(e); fr = frame_now(e, q); mass = e.chaser_parameters.mass
+    goal_of = lambda x: stage_goal(q, v, fr, np.asarray(x, float), mass, task=e.config.task)['v_goal']
+    for a in (np.array([0.95, 0.9]), np.array([1.0, 1.0]), np.array([-0.2, 0.1])):
+        cands = env.candidate_actions(a, goal_of)
+        assert len(cands) == 8
+        G = [goal_of(a)] + [goal_of(c) for c in cands]
+        dmin = [min(np.linalg.norm(G[i] - G[j]) for j in range(i)) for i in range(1, len(G))]
+        assert all(d >= CANDIDATE_MIN_SEP_M_S for d in dmin) or env.last_resampled >= CANDIDATE_RESAMPLES

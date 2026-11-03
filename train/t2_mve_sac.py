@@ -74,8 +74,10 @@ AGE_CAP = 2000
 #: T2.10: arm e_pref, the executor-calibrated opportunity preference on the critic, env 0.8.0;
 #: T2.11: arm e_acc, EACC-A -- decision-level execution calibration and calibrated advantage to critic and actor, env 0.9.0;
 #: T2.12: arm e_rel, EACC -- relative execution-anchored counterfactual value learning (``_relative_loss``), and arm e_priv,
-#: the same critic view without counterfactual feedback; env 0.10.0)
-LEARNER_VERSION = "t2-learner-4.0"
+#: the same critic view without counterfactual feedback; env 0.10.0;
+#: 4.1 (EACC iteration): common random numbers in the bootstrap values of one decision's relative labels, and candidates
+#: separated in the executor's stage-goal terms (env 0.11.0, ``cand_min_sep``; arm e_rel only))
+LEARNER_VERSION = "t2-learner-4.1"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -140,6 +142,11 @@ ACC_MIN_ACC = 0.8
 #: Trust (M3, one Cauchy rule): w = 1 / (1 + (eps / sigma)^2), eps = |e_raw| + b 1[k_j = 2] (1 - c_j 1[k_f = 2]),
 #: e_raw = y_f - Y_raw(a_f) the calibration-only model's error on the executed transition, b the current entry outcome-model
 #: bias, charged to an unanchored entry label unless its reference is an unanchored entry of the same decision (b cancels).
+#: Common random numbers (learner 4.1): the soft values V'(s^'_a) of one decision's candidates and of its reference
+#: Y(a_f) are evaluated with the same policy noise (one standard-normal draw per decision, ``_soft_value_noise``), so the
+#: sampling noise of the bootstrap cancels in D_j as the exogenous target motion does in the labels (M2); every row keeps
+#: the marginal of SAC's soft value, so each target is unchanged in expectation. Two candidates with the same predicted
+#: transition get D_j = 0 exactly.
 REL_BETA = 0.5
 CAL_REFIT = 50
 CAL_WINDOW = 3000
@@ -240,6 +247,7 @@ class StageReplay(ReplayBuffer):
             fact, cands = model.get('fact'), (model.get('cands') or [])[:self.k]
             reason = (model.get('diag') or {}).get('reason', 'none')
             c = self.model_counts; c['transitions'] += 1; c['reason'][reason] = c['reason'].get(reason, 0) + 1
+            c['resampled'] = c.get('resampled', 0) + int((model.get('diag') or {}).get('resampled') or 0)
             if fact is None or not cands:
                 continue
             self.fact_r[i, e] = fact['reward']; self.fact_obs[i, e] = fact['next_obs']; self.fact_done[i, e] = float(fact['done'])
@@ -301,6 +309,18 @@ class T2SAC(SAC):
     def _soft_value(self, obs, ent_coef):
         a, logp = self.actor.action_log_prob(obs)
         return th.min(th.cat(self.critic_target(obs, a), dim=1), dim=1, keepdim=True).values - ent_coef * logp.reshape(-1, 1)
+
+    def _soft_value_noise(self, obs, noise, ent_coef):
+        """Soft value of the target critic with a given standard-normal noise for the squashed-Gaussian policy sample
+        (the same formula as SB3's SquashedDiagGaussianDistribution: tanh(mu + std * noise), log-prob with the tanh
+        correction). With independent noise per row it is ``_soft_value``."""
+        mean, log_std, _ = self.actor.get_action_dist_params(obs)
+        std = log_std.exp()
+        u = mean + std * noise
+        a = th.tanh(u)
+        logp = (-0.5 * noise ** 2 - log_std - 0.5 * float(np.log(2 * np.pi))).sum(dim=1, keepdim=True)
+        logp = logp - th.log(1.0 - a ** 2 + 1e-6).sum(dim=1, keepdim=True)
+        return th.min(th.cat(self.critic_target(obs, a), dim=1), dim=1, keepdim=True).values - ent_coef * logp
 
     def _log_pi(self, obs, actions):
         """log pi(a | obs) of given (squashed) actions under the current actor."""
@@ -428,10 +448,12 @@ class T2SAC(SAC):
         with th.no_grad():
             g = self.gamma
             y_raw = m['fact_r'].reshape(-1, 1) + (1.0 - m['fact_done'].reshape(-1, 1)) * g * self._soft_value(m['fact_obs'], ent_coef)
-            y_same = m['same_r'].reshape(-1, 1) + (1.0 - m['same_done'].reshape(-1, 1)) * g * self._soft_value(m['same_obs'], ent_coef)
+            noise = th.randn((b, self.actor.action_dist.action_dim))          # common random numbers: one draw per decision
+            y_same = m['same_r'].reshape(-1, 1) + (1.0 - m['same_done'].reshape(-1, 1)) * g * self._soft_value_noise(m['same_obs'], noise, ent_coef)
             e_raw = (target - y_raw).reshape(-1); e_same = (target - y_same).reshape(-1)
             o1 = m['cand_obs'][mask]; d1 = m['cand_done'][mask].reshape(-1, 1)
-            y_c = m['cand_r'][mask].reshape(-1, 1) + (1.0 - d1) * g * self._soft_value(o1, ent_coef)
+            n1 = noise[:, None, :].expand(-1, k, -1)[mask]
+            y_c = m['cand_r'][mask].reshape(-1, 1) + (1.0 - d1) * g * self._soft_value_noise(o1, n1, ent_coef)
             expand = lambda x: x.reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1)
             kind_j = m['cand_kind'][mask].reshape(-1, 1); kind_f = expand(m['same_kind'])
             cls = lambda done, kind: th.where(done > 0, th.where(kind > 0, th.ones_like(kind), 2.0 * th.ones_like(kind)), th.zeros_like(kind))
@@ -656,7 +678,7 @@ def _slim(info: dict) -> dict:
     model = info.get('model') or {}
     cands = [{**{k: c.get(k, 0) for k in ('a', 'reward', 'next_obs', 'done', 'kind')}, 's2': c.get('s2')} for c in model.get('cands') or []]
     diag = model.get('diag') or {}
-    return {'model': {'fact': model.get('fact'), 'cands': cands, 'diag': {k: diag.get(k) for k in ('reason', 'entry_bias', 'entry_records')}},
+    return {'model': {'fact': model.get('fact'), 'cands': cands, 'diag': {k: diag.get(k) for k in ('reason', 'entry_bias', 'entry_records', 'resampled')}},
             **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission', 'guided', 'pref', 'true_reward')}}
 
 
@@ -699,7 +721,7 @@ def merge_calibration(env, rows) -> None:
 
 
 def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool, urgent_deadline=None,
-           obs_profile: str = 'engineered', pref: bool = False) -> None:
+           obs_profile: str = 'engineered', pref: bool = False, cand_min_sep: float = 0.0) -> None:
     """One environment: send (transition or None, observation to act on), receive the action; until 'stop'."""
     import os
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
@@ -708,7 +730,7 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
     from env.t2_stage import T2Mission, T2StageEnv
     mission = T2Mission() if urgent_deadline is None else T2Mission(urgent_deadline_s=tuple(float(x) for x in urgent_deadline))
     env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, candidates=candidates, shaping=True, seed=seed * 100 + rank,
-                     entry_stages=entry_stages, window=window, mission=mission, obs_profile=obs_profile, pref=pref)
+                     entry_stages=entry_stages, window=window, mission=mission, obs_profile=obs_profile, pref=pref, cand_min_sep=cand_min_sep)
     obs, _ = env.reset(); transition = None
     actor = None
     guide_rng = np.random.default_rng([seed, rank, 2707])        # T2.7 guidance draws (own stream)
@@ -752,7 +774,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     import multiprocessing as mp
     from multiprocessing.connection import wait
     from stable_baselines3.common.logger import configure
-    from env.t2_stage import ENTRY_STAGES, T2_VERSION
+    from env.t2_stage import CANDIDATE_MIN_SEP_M_S, ENTRY_STAGES, T2_VERSION
     entry_stages = ENTRY_STAGES if entry_stages is None else int(entry_stages)
     if arm in ('e_rel', 'e_priv') and obs_profile != 'reduced_priv':
         raise ValueError(f'arm {arm} needs --obs reduced_priv')
@@ -766,6 +788,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
     candidates = K_CANDIDATES if arm in LABEL_ARMS else 0      # the SAC arm (and T2.12's e_priv) computes no model
     pref = arm in ('e_pref', 'e_acc')                        # T2.10 preference / T2.11 EACC-A opportunity judgements
+    cand_min_sep = CANDIDATE_MIN_SEP_M_S if arm == 'e_rel' else 0.0     # EACC iteration: candidates separated in the executor's terms
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
                                                    'k_candidates': candidates, 'collection': 'asynchronous', 'window': window,
@@ -774,6 +797,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'urgent_deadline_s': list(urgent_deadline) if urgent_deadline is not None else [170.0, 210.0],
                                                    'guide': bool(guide), 'guide_p0': GUIDE_P0 if guide else 0.0, 'guide_until': GUIDE_UNTIL if guide else 0,
                                                    'obs_profile': obs_profile, 'pref': pref, 'acc': arm == 'e_acc', 'relative': arm == 'e_rel', 'rel_beta': REL_BETA if arm == 'e_rel' else 0.0,
+                                                   'cand_min_sep_m_s': cand_min_sep, 'common_random_numbers': arm == 'e_rel',
                                                    'actor_view': OBS_DIM, 'critic_view': int(getattr(model.policy, 'critic_dim', OBS_DIM)),
                                                    'acc_dp': ACC_DP, 'acc_kappa': ACC_KAPPA, 'acc_lambda_q': ACC_LAMBDA_Q, 'acc_eta': ACC_ETA,
                                                    'acc_min_labels': ACC_MIN_LABELS, 'acc_min_acc': ACC_MIN_ACC,
@@ -784,7 +808,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     pipes, procs = [], []
     for rank in range(workers):
         a, b = ctx.Pipe()
-        p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref), daemon=True)
+        p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref, cand_min_sep), daemon=True)
         p.start(); pipes.append(a); procs.append(p)
     marks = sorted(set([m for m in marks if m <= steps] + [steps]))
     model.save(out / 'checkpoints' / 'step_0')
