@@ -16,20 +16,15 @@ weighted (M3), entry outcomes by historical execution replay, two-stage labels
 (soft Retrace + one-step stage-2 rows), calibration shared by the workers, labels
 ending at the deadline / budget. Arms: `e_sac` (no model) and `e_mve` (EACC).
 
-**State (2026-10-31):** env `t2-stage-0.5.0`, learner `t2-learner-2.7`, code
-`2208a51`, 52 tests. The feedback's own gain has not been shown: on the standard
-task EACC and SAC tie (T2.5.1 `mixed`); on the time-pressure task (urgent
-deadline U(140, 200) s, T2.6W, `e1166eb`) EACC was behind (-9.6 / -13.1 paired
-over 1000-4000), all on urgent missions. The lower window found the cause that is
-confirmed: stage-2 labels did not end at the deadline (fixed in `ca96793`; the
-budget spent before a predicted entry, `e2d4c14`). The check run order
-`T2_6W1_CUTOFF_20261029` delivered `no_gain` (-8.21 / +19.69 paired; run-to-run variance exceeds
-the effect). T2.7 (`evidence/T2_7_PRECHECK`): the executor's plan projected onto stage intents
-captures inside the action space; a value-bound design failed its truth audit; executor guidance
-(training-time, `--guide`) on top of the labels, run order `T2_7_GUIDE_20261031` dispatched 2026-10-31.
-The full story, the pre-agreed next branches and every rule are in collab
-`docs/collaboration/HANDOFF.md` (sections 1, 5, 7) and the research evolution
-(stages 20-26). The T1 line below (T1-L, T1-O, T1-N, T1-B) is finished.
+**State (2026-11-03):** env `t2-stage-0.9.0`, learner `t2-learner-3.0`, code `ec394ef`, 68 tests. T2.3-T2.8
+tied because the engineered observation already handed SAC the planner's answers (P4, `evidence/T2_8_P4_INFO_UPPER`).
+**T2.11 EACC-A** (`evidence/T2_11_EACCA`, upper review `evidence/T2_11_EACCA_UPPER`): interface `reduced_priv` (the
+policy loses pass time, window reachability, slack; the executor's state-wise judgements enter the critic and the
+counterfactual labels' bootstrap during training only), original EACC labels, decision-level execution calibration with
+a trusted advantage path. Native `t28` **pass**: AUC 25.79 vs SAC (reduced) -15.24, two seeds, development openings;
+EACC-A recovers the engineered-interface SAC level (25.78) without the planner features. User 2026-11-03: the paper
+compares three groups (pure MPC, SAC without feedback, EACC-A; TD3 possibly later); component ablations are internal
+mechanism analysis only; iterate and consolidate the method before the final formal runs.
 
 ## Start here
 
