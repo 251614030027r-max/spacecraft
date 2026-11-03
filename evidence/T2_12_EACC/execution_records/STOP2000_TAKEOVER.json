@@ -1,0 +1,502 @@
+{
+  "jst": "2026-11-04T03:43:40.684591+09:00",
+  "reason": "User 2026-11-04: e_rel late_return < e_priv - 8.3 after all four2000 checkpoints",
+  "e_rel_late": 23.532065567709836,
+  "e_priv_late": 36.35779743341305,
+  "gap": -12.825731865703212,
+  "identities": [
+    {
+      "pid": 6612,
+      "created": 1793702885.3501968,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\脚本\\controller.py"
+      ]
+    },
+    {
+      "pid": 14924,
+      "created": 1793702885.3305027,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\脚本\\controller.py"
+      ]
+    },
+    {
+      "pid": 8088,
+      "created": 1793703280.5793912,
+      "command": [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-File",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\脚本\\run.ps1"
+      ]
+    },
+    {
+      "pid": 26932,
+      "created": 1793703280.5944192,
+      "command": [
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+        "0x4"
+      ]
+    },
+    {
+      "pid": 27276,
+      "created": 1793703281.0337036,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_rel",
+        "--seed",
+        "0",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_rel_s0"
+      ]
+    },
+    {
+      "pid": 24512,
+      "created": 1793703281.047388,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_rel",
+        "--seed",
+        "1",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_rel_s1"
+      ]
+    },
+    {
+      "pid": 24716,
+      "created": 1793703281.058448,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_priv",
+        "--seed",
+        "0",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s0"
+      ]
+    },
+    {
+      "pid": 8808,
+      "created": 1793703281.0714004,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_priv",
+        "--seed",
+        "1",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s1"
+      ]
+    },
+    {
+      "pid": 26688,
+      "created": 1793703281.0826042,
+      "command": [
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+        "0x4"
+      ]
+    },
+    {
+      "pid": 22904,
+      "created": 1793703281.1292837,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_priv",
+        "--seed",
+        "1",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s1"
+      ]
+    },
+    {
+      "pid": 7340,
+      "created": 1793703293.6255977,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=22904, pipe_handle=2164)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 21280,
+      "created": 1793703293.6444876,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=22904, pipe_handle=2216)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 18240,
+      "created": 1793703281.070278,
+      "command": [
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+        "0x4"
+      ]
+    },
+    {
+      "pid": 25788,
+      "created": 1793703281.1155326,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_priv",
+        "--seed",
+        "0",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s0"
+      ]
+    },
+    {
+      "pid": 26988,
+      "created": 1793703293.6241171,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=25788, pipe_handle=1228)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 23300,
+      "created": 1793703293.6384377,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=25788, pipe_handle=2628)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 14660,
+      "created": 1793703281.0569909,
+      "command": [
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+        "0x4"
+      ]
+    },
+    {
+      "pid": 18732,
+      "created": 1793703281.0981424,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_rel",
+        "--seed",
+        "1",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_rel_s1"
+      ]
+    },
+    {
+      "pid": 27772,
+      "created": 1793703293.625069,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=18732, pipe_handle=2968)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 23060,
+      "created": 1793703293.64204,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=18732, pipe_handle=2884)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 27844,
+      "created": 1793703281.0444436,
+      "command": [
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+        "0x4"
+      ]
+    },
+    {
+      "pid": 24116,
+      "created": 1793703281.0802116,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_rel",
+        "--seed",
+        "0",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_rel_s0"
+      ]
+    },
+    {
+      "pid": 1896,
+      "created": 1793703293.6243787,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=24116, pipe_handle=2852)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 23612,
+      "created": 1793703293.637244,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=24116, pipe_handle=2860)",
+        "--multiprocessing-fork"
+      ]
+    }
+  ],
+  "actual_last_rolling_counts": {
+    "TRAIN_e_priv_s0": {
+      "jst": "2026-11-04T03:43:29.094066+09:00",
+      "steps": 2043,
+      "updates": 3688,
+      "episodes": 454,
+      "wall_s": 28119.358999999997,
+      "recent_decisions_per_s": 0.13182612134597302,
+      "overall_decisions_per_s": 0.07265457224682825,
+      "eta_s_estimate": 7259.56274999844,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 2043,
+        "with_candidates": 0,
+        "candidates": 0,
+        "entry_candidates": 0,
+        "reason": {
+          "off": 2043
+        },
+        "resampled": 0
+      },
+      "model_probes": 148,
+      "pending_truth_records": 0,
+      "final": false
+    },
+    "TRAIN_e_priv_s0.err.log": {},
+    "TRAIN_e_priv_s0.out.log": {},
+    "TRAIN_e_priv_s1": {
+      "jst": "2026-11-04T03:43:33.543926+09:00",
+      "steps": 2222,
+      "updates": 4046,
+      "episodes": 461,
+      "wall_s": 28123.79700000002,
+      "recent_decisions_per_s": 0.0,
+      "overall_decisions_per_s": 0.07900782387243083,
+      "eta_s_estimate": null,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 2222,
+        "with_candidates": 0,
+        "candidates": 0,
+        "entry_candidates": 0,
+        "reason": {
+          "off": 2222
+        },
+        "resampled": 0
+      },
+      "model_probes": 162,
+      "pending_truth_records": 0,
+      "final": false
+    },
+    "TRAIN_e_priv_s1.err.log": {},
+    "TRAIN_e_priv_s1.out.log": {},
+    "TRAIN_e_rel_s0": {
+      "jst": "2026-11-04T03:43:31.659103+09:00",
+      "steps": 2167,
+      "updates": 3936,
+      "episodes": 446,
+      "wall_s": 28121.92200000002,
+      "recent_decisions_per_s": 0.03297283038778276,
+      "overall_decisions_per_s": 0.07705732204221313,
+      "eta_s_estimate": 25263.223999982936,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 2167,
+        "with_candidates": 1797,
+        "candidates": 14365,
+        "entry_candidates": 2502,
+        "reason": {
+          "off": 11,
+          "entry_calibration": 262,
+          "stage": 1466,
+          "entry": 332,
+          "not_comparable": 96
+        },
+        "resampled": 4601,
+        "cutoff_candidates": 0
+      },
+      "model_probes": 158,
+      "pending_truth_records": 0,
+      "final": false
+    },
+    "TRAIN_e_rel_s0.err.log": {},
+    "TRAIN_e_rel_s0.out.log": {},
+    "TRAIN_e_rel_s1": {
+      "jst": "2026-11-04T03:43:35.830637+09:00",
+      "steps": 2330,
+      "updates": 4262,
+      "episodes": 451,
+      "wall_s": 28126.09400000004,
+      "recent_decisions_per_s": 0.2947823523630055,
+      "overall_decisions_per_s": 0.08284122210499605,
+      "eta_s_estimate": 2272.863333334616,
+      "snapshot_not_prediction": true,
+      "replay": {
+        "transitions": 2330,
+        "with_candidates": 1834,
+        "candidates": 14669,
+        "entry_candidates": 2464,
+        "reason": {
+          "off": 11,
+          "entry_calibration": 394,
+          "stage": 1497,
+          "not_comparable": 90,
+          "entry": 338
+        },
+        "resampled": 3996,
+        "cutoff_candidates": 0
+      },
+      "model_probes": 171,
+      "pending_truth_records": 0,
+      "final": false
+    },
+    "TRAIN_e_rel_s1.err.log": {},
+    "TRAIN_e_rel_s1.out.log": {}
+  },
+  "all_checkpoints_preserved": true
+}
