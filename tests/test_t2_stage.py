@@ -1456,3 +1456,18 @@ def test_candidates_are_separated_in_the_executors_terms():
         G = [goal_of(a)] + [goal_of(c) for c in cands]
         dmin = [min(np.linalg.norm(G[i] - G[j]) for j in range(i)) for i in range(1, len(G))]
         assert all(d >= CANDIDATE_MIN_SEP_M_S for d in dmin) or env.last_resampled >= CANDIDATE_RESAMPLES
+
+
+def test_curves_read_longer_runs_on_the_same_budget_and_leave_shorter_runs_empty():
+    """A 3000-decision run read with steps=2000 uses only what it had by 2000 (late window included); a 2000-decision run
+    read on a 3000 axis has no values after its end."""
+    from experiments import t2_curves as c
+    mis = {'urgent': True, 'time_cost_per_s': 0.1, 'fuel_cost_per_m_s': 10.0}
+    ep = lambda k, ev: {'steps': k, 'event': ev, 'time_s': 100.0, 'delta_v': 1.0, 'mission': mis}
+    long = [ep(10 * k, 'timeout') for k in range(1, 201)] + [ep(2000 + 10 * k, 'success') for k in range(1, 101)]
+    r = c.run_curve(long, window=4, steps=2000)
+    assert r['late_return'] == -120.0 and r['grid'][-1] == 2000 and abs(r['curve_auc'] - (-120.0)) < 1e-9
+    short = [ep(10 * k, 'success') for k in range(1, 201)]
+    r = c.run_curve(short, window=4, steps=3000)
+    vals = dict(zip(r['grid'], r['grid_rolling']))
+    assert vals[2000] == 80.0 and vals[2150] is None and abs(r['curve_auc'] - 80.0) < 1e-9

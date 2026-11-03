@@ -31,7 +31,7 @@ counterfactual labels (`_relative_loss`: the executed intent's reference is the 
 candidate of the same outcome class, else the real value; arm `e_rel`; ablation `e_priv` = same critic view, no feedback); env
 `t2-stage-0.10.0`, learner `t2-learner-4.0`, 75 tests; T2.11 paths (`e_acc`) unchanged and `e_sac` bitwise identical
 (`evidence/T2_12_PRECHECK`). Training curves / final models / pre-registered `t212`: `experiments/t2_curves.py`.
-**EACC iteration (learner 4.1, env 0.11.0, 77 tests; supersedes a3f4c65 for the e_rel arm):** candidates separated in
+**EACC iteration (learner 4.1, env 0.11.0, 78 tests; supersedes a3f4c65 for the e_rel arm):** candidates separated in
 the executor's stage-goal terms (`cand_min_sep` 0.01 m/s, e_rel only) and common random numbers in one decision's
 bootstrap values; aliasing of intents by the executor's projection measured rare (`evidence/T2_13_PRECHECK`).
 
@@ -221,7 +221,7 @@ T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_2
 
 | Purpose | Entry |
 |---|---|
-| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (77 since the EACC iteration; judge by the exit code) |
+| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (78 since the EACC iteration; judge by the exit code) |
 | Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
 | Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve,e_acc} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI] [--obs reduced_priv]` (EACC-A: `--arm e_acc --obs reduced_priv`; its SAC baseline: `--arm e_sac --obs reduced_priv`; T2.12 EACC `--arm e_rel --obs reduced_priv`, ablation `--arm e_priv --obs reduced_priv`) |
 | Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` (the interface is read from the run's manifest) |

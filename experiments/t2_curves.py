@@ -18,7 +18,7 @@ behaviour-policy (stochastic, training missions) statistics, distinct from the d
 Summary per run: curve_auc = mean of the smoothed curve on the decision grid 250, 300, ..., steps; late_return / late
 urgent capture = mean over the episodes that ended in (steps - 500, steps].
 """
-import argparse, json
+import argparse, json, warnings
 from pathlib import Path
 
 import numpy as np
@@ -41,6 +41,11 @@ def _runs(items):
     return out
 
 
+#: decisions after a run's last finished episode for which its rolling value still counts (the last episodes of a run end
+#: up to a few dozen decisions before its last stored decision)
+END_TOLERANCE = 100
+
+
 def run_curve(episodes: list, window: int, steps: int, grid_from: int = 250, grid_step: int = 50) -> dict:
     eps = sorted(episodes, key=lambda e: int(e['steps']))
     x = np.array([int(e['steps']) for e in eps]); y = np.array([true_return(e) for e in eps])
@@ -50,15 +55,28 @@ def run_curve(episodes: list, window: int, steps: int, grid_from: int = 250, gri
     ui = np.flatnonzero(urg)
     uroll = np.array([cap[ui[max(0, j - window + 1):j + 1]].mean() for j in range(len(ui))])
     grid = np.arange(grid_from, steps + 1, grid_step)
-    at = lambda xs, vs, g: float(vs[np.searchsorted(xs, g, side='right') - 1]) if np.searchsorted(xs, g, side='right') > 0 else float('nan')
+    # a grid point after the run's last episode (a shorter run plotted on a longer axis) is left empty, not carried flat
+    at = lambda xs, vs, g: (float(vs[np.searchsorted(xs, g, side='right') - 1])
+                            if np.searchsorted(xs, g, side='right') > 0 and len(xs) and g <= xs[-1] + END_TOLERANCE else float('nan'))
     smooth = [at(x, roll, g) for g in grid]
-    late = x > steps - 500
+    auc = float(np.nanmean(smooth)) if not all(np.isnan(smooth)) else None
+    late = (x > steps - 500) & (x <= steps)          # a longer run is read on the same budget
     return {'episodes': int(len(eps)), 'x': x.tolist(), 'return_true': y.round(3).tolist(), 'rolling': roll.round(3).tolist(),
             'urgent_x': x[ui].tolist(), 'urgent_capture_rolling': uroll.round(4).tolist(),
-            'grid': grid.tolist(), 'grid_rolling': smooth,
-            'curve_auc': float(np.nanmean(smooth)), 'late_return': float(y[late].mean()) if late.any() else None,
+            'grid': grid.tolist(), 'grid_rolling': _clean(smooth),
+            'curve_auc': auc, 'late_return': float(y[late].mean()) if late.any() else None,
             'late_urgent_capture': float(cap[late & urg].mean()) if (late & urg).any() else None,
             'late_episodes': int(late.sum()), 'recorded_returns': bool(all(e.get('return_true') is not None for e in eps))}
+
+
+def _clean(xs):
+    """Standard JSON (no NaN): empty grid points are null (PowerShell's ConvertFrom-Json rejects NaN)."""
+    return [None if (x is None or (isinstance(x, float) and np.isnan(x))) else x for x in xs]
+
+
+def _mean_or_none(xs):
+    xs = [x for x in xs if x is not None]
+    return float(np.mean(xs)) if xs else None      # None: no run of the arm reaches the late window (a shorter run on a longer axis)
 
 
 def curves(runs: dict, out: Path, window: int = 50, steps: int = 2000) -> dict:
@@ -69,11 +87,14 @@ def curves(runs: dict, out: Path, window: int = 50, steps: int = 2000) -> dict:
     res['arms'] = {}
     for arm in sorted({k.rsplit('_s', 1)[0] for k in res['runs']}):
         ks = [k for k in res['runs'] if k.rsplit('_s', 1)[0] == arm]
-        g = np.array([res['runs'][k]['grid_rolling'] for k in ks], dtype=float)
-        res['arms'][arm] = {'runs': ks, 'grid': res['runs'][ks[0]]['grid'], 'mean': np.nanmean(g, 0).tolist(), 'lo': np.nanmin(g, 0).tolist(), 'hi': np.nanmax(g, 0).tolist(),
+        g = np.array([[np.nan if v is None else v for v in res['runs'][k]['grid_rolling']] for k in ks], dtype=float)
+        with warnings.catch_warnings():              # all-empty grid columns (no run of the arm reaches them) stay empty
+            warnings.simplefilter('ignore', RuntimeWarning)
+            mean_, lo_, hi_ = np.nanmean(g, 0), np.nanmin(g, 0), np.nanmax(g, 0)
+        res['arms'][arm] = {'runs': ks, 'grid': res['runs'][ks[0]]['grid'], 'mean': _clean(mean_.tolist()), 'lo': _clean(lo_.tolist()), 'hi': _clean(hi_.tolist()),
                             'curve_auc': float(np.mean([res['runs'][k]['curve_auc'] for k in ks])),
-                            'late_return': float(np.mean([res['runs'][k]['late_return'] for k in ks])),
-                            'late_urgent_capture': float(np.mean([res['runs'][k]['late_urgent_capture'] for k in ks]))}
+                            'late_return': _mean_or_none([res['runs'][k]['late_return'] for k in ks]),
+                            'late_urgent_capture': _mean_or_none([res['runs'][k]['late_urgent_capture'] for k in ks])}
     out.write_text(json.dumps(res), encoding='utf-8')
     print(json.dumps({a: {k: v for k, v in r.items() if k in ('runs', 'curve_auc', 'late_return', 'late_urgent_capture')} for a, r in res['arms'].items()}, indent=1))
     return res
@@ -164,15 +185,17 @@ def plot(cpath: Path, out: Path, fpath: Path | None = None):
     fig, axs = plt.subplots(1, 2, figsize=(11.5, 4.2))
     for arm, r in c['arms'].items():
         col = COL.get(arm, '#555'); g = np.array(r['grid'])
-        axs[0].fill_between(g, r['lo'], r['hi'], color=col, alpha=0.15, lw=0)
-        axs[0].plot(g, r['mean'], color=col, lw=2, label=f"{NAME.get(arm, arm)}（{len(r['runs'])} 个种子）")
+        arr = lambda xs: np.array([np.nan if x is None else x for x in xs], dtype=float)
+        axs[0].fill_between(g, arr(r['lo']), arr(r['hi']), color=col, alpha=0.15, lw=0)
+        axs[0].plot(g, arr(r['mean']), color=col, lw=2, label=f"{NAME.get(arm, arm)}（{len(r['runs'])} 个种子）")
         # urgent capture: arm mean of the per-run rolling rate on the same grid
         ys = []
         for k in r['runs']:
             ux, uy = np.array(c['runs'][k]['urgent_x']), np.array(c['runs'][k]['urgent_capture_rolling'])
             idx = np.searchsorted(ux, g, side='right') - 1
-            ys.append(np.where(idx >= 0, uy[np.clip(idx, 0, None)], np.nan))
+            ys.append(np.where((idx >= 0) & (g <= ux[-1] + END_TOLERANCE), uy[np.clip(idx, 0, None)], np.nan))
         ys = np.array(ys)
+        warnings.simplefilter('ignore', RuntimeWarning)
         axs[1].fill_between(g, np.nanmin(ys, 0), np.nanmax(ys, 0), color=col, alpha=0.15, lw=0)
         axs[1].plot(g, np.nanmean(ys, 0), color=col, lw=2)
     axs[0].set_ylabel(f"训练回合真实任务回报（近 {c['window']} 回合均值）"); axs[1].set_ylabel(f"紧急任务捕获率（近 {c['window']} 个紧急回合）")
