@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-3.0'
+    assert t.LEARNER_VERSION == 't2-learner-4.0'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -1213,3 +1213,171 @@ def test_split_views_keep_the_executor_information_out_of_the_actor(tmp_path):
     assert m2.policy.actor_dim == OBS_DIM and m2.policy.critic_dim == OBS_DIM
     with th.no_grad():
         assert th.allclose(m2.actor.get_action_dist_params(x)[0], m.actor.get_action_dist_params(x)[0])
+
+
+def _rel_model(arm='e_rel'):
+    import train.t2_mve_sac as t
+    from stable_baselines3.common.logger import configure
+    from env.t2_stage import OBS_DIM_PRIV
+    m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True)
+    m.model_start = 0; m.learning_starts = 0
+    m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0
+    return m
+
+
+def _rel_fill(m, n=32, shift=0.0, same_kind=0, cand_kind=0, cand_done=False, seed=0):
+    """Transitions whose executed intent and candidates share the decision state; ``shift`` is added to every model
+    reward of a decision (a model error common to all its predictions)."""
+    from env.t2_stage import OBS_DIM_PRIV
+    rng = np.random.default_rng(seed)
+    for i in range(n):
+        o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+        a = rng.uniform(-1, 1, size=(1, 2)).astype(np.float32)
+        same = {'reward': -2.0 + shift, 'next_obs': o1, 'done': False, 'kind': same_kind}
+        fact = {'reward': -2.5, 'next_obs': o1, 'done': False, 'same': same}
+        cands = [{'a': a[0], 'reward': -2.0 + shift, 'next_obs': o1, 'done': False, 'kind': same_kind},               # the executed intent itself
+                 {'a': np.array([0.9, -0.9], np.float32), 'reward': 30.0 + shift, 'next_obs': np.zeros(OBS_DIM_PRIV, np.float32),
+                  'done': cand_done, 'kind': cand_kind}]
+        m.replay_buffer.add(o, o1[None], a, np.array([-2.0]), np.array([False]),
+                            [{'model': {'fact': fact, 'cands': cands, 'diag': {'reason': 'stage'}}}])
+
+
+def test_relative_labels_are_invariant_to_errors_common_to_a_decision():
+    """T2.12 EACC: the relative target of a candidate is sg Q(s, a_f) + Y(a_j) - Y(a_f); a model error common to every
+    prediction of a decision (here a reward offset; the PBRS decision-state potential is one) leaves the loss unchanged,
+    and the executed intent's own label is its anchor (zero difference)."""
+    import torch as th
+    losses = []
+    for shift in (0.0, 37.0):
+        m = _rel_model(); _rel_fill(m, shift=shift)
+        m.td_ms = 100.0
+        th.manual_seed(3); data = m.replay_buffer.sample(16)
+        with th.no_grad():
+            target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+        current = m.critic(data.observations, data.actions)
+        th.manual_seed(5); loss, info = m._relative_loss(data, current, target, m.ent_coef_tensor)
+        losses.append(float(loss.detach())); assert info['model_rows'] == 32
+    # the common offset enters e_same (the trust term) but not the difference; compare with the offset in the weight removed
+    m = _rel_model(); _rel_fill(m, shift=0.0); m.td_ms = 1e12
+    th.manual_seed(3); data = m.replay_buffer.sample(16)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    cur = m.critic(data.observations, data.actions)
+    th.manual_seed(5); l0, _ = m._relative_loss(data, cur, target, m.ent_coef_tensor)
+    m2 = _rel_model(); _rel_fill(m2, shift=37.0); m2.td_ms = 1e12
+    th.manual_seed(3); data2 = m2.replay_buffer.sample(16)
+    cur2 = m2.critic(data2.observations, data2.actions)
+    th.manual_seed(5); l1, _ = m2._relative_loss(data2, cur2, target, m2.ent_coef_tensor)
+    assert abs(float(l0) - float(l1)) < 1e-4 * max(1.0, float(l0))
+    assert losses[1] < losses[0]               # with a finite sigma the same offset lowers the trust (e_same grows)
+
+
+def test_relative_loss_fits_differences_and_never_moves_the_anchor():
+    """The critic's difference Q(s, a_j) - Q(s, a_f) converges to the model's difference; the anchor carries no gradient."""
+    import torch as th
+    m = _rel_model(); _rel_fill(m, n=24); m.td_ms = 1e12
+    data = m.replay_buffer.sample(24)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    current = m.critic(data.observations, data.actions)
+    loss, _ = m._relative_loss(data, current, target, m.ent_coef_tensor)
+    assert all(g is None for g in th.autograd.grad(loss, list(current), allow_unused=True))   # the anchors carry no gradient
+    m.critic.optimizer = th.optim.Adam(m.critic.parameters(), lr=3e-3)
+    for _ in range(600):
+        data = m.replay_buffer.sample(24)
+        with th.no_grad():
+            target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+        cur = m.critic(data.observations, data.actions)
+        loss, _ = m._relative_loss(data, cur, target, m.ent_coef_tensor)
+        m.critic.optimizer.zero_grad(); loss.backward(); m.critic.optimizer.step()
+    b = m.replay_buffer
+    o = th.as_tensor(b.observations[:24, 0]); af = th.as_tensor(b.actions[:24, 0]); aj = th.as_tensor(b.cand_a[:24, 0, 1])
+    with th.no_grad():
+        dq = (m.critic(o, aj)[0] - m.critic(o, af)[0]).reshape(-1)
+        v0 = m._soft_value(th.zeros((24, o.shape[1])), m.ent_coef_tensor).reshape(-1)
+        v1 = m._soft_value(th.as_tensor(b.same_obs[:24, 0]), m.ent_coef_tensor).reshape(-1)
+        want = (30.0 + m.gamma * v0) - (-2.0 + m.gamma * v1)
+    assert float((dq - want).abs().median()) < 0.15 * float(want.abs().median()) and bool(((dq * want) > 0).all())
+
+
+def test_relative_trust_charges_unshared_entry_bias_and_inconsistency():
+    """eps = |e_raw| + |e_same| + b |1[kind_j = 2] - 1[kind_f = 2]|: an unanchored entry against a stage end carries the
+    entry bias, two unanchored entries do not."""
+    import torch as th
+    out = {}
+    for name, sk, ck, cd in (('stage_vs_entry', 0, 2, True), ('entry_vs_entry', 2, 2, True)):
+        m = _rel_model(); _rel_fill(m, same_kind=sk, cand_kind=ck, cand_done=cd)
+        m.td_ms = 25.0; m.entry_bias_now = 20.0
+        th.manual_seed(1); data = m.replay_buffer.sample(32)
+        with th.no_grad():
+            target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+        cur = m.critic(data.observations, data.actions)
+        th.manual_seed(2); out[name] = m._relative_loss(data, cur, target, m.ent_coef_tensor)[1]
+    assert out['stage_vs_entry']['w_mean'] < out['entry_vs_entry']['w_mean']
+
+
+def test_t212_arms_views_and_label_switches():
+    """e_rel: critic reads the executor's judgements, relative labels; e_priv: the same critic view without labels;
+    e_sac keeps the reduced critic; e_acc (T2.11) is unchanged."""
+    import inspect, train.t2_mve_sac as t
+    from env.t2_stage import OBS_DIM, OBS_DIM_PRIV
+    for arm, cdim, beta, rel, acc in (('e_rel', OBS_DIM_PRIV, t.MODEL_BETA, True, False), ('e_priv', OBS_DIM_PRIV, 0.0, False, False),
+                                      ('e_sac', OBS_DIM, 0.0, False, False), ('e_acc', OBS_DIM_PRIV, t.MODEL_BETA, False, True)):
+        m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True)
+        assert (m.policy.critic_dim, m.model_beta, m.relative, m.acc) == (cdim, beta, rel, acc)
+    src = inspect.getsource(t.train)
+    assert "candidates = K_CANDIDATES if arm in LABEL_ARMS else 0" in src and "if arm == 'e_rel':\n        entry_stages = 1" in src
+    assert t.LABEL_ARMS == ('e_mve', 'e_acc', 'e_rel') and 'e_priv' not in t.LABEL_ARMS
+
+
+def test_executed_intent_is_labelled_with_the_candidates_treatment():
+    """env 0.10.0: the labels of a decision carry the executed intent through the candidates' own treatment
+    (``fact.same``); with the realized residual path it reproduces the executed stage end closely."""
+    from env.t2_stage import T2StageEnv, OBS_DIM
+    env = T2StageEnv(openings=[1000001], shaping=True, candidates=4, entry_stages=1)
+    env.reset()
+    for k in range(12):
+        env.calibration.add(0.10, 0.12, np.zeros(3), np.zeros(3))
+    for k in range(25):
+        env.entry_calibration.add(30.0, 0.3, 45.0, 0.5, True, 0.0, 120.0)
+    env.diagnostics = True
+    for _ in range(4):
+        obs, r, term, trunc, info = env.step(np.array([0.4, 0.3]))
+        m = info['model']
+        if m['diag']['reason'] == 'stage':
+            same = m['fact']['same']
+            assert same['kind'] in (0, 1, 2) and same['next_obs'].shape == (OBS_DIM,)
+            if not same['done']:
+                assert np.max(np.abs(same['next_obs'][:4] - obs[:4])) < 0.05     # range / relative velocity reproduced
+            return
+        if term or trunc:
+            break
+    raise AssertionError('no labelled stage decision')
+
+
+def test_t212_training_curves_and_decision(tmp_path):
+    """experiments.t2_curves: the true return of a logged episode (recorded or rebuilt from event, time, delta-v and mission
+    costs), the rolling curve on the decision grid, and the pre-registered t212 verdict order."""
+    import json
+    from experiments import t2_curves as c
+    mis = {'urgent': True, 'time_cost_per_s': 0.1, 'fuel_cost_per_m_s': 10.0}
+    ep = {'steps': 10, 'event': 'timeout', 'time_s': 162.8, 'delta_v': 1.6566312125692255, 'mission': mis}
+    assert abs(c.true_return(ep) - (-132.84631212569226)) < 1e-9
+    assert c.true_return({**ep, 'return_true': 5.0}) == 5.0
+    eps = [{'steps': 10 * k, 'event': 'success' if k % 2 else 'timeout', 'time_s': 100.0, 'delta_v': 1.0, 'mission': mis} for k in range(1, 201)]
+    r = c.run_curve(eps, window=4, steps=2000)
+    assert r['grid'][0] == 250 and r['grid'][-1] == 2000 and abs(r['curve_auc'] - (-20.0)) < 1e-9 and r['late_urgent_capture'] == 0.5
+    def arms(**v):
+        return {a: {'curve_auc': x[0], 'late_return': 0, 'late_urgent_capture': 0, 'runs': [f'{a}_s0', f'{a}_s1']} for a, x in v.items()}
+    def finals(**v):
+        return {a: {'mean_return': x[1], 'urgent_capture': [0, 0], 'economy_capture': [0, 0], 'unsafe': x[2], 'runs': [f'{a}_s0', f'{a}_s1']} for a, x in v.items()}
+    def case(rel, priv, acc=(22.7, 33.3, 0), sac=(-0.5, -10.3, 0)):
+        cv = {'arms': arms(e_rel=rel, e_priv=priv, e_acc=acc, e_sac=sac), 'runs': {f'{a}_s{s}': {'curve_auc': x[0]} for a, x in
+              (('e_rel', rel), ('e_priv', priv), ('e_acc', acc), ('e_sac', sac)) for s in (0, 1)}}
+        fv = {'arms': finals(e_rel=rel, e_priv=priv, e_acc=acc, e_sac=sac), 'runs': {f'{a}_s{s}': {'mean_return': x[1], 'complete': True} for a, x in
+              (('e_rel', rel), ('e_priv', priv), ('e_acc', acc), ('e_sac', sac)) for s in (0, 1)}}
+        return c.decide_t212(cv, fv)['verdict']
+    assert case((25, 35, 0), (15, 20, 0)) == 'adopt'
+    assert case((25, 35, 1), (15, 20, 0)) == 'unsafe'
+    assert case((12, 20, 0), (5, 10, 0)) == 'revert'
+    assert case((20, 30, 0), (21, 30, 0)) == 'no_increment'

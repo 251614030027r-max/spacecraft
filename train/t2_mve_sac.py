@@ -17,6 +17,13 @@ Every label is r + gamma (1 - d) V'(.) of a single next state, so the fused regr
 gamma-contraction; w |e_a| <= sigma / 2 bounds the influence of any model error (a Cauchy M-estimator).
 The term is off until ``model_start`` real transitions are stored. beta = 0.5.
 
+T2.12 EACC (arm ``e_rel``; learner 4.0): the absolute candidate regression above is replaced by the execution-anchored
+relative labels of ``_relative_loss`` (module constant block REL_BETA): the executor model values each candidate and the
+executed intent through the same treatment, only their difference D_j enters, anchored at the critic's own value of the
+executed intent (no gradient), so real execution alone sets the value level and the model shapes the action dependence.
+One-stage labels (the stage end is valued by the critic that reads the executor's judgements, reduced_priv). Arm
+``e_priv``: the same critic view with no counterfactual feedback (ablation). T2.11's paths (``e_acc``) are unchanged.
+
 Collection (``train``): asynchronous -- each worker process steps its own environment at its own pace and
 the learner (this process) answers every action request with the current policy and performs
 ``UPDATES_PER_TRANSITION`` updates per stored transition. T2.2's lock-step vector environment waited
@@ -65,8 +72,10 @@ AGE_CAP = 2000
 #: T2.7: executor guidance in the collector (``guide_probability``; off by default), env 0.5.0;
 #: T2.9: the decision-layer interface ``obs_profile`` passed to every environment and recorded, env 0.7.0;
 #: T2.10: arm e_pref, the executor-calibrated opportunity preference on the critic, env 0.8.0;
-#: T2.11: arm e_acc, EACC-A -- decision-level execution calibration and calibrated advantage to critic and actor, env 0.9.0)
-LEARNER_VERSION = "t2-learner-3.0"
+#: T2.11: arm e_acc, EACC-A -- decision-level execution calibration and calibrated advantage to critic and actor, env 0.9.0;
+#: T2.12: arm e_rel, EACC -- relative execution-anchored counterfactual value learning (``_relative_loss``), and arm e_priv,
+#: the same critic view without counterfactual feedback; env 0.10.0)
+LEARNER_VERSION = "t2-learner-4.0"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -112,6 +121,23 @@ ACC_LAMBDA_Q = 10.0
 ACC_ETA = 10.0
 ACC_MIN_LABELS = 200
 ACC_MIN_ACC = 0.8
+#: T2.12 EACC (arm e_rel): execution-anchored relative counterfactual value learning. One mechanism replaces T2.11's
+#: absolute candidate regression, two-stage Retrace, stage-2 rows, decision calibration and advantage terms.
+#: At a decision s with executed intent a_f and real target y_f = r_f + gamma (1 - d_f) V'(s'_f), the executor model with
+#: the candidates' treatment (M1 option model, M2 realized attitude and executed residual path, entry outcome offset)
+#: predicts every candidate a_j and a_f itself (``fact.same``, env 0.10.0): Y(a) = r^_a + gamma (1 - d^_a) V'(s^'_a).
+#: The model supplies only the difference D_j = Y(a_j) - Y(a_f); the value level at the executed intent stays with the
+#: real data:
+#:   L_rel = mean_{b,j} w_bj 1/2 sum_i (Q_i(s_b, a_j) - [sg Q_i(s_b, a_f) + D_bj])^2,   L_Q = L_real + REL_BETA L_rel
+#: (sg: no gradient; the actor follows the critic as in SAC). D_j is zero for a_j = a_f, the decision-state potential of
+#: the PBRS shaping and any error common to both predictions cancel, and the order of two candidates at s depends only on
+#: the difference of their model residuals. Trust (M3, one Cauchy rule): w = 1 / (1 + (eps / sigma)^2) with
+#:   eps = |e_raw| + |e_same| + b |1[kind_j = 2] - 1[kind_f = 2]|,
+#: e_raw = y_f - Y_raw(a_f) the calibration-only model's error on the executed transition (how far the model is from the
+#: truth without transport), e_same = y_f - Y(a_f) the anchored model's failure to reproduce its own executed transition
+#: (large where the executor model mispredicts the executed outcome class -- the planner / executor inconsistency of
+#: T2.8 P4), b the current entry outcome-model bias, which cancels between two unanchored entries and stays otherwise.
+REL_BETA = 0.5
 CAL_REFIT = 50
 CAL_WINDOW = 3000
 CAL_L2 = 1e-2
@@ -171,6 +197,9 @@ class StageReplay(ReplayBuffer):
         shape = (self.buffer_size, self.n_envs)
         self.fact_r = np.zeros(shape, np.float32); self.fact_obs = np.zeros((*shape, d), np.float32)
         self.fact_done = np.zeros(shape, np.float32); self.fact_valid = np.zeros(shape, np.float32)
+        #: T2.12: the executed intent through the candidates' treatment (anchor of the relative labels)
+        self.same_r = np.zeros(shape, np.float32); self.same_obs = np.zeros((*shape, d), np.float32)
+        self.same_done = np.zeros(shape, np.float32); self.same_kind = np.zeros(shape, np.float32); self.same_valid = np.zeros(shape, np.float32)
         self.cand_a = np.zeros((*shape, k, a), np.float32); self.cand_r = np.zeros((*shape, k), np.float32)
         self.cand_obs = np.zeros((*shape, k, d), np.float32); self.cand_done = np.zeros((*shape, k), np.float32)
         self.cand_valid = np.zeros((*shape, k), np.float32)
@@ -192,7 +221,7 @@ class StageReplay(ReplayBuffer):
 
     def add(self, obs, next_obs, action, reward, done, infos):
         i = self.pos
-        self.fact_valid[i] = 0.0; self.cand_valid[i] = 0.0; self.cand_done[i] = 0.0; self.cand_kind[i] = 0.0
+        self.fact_valid[i] = 0.0; self.same_valid[i] = 0.0; self.cand_valid[i] = 0.0; self.cand_done[i] = 0.0; self.cand_kind[i] = 0.0
         self.c2_valid[i] = 0.0; self.c2_done[i] = 0.0; self.c2_kind[i] = 0.0; self.pref_valid[i] = 0.0
         self.created[i] = self.stored; self.stored += 1
         for e, info in enumerate(infos):
@@ -212,6 +241,10 @@ class StageReplay(ReplayBuffer):
                 continue
             self.fact_r[i, e] = fact['reward']; self.fact_obs[i, e] = fact['next_obs']; self.fact_done[i, e] = float(fact['done'])
             self.fact_valid[i, e] = 1.0
+            same = fact.get('same')
+            if same is not None:
+                self.same_r[i, e] = same['reward']; self.same_obs[i, e] = same['next_obs']; self.same_done[i, e] = float(same['done'])
+                self.same_kind[i, e] = float(same.get('kind', 0)); self.same_valid[i, e] = 1.0
             c['with_candidates'] += 1; c['candidates'] += len(cands)
             for j, x in enumerate(cands):
                 self.cand_a[i, e, j] = x['a']; self.cand_r[i, e, j] = x['reward']; self.cand_obs[i, e, j] = x['next_obs']
@@ -240,14 +273,15 @@ class StageReplay(ReplayBuffer):
     def model_batch(self):
         i, e = self._last
         return {k: self.to_torch(getattr(self, k)[i, e]) for k in
-                ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_kind', 'created',
+                ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'same_r', 'same_obs', 'same_done', 'same_kind', 'same_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_kind', 'created',
                  'c2_valid', 'c2_a', 'c2_logp', 'c2_r', 'c2_obs', 'c2_done', 'c2_kind', 'pref_a', 'pref_v', 'pref_valid', 'pref_f')}
 
 
 class T2SAC(SAC):
     def __init__(self, *args, model_beta: float = 0.0, model_start: int = MODEL_START, pref_lambda: float = 0.0,
-                 acc: bool = False, **kwargs):
+                 acc: bool = False, relative: bool = False, **kwargs):
         self.model_beta, self.model_start = float(model_beta), int(model_start)
+        self.relative = bool(relative)               # T2.12 EACC: relative labels in place of the absolute ones
         self.pref_lambda = float(pref_lambda)
         self.acc = bool(acc)                         # T2.11 EACC-A
         self.dec_cal = DecisionCalibration() if self.acc else None
@@ -376,6 +410,50 @@ class T2SAC(SAC):
                       'stage2_cutoff_share': float(((m['c2_done'][mask] > 0) & (m['c2_kind'][mask] == 0) & (m['c2_valid'][mask] > 0)).float().mean()),
                       'stage1_cutoff_share': float(((m['cand_done'][mask] > 0) & (m['cand_kind'][mask] == 0)).float().mean())}
 
+    def _relative_loss(self, data, current, target, ent_coef):
+        """T2.12 EACC relative execution-anchored labels (module constants, REL_BETA). ``current``: the critics' values at
+        the executed intents of the batch (the anchors, used without gradient); ``target``: the real Bellman targets.
+        Returns (loss or None, readings)."""
+        m = self.replay_buffer.model_batch()
+        rows = (m['fact_valid'] > 0) & (m['same_valid'] > 0)
+        if not bool(rows.any()) or self.td_ms is None:
+            return None, {}
+        b, k = m['cand_valid'].shape
+        mask = (m['cand_valid'] > 0) & rows.reshape(-1, 1)
+        if not bool(mask.any()):
+            return None, {}
+        with th.no_grad():
+            g = self.gamma
+            y_raw = m['fact_r'].reshape(-1, 1) + (1.0 - m['fact_done'].reshape(-1, 1)) * g * self._soft_value(m['fact_obs'], ent_coef)
+            y_same = m['same_r'].reshape(-1, 1) + (1.0 - m['same_done'].reshape(-1, 1)) * g * self._soft_value(m['same_obs'], ent_coef)
+            e_raw = (target - y_raw).reshape(-1); e_same = (target - y_same).reshape(-1)
+            o1 = m['cand_obs'][mask]; d1 = m['cand_done'][mask].reshape(-1, 1)
+            y_c = m['cand_r'][mask].reshape(-1, 1) + (1.0 - d1) * g * self._soft_value(o1, ent_coef)
+            expand = lambda x: x.reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1)
+            delta = y_c - expand(y_same)
+            kind_j = m['cand_kind'][mask].reshape(-1, 1); kind_f = expand(m['same_kind'])
+            b_now = float(np.sqrt(self.td_ms)) if self.entry_bias_now is None else abs(float(self.entry_bias_now))
+            eps = expand(e_raw.abs()) + expand(e_same.abs()) + b_now * ((kind_j == 2).float() - (kind_f == 2).float()).abs()
+            w = 1.0 / (1.0 + eps ** 2 / self.td_ms)
+            anchors = [expand(q.detach()) for q in current]
+        s = data.observations[:, None, :].expand(-1, k, -1)[mask]
+        qs = self.critic(s, m['cand_a'][mask])
+        n = int(mask.sum())
+        loss = 0.5 * sum((w * (q - (anc + delta)) ** 2).sum() for q, anc in zip(qs, anchors)) / max(n, 1)
+        with th.no_grad():
+            sig = float(np.sqrt(self.td_ms))
+            qmin = th.min(th.cat(qs, dim=1), dim=1, keepdim=True).values - th.min(th.cat(anchors, dim=1), dim=1, keepdim=True).values
+            big = delta.abs() >= 0.25 * sig
+            cls_j = th.where(d1 > 0, th.where(kind_j > 0, 1.0, 2.0), 0.0); cls_f = expand(th.where(m['same_done'] > 0, th.where(m['same_kind'] > 0, 1.0, 2.0), 0.0))
+        return loss, {'model_rows': n, 'w_mean': float(w.mean()), 'w_low_share': float((w < 0.5).float().mean()),
+                      'abs_err_median': float(e_raw[rows.reshape(-1)].abs().median()), 'same_err_median': float(e_same[rows.reshape(-1)].abs().median()),
+                      'same_err_p90': float(th.quantile(e_same[rows.reshape(-1)].abs(), 0.9)),
+                      'delta_abs_mean_sigma': float(delta.abs().mean() / sig), 'entry_share': float((d1 > 0).float().mean()),
+                      'class_differs_share': float((cls_j != cls_f).float().mean()),
+                      'rank_agree': float(((qmin * delta) > 0)[big].float().mean()) if bool(big.any()) else None,
+                      'entry_bias_now': self.entry_bias_now,
+                      'label_age_mean': float(self.replay_buffer.stored - m['created'][rows].mean())}
+
     def _pref_loss(self, data):
         """T2.10 opportunity preference (module constants): hinge on the critic's order of every decisive pair of the
         decision's intents. Returns (loss or None, readings): pairs used and the share the critic already orders."""
@@ -450,7 +528,8 @@ class T2SAC(SAC):
                 self.td_ms = ms if self.td_ms is None else SIGMA_DECAY * self.td_ms + (1.0 - SIGMA_DECAY) * ms
             loss, mloss, info = real, None, {}
             if self.model_beta > 0 and stored >= self.model_start:
-                mloss, info = self._model_loss(data, target, ent_coef)
+                mloss, info = (self._relative_loss(data, current, target, ent_coef) if self.relative
+                               else self._model_loss(data, target, ent_coef))
                 if mloss is not None:
                     loss = real + self.model_beta * mloss
                     info['loss_share'] = float(self.model_beta * mloss.item() / max(real.item(), 1e-9))
@@ -494,18 +573,23 @@ class T2SAC(SAC):
         self._n_updates += gradient_steps
 
 
+#: arms whose critic reads the executor's judgements (reduced_priv interface) and arms that train on counterfactual labels
+PRIV_CRITIC_ARMS = ('e_acc', 'e_rel', 'e_priv')
+LABEL_ARMS = ('e_mve', 'e_acc', 'e_rel')
+
+
 def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transition: float = UPDATES_PER_TRANSITION,
                model_beta: float = MODEL_BETA) -> T2SAC:
     obs_dim = int(env.observation_space.shape[0])
     if obs_dim == OBS_DIM_PRIV:      # T2.11: split views; only EACC-A's critic reads the executor's judgements
-        policy, kw = SplitViewPolicy, {'net_arch': [256, 256], 'actor_dim': OBS_DIM, 'critic_dim': OBS_DIM_PRIV if arm == 'e_acc' else OBS_DIM}
+        policy, kw = SplitViewPolicy, {'net_arch': [256, 256], 'actor_dim': OBS_DIM, 'critic_dim': OBS_DIM_PRIV if arm in PRIV_CRITIC_ARMS else OBS_DIM}
     else:
         policy, kw = 'MlpPolicy', {'net_arch': [256, 256]}
     return T2SAC(policy, env, seed=seed, device='cpu', verbose=0, policy_kwargs=kw,
                  gamma=GAMMA_STAGE, learning_rate=3e-4, buffer_size=100_000, batch_size=64 if smoke else 256,
                  learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=max(1, int(round(updates_per_transition))),
-                 ent_coef=ENT_COEF, tau=0.005, model_beta=model_beta if arm in ('e_mve', 'e_acc') else 0.0, model_start=16 if smoke else MODEL_START,
-                 pref_lambda=PREF_LAMBDA if arm == 'e_pref' else 0.0, acc=arm == 'e_acc')
+                 ent_coef=ENT_COEF, tau=0.005, model_beta=model_beta if arm in LABEL_ARMS else 0.0, model_start=16 if smoke else MODEL_START,
+                 pref_lambda=PREF_LAMBDA if arm == 'e_pref' else 0.0, acc=arm == 'e_acc', relative=arm == 'e_rel')
 
 
 # ---------------------------------------------------------------------- asynchronous collection
@@ -568,7 +652,7 @@ def _slim(info: dict) -> dict:
     cands = [{**{k: c.get(k, 0) for k in ('a', 'reward', 'next_obs', 'done', 'kind')}, 's2': c.get('s2')} for c in model.get('cands') or []]
     diag = model.get('diag') or {}
     return {'model': {'fact': model.get('fact'), 'cands': cands, 'diag': {k: diag.get(k) for k in ('reason', 'entry_bias', 'entry_records')}},
-            **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission', 'guided', 'pref')}}
+            **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission', 'guided', 'pref', 'true_reward')}}
 
 
 class CalibrationPool:
@@ -665,13 +749,17 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     from stable_baselines3.common.logger import configure
     from env.t2_stage import ENTRY_STAGES, T2_VERSION
     entry_stages = ENTRY_STAGES if entry_stages is None else int(entry_stages)
+    if arm in ('e_rel', 'e_priv') and obs_profile != 'reduced_priv':
+        raise ValueError(f'arm {arm} needs --obs reduced_priv')
+    if arm == 'e_rel':
+        entry_stages = 1          # T2.12: one-stage relative labels; the stage end is valued by the critic that reads the executor
     out.mkdir(parents=True, exist_ok=False); (out / 'checkpoints').mkdir()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     th.set_num_threads(1)
     model = make_model(SpacesEnv(OBS_DIM_PRIV if obs_profile == 'reduced_priv' else OBS_DIM), arm, seed, smoke,
                        updates_per_transition=updates_per_transition, model_beta=model_beta)
     model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
-    candidates = K_CANDIDATES if arm in ('e_mve', 'e_acc') else 0      # the SAC arm computes no model
+    candidates = K_CANDIDATES if arm in LABEL_ARMS else 0      # the SAC arm (and T2.12's e_priv) computes no model
     pref = arm in ('e_pref', 'e_acc')                        # T2.10 preference / T2.11 EACC-A opportunity judgements
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
@@ -680,7 +768,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'pooled_calibration': bool(POOL_CALIBRATION and (candidates > 0 or pref)),
                                                    'urgent_deadline_s': list(urgent_deadline) if urgent_deadline is not None else [170.0, 210.0],
                                                    'guide': bool(guide), 'guide_p0': GUIDE_P0 if guide else 0.0, 'guide_until': GUIDE_UNTIL if guide else 0,
-                                                   'obs_profile': obs_profile, 'pref': pref, 'acc': arm == 'e_acc',
+                                                   'obs_profile': obs_profile, 'pref': pref, 'acc': arm == 'e_acc', 'relative': arm == 'e_rel', 'rel_beta': REL_BETA if arm == 'e_rel' else 0.0,
                                                    'actor_view': OBS_DIM, 'critic_view': int(getattr(model.policy, 'critic_dim', OBS_DIM)),
                                                    'acc_dp': ACC_DP, 'acc_kappa': ACC_KAPPA, 'acc_lambda_q': ACC_LAMBDA_Q, 'acc_eta': ACC_ETA,
                                                    'acc_min_labels': ACC_MIN_LABELS, 'acc_min_acc': ACC_MIN_ACC,
@@ -702,6 +790,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     pool = CalibrationPool() if (POOL_CALIBRATION and (candidates > 0 or pref)) else None
     guided_by_worker = {}                         # T2.7: guided decisions of each worker's current episode
     cal_pending = {}                              # T2.11: each worker's executed-decision features of the current episode
+    ret_true, ret_shaped = {}, {}                 # T2.12: each worker's current episode return (true task reward / shaped training reward)
     active = list(pipes)
     while active:
         for conn in wait(active):
@@ -714,6 +803,8 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                 info = dict(info, **({'TimeLimit.truncated': True} if trunc and not term else {}))
                 model.replay_buffer.add(o[None], o1[None], act[None], np.array([r]), np.array([done]), [info])
                 model.num_timesteps += 1; order.append(pipes.index(conn))
+                w_ = pipes.index(conn)
+                ret_true[w_] = ret_true.get(w_, 0.0) + float(info.get('true_reward') or 0.0); ret_shaped[w_] = ret_shaped.get(w_, 0.0) + float(r)
                 if info.get('guided'):
                     guided_by_worker[pipes.index(conn)] = guided_by_worker.get(pipes.index(conn), 0) + 1
                     c_ = model.replay_buffer.model_counts; c_['guided'] = c_.get('guided', 0) + 1
@@ -729,7 +820,8 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                             model.dec_cal.observe(fx, info.get('event') == 'success')
                     cal_pending.pop(pipes.index(conn), None)
                     episodes.append({'steps': int(model.num_timesteps), 'worker': pipes.index(conn), **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')},
-                                     'entry_bias': (info['model']['diag'] or {}).get('entry_bias'), 'guided': guided_by_worker.pop(pipes.index(conn), 0)})
+                                     'entry_bias': (info['model']['diag'] or {}).get('entry_bias'), 'guided': guided_by_worker.pop(pipes.index(conn), 0),
+                                     'return_true': ret_true.pop(pipes.index(conn), 0.0), 'return_shaped': ret_shaped.pop(pipes.index(conn), 0.0)})
                 if model.num_timesteps >= model.learning_starts:
                     model.train(gradient_steps=model.gradient_steps, batch_size=model.batch_size)
                 while marks and model.num_timesteps >= marks[0]:

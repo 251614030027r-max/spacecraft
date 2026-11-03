@@ -26,6 +26,10 @@ a trusted advantage path. Native `t28` **pass**: AUC 25.79 vs SAC (reduced) -15.
 EACC-A recovers the engineered-interface SAC level (25.78) without the planner features. User 2026-11-03: the paper
 compares three groups (pure MPC, SAC without feedback, EACC-A; TD3 possibly later); component ablations are internal
 mechanism analysis only; iterate and consolidate the method before the final formal runs.
+**T2.12 (implemented, run order awaiting approval):** EACC consolidated into one mechanism -- execution-anchored relative
+counterfactual labels (`_relative_loss`, arm `e_rel`; ablation `e_priv` = same critic view, no feedback); env
+`t2-stage-0.10.0`, learner `t2-learner-4.0`, 74 tests; T2.11 paths (`e_acc`) unchanged and `e_sac` bitwise identical
+(`evidence/T2_12_PRECHECK`). Training curves / final models / pre-registered `t212`: `experiments/t2_curves.py`.
 
 ## Phase 2 ground rules (user 2026-11-03: consolidation and optimisation)
 
@@ -213,12 +217,13 @@ T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_2
 
 | Purpose | Entry |
 |---|---|
-| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (68; judge by the exit code) |
+| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (74 since T2.12; judge by the exit code) |
 | Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
-| Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve,e_acc} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI] [--obs reduced_priv]` (EACC-A: `--arm e_acc --obs reduced_priv`; its SAC baseline: `--arm e_sac --obs reduced_priv`) |
+| Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve,e_acc} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI] [--obs reduced_priv]` (EACC-A: `--arm e_acc --obs reduced_priv`; its SAC baseline: `--arm e_sac --obs reduced_priv`; T2.12 EACC `--arm e_rel --obs reduced_priv`, ablation `--arm e_priv --obs reduced_priv`) |
 | Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` (the interface is read from the run's manifest) |
 | Readouts | `python -B -m experiments.t2_readout {screen,curve,window,pressure}` |
 | Pre-registered decisions | `python -B -m experiments.t2_decide --criteria {t23,t24,v25,v251,t26,t26w,t27,t28} [--checkpoints ...] --readout R --train-root DIR` (t28: arm-level, method arm `e_mve` / `e_pref` / `e_acc`) |
+| Training curves, final models, T2.12 decision | `python -B -m experiments.t2_curves {curve,final,plot,decide}` (per-episode true return, 50-episode rolling mean on stored decisions; final model on 48 openings; `t212`) |
 | Key-state scoring (critic / actor on stored states) | `python -B -m experiments.t2_keyscore --states DIR --checkpoints LABEL=ZIP ... --output J`; P4 summaries `evidence/T2_8_PRECHECK/脚本/p4b.py` |
 | Label audit against truth | `python -B -m experiments.t2_audit {warmup,labels,summary}` |
 | Figures | `python -B -m experiments.t2_figures {traj,plot}` |

@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.9.0"
+T2_VERSION = "t2-stage-0.10.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -1018,10 +1018,19 @@ class T2StageEnv(gym.Env):
             cands.append(cand)
         diag = {"fact_entry": fact.get("entry") is not None, "fact_cutoff": bool(fact["done"]) and fact.get("entry") is None, "entered": entered is not None, "entry_offset": offset, "candidates": len(cands),
                 "entry_bias": entry_bias, "entry_records": len(ecal.rows)}
+        # T2.12 (EACC relative labels): the executed intent through exactly the candidates' treatment (same function, the
+        # same anchored residual path, entry rule with the brake model, entry outcome offset). A candidate's relative label
+        # is its prediction minus this one, so for the executed intent itself the difference is zero by construction.
+        same = self.predict_intent(plan, a, start, cal, ecal, anchored, attitude, entry_offset=offset)
+        same_kind = (1 if anchored_outcome else 2) if same.get("entry") is not None else 0
+        diag["fact_same_entry"] = same.get("entry") is not None
         if self.diagnostics:
             diag["anchored_fact"] = self.predict_intent(plan, a, start, cal, ecal, anchored, attitude, entry_offset=offset, brake_model=False)
             diag["raw_fact"] = fact
-        return {"fact": {"reward": fact["reward"], "next_obs": fact.get("obs", np.zeros(self.obs_dim, np.float32)), "done": bool(fact["done"])},
+            diag["same_fact"] = same
+        return {"fact": {"reward": fact["reward"], "next_obs": fact.get("obs", np.zeros(self.obs_dim, np.float32)), "done": bool(fact["done"]),
+                         "same": {"reward": same["reward"], "next_obs": same.get("obs", np.zeros(self.obs_dim, np.float32)),
+                                  "done": bool(same["done"]), "kind": same_kind}},
                 "cands": cands, "diag": diag}
 
     def step_pure(self):
