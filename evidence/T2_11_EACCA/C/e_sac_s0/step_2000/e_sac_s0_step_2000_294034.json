@@ -1,0 +1,74 @@
+{
+ "opening": 294034,
+ "event": "success",
+ "return": 74.52669038208086,
+ "time_s": 133.8,
+ "delta_v": 1.2093309617919163,
+ "stages": 2,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 1,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 155.7,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 141.80254888534546,
+ "decisions": [
+  {
+   "a": [
+    0.9852941036224365,
+    0.9791797399520874
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 13.742184465359175,
+   "planned_dv": 0.168806603791946,
+   "executed_dv": 0.16873160303853155,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.9990328550338745,
+    0.9812712669372559
+   ],
+   "t": 133.8,
+   "mode": "descent",
+   "held": false,
+   "range_m": 2.991464198831187,
+   "planned_dv": 0.12238950338811175,
+   "executed_dv": 1.0405993587533848,
+   "model": "off",
+   "event": "success"
+  }
+ ],
+ "policy": "e_sac_s0_step_2000",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\T2_11_EACCA_20261102\\B\\TRAIN_e_sac_s0\\checkpoints\\step_2000.zip",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 54.0,
+   "slip_s": 2.0,
+   "reserve": false,
+   "phase_deg": 4.447185221125524
+  },
+  {
+   "t": 66.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 8.896061044425908
+  },
+  {
+   "t": 86.0,
+   "slip_s": 8.0,
+   "reserve": true,
+   "phase_deg": 17.794703390226886
+  }
+ ]
+}
