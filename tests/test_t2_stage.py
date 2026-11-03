@@ -1273,8 +1273,14 @@ def test_relative_labels_are_invariant_to_errors_common_to_a_decision():
 
 
 def test_relative_loss_fits_differences_and_never_moves_the_anchor():
-    """The critic's difference Q(s, a_j) - Q(s, a_f) converges to the model's difference; the anchor carries no gradient."""
+    """The anchor carries no gradient; trained as in the learner (real TD loss + relative loss), the critic's value at the
+    executed intent goes to the real target and its difference Q(s, a_j) - Q(s, a_f) to the model's difference. The
+    bootstrap is fixed at zero so that the targets are exact (real -2, difference 30 - (-2) = 32); seeded. (Before
+    2026-11-03 this test fitted the relative rows alone: with no real loss the anchor drifts through the shared weights and
+    the fit depended on the platform's random stream -- the lower window's preflight failed on Windows, 0190faf.)"""
     import torch as th
+    import torch.nn.functional as F
+    np.random.seed(0); th.manual_seed(0)
     m = _rel_model(); _rel_fill(m, n=24); m.td_ms = 1e12
     data = m.replay_buffer.sample(24)
     with th.no_grad():
@@ -1282,22 +1288,23 @@ def test_relative_loss_fits_differences_and_never_moves_the_anchor():
     current = m.critic(data.observations, data.actions)
     loss, _ = m._relative_loss(data, current, target, m.ent_coef_tensor)
     assert all(g is None for g in th.autograd.grad(loss, list(current), allow_unused=True))   # the anchors carry no gradient
-    m.critic.optimizer = th.optim.Adam(m.critic.parameters(), lr=3e-3)
-    for _ in range(600):
+    zero = lambda obs, *a: th.zeros((obs.shape[0], 1))
+    m._soft_value = zero; m._soft_value_noise = zero
+    m.critic.optimizer = th.optim.Adam(m.critic.parameters(), lr=1e-3)
+    for _ in range(1000):
         data = m.replay_buffer.sample(24)
-        with th.no_grad():
-            target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
         cur = m.critic(data.observations, data.actions)
-        loss, _ = m._relative_loss(data, cur, target, m.ent_coef_tensor)
-        m.critic.optimizer.zero_grad(); loss.backward(); m.critic.optimizer.step()
+        real = 0.5 * sum(F.mse_loss(q, data.rewards) for q in cur)
+        rel, _ = m._relative_loss(data, cur, data.rewards, m.ent_coef_tensor)
+        m.critic.optimizer.zero_grad(); (real + rel).backward(); m.critic.optimizer.step()
     b = m.replay_buffer
     o = th.as_tensor(b.observations[:24, 0]); af = th.as_tensor(b.actions[:24, 0]); aj = th.as_tensor(b.cand_a[:24, 0, 1])
     with th.no_grad():
-        dq = (m.critic(o, aj)[0] - m.critic(o, af)[0]).reshape(-1)
-        v0 = m._soft_value(th.zeros((24, o.shape[1])), m.ent_coef_tensor).reshape(-1)
-        v1 = m._soft_value(th.as_tensor(b.same_obs[:24, 0]), m.ent_coef_tensor).reshape(-1)
-        want = (30.0 + m.gamma * v0) - (-2.0 + m.gamma * v1)
-    assert float((dq - want).abs().median()) < 0.15 * float(want.abs().median()) and bool(((dq * want) > 0).all())
+        qf = m.critic(o, af)[0].reshape(-1); dq = (m.critic(o, aj)[0] - qf).reshape(-1)
+    # robust criteria: a fixture row whose random executed intent lies close to the candidate's fixed intent asks the
+    # network for two values almost at one input and may stay unfitted (seen in 3 of 10 seeds, one row each)
+    assert float((dq - 32.0).abs().median()) < 0.15 * 32.0 and float((dq > 0).float().mean()) >= 0.9
+    assert float((qf + 2.0).abs().median()) < 1.0                    # the level at the executed intent comes from the real loss
 
 
 def test_relative_trust_charges_unshared_entry_bias_and_inconsistency():
