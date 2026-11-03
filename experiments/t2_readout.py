@@ -104,8 +104,8 @@ def paired(eval_root):
     """E-MVE minus E-SAC per seed and checkpoint, paired by opening: mean, mean without the two largest
     per-opening gains, urgent / economy means, positive / negative counts (arms named e_mve_sN / e_sac_sN)."""
     root = Path(eval_root); out = {}
-    for mve in sorted(root.glob('e_mve_s*')):
-        sac = root / mve.name.replace('e_mve', 'e_sac')
+    for mve in sorted([*root.glob('e_mve_s*'), *root.glob('e_pref_s*'), *root.glob('e_acc_s*')]):   # the method arm (T2.10 / T2.11 names too)
+        sac = root / ('e_sac_s' + mve.name.split('_s', 1)[1])
         if not sac.is_dir():
             continue
         for ck in sorted(mve.glob('step_*'), key=lambda p: int(p.name.split('_')[1])):

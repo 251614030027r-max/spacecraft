@@ -37,7 +37,7 @@ thinking and experiments evolved, pitfalls). Then this file and the pages below.
 | What | Where |
 |---|---|
 | **T2 (current): environment, labels, learner, driver, readouts, decisions, audit, figures, tests** | `env/t2_stage.py`, `train/t2_mve_sac.py`, `experiments/t2.py`, `experiments/t2_readout.py`, `experiments/t2_decide.py`, `experiments/t2_audit.py`, `experiments/t2_figures.py`, `tests/test_t2_stage.py` (map in collab HANDOFF 6.2) |
-| T2 evidence | `evidence/T2_PRECHECK`, `T2_STAGE_A/B`, `T2_2_TEST`, `T2_3_TEST`, `T2_4_TEST`, `T2_5_VALIDATE`, `T2_5_1_VALIDATE`, `T2_6_PRESSURE`, `T2_6W_WIDE_140_200` (with the lower's diagnosis) |
+| T2 evidence | `evidence/T2_PRECHECK`, `T2_STAGE_A/B`, `T2_2_TEST`, `T2_3_TEST`, `T2_4_TEST`, `T2_5_VALIDATE`, `T2_5_1_VALIDATE`, `T2_6_PRESSURE`, `T2_6W_WIDE_140_200` (with the lower's diagnosis), `T2_6W1_CUTOFF`, `T2_7_PRECHECK`, `T2_7_GUIDE`, `T2_8_PRECHECK`, `T2_8_NIGHT`, `T2_8_P4_INFO`, `T2_8_P4_INFO_UPPER`, `T2_11_SELFCHECK`, **`T2_11_EACCA`**, `T2_11_EACCA_UPPER` |
 | User's slides (paper narrative) | collab `docs/collaboration/wang23.pdf`; mapping to the code in HANDOFF 2.8 (the reward slide differs from the code) |
 | T1 task family, physics, G*, review interface, opening blocks | `docs/current/TASK.md` |
 | Method components (nothing frozen) | `docs/current/METHOD.md` |
@@ -160,7 +160,7 @@ T1 line (historical):
   300000-999999 never accessed; training openings >= 1,000,000.
 - Cross-machine numerics: the same commit can differ in the last bits between
   the sandbox and the lower's machine; compare verdicts, not bits, across
-  machines.
+  machines. (T2.8 P4: identical at t = 0, max 0.043 / median 2e-6 drift after the first stage.)
 
 F01 line (historical, `train/stopping.py` and friends):
 
@@ -197,12 +197,13 @@ T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_2
 
 | Purpose | Entry |
 |---|---|
-| Tests | `python -B -m pytest -q tests/test_t2_stage.py` (52) |
+| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (68; judge by the exit code) |
 | Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
-| Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI]` |
-| Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` |
+| Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve,e_acc} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI] [--obs reduced_priv]` (EACC-A: `--arm e_acc --obs reduced_priv`; its SAC baseline: `--arm e_sac --obs reduced_priv`) |
+| Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` (the interface is read from the run's manifest) |
 | Readouts | `python -B -m experiments.t2_readout {screen,curve,window,pressure}` |
-| Pre-registered decisions | `python -B -m experiments.t2_decide --criteria {t23,t24,v25,v251,t26,t26w} [--checkpoints ...] --readout R --train-root DIR` |
+| Pre-registered decisions | `python -B -m experiments.t2_decide --criteria {t23,t24,v25,v251,t26,t26w,t27,t28} [--checkpoints ...] --readout R --train-root DIR` (t28: arm-level, method arm `e_mve` / `e_pref` / `e_acc`) |
+| Key-state scoring (critic / actor on stored states) | `python -B -m experiments.t2_keyscore --states DIR --checkpoints LABEL=ZIP ... --output J`; P4 summaries `evidence/T2_8_PRECHECK/脚本/p4b.py` |
 | Label audit against truth | `python -B -m experiments.t2_audit {warmup,labels,summary}` |
 | Figures | `python -B -m experiments.t2_figures {traj,plot}` |
 
