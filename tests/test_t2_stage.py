@@ -1233,9 +1233,9 @@ def _rel_fill(m, n=32, shift=0.0, same_kind=0, cand_kind=0, cand_done=False, see
     for i in range(n):
         o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
         a = rng.uniform(-1, 1, size=(1, 2)).astype(np.float32)
-        same = {'reward': -2.0 + shift, 'next_obs': o1, 'done': False, 'kind': same_kind}
+        same = {'reward': -2.0 + shift, 'next_obs': o1, 'done': same_kind > 0, 'kind': same_kind}
         fact = {'reward': -2.5, 'next_obs': o1, 'done': False, 'same': same}
-        cands = [{'a': a[0], 'reward': -2.0 + shift, 'next_obs': o1, 'done': False, 'kind': same_kind},               # the executed intent itself
+        cands = [{'a': a[0], 'reward': -2.0 + shift, 'next_obs': o1, 'done': same_kind > 0, 'kind': same_kind},       # the executed intent itself
                  {'a': np.array([0.9, -0.9], np.float32), 'reward': 30.0 + shift, 'next_obs': np.zeros(OBS_DIM_PRIV, np.float32),
                   'done': cand_done, 'kind': cand_kind}]
         m.replay_buffer.add(o, o1[None], a, np.array([-2.0]), np.array([False]),
@@ -1269,7 +1269,7 @@ def test_relative_labels_are_invariant_to_errors_common_to_a_decision():
     cur2 = m2.critic(data2.observations, data2.actions)
     th.manual_seed(5); l1, _ = m2._relative_loss(data2, cur2, target, m2.ent_coef_tensor)
     assert abs(float(l0) - float(l1)) < 1e-4 * max(1.0, float(l0))
-    assert losses[1] < losses[0]               # with a finite sigma the same offset lowers the trust (e_same grows)
+    assert abs(losses[1] - losses[0]) < 1e-4 * max(1.0, losses[0])      # comparable pairs: the offset cancels, weights included
 
 
 def test_relative_loss_fits_differences_and_never_moves_the_anchor():
@@ -1301,8 +1301,8 @@ def test_relative_loss_fits_differences_and_never_moves_the_anchor():
 
 
 def test_relative_trust_charges_unshared_entry_bias_and_inconsistency():
-    """eps = |e_raw| + |e_same| + b |1[kind_j = 2] - 1[kind_f = 2]|: an unanchored entry against a stage end carries the
-    entry bias, two unanchored entries do not."""
+    """eps = |e_raw| + b 1[k_j = 2] (1 - c_j 1[k_f = 2]): an unanchored entry against a stage end carries the entry bias,
+    two unanchored entries of one decision do not."""
     import torch as th
     out = {}
     for name, sk, ck, cd in (('stage_vs_entry', 0, 2, True), ('entry_vs_entry', 2, 2, True)):
@@ -1381,3 +1381,29 @@ def test_t212_training_curves_and_decision(tmp_path):
     assert case((25, 35, 1), (15, 20, 0)) == 'unsafe'
     assert case((12, 20, 0), (5, 10, 0)) == 'revert'
     assert case((20, 30, 0), (21, 30, 0)) == 'no_increment'
+
+
+def test_relative_reference_is_the_real_value_across_outcome_classes():
+    """A candidate whose label is of another outcome class than the executed intent's (stage end against a predicted entry)
+    is referenced to the real executed value, not to the model's prediction of the executed intent: a large error of that
+    prediction does not enter its target."""
+    import torch as th
+    from env.t2_stage import OBS_DIM_PRIV
+    out = {}
+    for name, same_reward in (('small', -2.0), ('large', 500.0)):
+        m = _rel_model(); rng = np.random.default_rng(0)
+        for i in range(32):
+            o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+            a = rng.uniform(-1, 1, size=(1, 2)).astype(np.float32)
+            same = {'reward': same_reward, 'next_obs': np.zeros(OBS_DIM_PRIV, np.float32), 'done': True, 'kind': 2}   # predicted entry
+            fact = {'reward': -2.0, 'next_obs': o1, 'done': False, 'same': same}
+            cands = [{'a': np.array([0.5, 0.5], np.float32), 'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}]
+            m.replay_buffer.add(o, o1[None], a, np.array([-2.0]), np.array([False]), [{'model': {'fact': fact, 'cands': cands, 'diag': {'reason': 'stage'}}}])
+        m.td_ms = 100.0
+        th.manual_seed(3); data = m.replay_buffer.sample(16)
+        with th.no_grad():
+            target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+        cur = m.critic(data.observations, data.actions)
+        th.manual_seed(5); out[name] = m._relative_loss(data, cur, target, m.ent_coef_tensor)[1]
+    assert out['small']['class_differs_share'] == 1.0
+    assert abs(out['large']['delta_abs_mean_sigma'] - out['small']['delta_abs_mean_sigma']) < 1e-6

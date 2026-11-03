@@ -126,17 +126,20 @@ ACC_MIN_ACC = 0.8
 #: At a decision s with executed intent a_f and real target y_f = r_f + gamma (1 - d_f) V'(s'_f), the executor model with
 #: the candidates' treatment (M1 option model, M2 realized attitude and executed residual path, entry outcome offset)
 #: predicts every candidate a_j and a_f itself (``fact.same``, env 0.10.0): Y(a) = r^_a + gamma (1 - d^_a) V'(s^'_a).
-#: The model supplies only the difference D_j = Y(a_j) - Y(a_f); the value level at the executed intent stays with the
-#: real data:
+#: The model supplies only a difference to the executed intent; the value level stays with the real data:
+#:   D_j = Y(a_j) - R_f,   R_f = Y(a_f) if c_j else y_f,   c_j = 1[outcome class of a_j's label = that of a_f's]
 #:   L_rel = mean_{b,j} w_bj 1/2 sum_i (Q_i(s_b, a_j) - [sg Q_i(s_b, a_f) + D_bj])^2,   L_Q = L_real + REL_BETA L_rel
-#: (sg: no gradient; the actor follows the critic as in SAC). D_j is zero for a_j = a_f, the decision-state potential of
-#: the PBRS shaping and any error common to both predictions cancel, and the order of two candidates at s depends only on
-#: the difference of their model residuals. Trust (M3, one Cauchy rule): w = 1 / (1 + (eps / sigma)^2) with
-#:   eps = |e_raw| + |e_same| + b |1[kind_j = 2] - 1[kind_f = 2]|,
-#: e_raw = y_f - Y_raw(a_f) the calibration-only model's error on the executed transition (how far the model is from the
-#: truth without transport), e_same = y_f - Y(a_f) the anchored model's failure to reproduce its own executed transition
-#: (large where the executor model mispredicts the executed outcome class -- the planner / executor inconsistency of
-#: T2.8 P4), b the current entry outcome-model bias, which cancels between two unanchored entries and stays otherwise.
+#: (outcome class: stage end / entry / deadline-budget end; sg: no gradient; the actor follows the critic as in SAC).
+#: Comparable pair (c_j = 1): the executed intent's reference is the model's own same-treatment prediction, so every error
+#: the two predictions share cancels (the decision-state PBRS potential, the entry outcome model's error on two entries
+#: from the same state, the calibration's common bias); D_j = 0 for a_j = a_f. Pair of different classes (one opens the
+#: entry, the other does not): their model errors are not shared, so the reference is the real executed value y_f (a
+#: control variate is used only where it reduces error; sandbox truth branches, evidence/T2_12_PRECHECK: entry-entry pairs
+#: rms error 20.0 absolute -> 0.9 relative, stage-stage equal, cross-class worse relative than absolute). Either way the
+#: target is anchored at the critic's own value of the executed intent, so no label moves the value level.
+#: Trust (M3, one Cauchy rule): w = 1 / (1 + (eps / sigma)^2), eps = |e_raw| + b 1[k_j = 2] (1 - c_j 1[k_f = 2]),
+#: e_raw = y_f - Y_raw(a_f) the calibration-only model's error on the executed transition, b the current entry outcome-model
+#: bias, charged to an unanchored entry label unless its reference is an unanchored entry of the same decision (b cancels).
 REL_BETA = 0.5
 CAL_REFIT = 50
 CAL_WINDOW = 3000
@@ -430,10 +433,13 @@ class T2SAC(SAC):
             o1 = m['cand_obs'][mask]; d1 = m['cand_done'][mask].reshape(-1, 1)
             y_c = m['cand_r'][mask].reshape(-1, 1) + (1.0 - d1) * g * self._soft_value(o1, ent_coef)
             expand = lambda x: x.reshape(-1, 1).expand(-1, k)[mask].reshape(-1, 1)
-            delta = y_c - expand(y_same)
             kind_j = m['cand_kind'][mask].reshape(-1, 1); kind_f = expand(m['same_kind'])
+            cls = lambda done, kind: th.where(done > 0, th.where(kind > 0, th.ones_like(kind), 2.0 * th.ones_like(kind)), th.zeros_like(kind))
+            comp = (cls(d1, kind_j) == cls(expand(m['same_done']), kind_f)).float()
+            ref = comp * expand(y_same) + (1.0 - comp) * expand(target)
+            delta = y_c - ref
             b_now = float(np.sqrt(self.td_ms)) if self.entry_bias_now is None else abs(float(self.entry_bias_now))
-            eps = expand(e_raw.abs()) + expand(e_same.abs()) + b_now * ((kind_j == 2).float() - (kind_f == 2).float()).abs()
+            eps = expand(e_raw.abs()) + b_now * (kind_j == 2).float() * (1.0 - comp * (kind_f == 2).float())
             w = 1.0 / (1.0 + eps ** 2 / self.td_ms)
             anchors = [expand(q.detach()) for q in current]
         s = data.observations[:, None, :].expand(-1, k, -1)[mask]
@@ -444,12 +450,11 @@ class T2SAC(SAC):
             sig = float(np.sqrt(self.td_ms))
             qmin = th.min(th.cat(qs, dim=1), dim=1, keepdim=True).values - th.min(th.cat(anchors, dim=1), dim=1, keepdim=True).values
             big = delta.abs() >= 0.25 * sig
-            cls_j = th.where(d1 > 0, th.where(kind_j > 0, 1.0, 2.0), 0.0); cls_f = expand(th.where(m['same_done'] > 0, th.where(m['same_kind'] > 0, 1.0, 2.0), 0.0))
         return loss, {'model_rows': n, 'w_mean': float(w.mean()), 'w_low_share': float((w < 0.5).float().mean()),
                       'abs_err_median': float(e_raw[rows.reshape(-1)].abs().median()), 'same_err_median': float(e_same[rows.reshape(-1)].abs().median()),
                       'same_err_p90': float(th.quantile(e_same[rows.reshape(-1)].abs(), 0.9)),
                       'delta_abs_mean_sigma': float(delta.abs().mean() / sig), 'entry_share': float((d1 > 0).float().mean()),
-                      'class_differs_share': float((cls_j != cls_f).float().mean()),
+                      'class_differs_share': float(1.0 - comp.mean()),
                       'rank_agree': float(((qmin * delta) > 0)[big].float().mean()) if bool(big.any()) else None,
                       'entry_bias_now': self.entry_bias_now,
                       'label_age_mean': float(self.replay_buffer.stored - m['created'][rows].mean())}
