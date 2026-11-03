@@ -1,0 +1,106 @@
+{
+ "checkpoints": [
+  1000
+ ],
+ "runs": {
+  "mve": [
+   "e_acc_s0",
+   "e_acc_s1"
+  ],
+  "sac": [
+   "e_sac_s0",
+   "e_sac_s1"
+  ]
+ },
+ "criteria": {
+  "C_complete": true,
+  "L_learning": true,
+  "R_reliability": true,
+  "S_safety": true
+ },
+ "values": {
+  "auc": {
+   "mve": {
+    "e_acc_s0": 12.531621371502254,
+    "e_acc_s1": 17.864966016195847
+   },
+   "sac": {
+    "e_sac_s0": -41.64901158163533,
+    "e_sac_s1": -38.21887048562933
+   }
+  },
+  "arm_mean": {
+   "mve": 15.19829369384905,
+   "sac": -39.93394103363233
+  },
+  "arm_diff": 55.13223472748138,
+  "worst": {
+   "mve": 12.531621371502254,
+   "sac": -41.64901158163533
+  },
+  "eacc_above_sac_mean": 2,
+  "unsafe": {
+   "mve": 0,
+   "sac": 0
+  }
+ },
+ "reported": {
+  "mve": {
+   "1000": {
+    "mean_return": [
+     12.531621371502254,
+     17.864966016195847
+    ],
+    "urgent_capture": [
+     9,
+     11
+    ],
+    "economy_capture": [
+     9,
+     8
+    ],
+    "unsafe": [
+     0,
+     0
+    ],
+    "delta_v_success": [
+     1.243309724341794,
+     1.3253125099885852
+    ],
+    "time_success": [
+     124.42777777777776,
+     130.85789473684213
+    ]
+   }
+  },
+  "sac": {
+   "1000": {
+    "mean_return": [
+     -41.64901158163533,
+     -38.21887048562933
+    ],
+    "urgent_capture": [
+     3,
+     3
+    ],
+    "economy_capture": [
+     9,
+     9
+    ],
+    "unsafe": [
+     0,
+     0
+    ],
+    "delta_v_success": [
+     1.4248606191977562,
+     1.3170009819393675
+    ],
+    "time_success": [
+     138.58333333333334,
+     125.89166666666665
+    ]
+   }
+  }
+ },
+ "verdict": "pass"
+}
