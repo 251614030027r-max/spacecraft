@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-4.1'
+    assert t.LEARNER_VERSION == 't2-learner-5.0'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -721,7 +721,7 @@ def test_training_passes_the_mission_profile_to_every_worker():
     import inspect, train.t2_mve_sac as t
     assert 'urgent_deadline_s=tuple(float(x) for x in urgent_deadline)' in inspect.getsource(t.worker)
     src = inspect.getsource(t.train)
-    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref, cand_min_sep)' in src and "'urgent_deadline_s'" in src
+    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref, cand_min_sep, label_det)' in src and "'urgent_deadline_s'" in src
     assert "'obs_profile': obs_profile" in src and 'obs_profile=obs_profile' in inspect.getsource(t.worker)
 
 
@@ -1334,7 +1334,7 @@ def test_t212_arms_views_and_label_switches():
         assert (m.policy.critic_dim, m.model_beta, m.relative, m.acc) == (cdim, beta, rel, acc)
     src = inspect.getsource(t.train)
     assert "candidates = K_CANDIDATES if arm in LABEL_ARMS else 0" in src and "if arm == 'e_rel':\n        entry_stages = 1" in src
-    assert t.LABEL_ARMS == ('e_mve', 'e_acc', 'e_rel') and 'e_priv' not in t.LABEL_ARMS
+    assert t.LABEL_ARMS[:3] == ('e_mve', 'e_acc', 'e_rel') and 'e_priv' not in t.LABEL_ARMS
 
 
 def test_executed_intent_is_labelled_with_the_candidates_treatment():
@@ -1478,3 +1478,68 @@ def test_curves_read_longer_runs_on_the_same_budget_and_leave_shorter_runs_empty
     r = c.run_curve(short, window=4, steps=3000)
     vals = dict(zip(r['grid'], r['grid_rolling']))
     assert vals[2000] == 80.0 and vals[2150] is None and abs(r['curve_auc'] - 80.0) < 1e-9
+
+
+def _term_fill(m, same_done=True, same_kind=1, real_done=True, real_r=60.0, same_r=70.0, n=16, seed=0):
+    """One decision type: the executed intent (real reward real_r, terminal real_done; same-treatment label same_r with
+    same_done / same_kind) and three candidates -- a stage end, a stage-1 entry (kind 1, 80.0) and a stage end whose
+    stage 2 under the label policy ends in an entry (r1 -1.5, r2 75.0)."""
+    from env.t2_stage import OBS_DIM_PRIV
+    rng = np.random.default_rng(seed)
+    z = np.zeros(OBS_DIM_PRIV, np.float32)
+    for i in range(n):
+        o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+        same = {'reward': same_r, 'next_obs': z if same_done else o1, 'done': same_done, 'kind': same_kind}
+        fact = {'reward': same_r, 'next_obs': z if same_done else o1, 'done': same_done, 'same': same}
+        cands = [{'a': np.array([0.1, 0.1], np.float32), 'reward': -1.6, 'next_obs': o1, 'done': False, 'kind': 0, 's2': None},
+                 {'a': np.array([0.9, -0.9], np.float32), 'reward': 80.0, 'next_obs': z, 'done': True, 'kind': 1},
+                 {'a': np.array([-0.5, 0.5], np.float32), 'reward': -1.5, 'next_obs': o1, 'done': False, 'kind': 0,
+                  's2': {'a': np.zeros(2, np.float32), 'logp': 0.0, 'reward': 75.0, 'next_obs': z, 'done': True, 'kind': 2}}]
+        m.replay_buffer.add(o, (z if real_done else o1)[None], np.zeros((1, 2), np.float32), np.array([real_r]), np.array([real_done]),
+                            [{'model': {'fact': fact, 'cands': cands, 'diag': {'reason': 'stage'}}}])
+
+
+def test_terminal_counterfactuals_keep_only_executor_evaluable_rows_with_constant_targets():
+    """learner 5.0: only candidates whose modelled continuation ends in a terminal event within the horizon are labelled;
+    a stage-1 terminal of the executed intent's kind is corrected by the model's error on the executed outcome
+    (T = Y_j + y_f - Y_f); a stage-2 terminal is r1 + gamma r2; no target reads the critic."""
+    import torch as th
+    import train.t2_mve_sac as t
+    from env.t2_stage import OBS_DIM_PRIV
+    from stable_baselines3.common.logger import configure
+    out = {}
+    for arm in ('e_term', 'e_term2'):
+        m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True); m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0
+        assert m.terminal == t.TERM_ARMS[arm] and m.model_beta == t.TERM_BETA and m.policy.critic_dim == OBS_DIM_PRIV
+        _term_fill(m); m.td_ms = 1e12; m.entry_bias_now = 0.0     # a known, zero entry bias: every row at full weight
+        th.manual_seed(0); data = m.replay_buffer.sample(8)
+        target = data.rewards.clone()                       # terminal real transitions: y_f = r_f = 60
+        loss, info = m._terminal_loss(data, target)
+        rows = 8 * (1 if arm == 'e_term' else 2)
+        assert info['term_rows'] == rows and info['term2_rows'] == (0 if arm == 'e_term' else 8)
+        with th.no_grad():
+            q1 = [q.reshape(-1) for q in m.critic(data.observations, th.tensor([[0.9, -0.9]]).expand(8, -1))]
+            q2 = [q.reshape(-1) for q in m.critic(data.observations, th.tensor([[-0.5, 0.5]]).expand(8, -1))]
+        t1 = 80.0 + (60.0 - 70.0)                              # same terminal kind (entry): corrected by y_f - Y_f
+        t2 = -1.5 + m.gamma * 75.0
+        terms = [(q - t1) ** 2 for q in q1] + ([(q - t2) ** 2 for q in q2] if arm == 'e_term2' else [])
+        expected = 0.5 * sum(x.sum() for x in terms) / rows
+        assert abs(float(loss) - float(expected)) < 1e-3 * max(1.0, float(expected))
+        out[arm] = info
+    # no correction when the executed intent's label is not a terminal of the same kind
+    m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), 'e_term', 0, smoke=True); m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0
+    _term_fill(m, same_done=False, same_kind=0, real_done=False, real_r=-1.6, same_r=-1.6); m.td_ms = 1e12
+    data = m.replay_buffer.sample(8)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    info = m._terminal_loss(data, target)[1]
+    assert info['comp_share'] == 0.0 and abs(info['term_target_mean'] - 80.0) < 1e-4
+
+
+def test_terminal_arms_fly_stage_two_under_the_policy_mean():
+    """e_term2 asks the environment for a second stage (entry_stages 2) flown under the policy's deterministic intent."""
+    import inspect, train.t2_mve_sac as t
+    w = inspect.getsource(t.worker); src = inspect.getsource(t.train)
+    assert 'if label_deterministic:' in w and 'deterministic=True' in w
+    assert "if arm in TERM_ARMS:\n        entry_stages = TERM_ARMS[arm]" in src and 'label_det = arm in TERM_ARMS' in src
+    assert t.TERM_ARMS == {'e_term': 1, 'e_term2': 2} and set(t.TERM_ARMS) <= set(t.LABEL_ARMS) and set(t.TERM_ARMS) <= set(t.PRIV_CRITIC_ARMS)

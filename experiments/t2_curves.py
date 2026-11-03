@@ -169,8 +169,9 @@ def decide_t212(c: dict, f: dict, method='e_rel', ablation='e_priv', reference='
                          if reference in A and ablation in A else None}}
 
 
-COL = {'e_rel': '#2a78d6', 'e_acc': '#7aa6d9', 'e_priv': '#3a9e6a', 'e_sac': '#eb6834'}
-NAME = {'e_rel': 'EACC', 'e_acc': 'EACC-A (T2.11)', 'e_priv': '特权 critic，无反事实反馈', 'e_sac': 'SAC（无反馈）'}
+COL = {'e_term': '#1f5fbf', 'e_term2': '#7b3fb5', 'e_rel': '#9aa5b1', 'e_acc': '#7aa6d9', 'e_priv': '#3a9e6a', 'e_sac': '#eb6834'}
+NAME = {'e_term': 'EACC（终局反事实，1 段）', 'e_term2': 'EACC（终局反事实，≤2 段）', 'e_rel': '相对标签（T2.12）', 'e_acc': 'EACC-A (T2.11)',
+        'e_priv': '特权 critic，无反事实反馈', 'e_sac': 'SAC（无反馈）'}
 
 
 def plot(cpath: Path, out: Path, fpath: Path | None = None):
@@ -211,6 +212,8 @@ def main():
     p.add_argument('--runs', nargs='*', default=[]); p.add_argument('--output', required=True)
     p.add_argument('--window', type=int, default=50); p.add_argument('--steps', type=int, default=2000); p.add_argument('--expected', type=int, default=48)
     p.add_argument('--curves'); p.add_argument('--final')
+    p.add_argument('--method', default='e_rel'); p.add_argument('--ablation', default='e_priv')
+    p.add_argument('--reference', default='e_acc'); p.add_argument('--sac', default='e_sac')
     a = p.parse_args(); out = Path(a.output)
     if a.mode == 'curve':
         curves(_runs(a.runs), out, a.window, a.steps)
@@ -219,7 +222,9 @@ def main():
     elif a.mode == 'plot':
         plot(Path(a.curves), out, Path(a.final) if a.final else None)
     else:
-        res = decide_t212(json.loads(Path(a.curves).read_text(encoding='utf-8')), json.loads(Path(a.final).read_text(encoding='utf-8')))
+        res = decide_t212(json.loads(Path(a.curves).read_text(encoding='utf-8')), json.loads(Path(a.final).read_text(encoding='utf-8')),
+                          method=a.method, ablation=a.ablation, reference=a.reference, sac=a.sac)
+        res['arms'] = {'method': a.method, 'ablation': a.ablation, 'reference': a.reference, 'sac': a.sac}
         out.write_text(json.dumps(res, indent=1), encoding='utf-8'); print(json.dumps(res, indent=1))
 
 
