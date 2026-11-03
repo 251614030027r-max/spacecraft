@@ -1,0 +1,54 @@
+...............................................................F........ [ 92%]
+......                                                                   [100%]
+================================== FAILURES ===================================
+_______ test_relative_loss_fits_differences_and_never_moves_the_anchor ________
+
+    def test_relative_loss_fits_differences_and_never_moves_the_anchor():
+        """The critic's difference Q(s, a_j) - Q(s, a_f) converges to the model's difference; the anchor carries no gradient."""
+        import torch as th
+        m = _rel_model(); _rel_fill(m, n=24); m.td_ms = 1e12
+        data = m.replay_buffer.sample(24)
+        with th.no_grad():
+            target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+        current = m.critic(data.observations, data.actions)
+        loss, _ = m._relative_loss(data, current, target, m.ent_coef_tensor)
+        assert all(g is None for g in th.autograd.grad(loss, list(current), allow_unused=True))   # the anchors carry no gradient
+        m.critic.optimizer = th.optim.Adam(m.critic.parameters(), lr=3e-3)
+        for _ in range(600):
+            data = m.replay_buffer.sample(24)
+            with th.no_grad():
+                target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+            cur = m.critic(data.observations, data.actions)
+            loss, _ = m._relative_loss(data, cur, target, m.ent_coef_tensor)
+            m.critic.optimizer.zero_grad(); loss.backward(); m.critic.optimizer.step()
+        b = m.replay_buffer
+        o = th.as_tensor(b.observations[:24, 0]); af = th.as_tensor(b.actions[:24, 0]); aj = th.as_tensor(b.cand_a[:24, 0, 1])
+        with th.no_grad():
+            dq = (m.critic(o, aj)[0] - m.critic(o, af)[0]).reshape(-1)
+            v0 = m._soft_value(th.zeros((24, o.shape[1])), m.ent_coef_tensor).reshape(-1)
+            v1 = m._soft_value(th.as_tensor(b.same_obs[:24, 0]), m.ent_coef_tensor).reshape(-1)
+            want = (30.0 + m.gamma * v0) - (-2.0 + m.gamma * v1)
+>       assert float((dq - want).abs().median()) < 0.15 * float(want.abs().median()) and bool(((dq * want) > 0).all())
+E       assert (6.047229766845703 < (0.15 * 32.03556442260742))
+E        +  where 6.047229766845703 = float(tensor(6.0472))
+E        +    where tensor(6.0472) = <built-in method median of Tensor object at 0x000002350BA21090>()
+E        +      where <built-in method median of Tensor object at 0x000002350BA21090> = tensor([ 1.4017, 18.7866, 18.6491,  4.2678, 11.4399,  6.1454,  0.1225,  9.3387,\n         1.2631,  9.6998,  1.2173,  6.2251,  6.3309,  5.7191,  0.8347, 32.5263,\n         0.3810,  1.3937,  2.9606,  6.0472, 10.0365,  8.1765,  0.3407, 21.8840]).median
+E        +        where tensor([ 1.4017, 18.7866, 18.6491,  4.2678, 11.4399,  6.1454,  0.1225,  9.3387,\n         1.2631,  9.6998,  1.2173,  6.2251,  6.3309,  5.7191,  0.8347, 32.5263,\n         0.3810,  1.3937,  2.9606,  6.0472, 10.0365,  8.1765,  0.3407, 21.8840]) = <built-in method abs of Tensor object at 0x000002350BA21770>()
+E        +          where <built-in method abs of Tensor object at 0x000002350BA21770> = (tensor([30.7061, 50.8438, 50.6377, 36.2339, 20.5342, 38.1914, 32.2539, 22.7881,\n        30.7822, 22.3235, 30.7656, 25.7852, 38.4238, 26.4316, 31.2734, -0.4907,\n        32.3701, 30.6562, 35.0439, 38.0781, 22.0898, 40.1582, 32.2734, 10.1035]) - tensor([32.1077, 32.0571, 31.9886, 31.9661, 31.9741, 32.0460, 32.1314, 32.1268,\n        32.0454, 32.0233, 31.9829, 32.0103, 32.0929, 32.1507, 32.1081, 32.0356,\n        31.9891, 32.0499, 32.0834, 32.0309, 32.1264, 31.9817, 31.9327, 31.9875])).abs
+E        +  and   32.03556442260742 = float(tensor(32.0356))
+E        +    where tensor(32.0356) = <built-in method median of Tensor object at 0x000002350BA21FE0>()
+E        +      where <built-in method median of Tensor object at 0x000002350BA21FE0> = tensor([32.1077, 32.0571, 31.9886, 31.9661, 31.9741, 32.0460, 32.1314, 32.1268,\n        32.0454, 32.0233, 31.9829, 32.0103, 32.0929, 32.1507, 32.1081, 32.0356,\n        31.9891, 32.0499, 32.0834, 32.0309, 32.1264, 31.9817, 31.9327, 31.9875]).median
+E        +        where tensor([32.1077, 32.0571, 31.9886, 31.9661, 31.9741, 32.0460, 32.1314, 32.1268,\n        32.0454, 32.0233, 31.9829, 32.0103, 32.0929, 32.1507, 32.1081, 32.0356,\n        31.9891, 32.0499, 32.0834, 32.0309, 32.1264, 31.9817, 31.9327, 31.9875]) = <built-in method abs of Tensor object at 0x0000023501102080>()
+E        +          where <built-in method abs of Tensor object at 0x0000023501102080> = tensor([32.1077, 32.0571, 31.9886, 31.9661, 31.9741, 32.0460, 32.1314, 32.1268,\n        32.0454, 32.0233, 31.9829, 32.0103, 32.0929, 32.1507, 32.1081, 32.0356,\n        31.9891, 32.0499, 32.0834, 32.0309, 32.1264, 31.9817, 31.9327, 31.9875]).abs
+
+tests\test_t2_stage.py:1300: AssertionError
+============================== warnings summary ===============================
+tests/test_t2_stage.py::test_terminal_model_labels_do_not_bootstrap
+  D:\py\DRL2\tests\test_t2_stage.py:274: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:837.)
+    assert info['model_rows'] == 4 and info['w_mean'] == 1.0 and abs(float(loss) - float(expected)) < 1e-3
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_t2_stage.py::test_relative_loss_fits_differences_and_never_moves_the_anchor
+1 failed, 77 passed, 1 warning in 105.24s (0:01:45)
