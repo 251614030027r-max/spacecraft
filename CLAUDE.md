@@ -14,7 +14,8 @@ training-time upward path: counterfactual labels for K = 8 candidate intents fro
 the executor's own model (M1), anchored to the executed stage (M2), Cauchy-
 weighted (M3), entry outcomes by historical execution replay, two-stage labels
 (soft Retrace + one-step stage-2 rows), calibration shared by the workers, labels
-ending at the deadline / budget. Arms: `e_sac` (no model) and `e_mve` (EACC).
+ending at the deadline / budget. Arms: `e_sac` (no model), `e_mve` (EACC on the engineered interface) and, current,
+`e_acc` (EACC-A on `reduced_priv`; see State).
 
 **State (2026-11-03):** env `t2-stage-0.9.0`, learner `t2-learner-3.0`, code `ec394ef`, 68 tests. T2.3-T2.8
 tied because the engineered observation already handed SAC the planner's answers (P4, `evidence/T2_8_P4_INFO_UPPER`).
@@ -25,6 +26,21 @@ a trusted advantage path. Native `t28` **pass**: AUC 25.79 vs SAC (reduced) -15.
 EACC-A recovers the engineered-interface SAC level (25.78) without the planner features. User 2026-11-03: the paper
 compares three groups (pure MPC, SAC without feedback, EACC-A; TD3 possibly later); component ablations are internal
 mechanism analysis only; iterate and consolidate the method before the final formal runs.
+
+## Phase 2 ground rules (user 2026-11-03: consolidation and optimisation)
+
+- **Baseline lock.** The working foundation is T2.11 EACC-A (`ec394ef`, `evidence/T2_11_EACCA`): on the development
+  protocol (urgent U(140, 200) s, openings 294000-294047, two seeds x 2000, checkpoints 500-2000, `t28`) EACC-A AUC
+  25.79 (22.89 / 28.69), SAC on `reduced_priv` -15.24, engineered-interface SAC 25.78. Every later change must keep
+  the chain working (68 tests, sandbox self-check) and must not fall below this EACC-A reference on the same protocol;
+  a change that does is reverted, not patched forward.
+- **SAC arm reuse.** The `e_sac` / `reduced_priv` arm (critic view 24, no labels, no calibration) is bitwise on the same
+  code path when a change touches only `e_acc` (labels, calibration, advantage, critic view); such rounds may reuse
+  the T2.11 SAC runs and say so in the run order. Any change to the environment, interface, executor or reward
+  retrains both arms.
+- **Paper comparison:** pure MPC, SAC without feedback, EACC-A (TD3 possibly later); component ablations are internal.
+- **Formal runs** (>= 3 seeds, formal block 300000-999999, pure MPC re-run) only after the method is consolidated and
+  the user approves them.
 
 ## Start here
 
