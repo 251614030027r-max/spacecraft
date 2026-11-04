@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.11.0"
+T2_VERSION = "t2-stage-0.12.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -551,6 +551,9 @@ class T2StageEnv(gym.Env):
         #: EACC iteration: minimum separation of the candidates' stage goals (m/s; 0 = the T2.11 generator)
         self.cand_min_sep = float(cand_min_sep)
         self.last_resampled = 0
+        #: env 0.12.0 (EACC actor-side feedback): also predict the policy's own deterministic intent at the decision (set by
+        #: the collector in ``policy_action``) through the candidates' treatment -- the reference of the execution advantage
+        self.ref_labels = False
         #: T2.11: the policy's deterministic intent for the next decision (set by the collector; one decision only)
         self.policy_action = None
         self.geometry = bool(geometry)
@@ -967,7 +970,7 @@ class T2StageEnv(gym.Env):
             return rot @ so3_exp((k - last) * om), om
         return attitude
 
-    def _labels(self, plan, a, start, cal, ecal, trace, entered, entry_rec, event) -> dict:
+    def _labels(self, plan, a, start, cal, ecal, trace, entered, entry_rec, event, pi_act=None) -> dict:
         """EACC labels of one decision, computed after the factual stage from the same decision state.
 
         M1 executor option model (``predict_intent``). M2 hindsight execution anchoring: (i) exogenous -- every
@@ -1036,6 +1039,17 @@ class T2StageEnv(gym.Env):
         same = self.predict_intent(plan, a, start, cal, ecal, anchored, attitude, entry_offset=offset)
         same_kind = (1 if anchored_outcome else 2) if same.get("entry") is not None else 0
         diag["fact_same_entry"] = same.get("entry") is not None
+        ref = None
+        if self.ref_labels and pi_act is not None:      # env 0.12.0: the policy's own intent, same treatment as the candidates
+            pa = np.clip(np.asarray(pi_act, dtype=np.float64).reshape(-1)[:2], -1.0, 1.0)
+            g = stage_goal(start["q"], start["v"], start["frame"], pa, mass, geometry=self.geometry, task=self.env.config.task)
+            rp = self.generator.planner.solve(start["q"], start["v"], g["q_goal"], g["v_goal"])
+            if rp["feasible"] and rp.get("terminal_position_error_m", 1.0) <= 0.3:
+                pr = self.predict_intent(rp, pa, start, cal, ecal, anchored, attitude, entry_offset=offset)
+                if pr["done"] or 6.5 <= pr["r_end"] <= 25.0:
+                    ref = {"a": pa.astype(np.float32), "reward": pr["reward"], "next_obs": pr.get("obs", np.zeros(self.obs_dim, np.float32)),
+                           "done": bool(pr["done"]), "kind": ((1 if anchored_outcome else 2) if pr.get("entry") is not None else 0)}
+        diag["ref"] = ref is not None
         if self.diagnostics:
             diag["anchored_fact"] = self.predict_intent(plan, a, start, cal, ecal, anchored, attitude, entry_offset=offset, brake_model=False)
             diag["raw_fact"] = fact
@@ -1043,7 +1057,7 @@ class T2StageEnv(gym.Env):
         return {"fact": {"reward": fact["reward"], "next_obs": fact.get("obs", np.zeros(self.obs_dim, np.float32)), "done": bool(fact["done"]),
                          "same": {"reward": same["reward"], "next_obs": same.get("obs", np.zeros(self.obs_dim, np.float32)),
                                   "done": bool(same["done"]), "kind": same_kind}},
-                "cands": cands, "diag": diag}
+                "cands": cands, "ref": ref, "diag": diag}
 
     def step_pure(self):
         """Paper baseline: one T1Env step of the shared MPC alone (fixed terminal set-point); the stage
@@ -1214,9 +1228,11 @@ class T2StageEnv(gym.Env):
         if self.pref and self.entry_calibration.ready:      # T2.10 / T2.11: before the stage is flown (the decision's own state)
             # candidates: the grid, the executed intent and (T2.11) the policy's own deterministic intent at this decision
             pi = a if self.policy_action is None else np.clip(np.asarray(self.policy_action, np.float64).reshape(-1)[:2], -1.0, 1.0)
+            # (T2.10 / T2.11 opportunity judgements of the grid, the executed and the policy's intents)
             acts = [np.asarray(x, np.float64) for x in PREF_GRID] + [a, pi]
             feats = [self.opportunity_features(x) for x in acts]
             pref = {"a": [x.tolist() for x in acts], "v": [f["value"] for f in feats], "f": feats}
+        pi_act = None if self.policy_action is None else np.clip(np.asarray(self.policy_action, np.float64).reshape(-1)[:2], -1.0, 1.0)
         self.policy_action = None
         q, v = relative_inertial(e)
         frame = frame_now(e, q); basis = frame["basis"]
@@ -1274,7 +1290,7 @@ class T2StageEnv(gym.Env):
         # its stage completed, or it opened the entry inside the stage
         model = {"fact": None, "cands": [], "diag": {"reason": "off"}}
         if model_on and (stage_complete or entered is not None) and ecal.ready:
-            model = self._labels(plan, a, start, cal, ecal, self._trace, entered, entry_rec, event)
+            model = self._labels(plan, a, start, cal, ecal, self._trace, entered, entry_rec, event, pi_act=pi_act)
             model["diag"]["reason"] = "entry" if entered is not None else "stage"
         elif model_on:
             model["diag"]["reason"] = "not_comparable" if ecal.ready else "entry_calibration"

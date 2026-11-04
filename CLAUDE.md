@@ -39,6 +39,12 @@ the 250-1000 curve and matched T2.11):** arms `e_term` / `e_term2` keep only exe
 candidates the model carries to a terminal event within one / two stages (stage 2 under the policy's mean intent);
 constant targets, corrected by the model's error on a same-kind executed terminal (`_terminal_loss`); no target reads
 the critic at a modelled state. Run order collab `T2_14_TERM_20261104` (awaiting approval; reuses T2.12's `e_priv`).
+**Learner 6.0 / env 0.12.0 (84 tests; T2.12 revert, T2.14 midterm below e_priv):** EACC as an execution-consistent policy
+improvement -- arms `e_pi` / `e_pit`: the critic is e_priv's (real transitions only); the executor predicts the candidates
+and the policy's own intent through one treatment (env `ref`), and the inverse-variance fusion of executor and critic
+advantages corrects only the actor's action gradient (least-squares slope near the policy's intent, clipped to the
+critic's gradient scale); with no evidence the update is e_priv's. The three planner answers withheld from the actor are
+exact functions of its observation (`evidence/T2_16_PRECHECK`): no hidden-information gap.
 
 ## Phase 2 ground rules (user 2026-11-03: consolidation and optimisation)
 
@@ -226,9 +232,9 @@ T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_2
 
 | Purpose | Entry |
 |---|---|
-| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (80 since learner 5.0; judge by the exit code) |
+| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (84 since learner 6.0; judge by the exit code) |
 | Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
-| Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve,e_acc} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI] [--obs reduced_priv]` (EACC-A: `--arm e_acc --obs reduced_priv`; its SAC baseline: `--arm e_sac --obs reduced_priv`; T2.12 EACC `--arm e_rel --obs reduced_priv`, ablation `--arm e_priv --obs reduced_priv`; learner 5.0 `--arm e_term` / `e_term2 --obs reduced_priv`) |
+| Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve,e_acc} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI] [--obs reduced_priv]` (EACC-A: `--arm e_acc --obs reduced_priv`; its SAC baseline: `--arm e_sac --obs reduced_priv`; T2.12 EACC `--arm e_rel --obs reduced_priv`, ablation `--arm e_priv --obs reduced_priv`; learner 5.0 `--arm e_term` / `e_term2 --obs reduced_priv`; learner 6.0 `--arm e_pi` / `e_pit --obs reduced_priv`) |
 | Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` (the interface is read from the run's manifest) |
 | Readouts | `python -B -m experiments.t2_readout {screen,curve,window,pressure}` |
 | Pre-registered decisions | `python -B -m experiments.t2_decide --criteria {t23,t24,v25,v251,t26,t26w,t27,t28} [--checkpoints ...] --readout R --train-root DIR` (t28: arm-level, method arm `e_mve` / `e_pref` / `e_acc`) |

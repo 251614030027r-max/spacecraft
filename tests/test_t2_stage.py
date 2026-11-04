@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-5.0'
+    assert t.LEARNER_VERSION == 't2-learner-6.0'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -721,7 +721,7 @@ def test_training_passes_the_mission_profile_to_every_worker():
     import inspect, train.t2_mve_sac as t
     assert 'urgent_deadline_s=tuple(float(x) for x in urgent_deadline)' in inspect.getsource(t.worker)
     src = inspect.getsource(t.train)
-    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref, cand_min_sep, label_det)' in src and "'urgent_deadline_s'" in src
+    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref, cand_min_sep, label_det,' in src and "'urgent_deadline_s'" in src
     assert "'obs_profile': obs_profile" in src and 'obs_profile=obs_profile' in inspect.getsource(t.worker)
 
 
@@ -1333,7 +1333,7 @@ def test_t212_arms_views_and_label_switches():
         m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True)
         assert (m.policy.critic_dim, m.model_beta, m.relative, m.acc) == (cdim, beta, rel, acc)
     src = inspect.getsource(t.train)
-    assert "candidates = K_CANDIDATES if arm in LABEL_ARMS else 0" in src and "if arm == 'e_rel':\n        entry_stages = 1" in src
+    assert "candidates = K_CANDIDATES if (arm in LABEL_ARMS or arm in FB_ARMS) else 0" in src and "if arm == 'e_rel':\n        entry_stages = 1" in src
     assert t.LABEL_ARMS[:3] == ('e_mve', 'e_acc', 'e_rel') and 'e_priv' not in t.LABEL_ARMS
 
 
@@ -1543,3 +1543,95 @@ def test_terminal_arms_fly_stage_two_under_the_policy_mean():
     assert 'if label_deterministic:' in w and 'deterministic=True' in w
     assert "if arm in TERM_ARMS:\n        entry_stages = TERM_ARMS[arm]" in src and 'label_det = arm in TERM_ARMS' in src
     assert t.TERM_ARMS == {'e_term': 1, 'e_term2': 2} and set(t.TERM_ARMS) <= set(t.LABEL_ARMS) and set(t.TERM_ARMS) <= set(t.PRIV_CRITIC_ARMS)
+
+
+def _fb_model(arm='e_pi'):
+    import train.t2_mve_sac as t
+    from env.t2_stage import OBS_DIM_PRIV
+    from stable_baselines3.common.logger import configure
+    m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True)
+    m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0; m.model_start = 0; m.learning_starts = 0
+    return m
+
+
+def _fb_fill(m, n=24, good=(0.3, 0.0), bad=(-0.3, 0.0), gain=20.0, ref=(0.0, 0.0), terminal=False, seed=0):
+    """Decisions whose executor evidence says intents towards +a_p are better (the 'good' candidate predicted gain above the
+    reference, the 'bad' one gain below); the reference is the policy's intent ``ref``."""
+    from env.t2_stage import OBS_DIM_PRIV
+    rng = np.random.default_rng(seed); z = np.zeros(OBS_DIM_PRIV, np.float32)
+    for i in range(n):
+        o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+        fact = {'reward': -2.0, 'next_obs': o1, 'done': False, 'same': {'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}}
+        refd = {'a': np.asarray(ref, np.float32), 'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}
+        cands = [{'a': np.asarray(good, np.float32), 'reward': (60.0 if terminal else -2.0 + gain), 'next_obs': z if terminal else o1, 'done': terminal, 'kind': 1 if terminal else 0},
+                 {'a': np.asarray(bad, np.float32), 'reward': -2.0 - gain, 'next_obs': o1, 'done': False, 'kind': 0}]
+        m.replay_buffer.add(o, o1[None], np.asarray(ref, np.float32)[None], np.array([-2.0]), np.array([False]),
+                            [{'model': {'fact': fact, 'cands': cands, 'ref': refd, 'diag': {'reason': 'stage'}}}])
+
+
+def test_execution_advantage_corrects_only_the_actor_and_points_to_the_better_intent():
+    """learner 6.0 (e_pi): the critic update is e_priv's (no counterfactual regression); the correction slope points from
+    the policy's intent towards the intents the executor's evidence prefers over the critic's own ranking."""
+    import torch as th
+    m = _fb_model('e_pi'); assert m.feedback == 'rel' and m.model_beta == 0.0 and m.policy.critic_dim == 48
+    _fb_fill(m); m.td_ms = 25.0; m.entry_bias_now = 0.0
+    th.manual_seed(0); data = m.replay_buffer.sample(16)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    sel, g, a_ref, info = m._actor_correction(data, target)
+    assert bool(sel.all()) and info['fb_cands'] == 32
+    assert bool((g[:, 0] > 0).all())          # towards +a_p, where the evidence says the value rises
+    assert m._model_loss.__name__ and not m.relative and m.terminal == 0
+
+
+def test_execution_feedback_switched_off_is_the_e_priv_update():
+    """With no executor evidence the e_pi update equals the e_priv update (same critic and actor parameters after
+    identical updates on identical data)."""
+    import torch as th
+    out = []
+    for arm in ('e_priv', 'e_pi'):
+        m = _fb_model(arm)
+        from env.t2_stage import OBS_DIM_PRIV
+        rng = np.random.default_rng(0)
+        for i in range(32):
+            o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32)
+            m.replay_buffer.add(o, o1, rng.uniform(-1, 1, (1, 2)).astype(np.float32), np.array([rng.normal()]), np.array([False]), [{'model': {}}])
+        np.random.seed(1); th.manual_seed(1)
+        m.train(gradient_steps=5, batch_size=8)
+        out.append(th.cat([p.detach().reshape(-1) for p in m.policy.parameters()]))
+    assert th.equal(out[0], out[1])
+
+
+def test_terminal_execution_feedback_uses_only_executor_complete_values():
+    """e_pit: only candidates whose modelled stage ends in a terminal event carry evidence; the correction compares that
+    complete value with the critic's value at the candidate."""
+    import torch as th
+    m = _fb_model('e_pit'); assert m.feedback == 'term'
+    _fb_fill(m, terminal=True); m.td_ms = 25.0; m.entry_bias_now = 0.0
+    th.manual_seed(0); data = m.replay_buffer.sample(16)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    sel, g, a_ref, info = m._actor_correction(data, target)
+    assert info['fb_cands'] == 16                  # the terminal candidate of each row only
+    assert bool((g[sel][:, 0] > 0).all())          # a capture value far above the untrained critic's: towards it
+
+
+def test_environment_predicts_the_policy_intent_with_the_candidates_treatment():
+    """env 0.12.0: with ref_labels and a policy intent set by the collector, the labels carry ``ref``."""
+    from env.t2_stage import T2StageEnv, OBS_DIM
+    env = T2StageEnv(openings=[1000001], shaping=True, candidates=4, entry_stages=1)
+    env.reset(); env.ref_labels = True
+    for k in range(12):
+        env.calibration.add(0.10, 0.12, np.zeros(3), np.zeros(3))
+    for k in range(25):
+        env.entry_calibration.add(30.0, 0.3, 45.0, 0.5, True, 0.0, 120.0)
+    for _ in range(4):
+        env.policy_action = np.array([0.5, 0.2])
+        obs, r, term, trunc, info = env.step(np.array([0.4, 0.3]))
+        m = info['model']
+        if m['diag']['reason'] == 'stage':
+            assert m.get('ref') is not None and m['ref']['next_obs'].shape == (OBS_DIM,) and np.allclose(m['ref']['a'], [0.5, 0.2])
+            return
+        if term or trunc:
+            break
+    raise AssertionError('no labelled stage decision')
