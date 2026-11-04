@@ -52,7 +52,10 @@ references and the gate closed almost every row). Coverage: `e_pi` applies on 88
 decisions 0-50 / 50-100 / 100-150, `e_pit` ~3 % (sparse). T2.14 delivered: `e_term` revert, `e_term2` unsafe (1).
 **T2.16 gate (user 11-04):** before training, a truth direction audit (`experiments/t2_direction.py`, 87 tests): on T2.12's
 `e_priv` checkpoints, truth branches compare an intent step along the critic gradient with one along the 6.1 corrected
-direction; training starts only if the corrected step wins (pre-registered in collab `T2_16_PI_20261104`, section A).
+direction; training starts only if the corrected step wins (pre-registered in collab `T2_16_PI_20261104`, section A). A passed
+(14 / 20, `55a32e4`); B's first launch failed (the command line lacked `e_pi` / `e_pit`, fixed `42cf666`). **Learner
+6.2 (`c9d8371`, 90 tests):** A's data showed g mostly opposing gq, so 6.1's term shortened the step (median 0.61 of
+the critic's); 6.2 applies the audited step itself, the corrected direction at the critic's length (`rotated_correction`).
 
 ## Phase 2 ground rules (user 2026-11-03: consolidation and optimisation)
 
@@ -240,7 +243,7 @@ T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_2
 
 | Purpose | Entry |
 |---|---|
-| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (87 since the T2.16 audit tool; judge by the exit code) |
+| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (90 since learner 6.2; judge by the exit code) |
 | Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
 | Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve,e_acc} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI] [--obs reduced_priv]` (EACC-A: `--arm e_acc --obs reduced_priv`; its SAC baseline: `--arm e_sac --obs reduced_priv`; T2.12 EACC `--arm e_rel --obs reduced_priv`, ablation `--arm e_priv --obs reduced_priv`; learner 5.0 `--arm e_term` / `e_term2 --obs reduced_priv`; learner 6.0 `--arm e_pi` / `e_pit --obs reduced_priv`) |
 | Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` (the interface is read from the run's manifest) |
