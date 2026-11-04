@@ -169,8 +169,8 @@ def decide_t212(c: dict, f: dict, method='e_rel', ablation='e_priv', reference='
                          if reference in A and ablation in A else None}}
 
 
-COL = {'e_term': '#1f5fbf', 'e_term2': '#7b3fb5', 'e_rel': '#9aa5b1', 'e_acc': '#7aa6d9', 'e_priv': '#3a9e6a', 'e_sac': '#eb6834'}
-NAME = {'e_term': 'EACC（终局反事实，1 段）', 'e_term2': 'EACC（终局反事实，≤2 段）', 'e_rel': '相对标签（T2.12）', 'e_acc': 'EACC-A (T2.11)',
+COL = {'e_pull': '#c0392b', 'e_pi': '#e39b95', 'e_pit': '#b8860b', 'e_term': '#1f5fbf', 'e_term2': '#7b3fb5', 'e_rel': '#9aa5b1', 'e_acc': '#7aa6d9', 'e_priv': '#3a9e6a', 'e_sac': '#eb6834'}
+NAME = {'e_pull': 'EACC（执行反馈：局部 + 非局部）', 'e_pi': 'EACC（执行反馈：仅局部）', 'e_pit': 'EACC（执行反馈：仅终局）', 'e_term': 'EACC（终局反事实，1 段）', 'e_term2': 'EACC（终局反事实，≤2 段）', 'e_rel': '相对标签（T2.12）', 'e_acc': 'EACC-A (T2.11)',
         'e_priv': '特权 critic，无反事实反馈', 'e_sac': 'SAC（无反馈）'}
 
 

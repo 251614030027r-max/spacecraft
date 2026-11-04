@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-6.2'
+    assert t.LEARNER_VERSION == 't2-learner-6.3'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -1720,3 +1720,51 @@ def test_execution_feedback_enters_the_actor_update():
     m.train(gradient_steps=1, batch_size=8)
     s = [x for x in m.model_stats if 'fb_rows' in x]
     assert s and s[-1].get('fb_applied', 0) > 0 and abs(s[-1]['fb_turn_cos']) <= 1.0 and s[-1]['fb_m_ratio'] >= 0.0
+
+
+def test_pull_feedback_turns_towards_a_far_better_candidate_beyond_the_noise():
+    """learner 6.3 (e_pull): the best candidate on the fused advantage, anywhere in the square, sets the direction when
+    its advantage exceeds the critic's TD noise; a gain within the noise gives no correction."""
+    import torch as th
+    from train.t2_mve_sac import toward_correction
+    m = _fb_model('e_pull'); assert m.feedback == 'pull'
+    _fb_fill(m, good=(0.9, 0.9), bad=(-0.3, 0.0), gain=20.0); m.td_ms = 25.0; m.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0)
+    ob, sel, g, a_ref, info = m._actor_correction()
+    assert bool(m._fb_pull_rows.all()) and info['fb_pull_dist_mean'] > 1.0      # the far candidate (beyond FB_RADIUS)
+    u = g / g.norm(dim=1, keepdim=True)
+    assert bool((u[:, 0] > 0.69).all()) and bool((u[:, 1] > 0.69).all())
+    m2 = _fb_model('e_pull'); _fb_fill(m2, good=(0.9, 0.9), bad=(-0.3, 0.0), gain=2.0); m2.td_ms = 25.0; m2.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0)
+    _, sel2, _, _, _ = m2._actor_correction()
+    assert not bool(m2._fb_pull_rows.any())                                  # within the noise: no pull (the local slope may act)
+    gq = th.tensor([[1.0, 0.0], [0.0, 2.0]]); v = th.tensor([[0.0, 3.0], [1.0, 1.0]])
+    h = toward_correction(gq, v)
+    assert th.allclose((gq + h).norm(dim=1), gq.norm(dim=1)) and th.allclose(gq[0] + h[0], th.tensor([0.0, 1.0]), atol=1e-6)
+
+
+def test_direction_audit_pull_branch_uses_the_learner_pull_direction():
+    """Gate A2 (experiments.t2_direction, branch P): the audit's pull direction is the learner's e_pull direction on the
+    transition, and computing it leaves the model on the e_pi slope ('rel') for the Q / M / E branches."""
+    from env.t2_stage import OBS_DIM_PRIV
+    from experiments.t2_direction import correction
+    m = _fb_model('e_pi'); m.td_ms = 25.0
+    rng = np.random.default_rng(4); o = rng.normal(size=OBS_DIM_PRIV).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+    refd = {'a': np.zeros(2, np.float32), 'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}
+    cands = [{'a': np.array([0.9, 0.9], np.float32), 'reward': 18.0, 'next_obs': o1, 'done': False, 'kind': 0},
+             {'a': np.array([-0.3, 0.0], np.float32), 'reward': -22.0, 'next_obs': o1, 'done': False, 'kind': 0}]
+    info = {'model': {'fact': {'reward': -2.0, 'next_obs': o1, 'done': False}, 'cands': cands, 'ref': refd, 'diag': {'reason': 'stage', 'entry_bias': 0.0}}}
+    gp, gq, pinfo = correction(m, o, o1, np.zeros(2), -2.0, False, info, seed=0, feedback='pull')
+    assert gp is not None and gp[0] > 0 and gp[1] > 0 and abs(gp[0] - gp[1]) < 1e-3 * abs(gp[0]) and pinfo['fb_pull_dist_mean'] > 1.0
+    g, _, _ = correction(m, o, o1, np.zeros(2), -2.0, False, info, seed=0)
+    assert m.feedback == 'rel' and g is not None
+
+
+def test_pull_feedback_enters_the_actor_update():
+    """learner 6.3: a training step of e_pull with a far better candidate applies the non-local correction."""
+    import torch as th
+    m = _fb_model('e_pull'); _fb_fill(m, n=32, good=(0.9, 0.9), gain=20.0); m.td_ms = 25.0; m.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0)
+    m.train(gradient_steps=1, batch_size=8)
+    s = [x for x in m.model_stats if 'fb_rows' in x]
+    assert s and s[-1].get('fb_applied', 0) > 0 and s[-1].get('fb_pull_rows', 0) > 0

@@ -1,6 +1,6 @@
 """Truth direction audit of the learner 6.1 execution feedback (read-only; no training). Gate of T2.16.
 
-    python -B -m experiments.t2_direction run --policies LABEL=ZIP ... --openings A-B --calibration CAL.json --workers W --output DIR
+    python -B -m experiments.t2_direction run --policies LABEL=ZIP ... --openings A-B --calibration CAL.json --workers W --output DIR [--branches Q,M,E,P]
     python -B -m experiments.t2_direction summary --input DIR --output J
 
 Question: does the executor's correction move the policy's intent in a direction the truth prefers to the critic's own
@@ -20,6 +20,11 @@ stage decision, before the stage is flown, the state is branched (``experiments.
   (gq + g_c) / |gq + g_c| with g_c = g clipped to FB_CLIP |gq| (the 6.1 update, "M") and g / |g| (the executor alone,
   "E"), and then the same deterministic policy to the end of the episode; the true return from the decision on is
   recorded (and a_pi's own, from the episode).
+
+Learner 6.3 (gate A2): branch "P" flies a_pi + DELTA * u_P, u_P the direction from a_pi to the best candidate on the
+fused advantage when it exceeds the TD noise (``_actor_correction`` with feedback 'pull'); computed after, and seeded
+independently of, the 'rel' correction, so Q / M / E are unchanged. ``summary`` reports the same gate for P against Q
+under ``pull`` (decisions where u_P turns the critic's direction, cos(u_P, u_Q) < DISAGREE_COS).
 
 ``summary`` applies the pre-registered gate (T2_16 run order) on the decisions where the 6.1 update turns the critic's
 direction (cos(u_M, u_Q) < DISAGREE_COS) and both branches ended:
@@ -58,8 +63,10 @@ def _fly(snap, a, policy):
     return {'return': ret, 'event': info.get('event'), 'time_s': info.get('time_s')}
 
 
-def correction(model, obs, next_obs, a, reward, done, info, seed):
-    """g (mean over identified rows), gq at a, readings: the learner's own ``_actor_correction`` on this transition."""
+def correction(model, obs, next_obs, a, reward, done, info, seed, feedback: str = 'rel'):
+    """g (mean over identified rows), gq at a, readings: the learner's own ``_actor_correction`` on this transition
+    (``feedback`` 'rel' = e_pi's slope, 'pull' = e_pull's direction to the best candidate)."""
+    model.feedback = feedback
     import torch as th
     from train.t2_mve_sac import StageReplay, _slim
     model.replay_buffer = StageReplay(4, model.observation_space, model.action_space, device='cpu')
@@ -72,13 +79,16 @@ def correction(model, obs, next_obs, a, reward, done, info, seed):
     a_q = th.as_tensor(np.asarray(a, np.float32)[None]).requires_grad_(True)
     o_q = th.as_tensor(np.asarray(obs, np.float32)[None])
     gq = th.autograd.grad(th.min(th.cat(model.critic(o_q, a_q), dim=1), dim=1).values.sum(), a_q)[0][0].numpy().astype(float)
+    if feedback == 'pull' and sel is not None:          # gate A2: the non-local rows only (the others are e_pi's slope)
+        sel = sel & model._fb_pull_rows
     if sel is None or not bool(sel.any()):
         return None, gq, finfo
     return g[sel].mean(0).numpy().astype(float), gq, finfo
 
 
 def _job(args):
-    label, zip_, opening, cal, out = args
+    label, zip_, opening, cal, out, branches = (*args, 'Q,M,E') if len(args) == 5 else args
+    branches = set(branches.split(','))
     import torch as th
     th.set_num_threads(1)
     file = Path(out) / f'{label}_{opening}.json'
@@ -116,9 +126,19 @@ def _job(args):
             rec.update(g=g.tolist(), g_norm=gn, gq_norm=qn, cos_g_gq=float(np.dot(g, gq) / max(gn * qn, 1e-12)),
                        cos_m_q=None if um is None else float(np.dot(um, uq)))
             for name, u in (('Q', uq), ('M', um), ('E', ue)):
-                if u is not None:
+                if u is not None and name in branches:
                     a_b = np.clip(a + DELTA * u, -1.0, 1.0)
                     rec[name] = {'a': a_b.tolist(), **_fly(snap, a_b, policy)}
+        if 'P' in branches and uq is not None:               # gate A2 (learner 6.3, e_pull)
+            gp, _, pinfo = correction(model, obs, nobs, a, r, done, info, seed=opening * 100 + k + 50_000, feedback='pull')
+            up = None if gp is None else _unit(gp)
+            rec['pull'] = {kk: pinfo.get(kk) for kk in ('fb_identified', 'fb_pull_adv_mean', 'fb_pull_dist_mean')}
+            if up is not None:
+                rec['cos_p_q'] = float(np.dot(up, uq))
+                if 'Q' not in rec:
+                    a_q = np.clip(a + DELTA * uq, -1.0, 1.0); rec['Q'] = {'a': a_q.tolist(), **_fly(snap, a_q, policy)}
+                a_p = np.clip(a + DELTA * up, -1.0, 1.0); rec['P'] = {'a': a_p.tolist(), **_fly(snap, a_p, policy)}
+            model.feedback = 'rel'
         rows.append(rec); obs = nobs; k += 1
     for rec in rows:
         rec['R_pi'] = float(np.sum(rewards[rec.pop('reward_index'):]))
@@ -128,13 +148,13 @@ def _job(args):
     return res
 
 
-def run(policies, openings, cal, workers, out):
+def run(policies, openings, cal, workers, out, branches='Q,M,E'):
     Path(out).mkdir(parents=True, exist_ok=True)
-    jobs = [(lab, z, op, cal, out) for lab, z in policies.items() for op in openings]
+    jobs = [(lab, z, op, cal, out, branches) for lab, z in policies.items() for op in openings]
     with ProcessPoolExecutor(workers) as pool:
         for f in as_completed([pool.submit(_job, j) for j in jobs]):
             r = f.result()
-            n = sum(1 for d in r['decisions'] if 'M' in d)
+            n = sum(1 for d in r['decisions'] if 'M' in d or 'P' in d)
             print(json.dumps({'label': r['label'], 'opening': r['opening'], 'event': r['event'], 'decisions': len(r['decisions']),
                               'branched': n, 'wall_s': round(r['wall_s'])}), flush=True)
 
@@ -173,7 +193,24 @@ def summary(inp):
         ds = [d for d in turned if d['label'] == lab]
         by_label[lab] = {'decisions': sum(1 for d in dec if d['label'] == lab), 'branched': sum(1 for d in branched if d['label'] == lab),
                          'M_vs_Q_turned': pair('M', 'Q', ds)}
-    return {'verdict': verdict, 'criteria': crit,
+    pt = [d for d in dec if 'P' in d and 'Q' in d and d.get('cos_p_q') is not None and d['cos_p_q'] < DISAGREE_COS]
+    pdiff = np.array([d['P']['return'] - d['Q']['return'] for d in pt]) if pt else np.zeros(0)
+    pinf = pdiff[np.abs(pdiff) > TIE]; pwins = int((pinf > 0).sum())
+    punsafe = lambda x: sum(1 for d in pt if d[x]['event'] == 'unsafe')
+    pcrit = {'D_data': bool(len(pinf) >= MIN_INFORMATIVE), 'P1_wins': bool(len(pinf) and pwins / len(pinf) >= WIN_SHARE),
+             'P2_mean': bool(len(pdiff) and pdiff.mean() > 0), 'S_safety': bool(punsafe('P') <= punsafe('Q'))}
+    pboot = None
+    if len(pdiff):
+        rng = np.random.default_rng(2717)
+        pb = [rng.choice(pdiff, len(pdiff)).mean() for _ in range(2000)]
+        pboot = [float(np.percentile(pb, 5)), float(np.percentile(pb, 95))]
+    pull = {'verdict': 'pass' if all(pcrit.values()) else ('insufficient' if not pcrit['D_data'] else 'fail'), 'criteria': pcrit,
+            'fired': sum(1 for d in dec if 'P' in d), 'turned': len(pt), 'informative': int(len(pinf)), 'wins': pwins,
+            'win_share': pwins / len(pinf) if len(pinf) else None, 'mean_P_minus_Q_turned': float(pdiff.mean()) if len(pdiff) else None,
+            'mean_P_minus_Q_turned_90ci': pboot, 'mean_P_minus_Q_without_top2': float(np.sort(pdiff)[:-2].mean()) if len(pdiff) > 2 else None,
+            'unsafe_P': punsafe('P'), 'unsafe_Q': punsafe('Q'),
+            'P_vs_pi_turned': pair('P', 'pi', pt), 'Q_vs_pi_turned': pair('Q', 'pi', pt)}
+    return {'verdict': verdict, 'criteria': crit, 'pull': pull,
             'constants': {'delta': DELTA, 'disagree_cos': DISAGREE_COS, 'tie': TIE, 'min_informative': MIN_INFORMATIVE, 'win_share': WIN_SHARE},
             'episodes': episodes, 'decisions': len(dec), 'branched': len(branched), 'branched_share': len(branched) / max(len(dec), 1),
             'turned': len(turned), 'informative': int(len(informative)), 'wins': wins,
@@ -217,11 +254,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__); s = p.add_subparsers(dest='cmd', required=True)
     r = s.add_parser('run'); r.add_argument('--policies', nargs='+', required=True); r.add_argument('--openings', required=True)
     r.add_argument('--calibration', required=True); r.add_argument('--workers', type=int, default=4); r.add_argument('--output', required=True)
+    r.add_argument('--branches', default='Q,M,E', help='truth branches: Q critic, M 6.1/6.2 corrected, E executor slope, P 6.3 pull (gate A2)')
     q = s.add_parser('summary'); q.add_argument('--input', required=True); q.add_argument('--output', required=True)
     g = s.add_parser('plot'); g.add_argument('--summary', required=True); g.add_argument('--input', required=True); g.add_argument('--output', required=True)
     a = p.parse_args()
     if a.cmd == 'run':
-        run(dict(x.split('=', 1) for x in a.policies), _ops(a.openings), a.calibration, a.workers, a.output)
+        run(dict(x.split('=', 1) for x in a.policies), _ops(a.openings), a.calibration, a.workers, a.output, a.branches)
     elif a.cmd == 'summary':
         res = summary(a.input); Path(a.output).write_text(json.dumps(res, indent=1), encoding='utf-8'); print(json.dumps(res, indent=1))
     else:
