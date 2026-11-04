@@ -1682,3 +1682,13 @@ def test_direction_audit_uses_the_learner_correction_on_one_transition():
     a = th.zeros((1, 2), requires_grad=True)
     ref = th.autograd.grad(th.min(th.cat(m.critic(th.as_tensor(o[None]), a), dim=1), dim=1).values.sum(), a)[0][0].numpy()
     assert np.allclose(gq, ref, atol=1e-6)
+
+
+def test_training_entry_accepts_every_learner_arm():
+    """T2.16 launch failure (frozen 323b8c8 refused --arm e_pi): the command line offers every arm the learner builds."""
+    import train.t2_mve_sac as t
+    from experiments.t2 import arm_choices
+    arms = arm_choices()
+    for a in ('e_sac', 'e_mve', 'e_pref', *t.LABEL_ARMS, *t.PRIV_CRITIC_ARMS, *t.TERM_ARMS, *t.FB_ARMS):
+        assert a in arms, a
+    assert len(arms) == len(set(arms))

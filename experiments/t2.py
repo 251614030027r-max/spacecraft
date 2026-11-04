@@ -166,10 +166,16 @@ def guarded_eval(job):
     return guarded(eval_job)(job)
 
 
+def arm_choices() -> list:
+    """Every arm the learner builds (T2.16: the list is the learner's own, so a new arm cannot be missing here)."""
+    from train.t2_mve_sac import FB_ARMS, LABEL_ARMS, PRIV_CRITIC_ARMS, TERM_ARMS
+    return list(dict.fromkeys(['e_sac', 'e_mve', 'e_pref', 'e_acc', *LABEL_ARMS, *PRIV_CRITIC_ARMS, *TERM_ARMS, *FB_ARMS]))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('mode', choices=['screen', 'train', 'eval'])
     p.add_argument('--output', required=True); p.add_argument('--openings'); p.add_argument('--policies')
-    p.add_argument('--workers', type=int, default=4); p.add_argument('--arm', choices=['e_sac', 'e_mve', 'e_pref', 'e_acc', 'e_rel', 'e_priv', 'e_term', 'e_term2'], default='e_sac')
+    p.add_argument('--workers', type=int, default=4); p.add_argument('--arm', choices=arm_choices(), default='e_sac')
     p.add_argument('--seed', type=int, default=0); p.add_argument('--steps', type=int, default=2000)
     p.add_argument('--checkpoint'); p.add_argument('--label'); p.add_argument('--checkpoints', default='500,1000,1500,2000,3000,4000,5000')
     p.add_argument('--smoke', action='store_true'); p.add_argument('--no-window', action='store_true')
