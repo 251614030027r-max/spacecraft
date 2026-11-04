@@ -78,7 +78,7 @@ AGE_CAP = 2000
 #: 4.1 (EACC iteration): common random numbers in the bootstrap values of one decision's relative labels, and candidates
 #: separated in the executor's stage-goal terms (env 0.11.0, ``cand_min_sep``; arm e_rel only);
 #: 5.0: arms e_term / e_term2 -- executor-evaluable (terminal) counterfactual values only, ``_terminal_loss``)
-LEARNER_VERSION = "t2-learner-6.1"
+LEARNER_VERSION = "t2-learner-6.2"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -204,6 +204,25 @@ FB_CLIP = 1.0
 FB_WINDOW = 256
 FB_BATCH = 64
 FB_MIN_SPREAD = 0.01
+#: Learner 6.2 (T2.16 audit, 2026-11-04): on the audited states the slope g pointed mostly against the critic's gradient
+#: (median cos -0.84, |g| ~ |gq|), so 6.1's added term g_c mostly cancelled the critic's push on the recent states: the
+#: corrected step kept a truth-preferred direction (gate pass, 14 / 20) but shrank to a median 0.61 of the critic's, below
+#: half in 40 % of the decisions. 6.2 applies the audited step itself: per row, the corrected direction
+#: u = (gq + g_c) / |gq + g_c| (g_c = g clipped to FB_CLIP |gq| of that row) with the critic's own magnitude |gq|, i.e.
+#: the added term is h = |gq| u - gq. The executor rotates the critic's step and never lengthens, shortens or reverses
+#: it; evidence that agrees with the critic (or only opposes it) gives h = 0.
+
+
+def rotated_correction(gq, g, clip: float = FB_CLIP):
+    """Learner 6.2: per row (B, 2), the term h that turns the critic's action gradient gq into the corrected direction
+    of the same length, h = |gq| (gq + g_c) / |gq + g_c| - gq, with g_c = g clipped to ``clip`` |gq|. Returns (h, g_c);
+    h = 0 where gq + g_c has no direction."""
+    qn = gq.norm(dim=1, keepdim=True)
+    g_c = g * th.clamp(clip * qn / g.norm(dim=1, keepdim=True).clamp(min=1e-9), max=1.0)
+    m = gq + g_c
+    mn = m.norm(dim=1, keepdim=True)
+    h = qn * m / mn.clamp(min=1e-12) - gq
+    return th.where(mn > 1e-6 * qn.clamp(min=1e-12), h, th.zeros_like(h)), g_c
 
 
 def centred_slope(d, c, w, ridge: float = FB_RIDGE, min_spread: float = FB_MIN_SPREAD):
@@ -771,7 +790,7 @@ class T2SAC(SAC):
             self.critic.optimizer.zero_grad(); loss.backward(); self.critic.optimizer.step()
             q_pi = th.min(th.cat(self.critic(data.observations, actions_pi), dim=1), dim=1, keepdim=True).values
             actor_loss = (ent_coef * log_prob - q_pi).mean()
-            if self.feedback and stored >= self.model_start:      # learner 6.1: execution-corrected action gradient
+            if self.feedback and stored >= self.model_start:      # learner 6.1 / 6.2: execution-corrected action gradient
                 ob_f, sel, g, a_ref, finfo = self._actor_correction()
                 info.update(finfo)
                 if sel is not None and bool(sel.any()):
@@ -781,13 +800,14 @@ class T2SAC(SAC):
                     if bool(near.any()):
                         a_q = a_ref.clone().requires_grad_(True)              # the critic's own action gradient, for the trust region
                         gq = th.autograd.grad(th.min(th.cat(self.critic(ob_f, a_q), dim=1), dim=1).values.sum(), a_q)[0]
-                        scale = FB_CLIP * float(gq[near].norm(dim=1).pow(2).mean().sqrt())
-                        gn = g.norm(dim=1, keepdim=True)
-                        g_c = g * th.clamp(scale / gn.clamp(min=1e-9), max=1.0)
-                        corr_loss = -(g_c.detach()[near] * mu[near]).sum() / ob_f.shape[0]
+                        h, g_c = rotated_correction(gq, g)                   # 6.2: rotate the critic's step, same length
+                        corr_loss = -(h.detach()[near] * mu[near]).sum() / ob_f.shape[0]
                         actor_loss = actor_loss + corr_loss
-                        info.update(fb_applied=int(near.sum()), fb_applied_share=float(near.float().mean()), fb_gq_rms=float(scale / max(FB_CLIP, 1e-9)),
-                                    fb_cos=float(F.cosine_similarity(g_c[near], gq[near], dim=1).mean()))
+                        gqn = gq[near].norm(dim=1)
+                        info.update(fb_applied=int(near.sum()), fb_applied_share=float(near.float().mean()), fb_gq_rms=float(gqn.pow(2).mean().sqrt()),
+                                    fb_cos=float(F.cosine_similarity(g_c[near], gq[near], dim=1).mean()),
+                                    fb_turn_cos=float(F.cosine_similarity(gq[near] + h[near], gq[near], dim=1).mean()),
+                                    fb_m_ratio=float(((gq[near] + g_c[near]).norm(dim=1) / gqn.clamp(min=1e-12)).median()))
                     else:
                         info.update(fb_applied=0, fb_applied_share=0.0)
             if acc_rows is not None:                  # T2.11: pull the actor's mean intent to the trusted better candidate
@@ -1025,6 +1045,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'fb_radius': FB_RADIUS if arm in FB_ARMS else None, 'fb_ridge': FB_RIDGE if arm in FB_ARMS else None,
                                                    'fb_clip': FB_CLIP if arm in FB_ARMS else None, 'fb_window': FB_WINDOW if arm in FB_ARMS else None,
                                                    'fb_batch': FB_BATCH if arm in FB_ARMS else None, 'fb_min_spread': FB_MIN_SPREAD if arm in FB_ARMS else None,
+                                                   'fb_step': 'rotate' if arm in FB_ARMS else None,
                                                    'actor_view': OBS_DIM, 'critic_view': int(getattr(model.policy, 'critic_dim', OBS_DIM)),
                                                    'acc_dp': ACC_DP, 'acc_kappa': ACC_KAPPA, 'acc_lambda_q': ACC_LAMBDA_Q, 'acc_eta': ACC_ETA,
                                                    'acc_min_labels': ACC_MIN_LABELS, 'acc_min_acc': ACC_MIN_ACC,

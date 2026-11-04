@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-6.1'
+    assert t.LEARNER_VERSION == 't2-learner-6.2'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -1692,3 +1692,31 @@ def test_training_entry_accepts_every_learner_arm():
     for a in ('e_sac', 'e_mve', 'e_pref', *t.LABEL_ARMS, *t.PRIV_CRITIC_ARMS, *t.TERM_ARMS, *t.FB_ARMS):
         assert a in arms, a
     assert len(arms) == len(set(arms))
+
+
+def test_rotated_correction_turns_the_critic_step_without_changing_its_length():
+    """learner 6.2: the added term turns gq into the audited corrected direction (experiments.t2_direction's u_M) at the
+    critic's own length; evidence agreeing with the critic, or exactly opposing it, adds nothing."""
+    import torch as th
+    from train.t2_mve_sac import FB_CLIP, rotated_correction
+    rng = np.random.default_rng(5)
+    gq = th.as_tensor(rng.normal(size=(64, 2)), dtype=th.float32); g = th.as_tensor(rng.normal(size=(64, 2)) * 3, dtype=th.float32)
+    h, g_c = rotated_correction(gq, g)
+    assert th.allclose((gq + h).norm(dim=1), gq.norm(dim=1), atol=1e-5)
+    for i in range(64):                                   # the audit's u_M, row by row
+        q, gi = gq[i].numpy().astype(float), g[i].numpy().astype(float)
+        gc = gi * min(1.0, FB_CLIP * np.linalg.norm(q) / max(np.linalg.norm(gi), 1e-9))
+        um = (q + gc) / np.linalg.norm(q + gc)
+        assert np.allclose((gq[i] + h[i]).numpy() / np.linalg.norm(q), um, atol=1e-4)
+    h2, _ = rotated_correction(gq, 2.0 * gq); h3, _ = rotated_correction(gq, -5.0 * gq)
+    assert float(h2.abs().max()) < 1e-5 and float(h3.abs().max()) < 1e-5
+
+
+def test_execution_feedback_enters_the_actor_update():
+    """learner 6.2: with evidence near the policy's intent, a training step applies the rotated correction (readings)."""
+    import torch as th
+    m = _fb_model('e_pi'); _fb_fill(m, n=32); m.td_ms = 25.0; m.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0)
+    m.train(gradient_steps=1, batch_size=8)
+    s = [x for x in m.model_stats if 'fb_rows' in x]
+    assert s and s[-1].get('fb_applied', 0) > 0 and abs(s[-1]['fb_turn_cos']) <= 1.0 and s[-1]['fb_m_ratio'] >= 0.0
