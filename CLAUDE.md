@@ -57,7 +57,10 @@ direction; training starts only if the corrected step wins (pre-registered in co
 6.2 (`c9d8371`, 90 tests):** A's data showed g mostly opposing gq, so 6.1's term shortened the step (median 0.61 of
 the critic's); 6.2 applies the audited step itself, the corrected direction at the critic's length (`rotated_correction`). **Learner 6.3 (93
 tests):** arm `e_pull` adds the non-local form -- the best candidate on the fused advantage, when beyond the TD noise,
-turns the actor's step towards it (`toward_correction`); run order collab `T2_17_PULL_20261104` (e_pi + e_pull, 2000 steps).
+turns the actor's step towards it (`toward_correction`); run order collab `T2_17_PULL_20261104` (e_pi + e_pull, 2000 steps). **Env 0.13.0 / learner 7.0 (97 tests):** observation
+`reduced_priv_cert` adds the executor-calibrated counterfactual opportunity map (9 reference intents x [feasible,
+replay-calibrated success share, value] + ready flag) as critic input; arms `e_cert` (U1 + U2), `e_full` (+ U3),
+`e_pullq` (U3 only); run order collab `T2_19_CERT_20261104` (e_cert + e_full; method selection pre-registered).
 
 ## Phase 2 ground rules (user 2026-11-03: consolidation and optimisation)
 
@@ -245,7 +248,7 @@ T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_2
 
 | Purpose | Entry |
 |---|---|
-| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (93 since learner 6.3; judge by the exit code) |
+| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (97 since learner 7.0; judge by the exit code) |
 | Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
 | Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve,e_acc} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI] [--obs reduced_priv]` (EACC-A: `--arm e_acc --obs reduced_priv`; its SAC baseline: `--arm e_sac --obs reduced_priv`; T2.12 EACC `--arm e_rel --obs reduced_priv`, ablation `--arm e_priv --obs reduced_priv`; learner 5.0 `--arm e_term` / `e_term2 --obs reduced_priv`; learner 6.0 `--arm e_pi` / `e_pit --obs reduced_priv`) |
 | Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` (the interface is read from the run's manifest) |
