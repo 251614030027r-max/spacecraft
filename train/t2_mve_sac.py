@@ -78,7 +78,7 @@ AGE_CAP = 2000
 #: 4.1 (EACC iteration): common random numbers in the bootstrap values of one decision's relative labels, and candidates
 #: separated in the executor's stage-goal terms (env 0.11.0, ``cand_min_sep``; arm e_rel only);
 #: 5.0: arms e_term / e_term2 -- executor-evaluable (terminal) counterfactual values only, ``_terminal_loss``)
-LEARNER_VERSION = "t2-learner-6.0"
+LEARNER_VERSION = "t2-learner-6.1"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -176,22 +176,49 @@ TERM_BETA = 0.5
 #:   the executor predicts, through one treatment (M1, M2, common random numbers), the candidates a_j and the policy's
 #:   own deterministic intent a_pi at the decision (env 0.12.0 ``ref``);  Y(a) = r^_a + gamma (1 - d^_a) V'_xi(s^'_a)
 #:   critic advantage   A_Q(a_j) = Q(z, a_j) - Q(z, a_pi)        (the real-data critic, no gradient)
-#:   executor advantage A_E(a_j) = Y(a_j) - Y(a_pi)  (e_pi)  |  executor-complete value  Y(a_j) - Q(z, a_j) at a terminal
-#:                      candidate, reference 0 (e_pit: only labels the executor evaluates to the end)
+#:   executor advantage A_E(a_j) = Y(a_j) - Y(a_pi)  (e_pi: every candidate; e_pit: only the candidates the executor
+#:                      evaluates to a terminal event)
 #:   correction field   C_j = rho_j (A_E(a_j) - A_Q(a_j)),   rho_j = sigma^2 / (sigma^2 + eps_j^2)
 #: rho is the inverse-variance weight of two estimates of the same advantage (the critic's, error scale sigma = the RMS
 #: real TD residual; the executor's, error scale eps_j = |e_raw| + unshared entry bias): A_mix = A_Q + rho (A_E - A_Q)
 #: is their minimum-variance combination when the errors are independent and unbiased (the Cauchy weight of M3 is this
-#: weight). The policy follows grad_a A_mix: SAC's reparameterized gradient of Q plus the least-squares slope g of the
-#: correction field over the candidates within FB_RADIUS of a_pi (ridge FB_RIDGE), applied at the actor's mean intent:
-#:   L_pi = L_SAC + (1 / B) sum_{rows} -sg(g) . tanh(mu(o)),   ||g|| <= FB_CLIP x RMS ||grad_a Q|| of the batch
-#: (a trust region on the step), only while the current mean intent is within FB_RADIUS / 2 of the a_pi the evidence
-#: was built around. With no evidence (rho = 0 or no row) L_pi is SAC's actor loss and the critic is e_priv's: the
-#: update rule is e_priv's. The critic never regresses on a model value, so model errors cannot reshape Q or its
-#: bootstraps.
+#: weight). The policy follows grad_a A_mix: SAC's reparameterized gradient of Q plus the slope g of the correction field near
+#: a_pi, applied at the actor's mean intent:
+#:   L_pi = L_SAC + mean_{feedback rows} -sg(g) . tanh(mu(o)),   ||g|| <= FB_CLIP x RMS ||grad_a Q|| of those rows
+#: (a trust region on the step). Learner 6.1 (research-layer review of 6.0, 2026-11-04):
+#:   - the slope is a centred weighted least-squares fit WITH an intercept over the points (candidate offsets from a_pi,
+#:     their corrections) and a_pi itself (correction 0 by definition): an error common to every point gives no
+#:     gradient; a row is used only when its points span the action plane enough to identify a direction (>= 2 points,
+#:     total spread >= FB_MIN_SPREAD). Both arms compare against the policy's own intent; e_pit keeps only the
+#:     candidates the executor resolves to a terminal event (6.1 coverage check: with absolute terminal values and no
+#:     reference point a row was identifiable in ~2 % of the feedback rows);
+#:   - the feedback rows come from a separate minibatch of the FB_WINDOW most recently stored transitions (FB_BATCH
+#:     rows), whose a_pi is the current policy's intent up to a few hundred updates -- a uniform replay batch is mostly
+#:     old labels around intents the policy left long ago (6.0 self-check: the gate closed every row within 300 updates);
+#:     a row is applied while the current mean intent is within FB_RADIUS of its a_pi.
+#: With no evidence in the buffer the feedback path draws nothing (no random numbers) and L_pi is SAC's actor loss, the
+#: critic is e_priv's: the update rule and its random stream are e_priv's. The critic never regresses on a model value.
 FB_RADIUS = 0.75
 FB_RIDGE = 0.05
 FB_CLIP = 1.0
+FB_WINDOW = 256
+FB_BATCH = 64
+FB_MIN_SPREAD = 0.01
+
+
+def centred_slope(d, c, w, ridge: float = FB_RIDGE, min_spread: float = FB_MIN_SPREAD):
+    """Weighted least-squares slope with an intercept, per row: d (B, P, 2) point offsets, c (B, P) values, w (B, P)
+    weights (0 = absent). Returns (g (B, 2), identifiable (B,)): a constant c gives g = 0; rows with < 2 points or a
+    total weighted spread below ``min_spread`` are not identifiable."""
+    ws = w.sum(dim=1, keepdim=True).clamp(min=1e-9)
+    dbar = (w[..., None] * d).sum(dim=1, keepdim=True) / ws[..., None]
+    cbar = (w * c).sum(dim=1, keepdim=True) / ws
+    dc, cc = d - dbar, c - cbar
+    A = th.einsum('bp,bpi,bpj->bij', w, dc, dc)
+    spread = A.diagonal(dim1=1, dim2=2).sum(dim=1) / ws.reshape(-1)
+    g = th.linalg.solve(A + ridge * th.eye(d.shape[-1])[None], th.einsum('bp,bp,bpi->bi', w, cc, dc).unsqueeze(-1)).squeeze(-1)
+    ok = ((w > 0).sum(dim=1) >= 2) & (spread >= min_spread)
+    return th.where(ok[:, None], g, th.zeros_like(g)), ok
 CAL_REFIT = 50
 CAL_WINDOW = 3000
 CAL_L2 = 1e-2
@@ -333,6 +360,14 @@ class StageReplay(ReplayBuffer):
                 (self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(-1, 1),
                 self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env))
         return ReplayBufferSamples(*tuple(map(self.to_torch, data)))
+
+    def recent_sample(self, n: int, window: int, env=None):
+        """Learner 6.1: n transitions drawn uniformly from the ``window`` most recently stored ones (single environment
+        slot); sets the index for ``model_batch`` like ``sample``."""
+        size = self.buffer_size if self.full else self.pos
+        w = max(1, min(int(window), size))
+        idx = (self.pos - 1 - np.random.randint(0, w, size=n)) % self.buffer_size
+        return self._get_samples(idx, env=env)
 
     def model_batch(self):
         i, e = self._last
@@ -578,25 +613,28 @@ class T2SAC(SAC):
                       'term_corr_abs_mean': float((comp * corr).abs().sum() / max(float(comp.sum()), 1.0)),
                       'entry_bias_now': self.entry_bias_now, 'label_age_mean': float(self.replay_buffer.stored - m['created'][rows].mean())}
 
-    def _actor_correction(self, data, target):
-        """Learner 6.0 (module constants FB_*): per labelled row, the least-squares slope g of the correction field
-        C_j = rho_j (A_E(a_j) - A_Q(a_j)) over the candidates near the policy's intent a_pi. Returns (rows mask, g, a_pi,
-        readings) or (None, None, None, readings)."""
-        m = self.replay_buffer.model_batch()
+    def _actor_correction(self):
+        """Learner 6.1 (module constants FB_*): a minibatch of the most recent labelled transitions, and per row the
+        centred least-squares slope g of the correction field C_j = rho_j (A_E(a_j) - A_Q(a_j)) near the policy's
+        intent a_pi. Returns (observations, rows mask, g, a_pi, readings) or Nones and readings."""
+        rb = self.replay_buffer
+        if not rb.model_counts.get('ref') or self.td_ms is None:
+            return None, None, None, None, {'fb_rows': 0}
+        data = rb.recent_sample(FB_BATCH, FB_WINDOW)
+        m = rb.model_batch()
         rows = (m['fact_valid'] > 0) & (m['ref_valid'] > 0)
-        if not bool(rows.any()) or self.td_ms is None:
-            return None, None, None, {'fb_rows': 0}
+        if not bool(rows.any()):
+            return None, None, None, None, {'fb_rows': 0}
         b, k = m['cand_valid'].shape
-        a_ref = m['ref_a']                                                    # (B, 2)
-        d = m['cand_a'] - a_ref[:, None, :]                                   # (B, K, 2) candidate offsets
+        a_ref = m['ref_a']
+        d = m['cand_a'] - a_ref[:, None, :]
         dist = d.norm(dim=2)
         valid = (m['cand_valid'] > 0) & rows.reshape(-1, 1) & (dist <= FB_RADIUS) & (dist > 1e-3)
         if self.feedback == 'term':
             valid = valid & (m['cand_done'] > 0)
-        if not bool(valid.any()):
-            return None, None, None, {'fb_rows': 0}
         with th.no_grad():
             g_ = self.gamma
+            target = data.rewards + (1 - data.dones) * g_ * self._soft_value(data.next_observations, self.ent_coef_tensor)
             noise = th.randn((b, self.actor.action_dist.action_dim))         # common random numbers per decision
             vn = lambda o, n: self._soft_value_noise(o, n, self.ent_coef_tensor)
             y_ref = m['ref_r'].reshape(-1, 1) + (1.0 - m['ref_done'].reshape(-1, 1)) * g_ * vn(m['ref_obs'], noise)
@@ -604,30 +642,31 @@ class T2SAC(SAC):
             e_raw = (target - y_raw).reshape(-1, 1)                           # model error on the executed transition
             ob = data.observations
             y_c = th.zeros((b, k)); q_c = th.zeros((b, k))
-            o1 = m['cand_obs'][valid]; d1 = m['cand_done'][valid]
-            y_c[valid] = m['cand_r'][valid] + (1.0 - d1) * g_ * vn(o1, noise[:, None, :].expand(-1, k, -1)[valid]).reshape(-1)
-            s = ob[:, None, :].expand(-1, k, -1)[valid]
-            q_c[valid] = th.min(th.cat(self.critic(s, m['cand_a'][valid]), dim=1), dim=1).values
+            if bool(valid.any()):
+                o1 = m['cand_obs'][valid]; d1 = m['cand_done'][valid]
+                y_c[valid] = m['cand_r'][valid] + (1.0 - d1) * g_ * vn(o1, noise[:, None, :].expand(-1, k, -1)[valid]).reshape(-1)
+                q_c[valid] = th.min(th.cat(self.critic(ob[:, None, :].expand(-1, k, -1)[valid], m['cand_a'][valid]), dim=1), dim=1).values
             q_ref = th.min(th.cat(self.critic(ob, a_ref), dim=1), dim=1, keepdim=True).values
             b_now = float(np.sqrt(self.td_ms)) if self.entry_bias_now is None else abs(float(self.entry_bias_now))
             kind_j = m['cand_kind']; kind_r = m['ref_kind'].reshape(-1, 1)
-            if self.feedback == 'term':
-                eps = e_raw.abs() + b_now * (kind_j == 2).float()
-                corr = y_c - q_c                                              # executor-complete value against the critic's
-            else:
-                eps = e_raw.abs() + b_now * ((kind_j == 2).float() - (kind_r == 2).float()).abs()
-                corr = (y_c - y_ref) - (q_c - q_ref)                          # executor advantage against the critic's
+            # both arms: the executor's advantage over the policy's own intent against the critic's (a level error common
+            # to the candidate and the reference cancels); e_pit restricts the candidates to executor-complete terminals
+            eps = e_raw.abs() + b_now * ((kind_j == 2).float() - (kind_r == 2).float()).abs()
+            corr = (y_c - y_ref) - (q_c - q_ref)
+            c_ref = th.zeros((b, 1)); w_ref = rows.reshape(-1, 1).float()   # zero at a_pi by definition
             rho = self.td_ms / (self.td_ms + eps ** 2)
             c = th.where(valid, rho * corr, th.zeros_like(corr))
-            w = valid.float()
-            A = th.einsum('bk,bki,bkj->bij', w, d, d) + FB_RIDGE * th.eye(2)[None]
-            rhs = th.einsum('bk,bk,bki->bi', w, c, d)
-            g = th.linalg.solve(A, rhs.unsqueeze(-1)).squeeze(-1)             # (B, 2) slope of the correction field
-            sel = valid.any(dim=1)
-        info = {'fb_rows': int(sel.sum()), 'fb_cands': int(valid.sum()), 'fb_rho_mean': float(rho[valid].mean()),
-                'fb_corr_abs_mean': float(corr[valid].abs().mean()), 'fb_corr_mean': float(corr[valid].mean()),
-                'fb_g_norm_mean': float(g[sel].norm(dim=1).mean())}
-        return sel, g, a_ref, info
+            dd = th.cat([d, th.zeros((b, 1, d.shape[-1]))], dim=1)
+            cc = th.cat([c, c_ref], dim=1); ww = th.cat([valid.float(), w_ref], dim=1)
+            g, ok = centred_slope(dd, cc, ww)
+            sel = ok & rows
+        info = {'fb_rows': int(rows.sum()), 'fb_identified': int(sel.sum()), 'fb_cands': int(valid.sum()),
+                'fb_rho_mean': float(rho[valid].mean()) if bool(valid.any()) else None,
+                'fb_corr_mean': float(corr[valid].mean()) if bool(valid.any()) else None,
+                'fb_corr_abs_mean': float(corr[valid].abs().mean()) if bool(valid.any()) else None,
+                'fb_g_norm_mean': float(g[sel].norm(dim=1).mean()) if bool(sel.any()) else None,
+                'fb_label_age_mean': float(rb.stored - m['created'][rows].mean())}
+        return ob, sel, g, a_ref, info
 
     def _pref_loss(self, data):
         """T2.10 opportunity preference (module constants): hinge on the critic's order of every decisive pair of the
@@ -732,23 +771,25 @@ class T2SAC(SAC):
             self.critic.optimizer.zero_grad(); loss.backward(); self.critic.optimizer.step()
             q_pi = th.min(th.cat(self.critic(data.observations, actions_pi), dim=1), dim=1, keepdim=True).values
             actor_loss = (ent_coef * log_prob - q_pi).mean()
-            if self.feedback and stored >= self.model_start:      # learner 6.0: execution-corrected action gradient
-                sel, g, a_ref, finfo = self._actor_correction(data, target)
+            if self.feedback and stored >= self.model_start:      # learner 6.1: execution-corrected action gradient
+                ob_f, sel, g, a_ref, finfo = self._actor_correction()
                 info.update(finfo)
                 if sel is not None and bool(sel.any()):
-                    mean_a, _, _ = self.actor.get_action_dist_params(data.observations)
+                    mean_a, _, _ = self.actor.get_action_dist_params(ob_f)
                     mu = th.tanh(mean_a)
-                    near = sel & ((mu.detach() - a_ref).norm(dim=1) <= FB_RADIUS / 2)
+                    near = sel & ((mu.detach() - a_ref).norm(dim=1) <= FB_RADIUS)
                     if bool(near.any()):
                         a_q = a_ref.clone().requires_grad_(True)              # the critic's own action gradient, for the trust region
-                        gq = th.autograd.grad(th.min(th.cat(self.critic(data.observations, a_q), dim=1), dim=1).values.sum(), a_q)[0]
-                        scale = FB_CLIP * float(gq.norm(dim=1).pow(2).mean().sqrt())
+                        gq = th.autograd.grad(th.min(th.cat(self.critic(ob_f, a_q), dim=1), dim=1).values.sum(), a_q)[0]
+                        scale = FB_CLIP * float(gq[near].norm(dim=1).pow(2).mean().sqrt())
                         gn = g.norm(dim=1, keepdim=True)
                         g_c = g * th.clamp(scale / gn.clamp(min=1e-9), max=1.0)
-                        corr_loss = -(g_c.detach()[near] * mu[near]).sum() / data.observations.shape[0]
+                        corr_loss = -(g_c.detach()[near] * mu[near]).sum() / ob_f.shape[0]
                         actor_loss = actor_loss + corr_loss
-                        info.update(fb_applied=int(near.sum()), fb_gq_rms=float(scale / max(FB_CLIP, 1e-9)),
+                        info.update(fb_applied=int(near.sum()), fb_applied_share=float(near.float().mean()), fb_gq_rms=float(scale / max(FB_CLIP, 1e-9)),
                                     fb_cos=float(F.cosine_similarity(g_c[near], gq[near], dim=1).mean()))
+                    else:
+                        info.update(fb_applied=0, fb_applied_share=0.0)
             if acc_rows is not None:                  # T2.11: pull the actor's mean intent to the trusted better candidate
                 mean_a, _, _ = self.actor.get_action_dist_params(data.observations[acc_rows])
                 dist = ((th.tanh(mean_a) - acc_target) ** 2).sum(dim=1)
@@ -982,7 +1023,8 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'terminal_horizon': TERM_ARMS.get(arm, 0), 'term_beta': TERM_BETA if arm in TERM_ARMS else 0.0,
                                                    'label_policy': 'deterministic' if label_det else 'sample', 'feedback': FB_ARMS.get(arm),
                                                    'fb_radius': FB_RADIUS if arm in FB_ARMS else None, 'fb_ridge': FB_RIDGE if arm in FB_ARMS else None,
-                                                   'fb_clip': FB_CLIP if arm in FB_ARMS else None,
+                                                   'fb_clip': FB_CLIP if arm in FB_ARMS else None, 'fb_window': FB_WINDOW if arm in FB_ARMS else None,
+                                                   'fb_batch': FB_BATCH if arm in FB_ARMS else None, 'fb_min_spread': FB_MIN_SPREAD if arm in FB_ARMS else None,
                                                    'actor_view': OBS_DIM, 'critic_view': int(getattr(model.policy, 'critic_dim', OBS_DIM)),
                                                    'acc_dp': ACC_DP, 'acc_kappa': ACC_KAPPA, 'acc_lambda_q': ACC_LAMBDA_Q, 'acc_eta': ACC_ETA,
                                                    'acc_min_labels': ACC_MIN_LABELS, 'acc_min_acc': ACC_MIN_ACC,

@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-6.0'
+    assert t.LEARNER_VERSION == 't2-learner-6.1'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -1564,7 +1564,7 @@ def _fb_fill(m, n=24, good=(0.3, 0.0), bad=(-0.3, 0.0), gain=20.0, ref=(0.0, 0.0
         fact = {'reward': -2.0, 'next_obs': o1, 'done': False, 'same': {'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}}
         refd = {'a': np.asarray(ref, np.float32), 'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}
         cands = [{'a': np.asarray(good, np.float32), 'reward': (60.0 if terminal else -2.0 + gain), 'next_obs': z if terminal else o1, 'done': terminal, 'kind': 1 if terminal else 0},
-                 {'a': np.asarray(bad, np.float32), 'reward': -2.0 - gain, 'next_obs': o1, 'done': False, 'kind': 0}]
+                 {'a': np.asarray(bad, np.float32), 'reward': (-100.0 if terminal else -2.0 - gain), 'next_obs': z if terminal else o1, 'done': terminal, 'kind': 1 if terminal else 0}]
         m.replay_buffer.add(o, o1[None], np.asarray(ref, np.float32)[None], np.array([-2.0]), np.array([False]),
                             [{'model': {'fact': fact, 'cands': cands, 'ref': refd, 'diag': {'reason': 'stage'}}}])
 
@@ -1575,11 +1575,9 @@ def test_execution_advantage_corrects_only_the_actor_and_points_to_the_better_in
     import torch as th
     m = _fb_model('e_pi'); assert m.feedback == 'rel' and m.model_beta == 0.0 and m.policy.critic_dim == 48
     _fb_fill(m); m.td_ms = 25.0; m.entry_bias_now = 0.0
-    th.manual_seed(0); data = m.replay_buffer.sample(16)
-    with th.no_grad():
-        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
-    sel, g, a_ref, info = m._actor_correction(data, target)
-    assert bool(sel.all()) and info['fb_cands'] == 32
+    np.random.seed(0); th.manual_seed(0)
+    ob, sel, g, a_ref, info = m._actor_correction()
+    assert ob.shape[0] == t_fb_batch() and bool(sel.all()) and info['fb_cands'] == 2 * t_fb_batch()
     assert bool((g[:, 0] > 0).all())          # towards +a_p, where the evidence says the value rises
     assert m._model_loss.__name__ and not m.relative and m.terminal == 0
 
@@ -1608,12 +1606,10 @@ def test_terminal_execution_feedback_uses_only_executor_complete_values():
     import torch as th
     m = _fb_model('e_pit'); assert m.feedback == 'term'
     _fb_fill(m, terminal=True); m.td_ms = 25.0; m.entry_bias_now = 0.0
-    th.manual_seed(0); data = m.replay_buffer.sample(16)
-    with th.no_grad():
-        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
-    sel, g, a_ref, info = m._actor_correction(data, target)
-    assert info['fb_cands'] == 16                  # the terminal candidate of each row only
-    assert bool((g[sel][:, 0] > 0).all())          # a capture value far above the untrained critic's: towards it
+    np.random.seed(0); th.manual_seed(0)
+    ob, sel, g, a_ref, info = m._actor_correction()
+    assert info['fb_cands'] == 2 * t_fb_batch() and bool(sel.all())   # the two terminal candidates (and a_pi, correction 0)
+    assert bool((g[:, 0] > 0).all())               # towards the capture, away from the timeout
 
 
 def test_environment_predicts_the_policy_intent_with_the_candidates_treatment():
@@ -1635,3 +1631,34 @@ def test_environment_predicts_the_policy_intent_with_the_candidates_treatment():
         if term or trunc:
             break
     raise AssertionError('no labelled stage decision')
+
+
+def t_fb_batch():
+    import train.t2_mve_sac as t
+    return t.FB_BATCH
+
+
+def test_centred_slope_ignores_a_common_offset_and_needs_an_identifiable_direction():
+    """learner 6.1: the correction slope is fitted with an intercept -- an error common to every point gives no gradient;
+    one point, or points without spread, give no direction."""
+    import torch as th
+    from train.t2_mve_sac import centred_slope
+    d = th.tensor([[[0.3, 0.0], [-0.3, 0.0], [0.0, 0.3], [0.0, 0.0]]])
+    w = th.ones((1, 4))
+    g, ok = centred_slope(d, th.full((1, 4), 88.5), w)
+    assert bool(ok.all()) and float(g.abs().max()) < 1e-6                  # a common offset (the 6.0 e_pit failure) is no direction
+    g, ok = centred_slope(d, 5.0 + (d * th.tensor([10.0, -4.0])).sum(-1), w, ridge=1e-6)
+    assert th.allclose(g, th.tensor([[10.0, -4.0]]), atol=1e-3)            # a linear field is recovered
+    g, ok = centred_slope(d, th.ones((1, 4)), th.tensor([[1.0, 0.0, 0.0, 0.0]]))
+    assert not bool(ok.any()) and float(g.abs().max()) == 0.0              # one point: not identifiable
+
+
+def test_feedback_rows_come_from_the_most_recent_transitions():
+    """learner 6.1: the feedback minibatch is drawn from the FB_WINDOW most recently stored transitions."""
+    import train.t2_mve_sac as t
+    m = _fb_model('e_pi'); _fb_fill(m, n=t.FB_WINDOW + 100)
+    np.random.seed(0)
+    m.replay_buffer.recent_sample(500, t.FB_WINDOW)
+    idx = m.replay_buffer._last[0]
+    stored = m.replay_buffer.pos
+    assert int(idx.min()) >= stored - t.FB_WINDOW and int(idx.max()) <= stored - 1
