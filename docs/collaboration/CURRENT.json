@@ -35,15 +35,15 @@
     "no_experiment_started": true
   },
   "topic": "t2_17_pull_20261104",
-  "updated_at": "2026-11-04T22:17:12.010620+09:00",
+  "updated_at": "2026-11-05T01:36:18.488611+09:00",
   "scientific_commit": "af0b915b2af317b38969e70010956c6890ea7a1a",
   "convergence_code_commit": "ec394efcaaeadbb5305f4f9e289addb58517dca7",
   "convergence_evidence_commit": "5e42c47032d4e6811451a6794f6254fe9fde2063",
   "run_order": "docs/collaboration/upper/run_orders/T2_17_PULL_20261104.md",
   "order_collab_commit": "c59d32b8",
-  "execution_state": "training",
-  "training_active": true,
-  "evaluation_active": false,
+  "execution_state": "evaluation",
+  "training_active": false,
+  "evaluation_active": true,
   "mechanism_audit_active": false,
   "automatic_followup": "hourly_t2-12-t2-14",
   "archive_tags": [
@@ -120,18 +120,56 @@
     "B": "superseded; never started"
   },
   "conditional_next": {
-    "topic": "T2_18_PULL3_20261104",
-    "status": "waiting_four_T217_step1500",
-    "order_commit": "117f7f8b",
-    "science_SHA_if_condition_met": "d091a101e82a06b3810e268e215599022403302c",
-    "state_path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_18_PULL3_20261104\\RUN_STATE.json",
-    "guard_path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_18_PULL3_20261104\\记录\\GUARDIAN_STATE.json",
-    "OS_task": "Spacecraft-T218-20261104",
-    "thresholds": {
-      "arm_mean_ge": 38.9,
-      "each_seed_ge": 33.9
+    "topic": "T218",
+    "status": "not_started_condition_false",
+    "decision": {
+      "jst": "2026-11-04T23:23:43.537848+09:00",
+      "go": false,
+      "arm_mean": 31.529175143200415,
+      "seed_means": {
+        "e_pull_s0": 35.000823087658716,
+        "e_pull_s1": 28.057527198742115
+      },
+      "episode_counts": {
+        "e_pull_s0": 121,
+        "e_pull_s1": 111
+      },
+      "thresholds": {
+        "arm_mean_ge": 38.9,
+        "each_seed_ge": 33.9
+      },
+      "four_step1500_SHA_and_episode_SHA": {
+        "e_pi_s0": {
+          "episodes_SHA256": "7c5d1f2f3009679b16b0af18573ec0cdd7b23162e857da85c800fd13342dbe85",
+          "step1500_SHA256": "3afe7443bad5f695422520853475dde80b9a63dce2ed051707b51b2b6aa7f2ff"
+        },
+        "e_pi_s1": {
+          "episodes_SHA256": "4b2008de1b05569e42599cceed9b290012f8274c37f032e93bab41e365b9c441",
+          "step1500_SHA256": "99e014b83007a066ef044f98651129261c4c6ea02a78d34bfe95cde7bb912237"
+        },
+        "e_pull_s0": {
+          "episodes_SHA256": "2ea2f715fd546d60a5c74ecedf12b7fd843c279ea3d89b6107aac414944cf52e",
+          "step1500_SHA256": "a4e9d38c4be6ae76d65551d5eecfd1c9868ec330612119291ee7305694ac70d1"
+        },
+        "e_pull_s1": {
+          "episodes_SHA256": "07590bd204d3932b1704938203c759b2f809e24b8a523ef5a0f43f510b96979e",
+          "step1500_SHA256": "20b51a47090618b7a25fcc10d923f5167014b5c15c5c25a2da01186a294260d9"
+        }
+      },
+      "order": "117f7f8b",
+      "original_script_exit": 0,
+      "output_SHA256": "8cda2fa5e23947b8094c207c0186ec423f133e80d6a6a886ce5efa283c875a4c"
     },
-    "false_action": "Leave T217 running original run order",
-    "true_action": "Preserve/stop T217 then checkout T218 and selfcheck before training"
+    "next_action": "Leave T217 untouched; finish original run"
+  },
+  "queued_next": {
+    "topic": "T2_19_CERT_20261104",
+    "order_commit": "3589ec92",
+    "science_SHA_if_started": "0017f80f5ad1e96e17189be94c5c3fe3bc8856b4",
+    "status": "wait_for_T217_essential_delivery_then_97_tests_and_smokes",
+    "state_path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_19_CERT_20261104\\RUN_STATE.json",
+    "handoff_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_19_CERT_20261104\\记录\\HANDOFF_STATE.json",
+    "OS_task": "Spacecraft-T219-20261104",
+    "user_priority": "No excessive T217 evaluation; optional A2 cancelled; no repeated computations"
   }
 }
