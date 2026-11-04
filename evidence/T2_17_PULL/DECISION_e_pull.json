@@ -1,0 +1,125 @@
+{
+ "criteria": {
+  "S_safety": true,
+  "N_not_below_T2_11": true,
+  "I_increment_over_ablation": false,
+  "G_above_sac": true,
+  "complete": true
+ },
+ "verdict": "no_increment",
+ "margin": 8.3,
+ "values": {
+  "e_pull": {
+   "curve_auc": 15.197534928562323,
+   "final_mean_return": 29.229386355435373,
+   "late_return": 29.86889919416349,
+   "late_urgent_capture": 0.7331989247311828,
+   "final_urgent_capture": [
+    20,
+    16
+   ],
+   "final_economy_capture": [
+    23,
+    23
+   ],
+   "unsafe": 0,
+   "runs": {
+    "e_pull_s0": {
+     "curve_auc": 26.0793115793024,
+     "final_mean_return": 37.82319346204361
+    },
+    "e_pull_s1": {
+     "curve_auc": 4.3157582778222485,
+     "final_mean_return": 20.63557924882714
+    }
+   }
+  },
+  "e_priv": {
+   "curve_auc": 25.431080772627716,
+   "final_mean_return": 37.690797993594174,
+   "late_return": 36.35779743341305,
+   "late_urgent_capture": 0.8068145290903246,
+   "final_urgent_capture": [
+    20,
+    20
+   ],
+   "final_economy_capture": [
+    23,
+    23
+   ],
+   "unsafe": 0,
+   "runs": {
+    "e_priv_s0": {
+     "curve_auc": 29.57093058186504,
+     "final_mean_return": 36.62819895048427
+    },
+    "e_priv_s1": {
+     "curve_auc": 21.291230963390394,
+     "final_mean_return": 38.75339703670408
+    }
+   }
+  },
+  "e_acc": {
+   "curve_auc": 22.709208722553516,
+   "final_mean_return": 33.302632996327304,
+   "late_return": 38.43826689337975,
+   "late_urgent_capture": 0.8166666666666667,
+   "final_urgent_capture": [
+    18,
+    20
+   ],
+   "final_economy_capture": [
+    23,
+    23
+   ],
+   "unsafe": 0,
+   "runs": {
+    "e_acc_s0": {
+     "curve_auc": 23.276024210379585,
+     "final_mean_return": 28.473869494904196
+    },
+    "e_acc_s1": {
+     "curve_auc": 22.142393234727447,
+     "final_mean_return": 38.13139649775041
+    }
+   }
+  },
+  "e_sac": {
+   "curve_auc": -0.5243532634724675,
+   "final_mean_return": -10.271634188013277,
+   "late_return": 12.576377153150437,
+   "late_urgent_capture": 0.5764119601328903,
+   "final_urgent_capture": [
+    11,
+    8
+   ],
+   "final_economy_capture": [
+    23,
+    23
+   ],
+   "unsafe": 0,
+   "runs": {
+    "e_sac_s0": {
+     "curve_auc": 1.6101397940241866,
+     "final_mean_return": -4.588178893568767
+    },
+    "e_sac_s1": {
+     "curve_auc": -2.6588463209691215,
+     "final_mean_return": -15.955089482457785
+    }
+   }
+  }
+ },
+ "reported": {
+  "reference_minus_ablation": {
+   "curve_auc": -2.7218720500742,
+   "final": -4.38816499726687
+  }
+ },
+ "arms": {
+  "method": "e_pull",
+  "ablation": "e_priv",
+  "reference": "e_acc",
+  "sac": "e_sac"
+ }
+}

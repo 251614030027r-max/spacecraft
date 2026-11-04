@@ -1,0 +1,881 @@
+{
+  "status": "passed",
+  "jst": "2026-11-04T18:01:44.472226+09:00",
+  "four_independent_trainings": {
+    "TRAIN_e_pi_s0": {
+      "processes": [
+        {
+          "pid": 5572,
+          "created": 1793782692.7262304,
+          "cmd": [
+            "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+            "-B",
+            "-m",
+            "experiments.t2",
+            "train",
+            "--arm",
+            "e_pi",
+            "--seed",
+            "0",
+            "--steps",
+            "2000",
+            "--workers",
+            "2",
+            "--urgent-deadline",
+            "140,200",
+            "--obs",
+            "reduced_priv",
+            "--checkpoints",
+            "500,1000,1500",
+            "--output",
+            "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\B\\TRAIN_e_pi_s0"
+          ],
+          "cpu_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "priority": 32
+        },
+        {
+          "pid": 9684,
+          "created": 1793782692.6742795,
+          "cmd": [
+            "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+            "-B",
+            "-m",
+            "experiments.t2",
+            "train",
+            "--arm",
+            "e_pi",
+            "--seed",
+            "0",
+            "--steps",
+            "2000",
+            "--workers",
+            "2",
+            "--urgent-deadline",
+            "140,200",
+            "--obs",
+            "reduced_priv",
+            "--checkpoints",
+            "500,1000,1500",
+            "--output",
+            "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\B\\TRAIN_e_pi_s0"
+          ],
+          "cpu_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "priority": 32
+        }
+      ],
+      "manifest": {
+        "arm": "e_pi",
+        "seed": 0,
+        "steps": 2000,
+        "workers": 2,
+        "git_head": "af0b915b2af317b38969e70010956c6890ea7a1a",
+        "smoke": false,
+        "model_beta": 0.0,
+        "model_start": 300,
+        "ent_coef": 0.05,
+        "k_candidates": 8,
+        "collection": "asynchronous",
+        "window": true,
+        "gradient_steps_per_transition": 2,
+        "entry_stages": 1,
+        "sync_updates": 100,
+        "age_cap": 2000,
+        "pooled_calibration": true,
+        "urgent_deadline_s": [
+          140.0,
+          200.0
+        ],
+        "guide": false,
+        "guide_p0": 0.0,
+        "guide_until": 0,
+        "obs_profile": "reduced_priv",
+        "pref": false,
+        "acc": false,
+        "relative": false,
+        "rel_beta": 0.0,
+        "cand_min_sep_m_s": 0.01,
+        "common_random_numbers": false,
+        "terminal_horizon": 0,
+        "term_beta": 0.0,
+        "label_policy": "sample",
+        "feedback": "rel",
+        "fb_radius": 0.75,
+        "fb_ridge": 0.05,
+        "fb_clip": 1.0,
+        "fb_window": 256,
+        "fb_batch": 64,
+        "fb_min_spread": 0.01,
+        "fb_step": "rotate",
+        "actor_view": 24,
+        "critic_view": 48,
+        "acc_dp": 0.4,
+        "acc_kappa": 0.5,
+        "acc_lambda_q": 10.0,
+        "acc_eta": 10.0,
+        "acc_min_labels": 200,
+        "acc_min_acc": 0.8,
+        "pref_lambda": 0.0,
+        "pref_delta": 50.0,
+        "pref_kappa": 0.5,
+        "pref_margin_cap": 100.0,
+        "env_version": "t2-stage-0.12.0",
+        "learner_version": "t2-learner-6.3"
+      },
+      "progress": {
+        "jst": "2026-11-04T18:01:28.677649+09:00",
+        "steps": 40,
+        "updates": 0,
+        "episodes": 3,
+        "wall_s": 182.6720000000205,
+        "recent_decisions_per_s": 0.49230365289338285,
+        "overall_decisions_per_s": 0.21897170885519135,
+        "eta_s_estimate": 3981.2826666644155,
+        "snapshot_not_prediction": true,
+        "replay": {
+          "transitions": 40,
+          "with_candidates": 0,
+          "candidates": 0,
+          "entry_candidates": 0,
+          "reason": {
+            "off": 11,
+            "entry_calibration": 29
+          },
+          "resampled": 0
+        },
+        "model_probes": 0,
+        "pending_truth_records": 0,
+        "final": false
+      },
+      "threads": {
+        "intra_op": 1,
+        "interop": 6,
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1"
+      },
+      "synthetic_feedback_readback": {
+        "model/fb_rows": [
+          64.0
+        ],
+        "model/fb_applied_share": [
+          1.0
+        ]
+      }
+    },
+    "TRAIN_e_pi_s1": {
+      "processes": [
+        {
+          "pid": 24472,
+          "created": 1793782692.7494407,
+          "cmd": [
+            "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+            "-B",
+            "-m",
+            "experiments.t2",
+            "train",
+            "--arm",
+            "e_pi",
+            "--seed",
+            "1",
+            "--steps",
+            "2000",
+            "--workers",
+            "2",
+            "--urgent-deadline",
+            "140,200",
+            "--obs",
+            "reduced_priv",
+            "--checkpoints",
+            "500,1000,1500",
+            "--output",
+            "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\B\\TRAIN_e_pi_s1"
+          ],
+          "cpu_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "priority": 32
+        },
+        {
+          "pid": 28556,
+          "created": 1793782692.6909192,
+          "cmd": [
+            "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+            "-B",
+            "-m",
+            "experiments.t2",
+            "train",
+            "--arm",
+            "e_pi",
+            "--seed",
+            "1",
+            "--steps",
+            "2000",
+            "--workers",
+            "2",
+            "--urgent-deadline",
+            "140,200",
+            "--obs",
+            "reduced_priv",
+            "--checkpoints",
+            "500,1000,1500",
+            "--output",
+            "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\B\\TRAIN_e_pi_s1"
+          ],
+          "cpu_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "priority": 32
+        }
+      ],
+      "manifest": {
+        "arm": "e_pi",
+        "seed": 1,
+        "steps": 2000,
+        "workers": 2,
+        "git_head": "af0b915b2af317b38969e70010956c6890ea7a1a",
+        "smoke": false,
+        "model_beta": 0.0,
+        "model_start": 300,
+        "ent_coef": 0.05,
+        "k_candidates": 8,
+        "collection": "asynchronous",
+        "window": true,
+        "gradient_steps_per_transition": 2,
+        "entry_stages": 1,
+        "sync_updates": 100,
+        "age_cap": 2000,
+        "pooled_calibration": true,
+        "urgent_deadline_s": [
+          140.0,
+          200.0
+        ],
+        "guide": false,
+        "guide_p0": 0.0,
+        "guide_until": 0,
+        "obs_profile": "reduced_priv",
+        "pref": false,
+        "acc": false,
+        "relative": false,
+        "rel_beta": 0.0,
+        "cand_min_sep_m_s": 0.01,
+        "common_random_numbers": false,
+        "terminal_horizon": 0,
+        "term_beta": 0.0,
+        "label_policy": "sample",
+        "feedback": "rel",
+        "fb_radius": 0.75,
+        "fb_ridge": 0.05,
+        "fb_clip": 1.0,
+        "fb_window": 256,
+        "fb_batch": 64,
+        "fb_min_spread": 0.01,
+        "fb_step": "rotate",
+        "actor_view": 24,
+        "critic_view": 48,
+        "acc_dp": 0.4,
+        "acc_kappa": 0.5,
+        "acc_lambda_q": 10.0,
+        "acc_eta": 10.0,
+        "acc_min_labels": 200,
+        "acc_min_acc": 0.8,
+        "pref_lambda": 0.0,
+        "pref_delta": 50.0,
+        "pref_kappa": 0.5,
+        "pref_margin_cap": 100.0,
+        "env_version": "t2-stage-0.12.0",
+        "learner_version": "t2-learner-6.3"
+      },
+      "progress": {
+        "jst": "2026-11-04T18:01:28.378521+09:00",
+        "steps": 21,
+        "updates": 0,
+        "episodes": 2,
+        "wall_s": 182.375,
+        "recent_decisions_per_s": 0.0,
+        "overall_decisions_per_s": 0.11514736120630568,
+        "eta_s_estimate": null,
+        "snapshot_not_prediction": true,
+        "replay": {
+          "transitions": 21,
+          "with_candidates": 0,
+          "candidates": 0,
+          "entry_candidates": 0,
+          "reason": {
+            "off": 11,
+            "entry_calibration": 10
+          },
+          "resampled": 0
+        },
+        "model_probes": 0,
+        "pending_truth_records": 0,
+        "final": false
+      },
+      "threads": {
+        "intra_op": 1,
+        "interop": 6,
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1"
+      },
+      "synthetic_feedback_readback": {
+        "model/fb_rows": [
+          64.0
+        ],
+        "model/fb_applied_share": [
+          1.0
+        ]
+      }
+    },
+    "TRAIN_e_pull_s0": {
+      "processes": [
+        {
+          "pid": 3756,
+          "created": 1793782692.7652423,
+          "cmd": [
+            "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+            "-B",
+            "-m",
+            "experiments.t2",
+            "train",
+            "--arm",
+            "e_pull",
+            "--seed",
+            "0",
+            "--steps",
+            "2000",
+            "--workers",
+            "2",
+            "--urgent-deadline",
+            "140,200",
+            "--obs",
+            "reduced_priv",
+            "--checkpoints",
+            "500,1000,1500",
+            "--output",
+            "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\B\\TRAIN_e_pull_s0"
+          ],
+          "cpu_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "priority": 32
+        },
+        {
+          "pid": 28320,
+          "created": 1793782692.7032912,
+          "cmd": [
+            "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+            "-B",
+            "-m",
+            "experiments.t2",
+            "train",
+            "--arm",
+            "e_pull",
+            "--seed",
+            "0",
+            "--steps",
+            "2000",
+            "--workers",
+            "2",
+            "--urgent-deadline",
+            "140,200",
+            "--obs",
+            "reduced_priv",
+            "--checkpoints",
+            "500,1000,1500",
+            "--output",
+            "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\B\\TRAIN_e_pull_s0"
+          ],
+          "cpu_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "priority": 32
+        }
+      ],
+      "manifest": {
+        "arm": "e_pull",
+        "seed": 0,
+        "steps": 2000,
+        "workers": 2,
+        "git_head": "af0b915b2af317b38969e70010956c6890ea7a1a",
+        "smoke": false,
+        "model_beta": 0.0,
+        "model_start": 300,
+        "ent_coef": 0.05,
+        "k_candidates": 8,
+        "collection": "asynchronous",
+        "window": true,
+        "gradient_steps_per_transition": 2,
+        "entry_stages": 1,
+        "sync_updates": 100,
+        "age_cap": 2000,
+        "pooled_calibration": true,
+        "urgent_deadline_s": [
+          140.0,
+          200.0
+        ],
+        "guide": false,
+        "guide_p0": 0.0,
+        "guide_until": 0,
+        "obs_profile": "reduced_priv",
+        "pref": false,
+        "acc": false,
+        "relative": false,
+        "rel_beta": 0.0,
+        "cand_min_sep_m_s": 0.01,
+        "common_random_numbers": false,
+        "terminal_horizon": 0,
+        "term_beta": 0.0,
+        "label_policy": "sample",
+        "feedback": "pull",
+        "fb_radius": 0.75,
+        "fb_ridge": 0.05,
+        "fb_clip": 1.0,
+        "fb_window": 256,
+        "fb_batch": 64,
+        "fb_min_spread": 0.01,
+        "fb_step": "toward",
+        "actor_view": 24,
+        "critic_view": 48,
+        "acc_dp": 0.4,
+        "acc_kappa": 0.5,
+        "acc_lambda_q": 10.0,
+        "acc_eta": 10.0,
+        "acc_min_labels": 200,
+        "acc_min_acc": 0.8,
+        "pref_lambda": 0.0,
+        "pref_delta": 50.0,
+        "pref_kappa": 0.5,
+        "pref_margin_cap": 100.0,
+        "env_version": "t2-stage-0.12.0",
+        "learner_version": "t2-learner-6.3"
+      },
+      "progress": {
+        "jst": "2026-11-04T18:01:28.602594+09:00",
+        "steps": 45,
+        "updates": 0,
+        "episodes": 4,
+        "wall_s": 182.59299999999348,
+        "recent_decisions_per_s": 0.09891849116334829,
+        "overall_decisions_per_s": 0.24644975437175362,
+        "eta_s_estimate": 19763.746666653315,
+        "snapshot_not_prediction": true,
+        "replay": {
+          "transitions": 45,
+          "with_candidates": 0,
+          "candidates": 0,
+          "entry_candidates": 0,
+          "reason": {
+            "off": 11,
+            "entry_calibration": 34
+          },
+          "resampled": 0
+        },
+        "model_probes": 0,
+        "pending_truth_records": 0,
+        "final": false
+      },
+      "threads": {
+        "intra_op": 1,
+        "interop": 6,
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1"
+      },
+      "synthetic_feedback_readback": {
+        "model/fb_rows": [
+          64.0
+        ],
+        "model/fb_applied_share": [
+          1.0
+        ]
+      }
+    },
+    "TRAIN_e_pull_s1": {
+      "processes": [
+        {
+          "pid": 8008,
+          "created": 1793782692.7171955,
+          "cmd": [
+            "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+            "-B",
+            "-m",
+            "experiments.t2",
+            "train",
+            "--arm",
+            "e_pull",
+            "--seed",
+            "1",
+            "--steps",
+            "2000",
+            "--workers",
+            "2",
+            "--urgent-deadline",
+            "140,200",
+            "--obs",
+            "reduced_priv",
+            "--checkpoints",
+            "500,1000,1500",
+            "--output",
+            "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\B\\TRAIN_e_pull_s1"
+          ],
+          "cpu_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "priority": 32
+        },
+        {
+          "pid": 25360,
+          "created": 1793782692.7845426,
+          "cmd": [
+            "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+            "-B",
+            "-m",
+            "experiments.t2",
+            "train",
+            "--arm",
+            "e_pull",
+            "--seed",
+            "1",
+            "--steps",
+            "2000",
+            "--workers",
+            "2",
+            "--urgent-deadline",
+            "140,200",
+            "--obs",
+            "reduced_priv",
+            "--checkpoints",
+            "500,1000,1500",
+            "--output",
+            "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\B\\TRAIN_e_pull_s1"
+          ],
+          "cpu_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "priority": 32
+        }
+      ],
+      "manifest": {
+        "arm": "e_pull",
+        "seed": 1,
+        "steps": 2000,
+        "workers": 2,
+        "git_head": "af0b915b2af317b38969e70010956c6890ea7a1a",
+        "smoke": false,
+        "model_beta": 0.0,
+        "model_start": 300,
+        "ent_coef": 0.05,
+        "k_candidates": 8,
+        "collection": "asynchronous",
+        "window": true,
+        "gradient_steps_per_transition": 2,
+        "entry_stages": 1,
+        "sync_updates": 100,
+        "age_cap": 2000,
+        "pooled_calibration": true,
+        "urgent_deadline_s": [
+          140.0,
+          200.0
+        ],
+        "guide": false,
+        "guide_p0": 0.0,
+        "guide_until": 0,
+        "obs_profile": "reduced_priv",
+        "pref": false,
+        "acc": false,
+        "relative": false,
+        "rel_beta": 0.0,
+        "cand_min_sep_m_s": 0.01,
+        "common_random_numbers": false,
+        "terminal_horizon": 0,
+        "term_beta": 0.0,
+        "label_policy": "sample",
+        "feedback": "pull",
+        "fb_radius": 0.75,
+        "fb_ridge": 0.05,
+        "fb_clip": 1.0,
+        "fb_window": 256,
+        "fb_batch": 64,
+        "fb_min_spread": 0.01,
+        "fb_step": "toward",
+        "actor_view": 24,
+        "critic_view": 48,
+        "acc_dp": 0.4,
+        "acc_kappa": 0.5,
+        "acc_lambda_q": 10.0,
+        "acc_eta": 10.0,
+        "acc_min_labels": 200,
+        "acc_min_acc": 0.8,
+        "pref_lambda": 0.0,
+        "pref_delta": 50.0,
+        "pref_kappa": 0.5,
+        "pref_margin_cap": 100.0,
+        "env_version": "t2-stage-0.12.0",
+        "learner_version": "t2-learner-6.3"
+      },
+      "progress": {
+        "jst": "2026-11-04T18:01:28.530400+09:00",
+        "steps": 24,
+        "updates": 0,
+        "episodes": 2,
+        "wall_s": 182.51500000001397,
+        "recent_decisions_per_s": 0.29615004935820544,
+        "overall_decisions_per_s": 0.131496041421243,
+        "eta_s_estimate": 6672.2933333364,
+        "snapshot_not_prediction": true,
+        "replay": {
+          "transitions": 24,
+          "with_candidates": 0,
+          "candidates": 0,
+          "entry_candidates": 0,
+          "reason": {
+            "off": 11,
+            "entry_calibration": 13
+          },
+          "resampled": 0
+        },
+        "model_probes": 0,
+        "pending_truth_records": 0,
+        "final": false
+      },
+      "threads": {
+        "intra_op": 1,
+        "interop": 6,
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1"
+      },
+      "synthetic_feedback_readback": {
+        "model/fb_rows": [
+          64.0
+        ],
+        "model/fb_applied_share": [
+          1.0
+        ]
+      }
+    }
+  },
+  "ancestors": {
+    "TRAIN_e_pi_s0": [
+      {
+        "pid": 22184,
+        "name": "powershell.exe"
+      },
+      {
+        "pid": 10556,
+        "name": "python.exe"
+      },
+      {
+        "pid": 20316,
+        "name": "python.exe"
+      },
+      {
+        "pid": 23296,
+        "name": "powershell.exe"
+      },
+      {
+        "pid": 2588,
+        "name": "svchost.exe"
+      },
+      {
+        "pid": 1660,
+        "name": "services.exe"
+      },
+      {
+        "pid": 1524,
+        "name": "wininit.exe"
+      }
+    ],
+    "TRAIN_e_pi_s1": [
+      {
+        "pid": 22184,
+        "name": "powershell.exe"
+      },
+      {
+        "pid": 10556,
+        "name": "python.exe"
+      },
+      {
+        "pid": 20316,
+        "name": "python.exe"
+      },
+      {
+        "pid": 23296,
+        "name": "powershell.exe"
+      },
+      {
+        "pid": 2588,
+        "name": "svchost.exe"
+      },
+      {
+        "pid": 1660,
+        "name": "services.exe"
+      },
+      {
+        "pid": 1524,
+        "name": "wininit.exe"
+      }
+    ],
+    "TRAIN_e_pull_s0": [
+      {
+        "pid": 22184,
+        "name": "powershell.exe"
+      },
+      {
+        "pid": 10556,
+        "name": "python.exe"
+      },
+      {
+        "pid": 20316,
+        "name": "python.exe"
+      },
+      {
+        "pid": 23296,
+        "name": "powershell.exe"
+      },
+      {
+        "pid": 2588,
+        "name": "svchost.exe"
+      },
+      {
+        "pid": 1660,
+        "name": "services.exe"
+      },
+      {
+        "pid": 1524,
+        "name": "wininit.exe"
+      }
+    ],
+    "TRAIN_e_pull_s1": [
+      {
+        "pid": 8008,
+        "name": "python.exe"
+      },
+      {
+        "pid": 22184,
+        "name": "powershell.exe"
+      },
+      {
+        "pid": 10556,
+        "name": "python.exe"
+      },
+      {
+        "pid": 20316,
+        "name": "python.exe"
+      },
+      {
+        "pid": 23296,
+        "name": "powershell.exe"
+      },
+      {
+        "pid": 2588,
+        "name": "svchost.exe"
+      },
+      {
+        "pid": 1660,
+        "name": "services.exe"
+      },
+      {
+        "pid": 1524,
+        "name": "wininit.exe"
+      }
+    ]
+  },
+  "observer_SHA256": {
+    "logging_adapter.py": "5fb458ba72f54d289f2ae207fcbab60c43fb032cdfd5955f948370e08bac2d2b",
+    "sitecustomize.py": "9b59495c78b9000f0c885d9e40b04b52cd837629e2e2885fc5b0a1786e1ba943"
+  },
+  "no_science_source_changes": true
+}
