@@ -78,7 +78,7 @@ AGE_CAP = 2000
 #: 4.1 (EACC iteration): common random numbers in the bootstrap values of one decision's relative labels, and candidates
 #: separated in the executor's stage-goal terms (env 0.11.0, ``cand_min_sep``; arm e_rel only);
 #: 5.0: arms e_term / e_term2 -- executor-evaluable (terminal) counterfactual values only, ``_terminal_loss``)
-LEARNER_VERSION = "t2-learner-6.4"
+LEARNER_VERSION = "t2-learner-6.5"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -245,6 +245,12 @@ def rotated_correction(gq, g, clip: float = FB_CLIP):
 FB_EXTRAP = 1.0
 FB_PULL_MAX = 1.0
 PULL_MODES = ('pull', 'pull2')
+#: Learner 6.5 (T2.17 1000-step readings, 2026-11-04): all arms are alike before the feedback starts (0-250 stored
+#: decisions); the actor-side arms fall behind e_priv exactly when it starts (250-500: e_pull -16, e_priv +17) -- the
+#: critic and the executor's calibrations are still immature -- and close most of the gap afterwards (500-1000: 29 vs
+#: 34). Arm e_pull3 = e_pull2 with the execution feedback switched on only after FB_START_LATE stored decisions (a
+#: warm-up: until then its update is e_priv's).
+FB_START_LATE = 500
 
 
 def toward_correction(gq, v):
@@ -428,10 +434,11 @@ class StageReplay(ReplayBuffer):
 
 class T2SAC(SAC):
     def __init__(self, *args, model_beta: float = 0.0, model_start: int = MODEL_START, pref_lambda: float = 0.0,
-                 acc: bool = False, relative: bool = False, terminal: int = 0, feedback: str | None = None, **kwargs):
+                 acc: bool = False, relative: bool = False, terminal: int = 0, feedback: str | None = None, fb_start: int = 0, **kwargs):
         self.model_beta, self.model_start = float(model_beta), int(model_start)
         self.relative = bool(relative)               # T2.12 EACC: relative labels in place of the absolute ones
         self.terminal = int(terminal)                # learner 5.0: executor-evaluable counterfactuals, horizon in stages (0 = off)
+        self.fb_start = int(fb_start)                # learner 6.5: stored decisions before the execution feedback starts
         self.feedback = feedback                     # learner 6.0: actor-side execution advantage, 'rel' (e_pi) / 'term' (e_pit) / None
         self.pref_lambda = float(pref_lambda)
         self.acc = bool(acc)                         # T2.11 EACC-A
@@ -841,7 +848,7 @@ class T2SAC(SAC):
             self.critic.optimizer.zero_grad(); loss.backward(); self.critic.optimizer.step()
             q_pi = th.min(th.cat(self.critic(data.observations, actions_pi), dim=1), dim=1, keepdim=True).values
             actor_loss = (ent_coef * log_prob - q_pi).mean()
-            if self.feedback and stored >= self.model_start:      # learner 6.1 / 6.2: execution-corrected action gradient
+            if self.feedback and stored >= max(self.model_start, self.fb_start):   # learner 6.1-6.5: execution-corrected action gradient
                 ob_f, sel, g, a_ref, finfo = self._actor_correction()
                 info.update(finfo)
                 if sel is not None and bool(sel.any()):
@@ -882,12 +889,12 @@ class T2SAC(SAC):
 
 
 #: arms whose critic reads the executor's judgements (reduced_priv interface) and arms that train on counterfactual labels
-PRIV_CRITIC_ARMS = ('e_acc', 'e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2')
+PRIV_CRITIC_ARMS = ('e_acc', 'e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3')
 LABEL_ARMS = ('e_mve', 'e_acc', 'e_rel', 'e_term', 'e_term2')
 #: learner 5.0: counterfactual horizon (stages) of the executor-evaluable arms
 TERM_ARMS = {'e_term': 1, 'e_term2': 2}
 #: learner 6.0: actor-side execution advantage arms (counterfactual evidence computed, no critic labels)
-FB_ARMS = {'e_pi': 'rel', 'e_pit': 'term', 'e_pull': 'pull', 'e_pull2': 'pull2'}
+FB_ARMS = {'e_pi': 'rel', 'e_pit': 'term', 'e_pull': 'pull', 'e_pull2': 'pull2', 'e_pull3': 'pull2'}
 
 
 def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transition: float = UPDATES_PER_TRANSITION,
@@ -902,7 +909,7 @@ def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transi
                  learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=max(1, int(round(updates_per_transition))),
                  ent_coef=ENT_COEF, tau=0.005, model_beta=(TERM_BETA if arm in TERM_ARMS else model_beta) if arm in LABEL_ARMS else 0.0, model_start=16 if smoke else MODEL_START,
                  pref_lambda=PREF_LAMBDA if arm == 'e_pref' else 0.0, acc=arm == 'e_acc', relative=arm == 'e_rel', terminal=TERM_ARMS.get(arm, 0),
-                 feedback=FB_ARMS.get(arm))
+                 feedback=FB_ARMS.get(arm), fb_start=FB_START_LATE if arm == 'e_pull3' else 0)
 
 
 # ---------------------------------------------------------------------- asynchronous collection
@@ -1067,7 +1074,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     from stable_baselines3.common.logger import configure
     from env.t2_stage import CANDIDATE_MIN_SEP_M_S, ENTRY_STAGES, T2_VERSION
     entry_stages = ENTRY_STAGES if entry_stages is None else int(entry_stages)
-    if arm in ('e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2') and obs_profile != 'reduced_priv':
+    if arm in ('e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3') and obs_profile != 'reduced_priv':
         raise ValueError(f'arm {arm} needs --obs reduced_priv')
     if arm == 'e_rel':
         entry_stages = 1          # T2.12: one-stage relative labels; the stage end is valued by the critic that reads the executor
@@ -1083,7 +1090,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
     candidates = K_CANDIDATES if (arm in LABEL_ARMS or arm in FB_ARMS) else 0      # the SAC arm (and e_priv) computes no model
     pref = arm in ('e_pref', 'e_acc')                        # T2.10 preference / T2.11 EACC-A opportunity judgements
-    cand_min_sep = CANDIDATE_MIN_SEP_M_S if arm in ('e_rel', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2') else 0.0     # candidates separated in the executor's terms
+    cand_min_sep = CANDIDATE_MIN_SEP_M_S if arm in ('e_rel', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3') else 0.0     # candidates separated in the executor's terms
     label_det = arm in TERM_ARMS                                         # learner 5.0: stage 2 under the policy's mean intent
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
@@ -1100,7 +1107,8 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'fb_clip': FB_CLIP if arm in FB_ARMS else None, 'fb_window': FB_WINDOW if arm in FB_ARMS else None,
                                                    'fb_batch': FB_BATCH if arm in FB_ARMS else None, 'fb_min_spread': FB_MIN_SPREAD if arm in FB_ARMS else None,
                                                    'fb_step': ('toward' if FB_ARMS.get(arm) in PULL_MODES else 'rotate') if arm in FB_ARMS else None,
-                                                   'fb_extrap': FB_EXTRAP if arm == 'e_pull2' else None, 'fb_pull_max': FB_PULL_MAX if arm == 'e_pull2' else None,
+                                                   'fb_extrap': FB_EXTRAP if FB_ARMS.get(arm) == 'pull2' else None, 'fb_pull_max': FB_PULL_MAX if FB_ARMS.get(arm) == 'pull2' else None,
+                                                   'fb_start': int(model.fb_start) if arm in FB_ARMS else None,
                                                    'actor_view': OBS_DIM, 'critic_view': int(getattr(model.policy, 'critic_dim', OBS_DIM)),
                                                    'acc_dp': ACC_DP, 'acc_kappa': ACC_KAPPA, 'acc_lambda_q': ACC_LAMBDA_Q, 'acc_eta': ACC_ETA,
                                                    'acc_min_labels': ACC_MIN_LABELS, 'acc_min_acc': ACC_MIN_ACC,

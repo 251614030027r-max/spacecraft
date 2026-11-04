@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-6.4'
+    assert t.LEARNER_VERSION == 't2-learner-6.5'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -1785,3 +1785,22 @@ def test_pull2_trusts_less_the_further_a_candidate_lies_from_the_executed_intent
     u = g[mid._fb_pull_rows] / g[mid._fb_pull_rows].norm(dim=1, keepdim=True)
     assert bool((u @ th.tensor([0.6, 0.5]) / np.hypot(0.6, 0.5) > 0.99).all())
     assert t.FB_PULL_MAX == 1.0 and t.FB_EXTRAP == 1.0
+
+
+def test_delayed_feedback_is_the_e_priv_update_until_it_starts():
+    """learner 6.5 (e_pull3): before FB_START_LATE stored decisions the update equals e_priv's even with evidence in the
+    buffer (no correction, no random numbers drawn); afterwards the correction applies."""
+    import torch as th
+    import train.t2_mve_sac as t
+    out = []
+    for arm in ('e_priv', 'e_pull3'):
+        m = _fb_model(arm); _fb_fill(m, n=32, good=(0.6, 0.5), gain=20.0); m.td_ms = 25.0; m.entry_bias_now = 0.0
+        np.random.seed(1); th.manual_seed(1)
+        m.train(gradient_steps=5, batch_size=8)
+        out.append(th.cat([p.detach().reshape(-1) for p in m.policy.parameters()]))
+        if arm == 'e_pull3':
+            assert m.fb_start == t.FB_START_LATE == 500 and m.feedback == 'pull2'
+            assert not [x for x in m.model_stats if x.get('fb_applied')]
+            m.fb_start = 0; m.train(gradient_steps=21, batch_size=8)          # readings every 25 updates
+            assert [x for x in m.model_stats if x.get('fb_applied')]
+    assert th.equal(out[0], out[1])
