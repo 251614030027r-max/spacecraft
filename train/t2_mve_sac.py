@@ -453,6 +453,23 @@ class T2SAC(SAC):
     def _excluded_save_params(self):
         return [*super()._excluded_save_params(), 'model_stats', 'dec_cal']
 
+    def _cert_readings(self, n: int = 64) -> dict:
+        """Learner 7.0: the certificate maps of the n most recently stored decisions (read-only): share with a ready
+        calibration and, over those, the best calibrated success share, the number of feasible reference intents and
+        the best value (scaled as in the environment)."""
+        rb = self.replay_buffer
+        if rb.obs_shape[0] != OBS_DIM_CERT or rb.pos == 0 and not rb.full:
+            return {}
+        idx = (rb.pos - 1 - np.arange(min(n, rb.buffer_size if rb.full else rb.pos))) % rb.buffer_size
+        cm = rb.observations[idx, 0, OBS_DIM_PRIV:]
+        ready = cm[:, -1] > 0.5
+        out = {'cert_ready_share': float(ready.mean())}
+        if ready.any():
+            c = cm[ready]
+            out.update(cert_pmax_mean=float(c[:, 1:-1:3].max(1).mean()), cert_feasible_mean=float(c[:, 0:-1:3].sum(1).mean()),
+                       cert_vmax_mean=float(c[:, 2:-1:3].max(1).mean()))
+        return out
+
     def _soft_value(self, obs, ent_coef):
         a, logp = self.actor.action_log_prob(obs)
         return th.min(th.cat(self.critic_target(obs, a), dim=1), dim=1, keepdim=True).values - ent_coef * logp.reshape(-1, 1)
@@ -884,7 +901,7 @@ class T2SAC(SAC):
             if (self._n_updates + step) % 25 == 0:
                 self.model_stats.append({'steps': int(self.num_timesteps), 'update': int(self._n_updates + step), 'real_td': float(real.item()),
                                          'sigma': float(np.sqrt(self.td_ms)), 'model_td': float(mloss.item()) if mloss is not None else None,
-                                         **info, 'actor_loss': float(actor_loss.item()), 'q_pi_mean': float(q_pi.mean().item())})
+                                         **info, **self._cert_readings(), 'actor_loss': float(actor_loss.item()), 'q_pi_mean': float(q_pi.mean().item())})
         self._n_updates += gradient_steps
 
 
@@ -1037,7 +1054,7 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
     obs, _ = env.reset(); transition = None
     actor = None
     guide_rng = np.random.default_rng([seed, rank, 2707])        # T2.7 guidance draws (own stream)
-    outbox = share_calibration(env) if (POOL_CALIBRATION and (candidates > 0 or pref)) else None
+    outbox = share_calibration(env) if (POOL_CALIBRATION and (candidates > 0 or pref or obs_profile == 'reduced_priv_cert')) else None
 
     def label_policy(o):          # mu: this environment's copy of the policy (T2.5 stage 2 of a counterfactual label)
         with th.no_grad():
@@ -1106,7 +1123,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
                                                    'k_candidates': candidates, 'collection': 'asynchronous', 'window': window,
                                                    'gradient_steps_per_transition': model.gradient_steps, 'entry_stages': entry_stages, 'sync_updates': SYNC_UPDATES, 'age_cap': AGE_CAP,
-                                                   'pooled_calibration': bool(POOL_CALIBRATION and (candidates > 0 or pref)),
+                                                   'pooled_calibration': bool(POOL_CALIBRATION and (candidates > 0 or pref or obs_profile == 'reduced_priv_cert')),
                                                    'urgent_deadline_s': list(urgent_deadline) if urgent_deadline is not None else [170.0, 210.0],
                                                    'guide': bool(guide), 'guide_p0': GUIDE_P0 if guide else 0.0, 'guide_until': GUIDE_UNTIL if guide else 0,
                                                    'obs_profile': obs_profile, 'pref': pref, 'acc': arm == 'e_acc', 'relative': arm == 'e_rel', 'rel_beta': REL_BETA if arm == 'e_rel' else 0.0,
@@ -1138,7 +1155,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     bias_by_worker = {}
     synced = {}                                   # worker -> update count of its policy copy
     rng = np.random.default_rng(seed)
-    pool = CalibrationPool() if (POOL_CALIBRATION and (candidates > 0 or pref)) else None
+    pool = CalibrationPool() if (POOL_CALIBRATION and (candidates > 0 or pref or obs_profile == 'reduced_priv_cert')) else None
     guided_by_worker = {}                         # T2.7: guided decisions of each worker's current episode
     cal_pending = {}                              # T2.11: each worker's executed-decision features of the current episode
     ret_true, ret_shaped = {}, {}                 # T2.12: each worker's current episode return (true task reward / shaped training reward)

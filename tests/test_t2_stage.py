@@ -784,11 +784,13 @@ def test_calibration_is_shared_by_the_workers():
 
 
 def test_pooled_calibration_only_in_the_coupled_arm():
-    """The SAC arm uses no executor model, so it shares no calibration; the coupled arms (EACC labels, T2.10 preference) do."""
+    """The SAC arm uses no executor model, so it shares no calibration; the coupled arms (EACC labels, T2.10 preference,
+    learner 7.0 certificate maps) do."""
     import inspect, train.t2_mve_sac as t
     w = inspect.getsource(t.worker); src = inspect.getsource(t.train)
-    assert 'share_calibration(env) if (POOL_CALIBRATION and (candidates > 0 or pref)) else None' in w and 'merge_calibration(env, shared)' in w
-    assert 'CalibrationPool() if (POOL_CALIBRATION and (candidates > 0 or pref)) else None' in src and 'pool.pending(w_)' in src
+    cond = "(POOL_CALIBRATION and (candidates > 0 or pref or obs_profile == 'reduced_priv_cert'))"
+    assert f'share_calibration(env) if {cond} else None' in w and 'merge_calibration(env, shared)' in w
+    assert f'CalibrationPool() if {cond} else None' in src and 'pool.pending(w_)' in src
     assert "pref = arm in ('e_pref', 'e_acc')" in src
 
 
@@ -1834,3 +1836,23 @@ def test_certificate_profile_appends_the_calibrated_opportunity_map_for_the_crit
     assert q.policy.critic_dim == OBS_DIM and q.feedback == 'pull2'
     full = t.make_model(t.SpacesEnv(OBS_DIM_CERT), 'e_full', 0, smoke=True)
     assert full.policy.critic_dim == OBS_DIM_CERT and full.feedback == 'pull2' and full.fb_start == t.FB_START_LATE
+
+
+def test_certificate_readings_enter_the_training_statistics():
+    """learner 7.0: e_cert reports the certificate maps of the recent decisions (ready share, best success share,
+    feasible reference intents) in its training statistics; e_priv reports none."""
+    import torch as th
+    import train.t2_mve_sac as t
+    from env.t2_stage import CERT_DIM, OBS_DIM_CERT, OBS_DIM_PRIV
+    from stable_baselines3.common.logger import configure
+    m = t.make_model(t.SpacesEnv(OBS_DIM_CERT), 'e_cert', 0, smoke=True)
+    m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0
+    rng = np.random.default_rng(0)
+    for i in range(30):
+        o = rng.normal(size=(1, OBS_DIM_CERT)).astype(np.float32); o[0, OBS_DIM_PRIV:] = 0.0
+        if i % 2:
+            o[0, OBS_DIM_PRIV:-1:3] = 1.0; o[0, OBS_DIM_PRIV + 1:-1:3] = 0.7; o[0, -1] = 1.0
+        m.replay_buffer.add(o, o, rng.uniform(-1, 1, (1, 2)).astype(np.float32), np.array([0.0]), np.array([False]), [{'model': {}}])
+    np.random.seed(0); th.manual_seed(0); m.train(gradient_steps=25, batch_size=8)
+    s = m.model_stats[-1]
+    assert abs(s['cert_ready_share'] - 0.5) < 1e-6 and abs(s['cert_pmax_mean'] - 0.7) < 1e-6 and abs(s['cert_feasible_mean'] - (CERT_DIM - 1) / 3) < 1e-6
