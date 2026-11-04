@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-6.5'
+    assert t.LEARNER_VERSION == 't2-learner-7.0'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -1804,3 +1804,33 @@ def test_delayed_feedback_is_the_e_priv_update_until_it_starts():
             m.fb_start = 0; m.train(gradient_steps=21, batch_size=8)          # readings every 25 updates
             assert [x for x in m.model_stats if x.get('fb_applied')]
     assert th.equal(out[0], out[1])
+
+
+def test_certificate_profile_appends_the_calibrated_opportunity_map_for_the_critic_only():
+    """env 0.13.0 'reduced_priv_cert': the first OBS_DIM_PRIV values are the 'reduced_priv' observation; the map is zero
+    until the entry calibration is ready, then carries the ready flag and per-intent judgements; with ``cert_live`` off it
+    is zero. Arm e_cert: the critic reads all of it, the actor only the reduced interface, so the deployed action does
+    not depend on the map."""
+    import torch as th
+    import train.t2_mve_sac as t
+    from env.t2_stage import CERT_DIM, OBS_DIM, OBS_DIM_CERT, OBS_DIM_PRIV, PREF_GRID, T2StageEnv
+    from experiments.t2_audit import load_calibration
+    a = T2StageEnv(openings=[1000003], obs_profile='reduced_priv_cert'); b = T2StageEnv(openings=[1000003], obs_profile='reduced_priv')
+    oa, _ = a.reset(options={'opening': 1000003}); ob, _ = b.reset(options={'opening': 1000003})
+    assert oa.shape == (OBS_DIM_CERT,) and np.array_equal(oa[:OBS_DIM_PRIV], ob) and not oa[OBS_DIM_PRIV:].any()
+    load_calibration(a, 'evidence/T2_8_PRECHECK/输入/CAL.json')
+    m = a.observation()[OBS_DIM_PRIV:]
+    assert m.shape == (CERT_DIM,) and m[-1] == 1.0 and len(PREF_GRID) * 3 + 1 == CERT_DIM
+    assert set(np.unique(m[0:-1:3])) <= {0.0, 1.0} and ((m[1:-1:3] >= 0) & (m[1:-1:3] <= 1)).all()
+    a.cert_live = False
+    assert not a.observation()[OBS_DIM_PRIV:].any()
+    q_, v_ = __import__('env.t1_p_stage', fromlist=['relative_inertial']).relative_inertial(a.env); ts = a.env.target_state
+    assert not a._observe(a.env, q_, v_, a.env.time_s, a.env._delta_v, a.mission, ts.rotation, ts.omega, a.last)[OBS_DIM_PRIV:].any()
+    model = t.make_model(t.SpacesEnv(OBS_DIM_CERT), 'e_cert', 0, smoke=True)
+    assert model.policy.critic_dim == OBS_DIM_CERT and model.policy.actor_dim == OBS_DIM and model.feedback is None and model.model_beta == 0.0
+    o_live = th.as_tensor(np.concatenate([oa[:OBS_DIM_PRIV], m])[None]); o_zero = o_live.clone(); o_zero[:, OBS_DIM_PRIV:] = 0
+    assert th.equal(model.actor(o_live, deterministic=True), model.actor(o_zero, deterministic=True))
+    q = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), 'e_pullq', 0, smoke=True)
+    assert q.policy.critic_dim == OBS_DIM and q.feedback == 'pull2'
+    full = t.make_model(t.SpacesEnv(OBS_DIM_CERT), 'e_full', 0, smoke=True)
+    assert full.policy.critic_dim == OBS_DIM_CERT and full.feedback == 'pull2' and full.fb_start == t.FB_START_LATE

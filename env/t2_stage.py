@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.12.0"
+T2_VERSION = "t2-stage-0.13.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -92,8 +92,16 @@ OBS_DIM = 24
 #: engineered vector (pass time, window reachability, slack, braking margin, execution residuals / hold, ...) -- for
 #: OBS_DIM_PRIV values in all. The actor reads only the first OBS_DIM (the reduced interface); a critic may read the
 #: rest during training (the executor's information); deployment uses the actor alone.
-OBS_PROFILES = ("engineered", "reduced", "geometric", "raw", "reduced_priv")
+#: 'reduced_priv_cert' (env 0.13.0, EACC with execution certificates): 'reduced_priv' followed by the executor-calibrated
+#: counterfactual opportunity map of the decision -- for each intent of PREF_GRID (defined below) the executor's own
+#: judgement ``opportunity_features``: entry feasible, success share of the entry outcome model (historical execution
+#: replay) and value / CERT_VALUE_SCALE (clipped), then a 'calibration ready' flag (all zero until it is). It carries what
+#: the executor has actually achieved, not only what it plans; for the critic during training, never for the actor.
+OBS_PROFILES = ("engineered", "reduced", "geometric", "raw", "reduced_priv", "reduced_priv_cert")
 OBS_DIM_PRIV = 2 * 24
+CERT_DIM = 3 * 9 + 1
+OBS_DIM_CERT = OBS_DIM_PRIV + CERT_DIM
+CERT_VALUE_SCALE = 200.0
 PLANNER_FEATURES = (8, 17, 19)
 #: indices in ``observe``: time to the port's pass, last stage's position / velocity residual and hold, entry-window
 #: reachability (bridge angle), braking margin, deadline slack after the pass
@@ -476,6 +484,7 @@ ENTRY_STAGES = 2
 #: rule 9/19, direct G* 18/19) and matched the best converged SAC on the development openings.
 #: T2.10 candidate intents of the opportunity preference (the 3 x 3 grid P4 validated) -- the executed intent is added
 PREF_GRID = tuple((p, z) for p in (-0.5, 0.25, 1.0) for z in (-1.0, 0.0, 1.0))
+assert CERT_DIM == 3 * len(PREF_GRID) + 1
 OPPORTUNITY_TAUS_S = (20., 30., 40., 50., 60., 70., 80., 90., 100., 110., 120., 140., 160., 180., 200., 220.)
 TRACK_GRID = tuple((float(p), float(z)) for p in np.linspace(-1.0, 1.0, 9) for z in np.linspace(-1.0, 1.0, 9))
 TRACK_VELOCITY_WEIGHT = 10.0      # s: velocity mismatch of a stage goal weighed against position (m) in the projection
@@ -569,7 +578,9 @@ class T2StageEnv(gym.Env):
         self.openings, self.seed_base, self.candidates, self.shaping = openings, int(seed_base), int(candidates), bool(shaping)
         self.rng = np.random.default_rng(seed)
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
-        self.obs_dim = OBS_DIM_PRIV if self.obs_profile == "reduced_priv" else OBS_DIM
+        self.obs_dim = {"reduced_priv": OBS_DIM_PRIV, "reduced_priv_cert": OBS_DIM_CERT}.get(self.obs_profile, OBS_DIM)
+        #: env 0.13.0: compute the certificate map (False: zeros -- evaluation, where only the actor acts)
+        self.cert_live = True
         self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
         self.episode = 0
         self.calibration = Calibration()
@@ -604,21 +615,40 @@ class T2StageEnv(gym.Env):
     def observation(self) -> np.ndarray:
         q, v = relative_inertial(self.env)
         t = self.env.target_state
-        return self._observe(self.env, q, v, self.env.time_s, self.env._delta_v, self.mission, t.rotation, t.omega, self.last)
+        o = self._observe(self.env, q, v, self.env.time_s, self.env._delta_v, self.mission, t.rotation, t.omega, self.last)
+        if self.obs_profile == "reduced_priv_cert":       # env 0.13.0: the actual decision state carries its certificate map
+            o[OBS_DIM_PRIV:] = self.certificate_map()
+        return o
 
     def _observe(self, *args) -> np.ndarray:
         """The decision layer's observation in this environment's interface (actual and modelled states alike)."""
         if self.obs_profile == "raw":
             return observe_raw(*args)
         o = observe(*args)
-        if self.obs_profile == "reduced_priv":
+        if self.obs_profile in ("reduced_priv", "reduced_priv_cert"):
             r = o.copy(); r[list(PLANNER_FEATURES)] = 0.0
+            if self.obs_profile == "reduced_priv_cert":      # a modelled state carries no certificate (map and ready flag 0)
+                return np.concatenate([r, o, np.zeros(CERT_DIM, np.float32)]).astype(np.float32)
             return np.concatenate([r, o]).astype(np.float32)
         if self.obs_profile == "geometric":
             o[list(EXECUTOR_FEATURES)] = 0.0
         elif self.obs_profile == "reduced":
             o[list(PLANNER_FEATURES)] = 0.0
         return o
+
+    def certificate_map(self) -> np.ndarray:
+        """env 0.13.0: the executor-calibrated counterfactual opportunity map of the current decision (CERT_DIM values;
+        see 'reduced_priv_cert'). Zeros until the entry calibration is ready, or when ``cert_live`` is off."""
+        out = np.zeros(CERT_DIM, np.float32)
+        if not self.cert_live or not self.entry_calibration.ready or getattr(self, 'generator', None) is None:
+            return out
+        for k, x in enumerate(PREF_GRID):
+            f = self.opportunity_features(x)
+            if f is not None:
+                out[3 * k:3 * k + 3] = (float(f["feasible"]), float(f["p_success"]),
+                                        float(np.clip(f["value"] / CERT_VALUE_SCALE, -3.0, 3.0)))
+        out[-1] = 1.0
+        return out
 
     def opportunity_value(self, action) -> float | None:
         """T2.10 executor-calibrated opportunity value of a stage intent at the current decision (``opp2`` of

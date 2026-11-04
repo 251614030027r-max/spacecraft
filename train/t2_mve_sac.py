@@ -47,7 +47,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.utils import polyak_update
 from stable_baselines3.sac.policies import SACPolicy
 
-from env.t2_stage import GAMMA_STAGE, OBS_DIM, OBS_DIM_PRIV
+from env.t2_stage import GAMMA_STAGE, OBS_DIM, OBS_DIM_CERT, OBS_DIM_PRIV
 
 K_CANDIDATES = 8          # 3 structured alternatives + 1 global + 4 local (T2StageEnv.candidate_actions)
 MODEL_BETA = 0.5
@@ -78,7 +78,7 @@ AGE_CAP = 2000
 #: 4.1 (EACC iteration): common random numbers in the bootstrap values of one decision's relative labels, and candidates
 #: separated in the executor's stage-goal terms (env 0.11.0, ``cand_min_sep``; arm e_rel only);
 #: 5.0: arms e_term / e_term2 -- executor-evaluable (terminal) counterfactual values only, ``_terminal_loss``)
-LEARNER_VERSION = "t2-learner-6.5"
+LEARNER_VERSION = "t2-learner-7.0"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -889,19 +889,27 @@ class T2SAC(SAC):
 
 
 #: arms whose critic reads the executor's judgements (reduced_priv interface) and arms that train on counterfactual labels
-PRIV_CRITIC_ARMS = ('e_acc', 'e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3')
+PRIV_CRITIC_ARMS = ('e_acc', 'e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3', 'e_cert', 'e_full')
+#: learner 7.0 (2026-11-04): EACC with execution certificates. Across T2.11-T2.17 the executor's knowledge helped as a
+#: critic INPUT (e_priv), hurt as a critic TARGET (counterfactual labels) and was safe but redundant as an actor
+#: correction. Arm e_cert: e_priv plus the executor-calibrated counterfactual opportunity map of each decision as critic
+#: input (env 'reduced_priv_cert'); no labels, no actor correction. Arm e_pullq: the actor-side feedback (e_pull2) on a
+#: critic that reads only the actor's view -- the action-level channel without the state-level one.
+#: Arm e_full: e_cert plus the actor-side correction of e_pull3 (distance-aware trust, warm-up): the full EACC. Modelled
+#: states carry no certificate (env), common to the candidates and the reference, so it cancels in the executor advantage.
+CERT_ARMS = ('e_cert', 'e_full')
 LABEL_ARMS = ('e_mve', 'e_acc', 'e_rel', 'e_term', 'e_term2')
 #: learner 5.0: counterfactual horizon (stages) of the executor-evaluable arms
 TERM_ARMS = {'e_term': 1, 'e_term2': 2}
 #: learner 6.0: actor-side execution advantage arms (counterfactual evidence computed, no critic labels)
-FB_ARMS = {'e_pi': 'rel', 'e_pit': 'term', 'e_pull': 'pull', 'e_pull2': 'pull2', 'e_pull3': 'pull2'}
+FB_ARMS = {'e_pi': 'rel', 'e_pit': 'term', 'e_pull': 'pull', 'e_pull2': 'pull2', 'e_pull3': 'pull2', 'e_pullq': 'pull2', 'e_full': 'pull2'}
 
 
 def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transition: float = UPDATES_PER_TRANSITION,
                model_beta: float = MODEL_BETA) -> T2SAC:
     obs_dim = int(env.observation_space.shape[0])
-    if obs_dim == OBS_DIM_PRIV:      # T2.11: split views; only EACC-A's critic reads the executor's judgements
-        policy, kw = SplitViewPolicy, {'net_arch': [256, 256], 'actor_dim': OBS_DIM, 'critic_dim': OBS_DIM_PRIV if arm in PRIV_CRITIC_ARMS else OBS_DIM}
+    if obs_dim in (OBS_DIM_PRIV, OBS_DIM_CERT):      # T2.11: split views; only EACC-A's critic reads the executor's judgements
+        policy, kw = SplitViewPolicy, {'net_arch': [256, 256], 'actor_dim': OBS_DIM, 'critic_dim': obs_dim if arm in PRIV_CRITIC_ARMS else OBS_DIM}
     else:
         policy, kw = 'MlpPolicy', {'net_arch': [256, 256]}
     return T2SAC(policy, env, seed=seed, device='cpu', verbose=0, policy_kwargs=kw,
@@ -909,7 +917,7 @@ def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transi
                  learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=max(1, int(round(updates_per_transition))),
                  ent_coef=ENT_COEF, tau=0.005, model_beta=(TERM_BETA if arm in TERM_ARMS else model_beta) if arm in LABEL_ARMS else 0.0, model_start=16 if smoke else MODEL_START,
                  pref_lambda=PREF_LAMBDA if arm == 'e_pref' else 0.0, acc=arm == 'e_acc', relative=arm == 'e_rel', terminal=TERM_ARMS.get(arm, 0),
-                 feedback=FB_ARMS.get(arm), fb_start=FB_START_LATE if arm == 'e_pull3' else 0)
+                 feedback=FB_ARMS.get(arm), fb_start=FB_START_LATE if arm in ('e_pull3', 'e_full') else 0)
 
 
 # ---------------------------------------------------------------------- asynchronous collection
@@ -1074,8 +1082,10 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     from stable_baselines3.common.logger import configure
     from env.t2_stage import CANDIDATE_MIN_SEP_M_S, ENTRY_STAGES, T2_VERSION
     entry_stages = ENTRY_STAGES if entry_stages is None else int(entry_stages)
-    if arm in ('e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3') and obs_profile != 'reduced_priv':
+    if arm in ('e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3', 'e_pullq') and obs_profile != 'reduced_priv':
         raise ValueError(f'arm {arm} needs --obs reduced_priv')
+    if arm in CERT_ARMS and obs_profile != 'reduced_priv_cert':
+        raise ValueError(f'arm {arm} needs --obs reduced_priv_cert')
     if arm == 'e_rel':
         entry_stages = 1          # T2.12: one-stage relative labels; the stage end is valued by the critic that reads the executor
     if arm in TERM_ARMS:
@@ -1085,12 +1095,12 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     out.mkdir(parents=True, exist_ok=False); (out / 'checkpoints').mkdir()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     th.set_num_threads(1)
-    model = make_model(SpacesEnv(OBS_DIM_PRIV if obs_profile == 'reduced_priv' else OBS_DIM), arm, seed, smoke,
+    model = make_model(SpacesEnv({'reduced_priv': OBS_DIM_PRIV, 'reduced_priv_cert': OBS_DIM_CERT}.get(obs_profile, OBS_DIM)), arm, seed, smoke,
                        updates_per_transition=updates_per_transition, model_beta=model_beta)
     model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
     candidates = K_CANDIDATES if (arm in LABEL_ARMS or arm in FB_ARMS) else 0      # the SAC arm (and e_priv) computes no model
     pref = arm in ('e_pref', 'e_acc')                        # T2.10 preference / T2.11 EACC-A opportunity judgements
-    cand_min_sep = CANDIDATE_MIN_SEP_M_S if arm in ('e_rel', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3') else 0.0     # candidates separated in the executor's terms
+    cand_min_sep = CANDIDATE_MIN_SEP_M_S if arm in ('e_rel', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3', 'e_pullq', 'e_full') else 0.0     # candidates separated in the executor's terms
     label_det = arm in TERM_ARMS                                         # learner 5.0: stage 2 under the policy's mean intent
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
