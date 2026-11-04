@@ -78,7 +78,7 @@ AGE_CAP = 2000
 #: 4.1 (EACC iteration): common random numbers in the bootstrap values of one decision's relative labels, and candidates
 #: separated in the executor's stage-goal terms (env 0.11.0, ``cand_min_sep``; arm e_rel only);
 #: 5.0: arms e_term / e_term2 -- executor-evaluable (terminal) counterfactual values only, ``_terminal_loss``)
-LEARNER_VERSION = "t2-learner-6.3"
+LEARNER_VERSION = "t2-learner-6.4"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -233,6 +233,18 @@ def rotated_correction(gq, g, clip: float = FB_CLIP):
 #: candidate's A_mix exceeds the critic's TD noise sigma, the policy's step turns towards that candidate at the critic's
 #: own length: h = |gq| u - gq, u = (a_j* - a_pi) / |a_j* - a_pi| (non-local form); on the other rows the local slope
 #: rotates the step as in e_pi (local form). With no evidence the update is e_priv's.
+
+
+#: Learner 6.4 (T2.17 500-step diagnosis, 2026-11-04): in one e_pull seed the non-local step pointed at candidates
+#: across the square (mean distance 1.87 of 2.83) with ~80 degree turns. The executor's prediction is anchored at the
+#: executed intent (M2) and extrapolates the further a candidate lies from it, while rho only reads the error on the
+#: executed transition. Arm e_pull2: the error of candidate j grows with that distance,
+#:   eps_j' = eps_j + FB_EXTRAP * sigma * |a_j - a_exec|,   rho_j' = sigma^2 / (sigma^2 + eps_j'^2)
+#: (for the non-local choice; the local slope keeps rho_j), and the non-local step only targets candidates within
+#: FB_PULL_MAX of the policy's intent. Otherwise e_pull2 is e_pull.
+FB_EXTRAP = 1.0
+FB_PULL_MAX = 1.0
+PULL_MODES = ('pull', 'pull2')
 
 
 def toward_correction(gq, v):
@@ -668,7 +680,7 @@ class T2SAC(SAC):
         dist = d.norm(dim=2)
         valid = (m['cand_valid'] > 0) & rows.reshape(-1, 1) & (dist > 1e-3)
         local = dist <= FB_RADIUS                                             # the slope uses the candidates near a_pi
-        if self.feedback != 'pull':                                          # 6.3: e_pull also reads the far candidates
+        if self.feedback not in PULL_MODES:                                  # 6.3: e_pull also reads the far candidates
             valid = valid & local
         if self.feedback == 'term':
             valid = valid & (m['cand_done'] > 0)
@@ -703,10 +715,16 @@ class T2SAC(SAC):
             g, ok = centred_slope(dd, cc, ww)
             sel = ok & rows
             self._fb_pull_rows = th.zeros(b, dtype=th.bool)
-            if self.feedback == 'pull':        # 6.3: the best candidate on the fused advantage, beyond the TD noise
-                a_mix = th.where(valid, (q_c - q_ref) + c, th.full_like(c, -float('inf')))
+            if self.feedback in PULL_MODES:    # 6.3: the best candidate on the fused advantage, beyond the TD noise
+                c_far, v_far = c, valid
+                if self.feedback == 'pull2':   # 6.4: extrapolation from the executed intent counts as model error
+                    sig = float(np.sqrt(self.td_ms))
+                    ext = (m['cand_a'] - data.actions[:, None, :]).norm(dim=2)
+                    rho_far = self.td_ms / (self.td_ms + (eps + FB_EXTRAP * sig * ext) ** 2)
+                    c_far = th.where(valid, rho_far * corr, th.zeros_like(corr)); v_far = valid & (dist <= FB_PULL_MAX)
+                a_mix = th.where(v_far, (q_c - q_ref) + c_far, th.full_like(c, -float('inf')))
                 best_v, best_j = a_mix.max(dim=1)
-                prow = rows & valid.any(dim=1) & (best_v > float(np.sqrt(self.td_ms)))
+                prow = rows & v_far.any(dim=1) & (best_v > float(np.sqrt(self.td_ms)))
                 d_best = d[th.arange(b), best_j]
                 g = th.where(prow[:, None], d_best / d_best.norm(dim=1, keepdim=True).clamp(min=1e-9) * best_v.clamp(min=0)[:, None], g)
                 sel = sel | prow; self._fb_pull_rows = prow
@@ -834,7 +852,7 @@ class T2SAC(SAC):
                         a_q = a_ref.clone().requires_grad_(True)              # the critic's own action gradient, for the trust region
                         gq = th.autograd.grad(th.min(th.cat(self.critic(ob_f, a_q), dim=1), dim=1).values.sum(), a_q)[0]
                         h, g_c = rotated_correction(gq, g)                   # 6.2: rotate the critic's step, same length
-                        if self.feedback == 'pull':                            # 6.3: towards the best candidate, same length
+                        if self.feedback in PULL_MODES:                        # 6.3: towards the best candidate, same length
                             pr = self._fb_pull_rows[:, None]
                             h = th.where(pr, toward_correction(gq, g), h); g_c = th.where(pr, h, g_c)
                         corr_loss = -(h.detach()[near] * mu[near]).sum() / ob_f.shape[0]
@@ -864,12 +882,12 @@ class T2SAC(SAC):
 
 
 #: arms whose critic reads the executor's judgements (reduced_priv interface) and arms that train on counterfactual labels
-PRIV_CRITIC_ARMS = ('e_acc', 'e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull')
+PRIV_CRITIC_ARMS = ('e_acc', 'e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2')
 LABEL_ARMS = ('e_mve', 'e_acc', 'e_rel', 'e_term', 'e_term2')
 #: learner 5.0: counterfactual horizon (stages) of the executor-evaluable arms
 TERM_ARMS = {'e_term': 1, 'e_term2': 2}
 #: learner 6.0: actor-side execution advantage arms (counterfactual evidence computed, no critic labels)
-FB_ARMS = {'e_pi': 'rel', 'e_pit': 'term', 'e_pull': 'pull'}
+FB_ARMS = {'e_pi': 'rel', 'e_pit': 'term', 'e_pull': 'pull', 'e_pull2': 'pull2'}
 
 
 def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transition: float = UPDATES_PER_TRANSITION,
@@ -1049,7 +1067,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     from stable_baselines3.common.logger import configure
     from env.t2_stage import CANDIDATE_MIN_SEP_M_S, ENTRY_STAGES, T2_VERSION
     entry_stages = ENTRY_STAGES if entry_stages is None else int(entry_stages)
-    if arm in ('e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull') and obs_profile != 'reduced_priv':
+    if arm in ('e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2') and obs_profile != 'reduced_priv':
         raise ValueError(f'arm {arm} needs --obs reduced_priv')
     if arm == 'e_rel':
         entry_stages = 1          # T2.12: one-stage relative labels; the stage end is valued by the critic that reads the executor
@@ -1065,7 +1083,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
     candidates = K_CANDIDATES if (arm in LABEL_ARMS or arm in FB_ARMS) else 0      # the SAC arm (and e_priv) computes no model
     pref = arm in ('e_pref', 'e_acc')                        # T2.10 preference / T2.11 EACC-A opportunity judgements
-    cand_min_sep = CANDIDATE_MIN_SEP_M_S if arm in ('e_rel', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull') else 0.0     # candidates separated in the executor's terms
+    cand_min_sep = CANDIDATE_MIN_SEP_M_S if arm in ('e_rel', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2') else 0.0     # candidates separated in the executor's terms
     label_det = arm in TERM_ARMS                                         # learner 5.0: stage 2 under the policy's mean intent
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
@@ -1081,7 +1099,8 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'fb_radius': FB_RADIUS if arm in FB_ARMS else None, 'fb_ridge': FB_RIDGE if arm in FB_ARMS else None,
                                                    'fb_clip': FB_CLIP if arm in FB_ARMS else None, 'fb_window': FB_WINDOW if arm in FB_ARMS else None,
                                                    'fb_batch': FB_BATCH if arm in FB_ARMS else None, 'fb_min_spread': FB_MIN_SPREAD if arm in FB_ARMS else None,
-                                                   'fb_step': ('toward' if FB_ARMS.get(arm) == 'pull' else 'rotate') if arm in FB_ARMS else None,
+                                                   'fb_step': ('toward' if FB_ARMS.get(arm) in PULL_MODES else 'rotate') if arm in FB_ARMS else None,
+                                                   'fb_extrap': FB_EXTRAP if arm == 'e_pull2' else None, 'fb_pull_max': FB_PULL_MAX if arm == 'e_pull2' else None,
                                                    'actor_view': OBS_DIM, 'critic_view': int(getattr(model.policy, 'critic_dim', OBS_DIM)),
                                                    'acc_dp': ACC_DP, 'acc_kappa': ACC_KAPPA, 'acc_lambda_q': ACC_LAMBDA_Q, 'acc_eta': ACC_ETA,
                                                    'acc_min_labels': ACC_MIN_LABELS, 'acc_min_acc': ACC_MIN_ACC,

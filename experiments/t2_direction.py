@@ -79,7 +79,7 @@ def correction(model, obs, next_obs, a, reward, done, info, seed, feedback: str 
     a_q = th.as_tensor(np.asarray(a, np.float32)[None]).requires_grad_(True)
     o_q = th.as_tensor(np.asarray(obs, np.float32)[None])
     gq = th.autograd.grad(th.min(th.cat(model.critic(o_q, a_q), dim=1), dim=1).values.sum(), a_q)[0][0].numpy().astype(float)
-    if feedback == 'pull' and sel is not None:          # gate A2: the non-local rows only (the others are e_pi's slope)
+    if feedback in ('pull', 'pull2') and sel is not None:          # gate A2: the non-local rows only (the others are e_pi's slope)
         sel = sel & model._fb_pull_rows
     if sel is None or not bool(sel.any()):
         return None, gq, finfo

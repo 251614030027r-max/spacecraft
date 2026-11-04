@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-6.3'
+    assert t.LEARNER_VERSION == 't2-learner-6.4'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -1768,3 +1768,20 @@ def test_pull_feedback_enters_the_actor_update():
     m.train(gradient_steps=1, batch_size=8)
     s = [x for x in m.model_stats if 'fb_rows' in x]
     assert s and s[-1].get('fb_applied', 0) > 0 and s[-1].get('fb_pull_rows', 0) > 0
+
+
+def test_pull2_trusts_less_the_further_a_candidate_lies_from_the_executed_intent():
+    """learner 6.4 (e_pull2): the non-local step ignores candidates beyond FB_PULL_MAX of the policy's intent and discounts
+    the executor's advantage by its extrapolation from the executed intent; a moderate, clearly better candidate still pulls."""
+    import torch as th
+    import train.t2_mve_sac as t
+    far = _fb_model('e_pull2'); assert far.feedback == 'pull2'
+    _fb_fill(far, good=(0.9, 0.9), gain=20.0); far.td_ms = 25.0; far.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0); far._actor_correction()
+    assert not bool(far._fb_pull_rows.any())                                   # 1.27 > FB_PULL_MAX
+    mid = _fb_model('e_pull2'); _fb_fill(mid, good=(0.6, 0.5), gain=20.0); mid.td_ms = 25.0; mid.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0); _, _, g, _, info = mid._actor_correction()
+    assert bool(mid._fb_pull_rows.all()) and info['fb_pull_adv_mean'] < 20.0      # pulled, with a discounted advantage
+    u = g[mid._fb_pull_rows] / g[mid._fb_pull_rows].norm(dim=1, keepdim=True)
+    assert bool((u @ th.tensor([0.6, 0.5]) / np.hypot(0.6, 0.5) > 0.99).all())
+    assert t.FB_PULL_MAX == 1.0 and t.FB_EXTRAP == 1.0
