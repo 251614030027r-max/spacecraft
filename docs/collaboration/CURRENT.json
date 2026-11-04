@@ -35,7 +35,7 @@
     "no_experiment_started": true
   },
   "topic": "t2_17_pull_20261104",
-  "updated_at": "2026-11-04T18:01:42.916608+09:00",
+  "updated_at": "2026-11-04T22:17:12.010620+09:00",
   "scientific_commit": "af0b915b2af317b38969e70010956c6890ea7a1a",
   "convergence_code_commit": "ec394efcaaeadbb5305f4f9e289addb58517dca7",
   "convergence_evidence_commit": "5e42c47032d4e6811451a6794f6254fe9fde2063",
@@ -118,5 +118,20 @@
     "collab_commit": "38e3f526055d5e23e97db91d54a120045f00e391",
     "verdict": "pass",
     "B": "superseded; never started"
+  },
+  "conditional_next": {
+    "topic": "T2_18_PULL3_20261104",
+    "status": "waiting_four_T217_step1500",
+    "order_commit": "117f7f8b",
+    "science_SHA_if_condition_met": "d091a101e82a06b3810e268e215599022403302c",
+    "state_path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_18_PULL3_20261104\\RUN_STATE.json",
+    "guard_path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_18_PULL3_20261104\\记录\\GUARDIAN_STATE.json",
+    "OS_task": "Spacecraft-T218-20261104",
+    "thresholds": {
+      "arm_mean_ge": 38.9,
+      "each_seed_ge": 33.9
+    },
+    "false_action": "Leave T217 running original run order",
+    "true_action": "Preserve/stop T217 then checkout T218 and selfcheck before training"
   }
 }
