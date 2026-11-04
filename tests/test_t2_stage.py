@@ -1662,3 +1662,23 @@ def test_feedback_rows_come_from_the_most_recent_transitions():
     idx = m.replay_buffer._last[0]
     stored = m.replay_buffer.pos
     assert int(idx.min()) >= stored - t.FB_WINDOW and int(idx.max()) <= stored - 1
+
+
+def test_direction_audit_uses_the_learner_correction_on_one_transition():
+    """T2.16 gate (experiments.t2_direction): on one labelled transition the audit's correction is the learner's own
+    (points towards the intents the executor prefers) and gq is the critic's action gradient at the policy's intent."""
+    import torch as th
+    from env.t2_stage import OBS_DIM_PRIV
+    from experiments.t2_direction import correction
+    m = _fb_model('e_pi'); m.td_ms = 25.0
+    rng = np.random.default_rng(3); o = rng.normal(size=OBS_DIM_PRIV).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+    fact = {'reward': -2.0, 'next_obs': o1, 'done': False}
+    refd = {'a': np.zeros(2, np.float32), 'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}
+    cands = [{'a': np.array([0.3, 0.0], np.float32), 'reward': 18.0, 'next_obs': o1, 'done': False, 'kind': 0},
+             {'a': np.array([-0.3, 0.0], np.float32), 'reward': -22.0, 'next_obs': o1, 'done': False, 'kind': 0}]
+    info = {'model': {'fact': fact, 'cands': cands, 'ref': refd, 'diag': {'reason': 'stage', 'entry_bias': 0.0}}}
+    g, gq, finfo = correction(m, o, o1, np.zeros(2), -2.0, False, info, seed=0)
+    assert g is not None and g[0] > 0 and finfo['fb_identified'] == t_fb_batch()
+    a = th.zeros((1, 2), requires_grad=True)
+    ref = th.autograd.grad(th.min(th.cat(m.critic(th.as_tensor(o[None]), a), dim=1), dim=1).values.sum(), a)[0][0].numpy()
+    assert np.allclose(gq, ref, atol=1e-6)
