@@ -2,16 +2,16 @@
 
 配置名、内部 arm 与开关的唯一来源是 `METHOD_REGISTRY.json`；所有命令经 `experiments/final.py` 启动，图表图例由注册表生成。
 
-## 1. 训练组（正式实验每组 ≥ 5000 决策 × 3 种子；预实验只训练前三组，每组 2 种子 × 2000 决策）
+## 1. 训练组（正式实验每组 ≥ 5000 决策 × 3 种子；预实验训练前五组，每组 2 种子 × 2000 决策）
 
 | 展示名 | 配置 | 内部 arm | obs_profile | Actor / Critic 维度 | window | geometry | 回答的问题 | 预实验 |
 |---|---|---|---|---|---|---|---|---|
 | **EACH (U1+C1)** | `EACH` | `e_priv` | `reduced_priv` | 24 / 48 | 开 | 开 | 最终整体性能 | 训练 |
 | SAC | `SAC` | `e_sac` | `reduced_priv` | 24 / 24 | 开 | 开 | U1 的独立学习收益（同一 Actor 接口、同一 C1） | 训练 |
 | SAC + planner features | `SAC_ENG` | `e_sac` | `engineered` | 24 / 24（两者都读规划答案） | 开 | 开 | 信息边界参照：部署时也把规划答案交给策略，所能达到的水平 | 训练 |
-| w/o U1 (same width) | `DUP` | `e_priv` | `reduced_dup` | 24 / 48（后 24 维重复精简观测） | 开 | 开 | 区分"执行证书有用"和"critic 输入更宽、参数更多" | 只冒烟 |
-| w/o C1 geometry | `NO_GEOM` | `e_priv` | `reduced_priv` | 24 / 48 | 开 | **关**（阶段目标只沿视线接近） | 旋转同步扫掠锥引导的贡献 | 只冒烟 |
-| w/o window | `RIGID` | `e_priv` | `reduced_priv` | 24 / 48 | **关**（刚性入口时刻） | 开 | 窗口承诺对学习闭环的贡献 | 只冒烟 |
+| w/o U1 (same width) | `DUP` | `e_priv` | `reduced_dup` | 24 / 48（后 24 维重复精简观测） | 开 | 开 | 区分"执行证书有用"和"critic 输入更宽、参数更多" | 训练 |
+| w/o C1 geometry | `NO_GEOM` | `e_priv` | `reduced_priv` | 24 / 48 | 开 | **关**（阶段目标只沿视线接近） | 旋转同步扫掠锥引导的贡献 | 训练 |
+| w/o window | `RIGID` | `e_priv` | `reduced_priv` | 24 / 48 | **关**（刚性入口时刻） | 开 | 窗口承诺对学习闭环的贡献 | 只冒烟（预实验用 EACH 模型的窗口 / 刚性配对评估检验窗口承诺） |
 
 **所有训练组共同的设置：**
 - `k_candidates = 0`、`model_beta = 0`、`pref = acc = guide = relative = false`、`feedback = null`、`terminal_horizon = 0`；
@@ -23,9 +23,9 @@
 | 展示名 | 策略 | 角色 | 预实验 | 窗口配对 |
 |---|---|---|---|---|
 | Pure MPC | `pure` | 系统基线：冻结 MPC 单独执行 | 是 | 无（没有入口承诺） |
-| Direct G* | `gstar` | 动作空间外的参照：从远场直接规划入口 | 正式 | 正式 |
+| Direct G* | `gstar` | 动作空间外的参照：从远场直接规划入口 | 是 | 是 |
 | Deadline rule | `rally` | 动作空间内的启发式 | 是 | 是 |
-| Basic layering (a_p = 1) | `b_10` | 不感知旋转的固定意图 | 正式 | 正式 |
+| Basic layering (a_p = 1) | `b_10` | 不感知旋转的固定意图 | 是 | 正式 |
 | Fixed intent (1, 0) | `c_10_0` | 感知旋转的固定意图 | 是 | 是 |
 | Fixed intent (1, −0.5) | `c_10_-5` | 同上 | 正式 | 正式 |
 | Fixed intent (0.6, 0.5) | `c_6_5` | 同上 | 正式 | 正式 |

@@ -61,25 +61,40 @@
     "trained": [
      "EACH",
      "SAC",
-     "SAC_ENG"
+     "SAC_ENG",
+     "DUP",
+     "NO_GEOM"
     ],
     "smoke_only": [
-     "NO_GEOM",
-     "RIGID",
-     "DUP"
+     "RIGID"
     ],
     "fixed": [
      "pure",
+     "gstar",
      "rally",
+     "b_10",
      "c_10_0"
     ],
     "window_pairs": [
+     "gstar",
      "rally",
      "c_10_0"
     ],
     "rigid_pair_trained": [
      "EACH"
-    ]
+    ],
+    "batches": [
+     [
+      "EACH",
+      "SAC",
+      "SAC_ENG"
+     ],
+     [
+      "DUP",
+      "NO_GEOM"
+     ]
+    ],
+    "note": "key ablations: U1 (SAC, DUP same-width control), C1 geometry (NO_GEOM); the window commitment is verified by paired evaluation (EACH models and fixed policies, rigid vs window) without training; RIGID training and the remaining fixed policies in the formal stage"
    },
    "formal": {
     "steps": 5000,

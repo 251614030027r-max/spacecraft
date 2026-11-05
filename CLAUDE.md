@@ -66,8 +66,8 @@ replay-calibrated success share, value] + ready flag) as critic input; arms `e_c
 counterfactual / actor-feedback line is closed (history only). Final material: `docs/final_method/` (METHOD_MINIMAL,
 METHOD_SPEC, C1_THEORY, CONFIG_LOCK, ABLATION_MATRIX, FIGURE_SPEC, METHOD_REGISTRY.json); the only entry for final runs is
 `experiments/final.py` (+ `experiments/final_figures.py`), which launches registry configurations only (EACH, SAC, SAC_ENG,
-DUP, NO_GEOM, RIGID) for the stage's seeds and openings. Stages: dryrun (pipeline check), pretest (seeds 10/11 x 2000,
-eval 294100-294147), formal (seeds 20-22 x 5000, eval 300000-300095; needs the user's separate authorization). The e_priv
+DUP, NO_GEOM, RIGID) for the stage's seeds and openings. Stages: dryrun (pipeline check), pretest (EACH, SAC, SAC_ENG, DUP, NO_GEOM x seeds 10/11 x 2000, no time limit,
+eval 294100-294147; window verified by paired rigid evaluation), formal (seeds 20-22 x 5000, eval 300000-300095; needs the user's separate authorization). The e_priv
 path is bitwise equivalent to 2e7d838 (`evidence/final_pretest/precheck/`). No more T2.x numbering.
 
 ## Phase 2 ground rules (user 2026-11-03: consolidation and optimisation)
