@@ -34,50 +34,53 @@
     "collab_main_cleanup_commit": "69961fba64c9489902493d59f4b8f24045183893",
     "no_experiment_started": true
   },
-  "topic": "t2_19_cert_20261104",
-  "updated_at": "2026-11-05T11:02:13.364234+09:00",
-  "scientific_commit": "0017f80f5ad1e96e17189be94c5c3fe3bc8856b4",
+  "topic": "final_pretest",
+  "updated_at": "2026-11-05T14:19:48.504800+09:00",
+  "scientific_commit": "fd789126cc822d3650e636ff2169c8757ff3bdb1",
   "convergence_code_commit": "ec394efcaaeadbb5305f4f9e289addb58517dca7",
   "convergence_evidence_commit": "5e42c47032d4e6811451a6794f6254fe9fde2063",
-  "run_order": "docs/collaboration/upper/run_orders/T2_19_CERT_20261104.md",
-  "order_collab_commit": "3589ec92",
-  "execution_state": "complete_delivered",
-  "training_active": false,
+  "run_order": "docs/collaboration/upper/run_orders/RUN_PRETEST.md",
+  "order_collab_commit": "69616f11",
+  "execution_state": "dryrun_training",
+  "training_active": true,
   "evaluation_active": false,
   "mechanism_audit_active": false,
-  "automatic_followup": "DISABLED",
+  "automatic_followup": "hourly_final-pretest",
   "archive_tags": [
     "archive/t2-11-eacca-code-20261103",
     "archive/t2-11-eacca-evidence-20261103"
   ],
   "inventory_path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ASSETS_20261103\\INVENTORY.json",
-  "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_19_CERT_20261104\\RUN_STATE.json",
+  "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\final_pretest\\RUN_STATE.json",
   "current_delivery_report": "docs/collaboration/lower/handoffs/t2_19_cert_20261104/RESULT.md",
   "local_report": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\RESULT.md",
   "retained_T211_report": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\RESULT.md",
   "current_scope": {
-    "arms": [
-      "e_cert",
-      "e_full"
+    "stage": "pretest",
+    "dryrun_max_concurrent_training_runs": 6,
+    "dryrun_steps": 40,
+    "registered_workers_per_run": 2,
+    "pretest_batches": [
+      [
+        "EACH",
+        "SAC",
+        "SAC_ENG"
+      ],
+      [
+        "DUP",
+        "NO_GEOM"
+      ]
     ],
     "seeds": [
-      0,
-      1
+      10,
+      11
     ],
-    "steps_each": 2000,
-    "workers_each": 2,
-    "obs": "reduced_priv_cert",
-    "actor_view": 24,
-    "critic_view": 76,
-    "training_cap_h": 10,
-    "new_eval_cutoff_h": 11.3,
-    "decisions": [
-      "e_cert_vs_priv",
-      "e_full_vs_priv",
-      "e_full_vs_cert"
-    ]
+    "steps_per_run": 2000,
+    "eval_openings": "294100-294147",
+    "eval_cases": 960,
+    "time_limit": null
   },
-  "next_action": "Wait for new explicit user authorization; no more development training or formal experiment started",
+  "next_action": "Finish authorized EACH pretest and deliver.",
   "collab_delivery_commit": "e9eddc06626d3d651e664771a360a2a2bd8f86e0",
   "authority_type": "user_forwarded_approved_T216_A_then_conditional_B",
   "preceding_run_order": "docs/collaboration/upper/run_orders/ASSETS_20261103.md",
@@ -104,7 +107,7 @@
   "T214_launch_verification": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_14_TERM_20261104\\记录\\LAUNCH_INDEPENDENT_VERIFICATION.json",
   "joint_review_new_science_commit": "4410fe244a27df1566a9a034fc0918c4586d14c6",
   "joint_review_reuses_T212_commit": "80cde31d429b17e7a2236a17b4b437b03aff78f7",
-  "latest_user_authority_record": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_19_CERT_20261104\\输入\\AUTHORITY.md",
+  "latest_user_authority_record": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\final_pretest\\输入\\RUN_PRETEST.md",
   "previous_completed_delivery": {
     "topic": "T2_14_TERM_20261104",
     "science_commit": "c11356e372cf8efbeb6d2d4f0281b114ee3c0c0c",
@@ -131,5 +134,6 @@
   "repair_record": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_19_CERT_20261104\\记录\\EVAL_REPAIR_TAKEOVER.json",
   "joint_review_report": "docs/collaboration/lower/handoffs/review_t217_t219_20261105/RESULT.md",
   "local_joint_review": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\JOINT_RESULT.md",
-  "final_independent_verification": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_19_CERT_20261104\\记录\\FINAL_INDEPENDENT_VERIFICATION.json"
+  "final_independent_verification": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_19_CERT_20261104\\记录\\FINAL_INDEPENDENT_VERIFICATION.json",
+  "os_task": "Spacecraft-FinalPretest-20261105"
 }
