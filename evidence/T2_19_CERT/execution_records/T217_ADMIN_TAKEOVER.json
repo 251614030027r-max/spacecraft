@@ -1,0 +1,249 @@
+{
+  "jst": "2026-11-05T02:04:57.913689+09:00",
+  "reason": "user explicitly requests no excessive T217 evaluation; cancel optional A2, essential192 and native readouts already complete",
+  "identities": [
+    {
+      "pid": 22184,
+      "created": 1793782691.9279685,
+      "name": "powershell.exe",
+      "cmd": [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-File",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\脚本\\run.ps1"
+      ]
+    },
+    {
+      "pid": 17796,
+      "created": 1793782691.9463103,
+      "name": "conhost.exe",
+      "cmd": [
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+        "0x4"
+      ]
+    },
+    {
+      "pid": 9564,
+      "created": 1793811890.276873,
+      "name": "python.exe",
+      "cmd": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2_direction",
+        "run",
+        "--policies",
+        "e_priv_s0_500=C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s0\\checkpoints\\step_500.zip",
+        "e_priv_s0_1000=C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s0\\checkpoints\\step_1000.zip",
+        "e_priv_s1_500=C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s1\\checkpoints\\step_500.zip",
+        "e_priv_s1_1000=C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s1\\checkpoints\\step_1000.zip",
+        "--openings",
+        "2980000-2980007",
+        "--calibration",
+        "D:\\py\\DRL2\\evidence\\T2_8_PRECHECK\\输入\\CAL.json",
+        "--workers",
+        "12",
+        "--branches",
+        "Q,P",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\A2\\RUNS"
+      ]
+    },
+    {
+      "pid": 24036,
+      "created": 1793811890.2874246,
+      "name": "conhost.exe",
+      "cmd": [
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+        "0x4"
+      ]
+    },
+    {
+      "pid": 9680,
+      "created": 1793811890.322606,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2_direction",
+        "run",
+        "--policies",
+        "e_priv_s0_500=C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s0\\checkpoints\\step_500.zip",
+        "e_priv_s0_1000=C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s0\\checkpoints\\step_1000.zip",
+        "e_priv_s1_500=C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s1\\checkpoints\\step_500.zip",
+        "e_priv_s1_1000=C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s1\\checkpoints\\step_1000.zip",
+        "--openings",
+        "2980000-2980007",
+        "--calibration",
+        "D:\\py\\DRL2\\evidence\\T2_8_PRECHECK\\输入\\CAL.json",
+        "--workers",
+        "12",
+        "--branches",
+        "Q,P",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\A2\\RUNS"
+      ]
+    },
+    {
+      "pid": 24396,
+      "created": 1793811890.7066252,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=744)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 20336,
+      "created": 1793811890.7168036,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=656)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 28208,
+      "created": 1793811890.7262738,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=756)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 27172,
+      "created": 1793811890.73585,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=784)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 28116,
+      "created": 1793811890.7457547,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=816)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 18980,
+      "created": 1793811890.7564602,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=844)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 21516,
+      "created": 1793811890.7678947,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=692)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 6448,
+      "created": 1793811890.780654,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=892)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 6688,
+      "created": 1793811890.795169,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=928)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 1140,
+      "created": 1793811890.8095489,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=468)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 27388,
+      "created": 1793811890.8253832,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=1008)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 1792,
+      "created": 1793811890.8415048,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9680, pipe_handle=764)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "pid": 10556,
+      "created": 1793782523.1744125,
+      "name": "python.exe",
+      "cmd": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_17_PULL_20261104\\脚本\\controller.py"
+      ]
+    }
+  ],
+  "preserve_all_outputs": true,
+  "no_training_or_required_evaluation_interrupted": true
+}
