@@ -1856,3 +1856,59 @@ def test_certificate_readings_enter_the_training_statistics():
     np.random.seed(0); th.manual_seed(0); m.train(gradient_steps=25, batch_size=8)
     s = m.model_stats[-1]
     assert abs(s['cert_ready_share'] - 0.5) < 1e-6 and abs(s['cert_pmax_mean'] - 0.7) < 1e-6 and abs(s['cert_feasible_mean'] - (CERT_DIM - 1) / 3) < 1e-6
+
+
+def test_capacity_control_profile_repeats_the_actor_view():
+    """Final experiments (U1 capacity control): 'reduced_dup' is 48 values, both halves the actor's reduced view; its first
+    half equals 'reduced_priv''s; e_priv on it keeps the 24 / 48 split."""
+    import train.t2_mve_sac as t
+    from env.t2_stage import OBS_DIM, OBS_DIM_PRIV, T2StageEnv
+    a = T2StageEnv(openings=[1000004], obs_profile='reduced_dup'); b = T2StageEnv(openings=[1000004], obs_profile='reduced_priv')
+    oa, _ = a.reset(options={'opening': 1000004}); ob, _ = b.reset(options={'opening': 1000004})
+    assert oa.shape == (OBS_DIM_PRIV,) and np.array_equal(oa[:OBS_DIM], oa[OBS_DIM:]) and np.array_equal(oa[:OBS_DIM], ob[:OBS_DIM])
+    assert not np.array_equal(oa[OBS_DIM:], ob[OBS_DIM:])
+    m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), 'e_priv', 0, smoke=True)
+    assert m.policy.actor_dim == OBS_DIM and m.policy.critic_dim == OBS_DIM_PRIV
+
+
+def test_final_entry_refuses_unregistered_runs_and_reads_the_executor_configuration(tmp_path):
+    """experiments.final: only registered configurations and stage seeds train; a manifest that departs from its
+    registered configuration is refused; evaluation reads window / geometry from the run's manifest."""
+    import argparse, json, pytest
+    import experiments.final as fin
+    from experiments.t2 import exec_config_of
+    ns = lambda **k: argparse.Namespace(**{'workers': None, 'smoke_steps': None, **k})
+    with pytest.raises(SystemExit):
+        fin.cmd_train(ns(stage='pretest', config='e_cert', seed=10, output=str(tmp_path / 'x')))
+    with pytest.raises(SystemExit):
+        fin.cmd_train(ns(stage='pretest', config='EACH', seed=0, output=str(tmp_path / 'y')))
+    with pytest.raises(SystemExit):
+        fin.cmd_train(ns(stage='pretest', config='RIGID', seed=10, output=str(tmp_path / 'z')))
+    reg = fin.registry(); c = reg['trained']['NO_GEOM']
+    m = {'arm': c['arm'], 'obs_profile': c['obs'], 'window': c['window'], 'geometry': c['geometry'], 'actor_view': 24, 'critic_view': 48,
+         'k_candidates': 0, 'model_beta': 0.0, 'pref': False, 'acc': False, 'guide': False, 'relative': False, 'feedback': None, 'terminal_horizon': 0}
+    fin.verify_manifest(m, 'NO_GEOM')
+    with pytest.raises(SystemExit):
+        fin.verify_manifest({**m, 'geometry': True}, 'NO_GEOM')
+    with pytest.raises(SystemExit):
+        fin.verify_manifest({**m, 'k_candidates': 8}, 'NO_GEOM')
+    run = tmp_path / 'run'; (run / 'checkpoints').mkdir(parents=True)
+    (run / 'manifest.json').write_text(json.dumps(m), encoding='utf-8')
+    assert exec_config_of(run / 'checkpoints' / 'step_2000.zip') == {'window': True, 'geometry': False}
+    assert set(fin.block('294100-294147')) & fin._forbidden_eval('pretest') == set()
+    assert set(fin.block('300000-300095')) <= fin._forbidden_eval('pretest') and set(fin.block('294000-294047')) <= fin._forbidden_eval('formal')
+    p = reg['protocol']['stages']
+    assert not set(p['pretest']['seeds']) & set(p['formal']['seeds']) and not set(p['pretest']['seeds']) & set(reg['protocol']['used_before']['dev_train_seeds'])
+
+
+def test_sweep_cone_scan_places_the_line_of_sight_at_the_requested_latitude_and_phase():
+    """Figure A geometry: the scan's construction reproduces the executor's own spin-frame latitude error and phase."""
+    from env.t2_stage import T2StageEnv, angle_deg, spin_frame
+    from experiments.final import _los_for
+    env = T2StageEnv(openings=[1000006]); env.reset(options={'opening': 1000006})
+    t = env.env.target_state; axis = np.asarray(env.env.config.task.approach_axis)
+    s_hat = t.rotation @ t.omega / np.linalg.norm(t.omega); port = t.rotation @ axis; beta = angle_deg(port, s_hat)
+    for dl in (-40.0, 0.0, 25.0):
+        for ph in (10.0, 135.0, 300.0):
+            f = spin_frame(t.rotation, t.omega, 10.0 * _los_for(s_hat, port, beta + dl, ph), axis)
+            assert abs(f['lat_err_deg'] - dl) < 1e-6 and abs(((np.degrees(f['phase_rad']) - ph + 180) % 360) - 180) < 1e-6

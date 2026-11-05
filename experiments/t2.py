@@ -137,6 +137,17 @@ def obs_profile_of(checkpoint) -> str:
     raise FileNotFoundError(f'no manifest.json beside {checkpoint}: the decision interface of the checkpoint is unknown')
 
 
+def exec_config_of(checkpoint) -> dict:
+    """Final experiments: the executor configuration a checkpoint was trained with, from the run's manifest (pass-window
+    commitment, C1 geometry); runs before the final experiments have no 'geometry' field and used the geometry."""
+    c = Path(checkpoint)
+    for m in (c.parent.parent / 'manifest.json', c.parent / 'manifest.json'):
+        if m.exists():
+            d = json.loads(m.read_text(encoding='utf-8'))
+            return {'window': bool(d.get('window', True)), 'geometry': bool(d.get('geometry', True))}
+    raise FileNotFoundError(f'no manifest.json beside {checkpoint}')
+
+
 def eval_job(job):
     opening, checkpoint, label, out, window, urgent = job
     import torch; torch.set_num_threads(1)
@@ -145,10 +156,13 @@ def eval_job(job):
     from env.t2_stage import T2StageEnv
     from train.t2_mve_sac import T2SAC
     model = T2SAC.load(checkpoint, device='cpu')
-    env = T2StageEnv(openings=[opening], shaping=False, window=window, mission=mission_profile(urgent), obs_profile=obs_profile_of(checkpoint))
+    cfg = exec_config_of(checkpoint)
+    window = cfg['window'] if window is None else bool(window)     # None: as trained; False: forced rigid (paired ablation)
+    env = T2StageEnv(openings=[opening], shaping=False, window=window, geometry=cfg['geometry'], mission=mission_profile(urgent),
+                     obs_profile=obs_profile_of(checkpoint))
     env.cert_live = False          # env 0.13.0: the certificate map is for the critic only; the actor reads OBS_DIM values
     res = run_episode(env, opening, lambda e, o: model.predict(o, deterministic=True)[0])
-    res.update(policy=label, checkpoint=str(checkpoint), window=window, entries_lost=env.stats.get('entries_lost', 0),
+    res.update(policy=label, checkpoint=str(checkpoint), window=window, geometry=cfg['geometry'], entries_lost=env.stats.get('entries_lost', 0),
                window_recoveries=env.generator.bridge.recovery_log); dump(file, res); return res
 
 
@@ -180,22 +194,23 @@ def main():
     p.add_argument('--seed', type=int, default=0); p.add_argument('--steps', type=int, default=2000)
     p.add_argument('--checkpoint'); p.add_argument('--label'); p.add_argument('--checkpoints', default='500,1000,1500,2000,3000,4000,5000')
     p.add_argument('--smoke', action='store_true'); p.add_argument('--no-window', action='store_true')
+    p.add_argument('--no-geometry', action='store_true', help='train: C1 geometry ablation (rotation-unaware stage targets); eval reads the manifest')
     p.add_argument('--entry-stages', type=int, default=None); p.add_argument('--updates-per-transition', type=float, default=2.0)
     p.add_argument('--model-beta', type=float, default=0.5)
     p.add_argument('--urgent-deadline', default=None, help='LO,HI s: urgent missions\' deadline range (default 170,210)')
     p.add_argument('--guide', action='store_true', help='T2.7: the collector flies the executor\'s projected capture plan (training only)')
-    p.add_argument('--obs', choices=['engineered', 'reduced', 'geometric', 'raw', 'reduced_priv', 'reduced_priv_cert'], default='engineered', help='T2.9: decision-layer interface (training; evaluation reads the manifest)')
+    p.add_argument('--obs', choices=['engineered', 'reduced', 'geometric', 'raw', 'reduced_priv', 'reduced_priv_cert', 'reduced_dup'], default='engineered', help='T2.9: decision-layer interface (training; evaluation reads the manifest)')
     a = p.parse_args(); out = Path(a.output)
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')
     window = not a.no_window
     urgent = tuple(float(x) for x in a.urgent_deadline.split(',')) if a.urgent_deadline else None
     if a.mode == 'screen': screen(out, openings(a.openings), a.policies.split(','), a.workers, window, urgent)
-    elif a.mode == 'eval': evaluate(out, a.checkpoint, a.label, openings(a.openings), a.workers, window, urgent)
+    elif a.mode == 'eval': evaluate(out, a.checkpoint, a.label, openings(a.openings), a.workers, False if a.no_window else None, urgent)
     else:
         from train.t2_mve_sac import train
         train(out, a.arm, a.seed, a.steps, a.workers, [int(x) for x in a.checkpoints.split(',')], a.smoke,
               updates_per_transition=a.updates_per_transition, entry_stages=a.entry_stages, window=window, model_beta=a.model_beta,
-              urgent_deadline=urgent, guide=a.guide, obs_profile=a.obs)
+              urgent_deadline=urgent, guide=a.guide, obs_profile=a.obs, geometry=not a.no_geometry)
 
 
 if __name__ == '__main__':

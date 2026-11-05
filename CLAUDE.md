@@ -61,6 +61,14 @@ turns the actor's step towards it (`toward_correction`); run order collab `T2_17
 `reduced_priv_cert` adds the executor-calibrated counterfactual opportunity map (9 reference intents x [feasible,
 replay-calibrated success share, value] + ready flag) as critic input; arms `e_cert` (U1 + U2), `e_full` (+ U3),
 `e_pullq` (U3 only); run order collab `T2_19_CERT_20261104` (e_cert + e_full; method selection pre-registered).
+**FINAL (2026-11-05, research layer `final_review` + user): method frozen as EACH = U1 + C1 (`e_priv`).** T2.17
+`no_increment`, T2.19 `revert` (history-dependent calibration as critic input formed a self-confirming loop) -> the
+counterfactual / actor-feedback line is closed (history only). Final material: `docs/final_method/` (METHOD_MINIMAL,
+METHOD_SPEC, C1_THEORY, CONFIG_LOCK, ABLATION_MATRIX, FIGURE_SPEC, METHOD_REGISTRY.json); the only entry for final runs is
+`experiments/final.py` (+ `experiments/final_figures.py`), which launches registry configurations only (EACH, SAC, SAC_ENG,
+DUP, NO_GEOM, RIGID) for the stage's seeds and openings. Stages: dryrun (pipeline check), pretest (seeds 10/11 x 2000,
+eval 294100-294147), formal (seeds 20-22 x 5000, eval 300000-300095; needs the user's separate authorization). The e_priv
+path is bitwise equivalent to 2e7d838 (`evidence/final_pretest/precheck/`). No more T2.x numbering.
 
 ## Phase 2 ground rules (user 2026-11-03: consolidation and optimisation)
 

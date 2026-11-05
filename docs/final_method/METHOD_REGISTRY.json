@@ -1,0 +1,254 @@
+{
+ "method": "EACH",
+ "method_long": "Execution-aware hierarchical control (U1 + C1)",
+ "note": "Display layer only. Internal arm names, physics, rewards, control parameters and random streams are unchanged. Every final-experiment command goes through experiments/final.py, which reads this file; figures take legends and colours from it.",
+ "baseline_code": "2e7d838b680f88dbf16b4820e4862a7f9899ac99",
+ "protocol": {
+  "urgent_deadline_s": [
+   140.0,
+   200.0
+  ],
+  "workers": 2,
+  "updates_per_transition": 2.0,
+  "smoothing_window_episodes": 50,
+  "curve_grid_from": 250,
+  "stages": {
+   "dryrun": {
+    "steps": 40,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [
+     20
+    ],
+    "eval_openings": "294300-294301",
+    "smoke": true,
+    "trained": [
+     "EACH",
+     "SAC",
+     "SAC_ENG",
+     "DUP",
+     "NO_GEOM",
+     "RIGID"
+    ],
+    "smoke_only": [],
+    "fixed": [
+     "pure",
+     "rally",
+     "c_10_0"
+    ],
+    "window_pairs": [
+     "rally"
+    ],
+    "rigid_pair_trained": [
+     "EACH"
+    ],
+    "note": "pipeline check only (smoke learner settings, 40 decisions); never a result"
+   },
+   "pretest": {
+    "steps": 2000,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [
+     500,
+     1000,
+     1500
+    ],
+    "eval_openings": "294100-294147",
+    "trained": [
+     "EACH",
+     "SAC",
+     "SAC_ENG"
+    ],
+    "smoke_only": [
+     "NO_GEOM",
+     "RIGID",
+     "DUP"
+    ],
+    "fixed": [
+     "pure",
+     "rally",
+     "c_10_0"
+    ],
+    "window_pairs": [
+     "rally",
+     "c_10_0"
+    ],
+    "rigid_pair_trained": [
+     "EACH"
+    ]
+   },
+   "formal": {
+    "steps": 5000,
+    "seeds": [
+     20,
+     21,
+     22
+    ],
+    "checkpoints": [
+     1000,
+     2000,
+     3000,
+     4000
+    ],
+    "eval_openings": "300000-300095",
+    "trained": [
+     "EACH",
+     "SAC",
+     "SAC_ENG",
+     "DUP",
+     "NO_GEOM",
+     "RIGID"
+    ],
+    "smoke_only": [],
+    "fixed": [
+     "pure",
+     "gstar",
+     "rally",
+     "b_10",
+     "c_10_0",
+     "c_10_-5",
+     "c_6_5"
+    ],
+    "window_pairs": [
+     "gstar",
+     "rally",
+     "b_10",
+     "c_10_0",
+     "c_10_-5",
+     "c_6_5"
+    ],
+    "rigid_pair_trained": [
+     "EACH"
+    ]
+   }
+  },
+  "figure_openings": "294200-294211",
+  "used_before": {
+   "dev_eval": "294000-294047",
+   "dev_train_seeds": [
+    0,
+    1
+   ],
+   "probes": "2900000-2999999"
+  }
+ },
+ "trained": {
+  "EACH": {
+   "display": "EACH (U1+C1)",
+   "arm": "e_priv",
+   "obs": "reduced_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "main method",
+   "color": "#2a78d6"
+  },
+  "SAC": {
+   "display": "SAC",
+   "arm": "e_sac",
+   "obs": "reduced_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 24,
+   "role": "w/o U1 (same actor interface)",
+   "color": "#eb6834"
+  },
+  "SAC_ENG": {
+   "display": "SAC + planner features",
+   "arm": "e_sac",
+   "obs": "engineered",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 24,
+   "role": "information-boundary reference (the policy reads the planner's answers at deployment)",
+   "color": "#9a9993"
+  },
+  "DUP": {
+   "display": "w/o U1 (same width)",
+   "arm": "e_priv",
+   "obs": "reduced_dup",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "U1 capacity control: 48-value critic, second half repeats the actor's view",
+   "color": "#7b3fb5"
+  },
+  "NO_GEOM": {
+   "display": "w/o C1 geometry",
+   "arm": "e_priv",
+   "obs": "reduced_priv",
+   "window": true,
+   "geometry": false,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "C1 ablation: rotation-unaware stage targets",
+   "color": "#1baf7a"
+  },
+  "RIGID": {
+   "display": "w/o window",
+   "arm": "e_priv",
+   "obs": "reduced_priv",
+   "window": false,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "C1 ablation: rigid entry commitment",
+   "color": "#c94f1a"
+  }
+ },
+ "fixed": {
+  "pure": {
+   "display": "Pure MPC",
+   "window_pairable": false,
+   "role": "system baseline (frozen MPC alone)"
+  },
+  "gstar": {
+   "display": "Direct G*",
+   "window_pairable": true,
+   "role": "reference outside the action space"
+  },
+  "rally": {
+   "display": "Deadline rule",
+   "window_pairable": true,
+   "role": "heuristic inside the action space"
+  },
+  "b_10": {
+   "display": "Basic layering (a_p=1)",
+   "window_pairable": true,
+   "role": "rotation-unaware fixed intent (T2.3 registered)"
+  },
+  "c_10_0": {
+   "display": "Fixed intent (1, 0)",
+   "window_pairable": true,
+   "role": "rotation-aware fixed intent (T2.3 A2 registered)"
+  },
+  "c_10_-5": {
+   "display": "Fixed intent (1, -0.5)",
+   "window_pairable": true,
+   "role": "rotation-aware fixed intent (T2.3 A2 registered)"
+  },
+  "c_6_5": {
+   "display": "Fixed intent (0.6, 0.5)",
+   "window_pairable": true,
+   "role": "rotation-aware fixed intent (T2.3 A2 registered)"
+  }
+ },
+ "main_switches": {
+  "k_candidates": 0,
+  "model_beta": 0.0,
+  "pref": false,
+  "acc": false,
+  "guide": false,
+  "relative": false,
+  "feedback": null,
+  "terminal_horizon": 0
+ }
+}

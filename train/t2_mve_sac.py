@@ -997,7 +997,7 @@ def _slim(info: dict) -> dict:
     cands = [{**{k: c.get(k, 0) for k in ('a', 'reward', 'next_obs', 'done', 'kind')}, 's2': c.get('s2')} for c in model.get('cands') or []]
     diag = model.get('diag') or {}
     return {'model': {'fact': model.get('fact'), 'cands': cands, 'ref': model.get('ref'), 'diag': {k: diag.get(k) for k in ('reason', 'entry_bias', 'entry_records', 'resampled')}},
-            **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission', 'guided', 'pref', 'true_reward')}}
+            **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission', 'guided', 'pref', 'true_reward', 'exec_stats')}}
 
 
 class CalibrationPool:
@@ -1040,8 +1040,9 @@ def merge_calibration(env, rows) -> None:
 
 def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool, urgent_deadline=None,
            obs_profile: str = 'engineered', pref: bool = False, cand_min_sep: float = 0.0, label_deterministic: bool = False,
-           ref_labels: bool = False) -> None:
-    """One environment: send (transition or None, observation to act on), receive the action; until 'stop'."""
+           ref_labels: bool = False, geometry: bool = True) -> None:
+    """One environment: send (transition or None, observation to act on), receive the action; until 'stop'.
+    ``geometry=False``: the C1 geometry ablation (rotation-unaware stage targets, ``target_velocity``)."""
     import os
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
         os.environ.setdefault(k, '1')
@@ -1049,7 +1050,8 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
     from env.t2_stage import T2Mission, T2StageEnv
     mission = T2Mission() if urgent_deadline is None else T2Mission(urgent_deadline_s=tuple(float(x) for x in urgent_deadline))
     env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, candidates=candidates, shaping=True, seed=seed * 100 + rank,
-                     entry_stages=entry_stages, window=window, mission=mission, obs_profile=obs_profile, pref=pref, cand_min_sep=cand_min_sep)
+                     entry_stages=entry_stages, window=window, mission=mission, obs_profile=obs_profile, pref=pref, cand_min_sep=cand_min_sep,
+                     geometry=geometry)
     env.ref_labels = bool(ref_labels)            # learner 6.0: the policy's own intent through the candidates' treatment
     obs, _ = env.reset(); transition = None
     actor = None
@@ -1086,6 +1088,10 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
                 action, guided = np.asarray(a_exec, np.float32), True
         next_obs, reward, term, trunc, info = env.step(action)
         info = dict(info, guided=guided)
+        if term or trunc:                         # final experiments: the episode's executor statistics (logging only)
+            st = env.stats or {}
+            info['exec_stats'] = {**{k: st.get(k, 0) for k in ('stages', 'holds', 'rejected', 'bridge_attempts', 'rate_limited', 'entries_lost')},
+                                  'window_recoveries': int(getattr(env.generator.bridge, 'recoveries', 0)) if env.generator is not None else 0}
         transition = (obs, next_obs, np.asarray(action, np.float32), float(reward), bool(term), bool(trunc), _slim(info))
         obs = env.reset()[0] if (term or trunc) else next_obs
     conn.close()
@@ -1093,13 +1099,15 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
 
 def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[int], smoke: bool = False,
           updates_per_transition: float = UPDATES_PER_TRANSITION, entry_stages: int | None = None, window: bool = True,
-          model_beta: float = MODEL_BETA, urgent_deadline=None, guide: bool = False, obs_profile: str = 'engineered') -> None:
+          model_beta: float = MODEL_BETA, urgent_deadline=None, guide: bool = False, obs_profile: str = 'engineered',
+          geometry: bool = True, manifest_extra: dict | None = None) -> None:
     import multiprocessing as mp
     from multiprocessing.connection import wait
     from stable_baselines3.common.logger import configure
     from env.t2_stage import CANDIDATE_MIN_SEP_M_S, ENTRY_STAGES, T2_VERSION
     entry_stages = ENTRY_STAGES if entry_stages is None else int(entry_stages)
-    if arm in ('e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3', 'e_pullq') and obs_profile != 'reduced_priv':
+    if arm in ('e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3', 'e_pullq') and obs_profile != 'reduced_priv' \
+            and not (arm == 'e_priv' and obs_profile == 'reduced_dup'):          # final experiments: U1 capacity control
         raise ValueError(f'arm {arm} needs --obs reduced_priv')
     if arm in CERT_ARMS and obs_profile != 'reduced_priv_cert':
         raise ValueError(f'arm {arm} needs --obs reduced_priv_cert')
@@ -1112,7 +1120,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     out.mkdir(parents=True, exist_ok=False); (out / 'checkpoints').mkdir()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     th.set_num_threads(1)
-    model = make_model(SpacesEnv({'reduced_priv': OBS_DIM_PRIV, 'reduced_priv_cert': OBS_DIM_CERT}.get(obs_profile, OBS_DIM)), arm, seed, smoke,
+    model = make_model(SpacesEnv({'reduced_priv': OBS_DIM_PRIV, 'reduced_priv_cert': OBS_DIM_CERT, 'reduced_dup': OBS_DIM_PRIV}.get(obs_profile, OBS_DIM)), arm, seed, smoke,
                        updates_per_transition=updates_per_transition, model_beta=model_beta)
     model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
     candidates = K_CANDIDATES if (arm in LABEL_ARMS or arm in FB_ARMS) else 0      # the SAC arm (and e_priv) computes no model
@@ -1121,7 +1129,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     label_det = arm in TERM_ARMS                                         # learner 5.0: stage 2 under the policy's mean intent
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
                                                    'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
-                                                   'k_candidates': candidates, 'collection': 'asynchronous', 'window': window,
+                                                   'k_candidates': candidates, 'collection': 'asynchronous', 'window': window, 'geometry': bool(geometry),
                                                    'gradient_steps_per_transition': model.gradient_steps, 'entry_stages': entry_stages, 'sync_updates': SYNC_UPDATES, 'age_cap': AGE_CAP,
                                                    'pooled_calibration': bool(POOL_CALIBRATION and (candidates > 0 or pref or obs_profile == 'reduced_priv_cert')),
                                                    'urgent_deadline_s': list(urgent_deadline) if urgent_deadline is not None else [170.0, 210.0],
@@ -1141,13 +1149,13 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'acc_min_labels': ACC_MIN_LABELS, 'acc_min_acc': ACC_MIN_ACC,
                                                    'pref_lambda': PREF_LAMBDA if pref else 0.0, 'pref_delta': PREF_DELTA, 'pref_kappa': PREF_KAPPA,
                                                    'pref_margin_cap': PREF_MARGIN_CAP,
-                                                   'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION}, indent=1), encoding='utf-8')
+                                                   'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION, **(manifest_extra or {})}, indent=1), encoding='utf-8')
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
     for rank in range(workers):
         a, b = ctx.Pipe()
         p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref, cand_min_sep, label_det,
-                                                       arm in FB_ARMS), daemon=True)
+                                                       arm in FB_ARMS, bool(geometry)), daemon=True)
         p.start(); pipes.append(a); procs.append(p)
     marks = sorted(set([m for m in marks if m <= steps] + [steps]))
     model.save(out / 'checkpoints' / 'step_0')
@@ -1189,7 +1197,8 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                     cal_pending.pop(pipes.index(conn), None)
                     episodes.append({'steps': int(model.num_timesteps), 'worker': pipes.index(conn), **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')},
                                      'entry_bias': (info['model']['diag'] or {}).get('entry_bias'), 'guided': guided_by_worker.pop(pipes.index(conn), 0),
-                                     'return_true': ret_true.pop(pipes.index(conn), 0.0), 'return_shaped': ret_shaped.pop(pipes.index(conn), 0.0)})
+                                     'return_true': ret_true.pop(pipes.index(conn), 0.0), 'return_shaped': ret_shaped.pop(pipes.index(conn), 0.0),
+                                     **({'exec_stats': info['exec_stats']} if info.get('exec_stats') is not None else {})})
                 if model.num_timesteps >= model.learning_starts:
                     model.train(gradient_steps=model.gradient_steps, batch_size=model.batch_size)
                 while marks and model.num_timesteps >= marks[0]:

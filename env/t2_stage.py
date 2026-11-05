@@ -97,7 +97,9 @@ OBS_DIM = 24
 #: judgement ``opportunity_features``: entry feasible, success share of the entry outcome model (historical execution
 #: replay) and value / CERT_VALUE_SCALE (clipped), then a 'calibration ready' flag (all zero until it is). It carries what
 #: the executor has actually achieved, not only what it plans; for the critic during training, never for the actor.
-OBS_PROFILES = ("engineered", "reduced", "geometric", "raw", "reduced_priv", "reduced_priv_cert")
+#: 'reduced_dup' (final experiments, capacity control of U1): the 'reduced' vector twice -- the same 48-value critic
+#: input width as 'reduced_priv', with the second half repeating the actor's view instead of the executor's judgements.
+OBS_PROFILES = ("engineered", "reduced", "geometric", "raw", "reduced_priv", "reduced_priv_cert", "reduced_dup")
 OBS_DIM_PRIV = 2 * 24
 CERT_DIM = 3 * 9 + 1
 OBS_DIM_CERT = OBS_DIM_PRIV + CERT_DIM
@@ -578,7 +580,7 @@ class T2StageEnv(gym.Env):
         self.openings, self.seed_base, self.candidates, self.shaping = openings, int(seed_base), int(candidates), bool(shaping)
         self.rng = np.random.default_rng(seed)
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
-        self.obs_dim = {"reduced_priv": OBS_DIM_PRIV, "reduced_priv_cert": OBS_DIM_CERT}.get(self.obs_profile, OBS_DIM)
+        self.obs_dim = {"reduced_priv": OBS_DIM_PRIV, "reduced_priv_cert": OBS_DIM_CERT, "reduced_dup": OBS_DIM_PRIV}.get(self.obs_profile, OBS_DIM)
         #: env 0.13.0: compute the certificate map (False: zeros -- evaluation, where only the actor acts)
         self.cert_live = True
         self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
@@ -625,6 +627,9 @@ class T2StageEnv(gym.Env):
         if self.obs_profile == "raw":
             return observe_raw(*args)
         o = observe(*args)
+        if self.obs_profile == "reduced_dup":
+            r = o.copy(); r[list(PLANNER_FEATURES)] = 0.0
+            return np.concatenate([r, r]).astype(np.float32)
         if self.obs_profile in ("reduced_priv", "reduced_priv_cert"):
             r = o.copy(); r[list(PLANNER_FEATURES)] = 0.0
             if self.obs_profile == "reduced_priv_cert":      # a modelled state carries no certificate (map and ready flag 0)
