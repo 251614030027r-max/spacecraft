@@ -69,6 +69,15 @@ METHOD_SPEC, C1_THEORY, CONFIG_LOCK, ABLATION_MATRIX, FIGURE_SPEC, METHOD_REGIST
 DUP, NO_GEOM, RIGID) for the stage's seeds and openings. Stages: dryrun (pipeline check), pretest (EACH, SAC, SAC_ENG, DUP, NO_GEOM x seeds 10/11 x 2000, no time limit,
 eval 294100-294147; window verified by paired rigid evaluation), formal (seeds 20-22 x 5000, eval 300000-300095; needs the user's separate authorization). The e_priv
 path is bitwise equivalent to 2e7d838 (`evidence/final_pretest/precheck/`). No more T2.x numbering.
+**Pretest delivered (2026-11-06; frozen `fd789126`, delivery `56841a04`, collab `79497f85`; 100 tests):** 48 new openings x
+seeds 10/11 x 2000, six validity checks passed (`evidence/final_pretest/`). EACH 90/96, 45.7; SAC 80/96, 27.5; SAC_ENG
+85/96, 35.7; DUP 76/96, 15.1 (gain is information, not width); NO_GEOM 41/96, -54.2; pure 29/48 (unsafe 11); gstar
+45/48, 50.1; paired window vs rigid on EACH: entry losses 85 -> 2. To face: gstar parity, EACH-SAC median per-opening
+difference ~0 (mean from capture/timeout flips), 2 seeds. Counterfactual routes are DEAD_ENDS D39-D43. User 11-06:
+experiments essentially converged; RUN_FORMAL (draft) not authorised; the paper's main contribution should be a
+transferable execution-feedback mechanism (C1 the task contribution) -- a further design step on how feedback is
+built / filtered / used, avoiding long-term value ranking of unexecuted candidates, is for the research layer's new
+window (not in git until an authorised run order); upper and lower windows unchanged until the experiments end.
 
 ## Phase 2 ground rules (user 2026-11-03: consolidation and optimisation)
 
@@ -256,7 +265,7 @@ T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_2
 
 | Purpose | Entry |
 |---|---|
-| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (97 since learner 7.0; judge by the exit code) |
+| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (100 since the final entry; judge by the exit code) |
 | Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
 | Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve,e_acc} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI] [--obs reduced_priv]` (EACC-A: `--arm e_acc --obs reduced_priv`; its SAC baseline: `--arm e_sac --obs reduced_priv`; T2.12 EACC `--arm e_rel --obs reduced_priv`, ablation `--arm e_priv --obs reduced_priv`; learner 5.0 `--arm e_term` / `e_term2 --obs reduced_priv`; learner 6.0 `--arm e_pi` / `e_pit --obs reduced_priv`) |
 | Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` (the interface is read from the run's manifest) |
