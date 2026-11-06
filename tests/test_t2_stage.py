@@ -1974,3 +1974,32 @@ def test_u2_stage_registry():
     assert not ops & set(fin.block(reg['protocol']['figure_openings']))
     for c in ('PROBE', 'EACH_PROBE'):
         assert reg['trained'][c]['arm'] == 'e_priv' and reg['trained'][c]['actor_view'] == 24
+
+
+def test_u2_readout_gates_are_seed_matched_and_flip_robust(tmp_path):
+    """U2 stage B decision: PROBE vs SAC over seed-matched, opening-paired evaluations; a gain carried by two flips per
+    seed fails G2, a gain in one seed only fails G3, an unsafe episode fails G5."""
+    import json
+    from experiments.u2_readout import readout
+    def write(cfg, seed, rets, events=None):
+        d = tmp_path / 'C' / f'{cfg}_s{seed}'; d.mkdir(parents=True, exist_ok=True)
+        for i, r in enumerate(rets):
+            ev = (events or {}).get(i, 'success' if r > -50 else 'timeout')
+            (d / f'{cfg}_{i}.json').write_text(json.dumps({'opening': 294148 + i, 'event': ev, 'return': r, 'time_s': 100.0, 'delta_v': 1.0,
+                                                           'mission': {'urgent': i % 2 == 0}}))
+    base = [40.0] * 46 + [-150.0, -150.0]
+    for s in (10, 11):
+        write('SAC', s, base); write('EACH', s, base); write('EACH_PROBE', s, base)
+    for s in (10, 11):
+        write('PROBE', s, [40.0] * 46 + [50.0, 50.0])         # two flips per seed: mean +8.3, nothing else
+    r = readout(tmp_path, None)
+    assert r['complete'] and r['main']['gates']['G1'] and not r['main']['gates']['G2'] and r['main']['verdict'] == 'no_gain'
+    write('PROBE', 10, [50.0] * 46 + [50.0, 50.0]); write('PROBE', 11, [40.0] * 48)
+    r = readout(tmp_path, None)
+    assert r['main']['gates']['G2'] and r['main']['gates']['G3'] and r['main']['verdict'] == 'pass'
+    write('PROBE', 11, [39.0] * 46 + [-150.0, -150.0])        # seed 11 slightly worse, seed 10 carries the mean
+    r = readout(tmp_path, None)
+    assert r['main']['gates']['G1'] and not r['main']['gates']['G3'] and r['main']['verdict'] == 'no_gain'
+    write('PROBE', 11, [40.0] * 47 + [-150.0], events={47: 'unsafe'})
+    assert not readout(tmp_path, None)['main']['gates']['G5']
+    assert readout(tmp_path, None)['secondary']['verdict'] == 'kept'
