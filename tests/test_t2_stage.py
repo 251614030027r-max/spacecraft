@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-7.0'
+    assert t.LEARNER_VERSION == 't2-learner-7.1'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -1912,3 +1912,65 @@ def test_sweep_cone_scan_places_the_line_of_sight_at_the_requested_latitude_and_
         for ph in (10.0, 135.0, 300.0):
             f = spin_frame(t.rotation, t.omega, 10.0 * _los_for(s_hat, port, beta + dl, ph), axis)
             assert abs(f['lat_err_deg'] - dl) < 1e-6 and abs(((np.degrees(f['phase_rad']) - ph + 180) % 360) - 180) < 1e-6
+
+
+def test_u2_probe_profiles_split_views_and_are_deterministic():
+    """U2 (env 0.14.0): 'reduced_probe' = the actor's reduced view + 27 probe values, 'reduced_priv_probe' = 'reduced_priv'
+    + the same probes; the probe is a fixed function of the state (a fresh executor model gives the same values), zeros
+    when ``probe_live`` is off; e_priv keeps the 24-value actor and reads everything in the critic."""
+    import train.t2_mve_sac as t
+    from env.t2_probe import PROBE_DIM, ExecutorProbe
+    from env.t2_stage import OBS_DIM, OBS_DIM_PRIV, OBS_DIM_PRIV_PROBE, OBS_DIM_PROBE, T2StageEnv
+    op = 1000004
+    a = T2StageEnv(openings=[op], obs_profile='reduced_probe'); b = T2StageEnv(openings=[op], obs_profile='reduced_priv')
+    c = T2StageEnv(openings=[op], obs_profile='reduced_priv_probe')
+    oa, _ = a.reset(options={'opening': op}); ob, _ = b.reset(options={'opening': op}); oc, _ = c.reset(options={'opening': op})
+    assert oa.shape == (OBS_DIM_PROBE,) == (OBS_DIM + PROBE_DIM,) and oc.shape == (OBS_DIM_PRIV_PROBE,)
+    assert np.array_equal(oa[:OBS_DIM], ob[:OBS_DIM]) and np.array_equal(oc[:OBS_DIM_PRIV], ob) and np.array_equal(oa[OBS_DIM:], oc[OBS_DIM_PRIV:])
+    p = oa[OBS_DIM:].reshape(-1, 3)
+    assert set(np.unique(p[:, 0])) <= {0.0, 1.0} and (p[:, 1] > 0).all() and (p[:, 1] <= 1.0 + 1e-6).all() and (p[:, 2] >= 0).all()
+    fresh, rows = ExecutorProbe(a).probe(a)
+    assert np.array_equal(fresh, oa[OBS_DIM:]) and len(rows) == 9
+    a.probe_live = False
+    assert not a.observation()[OBS_DIM:].any()
+    for dim in (OBS_DIM_PROBE, OBS_DIM_PRIV_PROBE):
+        m = t.make_model(t.SpacesEnv(dim), 'e_priv', 0, smoke=True)
+        assert m.policy.actor_dim == OBS_DIM and m.policy.critic_dim == dim
+        m = t.make_model(t.SpacesEnv(dim), 'e_sac', 0, smoke=True)
+        assert m.policy.actor_dim == OBS_DIM and m.policy.critic_dim == OBS_DIM
+
+
+def test_u2_probe_gate_is_the_executor_rule_and_probing_leaves_execution_unchanged():
+    """The probe's gate reproduces the executor's metrics (range, radial envelope margin) and descent region on real
+    states; the probe uses its own planner instances, so the executed episode is the same with and without probing."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_probe import executor_gate
+    from env.t2_stage import T2StageEnv
+    op = 1000006
+    a = T2StageEnv(openings=[op], obs_profile='reduced_priv_probe'); b = T2StageEnv(openings=[op], obs_profile='reduced_priv')
+    a.reset(options={'opening': op}); b.reset(options={'opening': op})
+    for k in range(4):
+        for env in (a, b):
+            _, _, term, trunc, info = env.step(np.array([1.0, 0.3 * (k % 2)]))
+        ea, eb = a.env, b.env
+        assert ea.time_s == eb.time_s and ea._delta_v == eb._delta_v and np.array_equal(ea.chaser_state.position, eb.chaser_state.position)
+        q, v = relative_inertial(ea); m = ea.metrics()
+        g = executor_gate(q, v, ea.target_state.rotation, ea.config.task, a.generator.bridge.descent_radius_m)
+        assert abs(g['range_m'] - m.range_m) < 1e-6 and g['descending'] == a.generator.descending(a.info_env, m)   # rounding of two frames
+        assert (g['radial_margin_m_s'] == m.radial_envelope_margin_m_s) or abs(g['radial_margin_m_s'] - m.radial_envelope_margin_m_s) < 1e-6
+        if term or trunc:
+            break
+
+
+def test_u2_stage_registry():
+    """Stage u2: PROBE / EACH_PROBE trained with the pretest's seeds; the pretest's EACH / SAC re-evaluated; its evaluation
+    block is new and reserved from the other stages."""
+    import experiments.final as fin
+    reg = fin.registry(); p = reg['protocol']['stages']; u = p['u2']
+    assert u['trained'] == ['PROBE', 'EACH_PROBE'] and u['seeds'] == p['pretest']['seeds'] and u['steps'] == p['pretest']['steps']
+    assert set(u['reused']) == {'EACH', 'SAC'} and all(v == 'pretest' for v in u['reused'].values())
+    ops = set(fin.block(u['eval_openings']))
+    assert len(ops) == 48 and not ops & fin._forbidden_eval('u2') and ops <= fin._forbidden_eval('pretest') and ops <= fin._forbidden_eval('formal')
+    assert not ops & set(fin.block(reg['protocol']['figure_openings']))
+    for c in ('PROBE', 'EACH_PROBE'):
+        assert reg['trained'][c]['arm'] == 'e_priv' and reg['trained'][c]['actor_view'] == 24

@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.13.0"
+T2_VERSION = "t2-stage-0.14.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -99,10 +99,20 @@ OBS_DIM = 24
 #: the executor has actually achieved, not only what it plans; for the critic during training, never for the actor.
 #: 'reduced_dup' (final experiments, capacity control of U1): the 'reduced' vector twice -- the same 48-value critic
 #: input width as 'reduced_priv', with the second half repeating the actor's view instead of the executor's judgements.
-OBS_PROFILES = ("engineered", "reduced", "geometric", "raw", "reduced_priv", "reduced_priv_cert", "reduced_dup")
+#: 'reduced_probe' (env 0.14.0, U2 executor mode probing, ``env/t2_probe.py``): the 'reduced' vector followed by the
+#: executor's mode responses to nine fixed probe intents (PROBE_DIM values) -- U2 in place of U1. 'reduced_priv_probe':
+#: 'reduced_priv' followed by the same responses -- U1 and U2. The actor reads the first OBS_DIM values; the responses
+#: are computed at real decision states only (zeros at modelled states and when ``probe_live`` is off, i.e. evaluation).
+OBS_PROFILES = ("engineered", "reduced", "geometric", "raw", "reduced_priv", "reduced_priv_cert", "reduced_dup",
+                "reduced_probe", "reduced_priv_probe")
 OBS_DIM_PRIV = 2 * 24
 CERT_DIM = 3 * 9 + 1
 OBS_DIM_CERT = OBS_DIM_PRIV + CERT_DIM
+PROBE_PROFILES = ("reduced_probe", "reduced_priv_probe")
+OBS_DIM_PROBE = 24 + 27                 # = OBS_DIM + t2_probe.PROBE_DIM (asserted in the environment)
+OBS_DIM_PRIV_PROBE = 2 * 24 + 27
+OBS_DIMS = {"reduced_priv": OBS_DIM_PRIV, "reduced_priv_cert": OBS_DIM_CERT, "reduced_dup": OBS_DIM_PRIV,
+            "reduced_probe": OBS_DIM_PROBE, "reduced_priv_probe": OBS_DIM_PRIV_PROBE}
 CERT_VALUE_SCALE = 200.0
 PLANNER_FEATURES = (8, 17, 19)
 #: indices in ``observe``: time to the port's pass, last stage's position / velocity residual and hold, entry-window
@@ -580,9 +590,17 @@ class T2StageEnv(gym.Env):
         self.openings, self.seed_base, self.candidates, self.shaping = openings, int(seed_base), int(candidates), bool(shaping)
         self.rng = np.random.default_rng(seed)
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
-        self.obs_dim = {"reduced_priv": OBS_DIM_PRIV, "reduced_priv_cert": OBS_DIM_CERT, "reduced_dup": OBS_DIM_PRIV}.get(self.obs_profile, OBS_DIM)
+        self.obs_dim = OBS_DIMS.get(self.obs_profile, OBS_DIM)
         #: env 0.13.0: compute the certificate map (False: zeros -- evaluation, where only the actor acts)
         self.cert_live = True
+        #: env 0.14.0 (U2): compute the executor mode probes at decision states (False: zeros -- evaluation)
+        self.probe_live = True
+        self.prober = None
+        self.last_probe = None
+        self.probe_wall_s = 0.0
+        if self.obs_profile in PROBE_PROFILES:
+            from env.t2_probe import PROBE_DIM
+            assert self.obs_dim == (OBS_DIM_PRIV if self.obs_profile == "reduced_priv_probe" else OBS_DIM) + PROBE_DIM
         self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
         self.episode = 0
         self.calibration = Calibration()
@@ -620,6 +638,16 @@ class T2StageEnv(gym.Env):
         o = self._observe(self.env, q, v, self.env.time_s, self.env._delta_v, self.mission, t.rotation, t.omega, self.last)
         if self.obs_profile == "reduced_priv_cert":       # env 0.13.0: the actual decision state carries its certificate map
             o[OBS_DIM_PRIV:] = self.certificate_map()
+        elif self.obs_profile in PROBE_PROFILES and self.probe_live:   # env 0.14.0 (U2): the real decision state's probes
+            from time import perf_counter
+            from env.t2_probe import PROBE_DIM, ExecutorProbe
+            if self.prober is None:
+                self.prober = ExecutorProbe(self)
+            started = perf_counter()
+            o[-PROBE_DIM:], self.last_probe = self.prober.probe(self)
+            self.probe_wall_s = perf_counter() - started
+            self.stats["probe_wall_s"] = self.stats.get("probe_wall_s", 0.0) + self.probe_wall_s
+            self.stats["probes"] = self.stats.get("probes", 0) + 1
         return o
 
     def _observe(self, *args) -> np.ndarray:
@@ -630,6 +658,10 @@ class T2StageEnv(gym.Env):
         if self.obs_profile == "reduced_dup":
             r = o.copy(); r[list(PLANNER_FEATURES)] = 0.0
             return np.concatenate([r, r]).astype(np.float32)
+        if self.obs_profile in PROBE_PROFILES:               # env 0.14.0: probes are filled in at real decision states
+            r = o.copy(); r[list(PLANNER_FEATURES)] = 0.0
+            head = [r, o] if self.obs_profile == "reduced_priv_probe" else [r]
+            return np.concatenate([*head, np.zeros(self.obs_dim - OBS_DIM * len(head), np.float32)]).astype(np.float32)
         if self.obs_profile in ("reduced_priv", "reduced_priv_cert"):
             r = o.copy(); r[list(PLANNER_FEATURES)] = 0.0
             if self.obs_profile == "reduced_priv_cert":      # a modelled state carries no certificate (map and ready flag 0)
@@ -725,6 +757,7 @@ class T2StageEnv(gym.Env):
         self._bridge = None
         self._entry_open = None
         self._trace = []
+        self.prober = None                     # env 0.14.0: the probe's planner instances are built per episode
         self.return_true = 0.0
         self.stats = {"stages": 0, "holds": 0, "rejected": 0, "bridge_attempts": 0, "macro": None}
         return self.observation(), {"opening": opening, "mission": dict(self.mission)}

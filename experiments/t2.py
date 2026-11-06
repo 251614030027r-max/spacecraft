@@ -161,6 +161,7 @@ def eval_job(job):
     env = T2StageEnv(openings=[opening], shaping=False, window=window, geometry=cfg['geometry'], mission=mission_profile(urgent),
                      obs_profile=obs_profile_of(checkpoint))
     env.cert_live = False          # env 0.13.0: the certificate map is for the critic only; the actor reads OBS_DIM values
+    env.probe_live = False         # env 0.14.0: so are the U2 executor probes
     res = run_episode(env, opening, lambda e, o: model.predict(o, deterministic=True)[0])
     res.update(policy=label, checkpoint=str(checkpoint), window=window, geometry=cfg['geometry'], entries_lost=env.stats.get('entries_lost', 0),
                window_recoveries=env.generator.bridge.recovery_log); dump(file, res); return res
@@ -199,7 +200,7 @@ def main():
     p.add_argument('--model-beta', type=float, default=0.5)
     p.add_argument('--urgent-deadline', default=None, help='LO,HI s: urgent missions\' deadline range (default 170,210)')
     p.add_argument('--guide', action='store_true', help='T2.7: the collector flies the executor\'s projected capture plan (training only)')
-    p.add_argument('--obs', choices=['engineered', 'reduced', 'geometric', 'raw', 'reduced_priv', 'reduced_priv_cert', 'reduced_dup'], default='engineered', help='T2.9: decision-layer interface (training; evaluation reads the manifest)')
+    p.add_argument('--obs', choices=['engineered', 'reduced', 'geometric', 'raw', 'reduced_priv', 'reduced_priv_cert', 'reduced_dup', 'reduced_probe', 'reduced_priv_probe'], default='engineered', help='T2.9: decision-layer interface (training; evaluation reads the manifest)')
     a = p.parse_args(); out = Path(a.output)
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')
     window = not a.no_window

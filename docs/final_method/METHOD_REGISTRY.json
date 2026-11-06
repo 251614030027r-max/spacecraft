@@ -139,6 +139,32 @@
     "rigid_pair_trained": [
      "EACH"
     ]
+   },
+   "u2": {
+    "steps": 2000,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [
+     500,
+     1000,
+     1500
+    ],
+    "eval_openings": "294148-294195",
+    "trained": [
+     "PROBE",
+     "EACH_PROBE"
+    ],
+    "reused": {
+     "EACH": "pretest",
+     "SAC": "pretest"
+    },
+    "smoke_only": [],
+    "fixed": [],
+    "window_pairs": [],
+    "rigid_pair_trained": [],
+    "note": "U2 executor mode probing (spec docs/final_method/U2_PROBE_SPEC.md): PROBE and EACH_PROBE trained with the pretest's seeds and protocol; the pretest's EACH and SAC models re-evaluated on the same new openings; main criterion PROBE vs SAC"
    }
   },
   "figure_openings": "294200-294211",
@@ -217,6 +243,28 @@
    "critic_view": 48,
    "role": "C1 ablation: rigid entry commitment",
    "color": "#c94f1a"
+  },
+  "PROBE": {
+   "display": "U2 probe (C1)",
+   "arm": "e_priv",
+   "obs": "reduced_probe",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 51,
+   "role": "U2 in place of U1: the critic reads the actor's view and the executor's mode responses to nine fixed probe intents",
+   "color": "#1b9e77"
+  },
+  "EACH_PROBE": {
+   "display": "EACH + U2",
+   "arm": "e_priv",
+   "obs": "reduced_priv_probe",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 75,
+   "role": "U1 and U2 together",
+   "color": "#0b5d8c"
   }
  },
  "fixed": {

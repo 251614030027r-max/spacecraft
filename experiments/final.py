@@ -146,6 +146,7 @@ def _executor_env(opening: int, src: str, rigid: bool):
         env = T2StageEnv(openings=[opening], shaping=False, window=bool(m.get('window', True)) and not rigid,
                          geometry=bool(m.get('geometry', True)), mission=mission_profile(urgent), obs_profile=m.get('obs_profile', 'engineered'))
         env.cert_live = False
+        env.probe_live = False
         return env, m
     return T2StageEnv(openings=[opening], shaping=False, geometry=not src.startswith('b_'), window=not rigid, mission=mission_profile(urgent)), None
 
@@ -358,6 +359,12 @@ def check(stage: str, root: Path) -> dict:
                 files = [f for f in e.glob('*.json')] if e.exists() else []
                 rep['evaluations'][f'{cfg}_s{s}{tag}'] = {'files': len(files), 'expected': n}
                 rep['errors'] += [str(f) for f in files if f.name.startswith('ERROR_')]
+    for cfg in st.get('reused', {}):            # stage u2: models of an earlier stage re-evaluated on this stage's openings
+        for s in st['seeds']:
+            e = root / 'C' / f'{cfg}_s{s}'
+            files = [f for f in e.glob('*.json')] if e.exists() else []
+            rep['evaluations'][f'{cfg}_s{s}'] = {'files': len(files), 'expected': n}
+            rep['errors'] += [str(f) for f in files if f.name.startswith('ERROR_')]
     for pol in st['fixed']:
         for tag in ('', '_rigid') if pol in st['window_pairs'] else ('',):
             e = root / 'S' / f'{pol}{tag}'

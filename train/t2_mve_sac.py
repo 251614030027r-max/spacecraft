@@ -47,7 +47,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.utils import polyak_update
 from stable_baselines3.sac.policies import SACPolicy
 
-from env.t2_stage import GAMMA_STAGE, OBS_DIM, OBS_DIM_CERT, OBS_DIM_PRIV
+from env.t2_stage import GAMMA_STAGE, OBS_DIM, OBS_DIM_CERT, OBS_DIM_PRIV, OBS_DIMS
 
 K_CANDIDATES = 8          # 3 structured alternatives + 1 global + 4 local (T2StageEnv.candidate_actions)
 MODEL_BETA = 0.5
@@ -78,7 +78,7 @@ AGE_CAP = 2000
 #: 4.1 (EACC iteration): common random numbers in the bootstrap values of one decision's relative labels, and candidates
 #: separated in the executor's stage-goal terms (env 0.11.0, ``cand_min_sep``; arm e_rel only);
 #: 5.0: arms e_term / e_term2 -- executor-evaluable (terminal) counterfactual values only, ``_terminal_loss``)
-LEARNER_VERSION = "t2-learner-7.0"
+LEARNER_VERSION = "t2-learner-7.1"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -925,7 +925,7 @@ FB_ARMS = {'e_pi': 'rel', 'e_pit': 'term', 'e_pull': 'pull', 'e_pull2': 'pull2',
 def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transition: float = UPDATES_PER_TRANSITION,
                model_beta: float = MODEL_BETA) -> T2SAC:
     obs_dim = int(env.observation_space.shape[0])
-    if obs_dim in (OBS_DIM_PRIV, OBS_DIM_CERT):      # T2.11: split views; only EACC-A's critic reads the executor's judgements
+    if obs_dim > OBS_DIM:      # T2.11: split views; only the privileged-critic arms read the executor's information (learner 7.1: U2 probes too)
         policy, kw = SplitViewPolicy, {'net_arch': [256, 256], 'actor_dim': OBS_DIM, 'critic_dim': obs_dim if arm in PRIV_CRITIC_ARMS else OBS_DIM}
     else:
         policy, kw = 'MlpPolicy', {'net_arch': [256, 256]}
@@ -1091,7 +1091,8 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
         if term or trunc:                         # final experiments: the episode's executor statistics (logging only)
             st = env.stats or {}
             info['exec_stats'] = {**{k: st.get(k, 0) for k in ('stages', 'holds', 'rejected', 'bridge_attempts', 'rate_limited', 'entries_lost')},
-                                  'window_recoveries': int(getattr(env.generator.bridge, 'recoveries', 0)) if env.generator is not None else 0}
+                                  'window_recoveries': int(getattr(env.generator.bridge, 'recoveries', 0)) if env.generator is not None else 0,
+                                  **({k: st[k] for k in ('probes', 'probe_wall_s') if k in st})}      # learner 7.1: U2 probe cost (probe arms only)
         transition = (obs, next_obs, np.asarray(action, np.float32), float(reward), bool(term), bool(trunc), _slim(info))
         obs = env.reset()[0] if (term or trunc) else next_obs
     conn.close()
@@ -1107,7 +1108,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     from env.t2_stage import CANDIDATE_MIN_SEP_M_S, ENTRY_STAGES, T2_VERSION
     entry_stages = ENTRY_STAGES if entry_stages is None else int(entry_stages)
     if arm in ('e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3', 'e_pullq') and obs_profile != 'reduced_priv' \
-            and not (arm == 'e_priv' and obs_profile == 'reduced_dup'):          # final experiments: U1 capacity control
+            and not (arm == 'e_priv' and obs_profile in ('reduced_dup', 'reduced_probe', 'reduced_priv_probe')):   # final experiments: U1 capacity control, U2 probes
         raise ValueError(f'arm {arm} needs --obs reduced_priv')
     if arm in CERT_ARMS and obs_profile != 'reduced_priv_cert':
         raise ValueError(f'arm {arm} needs --obs reduced_priv_cert')
@@ -1120,7 +1121,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     out.mkdir(parents=True, exist_ok=False); (out / 'checkpoints').mkdir()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     th.set_num_threads(1)
-    model = make_model(SpacesEnv({'reduced_priv': OBS_DIM_PRIV, 'reduced_priv_cert': OBS_DIM_CERT, 'reduced_dup': OBS_DIM_PRIV}.get(obs_profile, OBS_DIM)), arm, seed, smoke,
+    model = make_model(SpacesEnv(OBS_DIMS.get(obs_profile, OBS_DIM)), arm, seed, smoke,
                        updates_per_transition=updates_per_transition, model_beta=model_beta)
     model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
     candidates = K_CANDIDATES if (arm in LABEL_ARMS or arm in FB_ARMS) else 0      # the SAC arm (and e_priv) computes no model
