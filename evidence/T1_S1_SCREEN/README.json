@@ -1,0 +1,29 @@
+{
+ "what": "T1-S1 scene screen: initial range 12-20 m, inertial speed <= 0.18 m/s (only the initial distribution differs from T1); fixed policies, no SAC, frozen MPC/G*/reward/truth",
+ "code": "science 9857122 (s1_screen.py) / analysis s1_analyze.py at the commit of this evidence",
+ "openings": {
+  "screen": [
+   296000,
+   296001,
+   296002,
+   296003
+  ],
+  "confirmation": [
+   296004,
+   296005,
+   296006,
+   296007
+  ]
+ },
+ "policies": {
+  "E": "earliest, kappa 0.7",
+  "T70": "first request 70 s, kappa 0.7",
+  "T90": "first request 90 s, kappa 0.7",
+  "K04": "70 s (baseline frozen on screen), kappa 0.4",
+  "K10": "70 s, kappa 1.0"
+ },
+ "episodes": 40,
+ "cpu_hours": 1.932,
+ "deadline_240": "offline exact re-scoring of the same runs (fixed policies and G* do not see the deadline; trajectories identical up to 240 s); no new simulation",
+ "result": "executable (7/8 for every policy; 296006 times out under all five with 14-17 deviation-triggered re-plans); kappa 1.0 beats 0.7 on 7/7 successful openings and kappa 0.4 is worse everywhere (uniform effect); tau effects within about 1 point except 296002 (90 s +1.76) and 296000 (90 s -15); the opening-state rule frozen on the screen openings loses to the frozen best uniform option on the confirmation openings (-1.06 at 300 s, -0.68 at 240 s); verdict script: decision_value at its minimum (2 decisive openings) but no observable state-dependent gain"
+}

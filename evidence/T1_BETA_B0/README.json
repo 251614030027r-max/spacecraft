@@ -1,0 +1,22 @@
+{
+ "stage": "T1_BETA_B012 B0 (upper sandbox), authorised by the user 2026-10-14",
+ "code": "science bd29796d1e9be793a1387be17f75a22d29a8f58d (env/controllers/train identical to 78eb63c)",
+ "openings": [
+  295003,
+  295004
+ ],
+ "betas": [
+  0,
+  1
+ ],
+ "commands": [
+  "python -B -m experiments.t1_dev_eval --policy rule:earliest --openings <295003,295004> --output-dir rule --workers 2",
+  "python -B -m diagnostics.t1_beta.beta_probe --beta 0 --openings 295003,295004 --output-dir probe --workers 2",
+  "python -B -m diagnostics.t1_beta.beta_probe --beta 1 --openings 295003,295004 --output-dir probe --workers 2"
+ ],
+ "hard_check_1_beta0_bitwise_equals_frozen_rule": "PASS (event, discounted return, time, delta-v and all truth margins on both openings)",
+ "hard_check_2_beta1_solves_and_runs": "PASS (both success; no numerical failure, no final planning failure, no solver exception)",
+ "cpu_seconds_user_plus_sys": 859.3,
+ "cpu_hours": 0.239,
+ "budget_cpu_hours": 0.3
+}

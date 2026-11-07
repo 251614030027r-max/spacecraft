@@ -1,0 +1,13 @@
+{
+  "original_runbook_script_SHA256": "83700abfbb8b0df09afbca5d8e16bedf0f140c4ee55dabacce81dce0142770d1",
+  "actual_script_SHA256": "9e98b7177c39e71410cde25cdbfb1c385309a85bafbcb74e7797e99b25e87488",
+  "changes": [
+    "All original native commands and scientific arguments retained.",
+    "ErrorActionPreference Stop for administrative PowerShell errors.",
+    "Read exact replay label counter at native step_1000 save from external CHECKPOINT_1000.json, rather than later heartbeat. This implements the registered at-1000 condition without a later count.",
+    "Independent OS controller enforces registered12h hard limit; original script only declares it.",
+    "Normalize spurious empty lines directly after PowerShell continuation backticks introduced by CRCRLF checkout; all scientific tokens and arguments unchanged. Parser gate before OS launch."
+  ],
+  "source_files_changed": false,
+  "BOM_UTF8": true
+}

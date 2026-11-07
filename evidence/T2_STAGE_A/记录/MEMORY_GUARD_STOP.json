@@ -1,0 +1,113 @@
+{
+  "completed_json": 16,
+  "reason": "System commit headroom below5GiB reserve; preserve live training",
+  "state": {
+    "topic": "T2_STAGE_AB",
+    "scientific_SHA": "31074206045cf62dba3d560e4442db4b00eea05a",
+    "order_collab": "a3135ef",
+    "pid": 252,
+    "phase": "B_training_with_registered_eval_overlap",
+    "seed": 0,
+    "formal_multiseed_authorized": false,
+    "started_jst": "2026-10-22T01:54:49.564448+09:00",
+    "restarts": {},
+    "children": {
+      "pytest": {
+        "pid": 15060,
+        "returncode": 0
+      },
+      "A_screen": {
+        "pid": 23720,
+        "returncode": 0
+      },
+      "A_readout": {
+        "pid": 12724,
+        "returncode": 0
+      },
+      "train_e_sac": {
+        "pid": 17652,
+        "returncode": null
+      },
+      "train_e_mve": {
+        "pid": 7076,
+        "returncode": null
+      }
+    },
+    "updated_jst": "2026-10-22T11:07:06.595571+09:00",
+    "memory": {
+      "free_commit_GiB": 1.743011474609375,
+      "free_physical_GiB": 2.2995147705078125
+    },
+    "A_start_jst": "2026-10-22T01:55:20.258045+09:00",
+    "A_counts": {
+      "completed_json": 216,
+      "errors": 0
+    },
+    "A_end_jst": "2026-10-22T03:36:24.436865+09:00",
+    "A_gates": {
+      "A1_mechanics": true,
+      "A2_state_dependence": true,
+      "A3_spread": true
+    },
+    "A_passed": true,
+    "B_start_jst": "2026-10-22T03:36:54.470793+09:00",
+    "training_progress": {
+      "e_sac": {
+        "steps": 1000,
+        "wall_s": 12381.977858543396,
+        "episodes": 170,
+        "replay": {
+          "transitions": 995,
+          "with_candidates": 358,
+          "candidates": 1072
+        }
+      },
+      "e_mve": {
+        "steps": 1000,
+        "wall_s": 12569.22802233696,
+        "episodes": 176,
+        "replay": {
+          "transitions": 995,
+          "with_candidates": 386,
+          "candidates": 1156
+        }
+      }
+    },
+    "administrative_controller": "run_accel.py",
+    "prior_manager": 26484,
+    "scientific_pids": {
+      "e_sac": 3320,
+      "e_mve": 25024
+    },
+    "scheduling_change": "Early deterministic evaluation of the same saved checkpoints; no training restarts/changes",
+    "B_eval_start_jst": "2026-10-22T09:58:13.652559+09:00",
+    "early_eval_completed": 16,
+    "early_eval_active": [
+      [
+        "e_sac",
+        0,
+        294016
+      ]
+    ]
+  },
+  "controlled_cancel_readonly_attempt": [
+    [
+      "e_sac",
+      0,
+      294016
+    ]
+  ],
+  "jst": "2026-10-22T11:07:09.9467857+09:00",
+  "science_before": [
+    {
+      "Id": 3320,
+      "StartTime": "2026-10-22T03:36:54.5150635+09:00",
+      "CPU": 33.046875
+    },
+    {
+      "Id": 25024,
+      "StartTime": "2026-10-22T03:36:54.5328628+09:00",
+      "CPU": 49.96875
+    }
+  ]
+}

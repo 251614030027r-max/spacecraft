@@ -1,0 +1,410 @@
+{
+ "method": "EACH",
+ "method_long": "Execution-aware hierarchical control (U1 + C1)",
+ "note": "Display layer only. Internal arm names, physics, rewards, control parameters and random streams are unchanged. Every final-experiment command goes through experiments/final.py, which reads this file; figures take legends and colours from it.",
+ "baseline_code": "2e7d838b680f88dbf16b4820e4862a7f9899ac99",
+ "protocol": {
+  "urgent_deadline_s": [
+   140.0,
+   200.0
+  ],
+  "workers": 2,
+  "updates_per_transition": 2.0,
+  "smoothing_window_episodes": 50,
+  "curve_grid_from": 250,
+  "stages": {
+   "dryrun": {
+    "steps": 40,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [
+     20
+    ],
+    "eval_openings": "294300-294301",
+    "smoke": true,
+    "trained": [
+     "EACH",
+     "SAC",
+     "SAC_ENG",
+     "DUP",
+     "NO_GEOM",
+     "RIGID"
+    ],
+    "smoke_only": [],
+    "fixed": [
+     "pure",
+     "rally",
+     "c_10_0"
+    ],
+    "window_pairs": [
+     "rally"
+    ],
+    "rigid_pair_trained": [
+     "EACH"
+    ],
+    "note": "pipeline check only (smoke learner settings, 40 decisions); never a result"
+   },
+   "pretest": {
+    "steps": 2000,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [
+     500,
+     1000,
+     1500
+    ],
+    "eval_openings": "294100-294147",
+    "trained": [
+     "EACH",
+     "SAC",
+     "SAC_ENG",
+     "DUP",
+     "NO_GEOM"
+    ],
+    "smoke_only": [
+     "RIGID"
+    ],
+    "fixed": [
+     "pure",
+     "gstar",
+     "rally",
+     "b_10",
+     "c_10_0"
+    ],
+    "window_pairs": [
+     "gstar",
+     "rally",
+     "c_10_0"
+    ],
+    "rigid_pair_trained": [
+     "EACH"
+    ],
+    "batches": [
+     [
+      "EACH",
+      "SAC",
+      "SAC_ENG"
+     ],
+     [
+      "DUP",
+      "NO_GEOM"
+     ]
+    ],
+    "note": "key ablations: U1 (SAC, DUP same-width control), C1 geometry (NO_GEOM); the window commitment is verified by paired evaluation (EACH models and fixed policies, rigid vs window) without training; RIGID training and the remaining fixed policies in the formal stage"
+   },
+   "formal": {
+    "steps": 5000,
+    "seeds": [
+     20,
+     21,
+     22
+    ],
+    "checkpoints": [
+     1000,
+     2000,
+     3000,
+     4000
+    ],
+    "eval_openings": "300000-300095",
+    "trained": [
+     "EACH",
+     "SAC",
+     "SAC_ENG",
+     "DUP",
+     "NO_GEOM",
+     "RIGID"
+    ],
+    "smoke_only": [],
+    "fixed": [
+     "pure",
+     "gstar",
+     "rally",
+     "b_10",
+     "c_10_0",
+     "c_10_-5",
+     "c_6_5"
+    ],
+    "window_pairs": [
+     "gstar",
+     "rally",
+     "b_10",
+     "c_10_0",
+     "c_10_-5",
+     "c_6_5"
+    ],
+    "rigid_pair_trained": [
+     "EACH"
+    ]
+   },
+   "u2": {
+    "steps": 2000,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [
+     500,
+     1000,
+     1500
+    ],
+    "eval_openings": "294148-294195",
+    "trained": [
+     "PROBE",
+     "EACH_PROBE"
+    ],
+    "reused": {
+     "EACH": "pretest",
+     "SAC": "pretest"
+    },
+    "smoke_only": [],
+    "fixed": [],
+    "window_pairs": [],
+    "rigid_pair_trained": [],
+    "note": "U2 executor mode probing (spec docs/final_method/U2_PROBE_SPEC.md): PROBE and EACH_PROBE trained with the pretest's seeds and protocol; the pretest's EACH and SAC models re-evaluated on the same new openings; main criterion PROBE vs SAC"
+   },
+   "u2c": {
+    "steps": 2000,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [],
+    "eval_openings": "294220-294267",
+    "trained": [],
+    "reused": {
+     "EACH": "pretest",
+     "SAC": "pretest"
+    },
+    "certified": [
+     "EACH",
+     "SAC"
+    ],
+    "smoke_only": [],
+    "fixed": [],
+    "window_pairs": [],
+    "rigid_pair_trained": [],
+    "note": "U2 decision-time certification (spec docs/final_method/U2_CERT_SPEC.md): the pretest's EACH and SAC models evaluated with and without the executor's certification on new openings; no training. Main: EACH + certification vs SAC; U2 contribution: EACH + certification vs EACH (same model, paired)"
+   },
+   "ecc": {
+    "steps": 2000,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [
+     500,
+     1000,
+     1500
+    ],
+    "eval_openings": "294320-294367",
+    "trained": [
+     "SAC_C",
+     "EACH_C",
+     "ECC"
+    ],
+    "certified": [
+     "EACH_C"
+    ],
+    "uncertified": [
+     "ECC"
+    ],
+    "smoke_only": [],
+    "fixed": [],
+    "window_pairs": [],
+    "rigid_pair_trained": [],
+    "batches": [
+     [
+      "SAC_C",
+      "EACH_C",
+      "ECC"
+     ]
+    ],
+    "note": "ECC development round (spec docs/final_method/ECC_SPEC.md): all configurations on the ECC interface, trained from zero; ECC also evaluated with certification off (paired), EACH_C also with deployment certification (pre-registered fallback). Decision order in experiments/ecc_readout.py"
+   }
+  },
+  "figure_openings": "294200-294211",
+  "used_before": {
+   "dev_eval": "294000-294047",
+   "dev_train_seeds": [
+    0,
+    1
+   ],
+   "probes": "2900000-2999999"
+  }
+ },
+ "trained": {
+  "EACH": {
+   "display": "EACH (U1+C1)",
+   "arm": "e_priv",
+   "obs": "reduced_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "main method",
+   "color": "#2a78d6"
+  },
+  "SAC": {
+   "display": "SAC",
+   "arm": "e_sac",
+   "obs": "reduced_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 24,
+   "role": "w/o U1 (same actor interface)",
+   "color": "#eb6834"
+  },
+  "SAC_ENG": {
+   "display": "SAC + planner features",
+   "arm": "e_sac",
+   "obs": "engineered",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 24,
+   "role": "information-boundary reference (the policy reads the planner's answers at deployment)",
+   "color": "#9a9993"
+  },
+  "DUP": {
+   "display": "w/o U1 (same width)",
+   "arm": "e_priv",
+   "obs": "reduced_dup",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "U1 capacity control: 48-value critic, second half repeats the actor's view",
+   "color": "#7b3fb5"
+  },
+  "NO_GEOM": {
+   "display": "w/o C1 geometry",
+   "arm": "e_priv",
+   "obs": "reduced_priv",
+   "window": true,
+   "geometry": false,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "C1 ablation: rotation-unaware stage targets",
+   "color": "#1baf7a"
+  },
+  "RIGID": {
+   "display": "w/o window",
+   "arm": "e_priv",
+   "obs": "reduced_priv",
+   "window": false,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "C1 ablation: rigid entry commitment",
+   "color": "#c94f1a"
+  },
+  "PROBE": {
+   "display": "U2 probe (C1)",
+   "arm": "e_priv",
+   "obs": "reduced_probe",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 51,
+   "role": "U2 in place of U1: the critic reads the actor's view and the executor's mode responses to nine fixed probe intents",
+   "color": "#1b9e77"
+  },
+  "EACH_PROBE": {
+   "display": "EACH + U2",
+   "arm": "e_priv",
+   "obs": "reduced_priv_probe",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 75,
+   "role": "U1 and U2 together",
+   "color": "#0b5d8c"
+  },
+  "SAC_C": {
+   "display": "SAC",
+   "arm": "e_sac",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 24,
+   "role": "no feedback (ECC interface: the decision layer sees no executor-internal state)",
+   "color": "#eb6834"
+  },
+  "EACH_C": {
+   "display": "ECC w/o action-level certificate",
+   "arm": "e_priv",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "pass-level opportunity in the critic only; no certification (ECC interface)",
+   "color": "#7fb3e6"
+  },
+  "ECC": {
+   "display": "ECC",
+   "arm": "e_priv",
+   "obs": "cut_ecc",
+   "window": true,
+   "geometry": true,
+   "certify": true,
+   "actor_view": 24,
+   "critic_view": 58,
+   "role": "main method: execution-opportunity certificate in the critic and certification map in training and deployment",
+   "color": "#2a78d6"
+  }
+ },
+ "fixed": {
+  "pure": {
+   "display": "Pure MPC",
+   "window_pairable": false,
+   "role": "system baseline (frozen MPC alone)"
+  },
+  "gstar": {
+   "display": "Direct G*",
+   "window_pairable": true,
+   "role": "reference outside the action space"
+  },
+  "rally": {
+   "display": "Deadline rule",
+   "window_pairable": true,
+   "role": "heuristic inside the action space"
+  },
+  "b_10": {
+   "display": "Basic layering (a_p=1)",
+   "window_pairable": true,
+   "role": "rotation-unaware fixed intent (T2.3 registered)"
+  },
+  "c_10_0": {
+   "display": "Fixed intent (1, 0)",
+   "window_pairable": true,
+   "role": "rotation-aware fixed intent (T2.3 A2 registered)"
+  },
+  "c_10_-5": {
+   "display": "Fixed intent (1, -0.5)",
+   "window_pairable": true,
+   "role": "rotation-aware fixed intent (T2.3 A2 registered)"
+  },
+  "c_6_5": {
+   "display": "Fixed intent (0.6, 0.5)",
+   "window_pairable": true,
+   "role": "rotation-aware fixed intent (T2.3 A2 registered)"
+  }
+ },
+ "main_switches": {
+  "k_candidates": 0,
+  "model_beta": 0.0,
+  "pref": false,
+  "acc": false,
+  "guide": false,
+  "relative": false,
+  "feedback": null,
+  "terminal_horizon": 0
+ }
+}

@@ -1,0 +1,26 @@
+{
+  "jst": "2026-11-04T01:51:24.366818+09:00",
+  "authority": "User explicitly approved collab f1cf3ba7 STOP2000 and T214; no further confirmation requested.",
+  "T212_science": "2e7d838b680f88dbf16b4820e4862a7f9899ac99",
+  "stop2000_threshold": {
+    "metric": "1500-2000 completed episode true-return equal-seed arm mean",
+    "continue_if": "e_rel >= e_priv - 8.3"
+  },
+  "stop2000_task": "Spacecraft-T212-Stop2000-20261104",
+  "next": {
+    "topic": "T2_14_TERM_20261104",
+    "science_SHA": "03bf0d3975b59cefc316d36350c860515c3d7b22",
+    "task": "Spacecraft-T214-20261104",
+    "prerequisites": [
+      "T212 full factual delivery pushed and verified",
+      "four T2122000 evaluations48 cases each",
+      "no previous scientific processes",
+      "pytest80 rc0 and per-SHA two-arm TB/rolling-log gate"
+    ]
+  },
+  "hourly_automation": {
+    "id": "t2-12-t2-14",
+    "status": "ACTIVE"
+  },
+  "no_science_checkout_changed": true
+}

@@ -1,0 +1,88 @@
+{
+ "opening": 294014,
+ "event": "success",
+ "return": 68.55086999740055,
+ "time_s": 157.1,
+ "delta_v": 1.5739130002599413,
+ "stages": 3,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 1,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 168.6,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 198.29818105697632,
+ "decisions": [
+  {
+   "a": [
+    0.9735116958618164,
+    0.9593493938446045
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.436031301159947,
+   "planned_dv": 0.16880660414703788,
+   "executed_dv": 0.1686072478567268,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.9962233304977417,
+    0.9949522018432617
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 10.29976863706477,
+   "planned_dv": 0.1031707914859559,
+   "executed_dv": 0.10295193181752707,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.9831686019897461,
+    0.9756109714508057
+   ],
+   "t": 157.1,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.0079706815950096,
+   "planned_dv": 0.0862142390774661,
+   "executed_dv": 1.3023538205856875,
+   "model": "off",
+   "event": "success"
+  }
+ ],
+ "policy": "e_sac_s1_step_3000",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\T2_6W_WIDE_140_200\\B\\TRAIN_e_sac_s1\\checkpoints\\step_3000.zip",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 64.0,
+   "slip_s": 2.0,
+   "reserve": false,
+   "phase_deg": 4.761989593012035
+  },
+  {
+   "t": 78.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.519443562635699
+  },
+  {
+   "t": 98.0,
+   "slip_s": 8.0,
+   "reserve": true,
+   "phase_deg": 19.034504570817948
+  }
+ ]
+}

@@ -1,0 +1,23 @@
+{
+ "command": "python -B -m pytest -q",
+ "code": "1af9690 (the only later code change, experiments/t1_pretrain_checks.py reload, is not imported by any test; checked by running reload on the three smoke runs)",
+ "result": "467 passed, 3 xfailed in 1357.76s (0:22:37)",
+ "xfailed": [
+  "tests/test_coupling_diagnostics.py::test_every_commit_residual_interval_changes_the_reference",
+  "tests/test_coupling_diagnostics.py::test_gate_fallback_does_not_advance_commit_latch",
+  "tests/test_coupling_diagnostics.py::test_latched_action_space_is_inert"
+ ],
+ "xfailed_note": "pre-existing expected failures of the archived coupling diagnostics; unchanged since 166244b",
+ "new_tests": "tests/test_t1_l_s.py: 16 passed (included above)",
+ "environment": {
+  "python": "3.13.16",
+  "numpy": "2.3.4",
+  "scipy": "1.16.3",
+  "torch": "2.9.1+cu128",
+  "stable_baselines3": "2.7.1",
+  "cvxpy": "1.9.1",
+  "gymnasium": "1.2.2",
+  "platform": "Linux-6.18.44-fc-v139-x86_64-with-glibc2.39"
+ },
+ "machine": "upper sandbox (Linux); the lower repeats the listed tests on its own machine (run order section 2)"
+}

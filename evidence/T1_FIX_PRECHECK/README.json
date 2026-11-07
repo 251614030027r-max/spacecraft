@@ -1,0 +1,10 @@
+{
+ "experiment": "T1_FIX_PRECHECK: implementation diff and pre-training checks of the 2026-10-15 learnability fixes (G* v0.5 deadline, gym interface v3, MC/eq critic terms shared by M0 and M2)",
+ "code": "bbe7ad1 (env), d8b185f (training, tooling, tests)",
+ "files": {
+  "IMPLEMENTATION_DIFF_AND_CHECKS.md": "what changed, why, and the acceptance checks",
+  "precheck.json": "rule v0.5 vs v0.4 bitwise (295003/295004), M0/M2 300-decision smoke statistics, shadow prediction errors, reload",
+  "smoke_readout.json": "experiments.t1_fix_readout on the smoke runs (pipeline check only; 300 decisions, numbers carry no learning meaning)"
+ },
+ "status": "development checks in the upper sandbox (4 cores, contended); not training evidence"
+}

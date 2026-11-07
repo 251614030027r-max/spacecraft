@@ -1,0 +1,798 @@
+{
+  "M": {
+    "e_sac_s0": {
+      "arm": "e_sac",
+      "seed": 0,
+      "pass": true,
+      "checks": {
+        "no_learning_with_plan": true,
+        "post500_non_earliest_ge30pct": true
+      },
+      "learning_count": 46,
+      "post500_count": 35,
+      "post500_non_earliest": 19,
+      "post500_non_earliest_fraction": 0.5428571428571428,
+      "violations": [],
+      "valid_cf_slot_counts": {
+        "0": 0,
+        "1": 0
+      },
+      "last_complete_logged_step": 2024,
+      "gate_scope": "Seed0 only, cumulative complete log prefix when own2000 checkpoint is first observed; entropy and episode-count are diagnostic, not V4 stop criteria."
+    },
+    "e_tcpf_s0": {
+      "arm": "e_tcpf",
+      "seed": 0,
+      "pass": true,
+      "checks": {
+        "no_learning_with_plan": true,
+        "post500_non_earliest_ge30pct": true,
+        "both_cf_slots_valid": true
+      },
+      "learning_count": 45,
+      "post500_count": 34,
+      "post500_non_earliest": 18,
+      "post500_non_earliest_fraction": 0.5294117647058824,
+      "violations": [],
+      "valid_cf_slot_counts": {
+        "0": 37,
+        "1": 23
+      },
+      "last_complete_logged_step": 2000,
+      "gate_scope": "Seed0 only, cumulative complete log prefix when own2000 checkpoint is first observed; entropy and episode-count are diagnostic, not V4 stop criteria."
+    }
+  },
+  "scope": "Six runs authorized from start; only seed0 M gate; no V3 L gate",
+  "rankings": {
+    "e_sac_s0_2000": {
+      "ranked_states": 15,
+      "Q_truth_best_agreement_count": 5,
+      "Q_truth_best_agreement_fraction": 0.3333333333333333,
+      "three_candidate_choice_distribution_by_mission": {
+        "economy": {
+          "0": 6
+        },
+        "urgent": {
+          "0": 9
+        }
+      },
+      "first16_choices": {
+        "292140": 0,
+        "292141": 0,
+        "292142": 0,
+        "292143": 0,
+        "292144": 0,
+        "292145": 0,
+        "292146": 0,
+        "292147": 0,
+        "292120": 0,
+        "292121": 0,
+        "292122": 0,
+        "292123": 0,
+        "292124": 0,
+        "292125": 0,
+        "292126": 0,
+        "292127": 0
+      },
+      "truth_caution": "Frozen candidate truth uses fixed V1 teacher continuation. V3 commits, but later decisions after plan loss can still differ; not an exact policy-Q claim.",
+      "Q_slopes_15_states": [
+        {
+          "opening": 292140,
+          "Q_per_candidate_step": [
+            -1.188690185546875,
+            -1.1447982788085938
+          ],
+          "mean_Q_per_candidate_step": -1.1667442321777344,
+          "urgent": false
+        },
+        {
+          "opening": 292141,
+          "Q_per_candidate_step": [
+            -1.2833662033081055,
+            -1.310302734375
+          ],
+          "mean_Q_per_candidate_step": -1.2968344688415527,
+          "urgent": true
+        },
+        {
+          "opening": 292142,
+          "Q_per_candidate_step": [
+            -1.156259536743164,
+            -1.1428542137145996
+          ],
+          "mean_Q_per_candidate_step": -1.1495568752288818,
+          "urgent": false
+        },
+        {
+          "opening": 292143,
+          "Q_per_candidate_step": [
+            -1.3968591690063477,
+            -1.3864517211914062
+          ],
+          "mean_Q_per_candidate_step": -1.391655445098877,
+          "urgent": true
+        },
+        {
+          "opening": 292144,
+          "Q_per_candidate_step": [
+            -1.2486724853515625,
+            -1.2455005645751953
+          ],
+          "mean_Q_per_candidate_step": -1.247086524963379,
+          "urgent": true
+        },
+        {
+          "opening": 292145,
+          "Q_per_candidate_step": [
+            -1.157125473022461,
+            -1.1410560607910156
+          ],
+          "mean_Q_per_candidate_step": -1.1490907669067383,
+          "urgent": true
+        },
+        {
+          "opening": 292146,
+          "Q_per_candidate_step": [
+            -1.2130794525146484,
+            -1.2609672546386719
+          ],
+          "mean_Q_per_candidate_step": -1.2370233535766602,
+          "urgent": true
+        },
+        {
+          "opening": 292147,
+          "Q_per_candidate_step": [
+            -1.262070655822754,
+            -1.2720232009887695
+          ],
+          "mean_Q_per_candidate_step": -1.2670469284057617,
+          "urgent": true
+        },
+        {
+          "opening": 292120,
+          "Q_per_candidate_step": [
+            -1.0892828702926636,
+            -1.1398138999938965
+          ],
+          "mean_Q_per_candidate_step": -1.11454838514328,
+          "urgent": false
+        },
+        {
+          "opening": 292121,
+          "Q_per_candidate_step": [
+            -1.3131656646728516,
+            -1.284158706665039
+          ],
+          "mean_Q_per_candidate_step": -1.2986621856689453,
+          "urgent": false
+        },
+        {
+          "opening": 292123,
+          "Q_per_candidate_step": [
+            -1.079877495765686,
+            -1.101822555065155
+          ],
+          "mean_Q_per_candidate_step": -1.0908500254154205,
+          "urgent": true
+        },
+        {
+          "opening": 292124,
+          "Q_per_candidate_step": [
+            -0.5477619171142578,
+            -0.7713780403137207
+          ],
+          "mean_Q_per_candidate_step": -0.6595699787139893,
+          "urgent": false
+        },
+        {
+          "opening": 292125,
+          "Q_per_candidate_step": [
+            -0.5947957038879395,
+            -0.8051033020019531
+          ],
+          "mean_Q_per_candidate_step": -0.6999495029449463,
+          "urgent": false
+        },
+        {
+          "opening": 292126,
+          "Q_per_candidate_step": [
+            -1.2896804809570312,
+            -1.2073326110839844
+          ],
+          "mean_Q_per_candidate_step": -1.2485065460205078,
+          "urgent": true
+        },
+        {
+          "opening": 292127,
+          "Q_per_candidate_step": [
+            -1.2791996002197266,
+            -1.2016944885253906
+          ],
+          "mean_Q_per_candidate_step": -1.2404470443725586,
+          "urgent": true
+        }
+      ],
+      "mean_Q_step": -1.1505048175652821
+    },
+    "e_sac_s0_5000": {
+      "ranked_states": 15,
+      "Q_truth_best_agreement_count": 5,
+      "Q_truth_best_agreement_fraction": 0.3333333333333333,
+      "three_candidate_choice_distribution_by_mission": {
+        "economy": {
+          "0": 6
+        },
+        "urgent": {
+          "0": 9
+        }
+      },
+      "first16_choices": {
+        "292140": 0,
+        "292141": 0,
+        "292142": 0,
+        "292143": 0,
+        "292144": 0,
+        "292145": 0,
+        "292146": 0,
+        "292147": 0,
+        "292120": 0,
+        "292121": 0,
+        "292122": 0,
+        "292123": 0,
+        "292124": 0,
+        "292125": 0,
+        "292126": 0,
+        "292127": 0
+      },
+      "truth_caution": "Frozen candidate truth uses fixed V1 teacher continuation. V3 commits, but later decisions after plan loss can still differ; not an exact policy-Q claim.",
+      "Q_slopes_15_states": [
+        {
+          "opening": 292140,
+          "Q_per_candidate_step": [
+            -11.176848411560059,
+            -11.243052005767822
+          ],
+          "mean_Q_per_candidate_step": -11.20995020866394,
+          "urgent": false
+        },
+        {
+          "opening": 292141,
+          "Q_per_candidate_step": [
+            -10.476871490478516,
+            -10.235340118408203
+          ],
+          "mean_Q_per_candidate_step": -10.35610580444336,
+          "urgent": true
+        },
+        {
+          "opening": 292142,
+          "Q_per_candidate_step": [
+            -3.8672027587890625,
+            -4.374828338623047
+          ],
+          "mean_Q_per_candidate_step": -4.121015548706055,
+          "urgent": false
+        },
+        {
+          "opening": 292143,
+          "Q_per_candidate_step": [
+            -11.666545867919922,
+            -11.48019790649414
+          ],
+          "mean_Q_per_candidate_step": -11.573371887207031,
+          "urgent": true
+        },
+        {
+          "opening": 292144,
+          "Q_per_candidate_step": [
+            -8.388336181640625,
+            -8.969566345214844
+          ],
+          "mean_Q_per_candidate_step": -8.678951263427734,
+          "urgent": true
+        },
+        {
+          "opening": 292145,
+          "Q_per_candidate_step": [
+            -7.553546905517578,
+            -7.64300537109375
+          ],
+          "mean_Q_per_candidate_step": -7.598276138305664,
+          "urgent": true
+        },
+        {
+          "opening": 292146,
+          "Q_per_candidate_step": [
+            -10.727678298950195,
+            -11.049097061157227
+          ],
+          "mean_Q_per_candidate_step": -10.888387680053711,
+          "urgent": true
+        },
+        {
+          "opening": 292147,
+          "Q_per_candidate_step": [
+            -7.12066650390625,
+            -10.383979797363281
+          ],
+          "mean_Q_per_candidate_step": -8.752323150634766,
+          "urgent": true
+        },
+        {
+          "opening": 292120,
+          "Q_per_candidate_step": [
+            -3.3938140869140625,
+            -4.039894104003906
+          ],
+          "mean_Q_per_candidate_step": -3.7168540954589844,
+          "urgent": false
+        },
+        {
+          "opening": 292121,
+          "Q_per_candidate_step": [
+            -10.137535095214844,
+            -10.089799880981445
+          ],
+          "mean_Q_per_candidate_step": -10.113667488098145,
+          "urgent": false
+        },
+        {
+          "opening": 292123,
+          "Q_per_candidate_step": [
+            -3.1500167846679688,
+            -3.2055130004882812
+          ],
+          "mean_Q_per_candidate_step": -3.177764892578125,
+          "urgent": true
+        },
+        {
+          "opening": 292124,
+          "Q_per_candidate_step": [
+            -2.8646697998046875,
+            -2.8282318115234375
+          ],
+          "mean_Q_per_candidate_step": -2.8464508056640625,
+          "urgent": false
+        },
+        {
+          "opening": 292125,
+          "Q_per_candidate_step": [
+            -2.8508529663085938,
+            -3.0835647583007812
+          ],
+          "mean_Q_per_candidate_step": -2.9672088623046875,
+          "urgent": false
+        },
+        {
+          "opening": 292126,
+          "Q_per_candidate_step": [
+            -10.697178840637207,
+            -11.70145034790039
+          ],
+          "mean_Q_per_candidate_step": -11.199314594268799,
+          "urgent": true
+        },
+        {
+          "opening": 292127,
+          "Q_per_candidate_step": [
+            -10.401418685913086,
+            -10.78831434249878
+          ],
+          "mean_Q_per_candidate_step": -10.594866514205933,
+          "urgent": true
+        }
+      ],
+      "mean_Q_step": -7.852967262268066
+    },
+    "e_tcpf_s0_2000": {
+      "ranked_states": 15,
+      "Q_truth_best_agreement_count": 5,
+      "Q_truth_best_agreement_fraction": 0.3333333333333333,
+      "three_candidate_choice_distribution_by_mission": {
+        "economy": {
+          "0": 6
+        },
+        "urgent": {
+          "0": 9
+        }
+      },
+      "first16_choices": {
+        "292140": 0,
+        "292141": 0,
+        "292142": 0,
+        "292143": 0,
+        "292144": 0,
+        "292145": 0,
+        "292146": 0,
+        "292147": 0,
+        "292120": 0,
+        "292121": 0,
+        "292122": 0,
+        "292123": 0,
+        "292124": 0,
+        "292125": 0,
+        "292126": 0,
+        "292127": 0
+      },
+      "truth_caution": "Frozen candidate truth uses fixed V1 teacher continuation. V3 commits, but later decisions after plan loss can still differ; not an exact policy-Q claim.",
+      "Q_slopes_15_states": [
+        {
+          "opening": 292140,
+          "Q_per_candidate_step": [
+            -0.5462799072265625,
+            -0.4832305908203125
+          ],
+          "mean_Q_per_candidate_step": -0.5147552490234375,
+          "urgent": false
+        },
+        {
+          "opening": 292141,
+          "Q_per_candidate_step": [
+            -0.5723800659179688,
+            -0.5723810195922852
+          ],
+          "mean_Q_per_candidate_step": -0.572380542755127,
+          "urgent": true
+        },
+        {
+          "opening": 292142,
+          "Q_per_candidate_step": [
+            -0.519625186920166,
+            -0.5085258483886719
+          ],
+          "mean_Q_per_candidate_step": -0.514075517654419,
+          "urgent": false
+        },
+        {
+          "opening": 292143,
+          "Q_per_candidate_step": [
+            -0.6773347854614258,
+            -0.6692728996276855
+          ],
+          "mean_Q_per_candidate_step": -0.6733038425445557,
+          "urgent": true
+        },
+        {
+          "opening": 292144,
+          "Q_per_candidate_step": [
+            -0.6050276756286621,
+            -0.5991220474243164
+          ],
+          "mean_Q_per_candidate_step": -0.6020748615264893,
+          "urgent": true
+        },
+        {
+          "opening": 292145,
+          "Q_per_candidate_step": [
+            -0.516204833984375,
+            -0.5356855392456055
+          ],
+          "mean_Q_per_candidate_step": -0.5259451866149902,
+          "urgent": true
+        },
+        {
+          "opening": 292146,
+          "Q_per_candidate_step": [
+            -0.51336669921875,
+            -0.5219593048095703
+          ],
+          "mean_Q_per_candidate_step": -0.5176630020141602,
+          "urgent": true
+        },
+        {
+          "opening": 292147,
+          "Q_per_candidate_step": [
+            -0.5707607269287109,
+            -0.602177619934082
+          ],
+          "mean_Q_per_candidate_step": -0.5864691734313965,
+          "urgent": true
+        },
+        {
+          "opening": 292120,
+          "Q_per_candidate_step": [
+            -0.4658931493759155,
+            -0.4841015338897705
+          ],
+          "mean_Q_per_candidate_step": -0.474997341632843,
+          "urgent": false
+        },
+        {
+          "opening": 292121,
+          "Q_per_candidate_step": [
+            -0.6410598754882812,
+            -0.6197004318237305
+          ],
+          "mean_Q_per_candidate_step": -0.6303801536560059,
+          "urgent": false
+        },
+        {
+          "opening": 292123,
+          "Q_per_candidate_step": [
+            -0.5135781764984131,
+            -0.5292225480079651
+          ],
+          "mean_Q_per_candidate_step": -0.5214003622531891,
+          "urgent": true
+        },
+        {
+          "opening": 292124,
+          "Q_per_candidate_step": [
+            -0.32434844970703125,
+            -0.41167545318603516
+          ],
+          "mean_Q_per_candidate_step": -0.3680119514465332,
+          "urgent": false
+        },
+        {
+          "opening": 292125,
+          "Q_per_candidate_step": [
+            -0.31519484519958496,
+            -0.3853297233581543
+          ],
+          "mean_Q_per_candidate_step": -0.35026228427886963,
+          "urgent": false
+        },
+        {
+          "opening": 292126,
+          "Q_per_candidate_step": [
+            -0.529815673828125,
+            -0.4774017333984375
+          ],
+          "mean_Q_per_candidate_step": -0.5036087036132812,
+          "urgent": true
+        },
+        {
+          "opening": 292127,
+          "Q_per_candidate_step": [
+            -0.3297576904296875,
+            -0.3424053192138672
+          ],
+          "mean_Q_per_candidate_step": -0.33608150482177734,
+          "urgent": true
+        }
+      ],
+      "mean_Q_step": -0.5127606451511383
+    },
+    "e_tcpf_s0_5000": {
+      "ranked_states": 15,
+      "Q_truth_best_agreement_count": 5,
+      "Q_truth_best_agreement_fraction": 0.3333333333333333,
+      "three_candidate_choice_distribution_by_mission": {
+        "economy": {
+          "0": 6
+        },
+        "urgent": {
+          "0": 9
+        }
+      },
+      "first16_choices": {
+        "292140": 0,
+        "292141": 0,
+        "292142": 0,
+        "292143": 0,
+        "292144": 0,
+        "292145": 0,
+        "292146": 0,
+        "292147": 0,
+        "292120": 0,
+        "292121": 0,
+        "292122": 0,
+        "292123": 0,
+        "292124": 0,
+        "292125": 0,
+        "292126": 0,
+        "292127": 0
+      },
+      "truth_caution": "Frozen candidate truth uses fixed V1 teacher continuation. V3 commits, but later decisions after plan loss can still differ; not an exact policy-Q claim.",
+      "Q_slopes_15_states": [
+        {
+          "opening": 292140,
+          "Q_per_candidate_step": [
+            -1.0910773277282715,
+            -1.0050897598266602
+          ],
+          "mean_Q_per_candidate_step": -1.0480835437774658,
+          "urgent": false
+        },
+        {
+          "opening": 292141,
+          "Q_per_candidate_step": [
+            -1.4269866943359375,
+            -1.4833564758300781
+          ],
+          "mean_Q_per_candidate_step": -1.4551715850830078,
+          "urgent": true
+        },
+        {
+          "opening": 292142,
+          "Q_per_candidate_step": [
+            -1.7300262451171875,
+            -1.7950553894042969
+          ],
+          "mean_Q_per_candidate_step": -1.7625408172607422,
+          "urgent": false
+        },
+        {
+          "opening": 292143,
+          "Q_per_candidate_step": [
+            -1.9150676727294922,
+            -1.9266624450683594
+          ],
+          "mean_Q_per_candidate_step": -1.9208650588989258,
+          "urgent": true
+        },
+        {
+          "opening": 292144,
+          "Q_per_candidate_step": [
+            -2.080852508544922,
+            -2.01171875
+          ],
+          "mean_Q_per_candidate_step": -2.046285629272461,
+          "urgent": true
+        },
+        {
+          "opening": 292145,
+          "Q_per_candidate_step": [
+            -1.4790534973144531,
+            -1.3326034545898438
+          ],
+          "mean_Q_per_candidate_step": -1.4058284759521484,
+          "urgent": true
+        },
+        {
+          "opening": 292146,
+          "Q_per_candidate_step": [
+            -1.0311412811279297,
+            -0.7095580101013184
+          ],
+          "mean_Q_per_candidate_step": -0.870349645614624,
+          "urgent": true
+        },
+        {
+          "opening": 292147,
+          "Q_per_candidate_step": [
+            -1.5444717407226562,
+            -1.5514602661132812
+          ],
+          "mean_Q_per_candidate_step": -1.5479660034179688,
+          "urgent": true
+        },
+        {
+          "opening": 292120,
+          "Q_per_candidate_step": [
+            -1.4521675109863281,
+            -1.6804962158203125
+          ],
+          "mean_Q_per_candidate_step": -1.5663318634033203,
+          "urgent": false
+        },
+        {
+          "opening": 292121,
+          "Q_per_candidate_step": [
+            -0.9833498001098633,
+            -1.143509864807129
+          ],
+          "mean_Q_per_candidate_step": -1.063429832458496,
+          "urgent": false
+        },
+        {
+          "opening": 292123,
+          "Q_per_candidate_step": [
+            -2.0181350708007812,
+            -2.0740089416503906
+          ],
+          "mean_Q_per_candidate_step": -2.046072006225586,
+          "urgent": true
+        },
+        {
+          "opening": 292124,
+          "Q_per_candidate_step": [
+            -0.8957443237304688,
+            -1.1369171142578125
+          ],
+          "mean_Q_per_candidate_step": -1.0163307189941406,
+          "urgent": false
+        },
+        {
+          "opening": 292125,
+          "Q_per_candidate_step": [
+            -1.8086776733398438,
+            -1.9157447814941406
+          ],
+          "mean_Q_per_candidate_step": -1.8622112274169922,
+          "urgent": false
+        },
+        {
+          "opening": 292126,
+          "Q_per_candidate_step": [
+            -0.5165863037109375,
+            -0.503021240234375
+          ],
+          "mean_Q_per_candidate_step": -0.5098037719726562,
+          "urgent": true
+        },
+        {
+          "opening": 292127,
+          "Q_per_candidate_step": [
+            -0.8556632995605469,
+            -0.991276741027832
+          ],
+          "mean_Q_per_candidate_step": -0.9234700202941895,
+          "urgent": true
+        }
+      ],
+      "mean_Q_step": -1.4029826800028482
+    }
+  },
+  "paired": {
+    "s0_2000_292140–147": {
+      "completed_pairs": 8,
+      "first_choice_difference_count": 0,
+      "return_differences_TCPF_minus_SAC": {
+        "292140": 0.0,
+        "292141": 0.0,
+        "292142": 0.0,
+        "292143": 0.0,
+        "292144": 0.0,
+        "292145": 0.0,
+        "292146": 0.0,
+        "292147": 0.0
+      },
+      "mean_paired_difference": 0.0,
+      "capture_difference_TCPF_minus_SAC": 0,
+      "truth_agreement_count_difference_15states": 0
+    },
+    "s0_2000_292120–127": {
+      "completed_pairs": 8,
+      "first_choice_difference_count": 0,
+      "return_differences_TCPF_minus_SAC": {
+        "292120": 0.0,
+        "292121": 0.0,
+        "292122": 0.0,
+        "292123": 0.0,
+        "292124": 0.0,
+        "292125": 0.0,
+        "292126": 0.0,
+        "292127": 0.0
+      },
+      "mean_paired_difference": 0.0,
+      "capture_difference_TCPF_minus_SAC": 0,
+      "truth_agreement_count_difference_15states": 0
+    },
+    "s0_5000_292140–147": {
+      "completed_pairs": 8,
+      "first_choice_difference_count": 0,
+      "return_differences_TCPF_minus_SAC": {
+        "292140": 0.0,
+        "292141": 0.0,
+        "292142": 0.0,
+        "292143": 0.0,
+        "292144": 0.0,
+        "292145": 0.0,
+        "292146": 0.0,
+        "292147": 0.0
+      },
+      "mean_paired_difference": 0.0,
+      "capture_difference_TCPF_minus_SAC": 0,
+      "truth_agreement_count_difference_15states": 0
+    },
+    "s0_5000_292120–127": {
+      "completed_pairs": 8,
+      "first_choice_difference_count": 0,
+      "return_differences_TCPF_minus_SAC": {
+        "292120": 0.0,
+        "292121": 0.0,
+        "292122": 0.0,
+        "292123": 0.0,
+        "292124": 0.0,
+        "292125": 0.0,
+        "292126": 0.0,
+        "292127": 0.0
+      },
+      "mean_paired_difference": 0.0,
+      "capture_difference_TCPF_minus_SAC": 0,
+      "truth_agreement_count_difference_15states": 0
+    }
+  }
+}

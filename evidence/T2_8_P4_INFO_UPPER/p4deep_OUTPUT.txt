@@ -1,0 +1,27 @@
+opp2 vs truth (tie / right / wrong) by phase and true gap:
+   ('early', 'big>=50') [147, 108, 9] right share of non-tie 0.92
+   ('early', 'small10-20') [25, 5, 4] right share of non-tie 0.56
+   ('economy', 'mid20-50') [18, 16, 10] right share of non-tie 0.62
+   ('economy', 'small10-20') [153, 140, 30] right share of non-tie 0.82
+   ('window', 'big>=50') [74, 72, 10] right share of non-tie 0.88
+   ('window', 'small10-20') [36, 0, 12] right share of non-tie 0.00
+critic right / wrong by arm, phase, gap (1000-2000):
+   ('mve', 'early', 'big>=50') [1293, 291] acc 0.82
+   ('mve', 'early', 'small10-20') [71, 133] acc 0.35
+   ('mve', 'economy', 'mid20-50') [189, 75] acc 0.72
+   ('mve', 'economy', 'small10-20') [1283, 655] acc 0.66
+   ('mve', 'window', 'big>=50') [717, 219] acc 0.77
+   ('mve', 'window', 'small10-20') [147, 141] acc 0.51
+   ('sac', 'early', 'big>=50') [1248, 336] acc 0.79
+   ('sac', 'early', 'small10-20') [74, 130] acc 0.36
+   ('sac', 'economy', 'mid20-50') [143, 121] acc 0.54
+   ('sac', 'economy', 'small10-20') [1181, 757] acc 0.61
+   ('sac', 'window', 'big>=50') [636, 300] acc 0.68
+   ('sac', 'window', 'small10-20') [103, 185] acc 0.36
+
+opp2 calls with |d| >=  5 selection: precision 173/215 = 0.80; fixed 644 of 1978 critic errors (0.33), broken 211 of 3158 (0.067), net 433
+opp2 calls with |d| >=  5 heldout  : precision 168/201 = 0.84; fixed 339 of 1365 critic errors (0.25), broken 142 of 3927 (0.036), net 197
+opp2 calls with |d| >= 20 selection: precision 68/69 = 0.99; fixed 236 of 1978 critic errors (0.12), broken 1 of 3158 (0.000), net 235
+opp2 calls with |d| >= 20 heldout  : precision 88/111 = 0.79; fixed 136 of 1365 critic errors (0.10), broken 86 of 3927 (0.022), net 50
+opp2 calls with |d| >= 50 selection: precision 59/59 = 1.00; fixed 163 of 1978 critic errors (0.08), broken 0 of 3158 (0.000), net 163
+opp2 calls with |d| >= 50 heldout  : precision 76/94 = 0.81; fixed 108 of 1365 critic errors (0.08), broken 58 of 3927 (0.015), net 50

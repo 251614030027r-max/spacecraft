@@ -1,0 +1,689 @@
+{
+  "jst": "2026-11-03T19:55:48.949411+09:00",
+  "science_SHA": "2e7d838b680f88dbf16b4820e4862a7f9899ac99",
+  "status": "four_independent_training_processes_started",
+  "training_pids": {
+    "e_priv_s1": {
+      "pid": 22904,
+      "created": 1793703281.1292837,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "ancestry": [
+        {
+          "pid": 22904,
+          "name": "python.exe",
+          "created": 1793703281.1292837
+        },
+        {
+          "pid": 8808,
+          "name": "python.exe",
+          "created": 1793703281.0714004
+        },
+        {
+          "pid": 8088,
+          "name": "powershell.exe",
+          "created": 1793703280.5793912
+        },
+        {
+          "pid": 6612,
+          "name": "python.exe",
+          "created": 1793702885.3501968
+        },
+        {
+          "pid": 14924,
+          "name": "python.exe",
+          "created": 1793702885.3305027
+        },
+        {
+          "pid": 27416,
+          "name": "powershell.exe",
+          "created": 1793702884.1895003
+        },
+        {
+          "pid": 2588,
+          "name": "svchost.exe",
+          "created": 1793343206.1652353
+        },
+        {
+          "pid": 1660,
+          "name": "services.exe",
+          "created": 1793343205.759123
+        },
+        {
+          "pid": 1524,
+          "name": "wininit.exe",
+          "created": 1793343205.0264885
+        }
+      ],
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_priv",
+        "--seed",
+        "1",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s1"
+      ]
+    },
+    "e_rel_s1": {
+      "pid": 24512,
+      "created": 1793703281.047388,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "ancestry": [
+        {
+          "pid": 24512,
+          "name": "python.exe",
+          "created": 1793703281.047388
+        },
+        {
+          "pid": 8088,
+          "name": "powershell.exe",
+          "created": 1793703280.5793912
+        },
+        {
+          "pid": 6612,
+          "name": "python.exe",
+          "created": 1793702885.3501968
+        },
+        {
+          "pid": 14924,
+          "name": "python.exe",
+          "created": 1793702885.3305027
+        },
+        {
+          "pid": 27416,
+          "name": "powershell.exe",
+          "created": 1793702884.1895003
+        },
+        {
+          "pid": 2588,
+          "name": "svchost.exe",
+          "created": 1793343206.1652353
+        },
+        {
+          "pid": 1660,
+          "name": "services.exe",
+          "created": 1793343205.759123
+        },
+        {
+          "pid": 1524,
+          "name": "wininit.exe",
+          "created": 1793343205.0264885
+        }
+      ],
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_rel",
+        "--seed",
+        "1",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_rel_s1"
+      ]
+    },
+    "e_rel_s0": {
+      "pid": 27276,
+      "created": 1793703281.0337036,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "ancestry": [
+        {
+          "pid": 27276,
+          "name": "python.exe",
+          "created": 1793703281.0337036
+        },
+        {
+          "pid": 8088,
+          "name": "powershell.exe",
+          "created": 1793703280.5793912
+        },
+        {
+          "pid": 6612,
+          "name": "python.exe",
+          "created": 1793702885.3501968
+        },
+        {
+          "pid": 14924,
+          "name": "python.exe",
+          "created": 1793702885.3305027
+        },
+        {
+          "pid": 27416,
+          "name": "powershell.exe",
+          "created": 1793702884.1895003
+        },
+        {
+          "pid": 2588,
+          "name": "svchost.exe",
+          "created": 1793343206.1652353
+        },
+        {
+          "pid": 1660,
+          "name": "services.exe",
+          "created": 1793343205.759123
+        },
+        {
+          "pid": 1524,
+          "name": "wininit.exe",
+          "created": 1793343205.0264885
+        }
+      ],
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_rel",
+        "--seed",
+        "0",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_rel_s0"
+      ]
+    },
+    "e_priv_s0": {
+      "pid": 25788,
+      "created": 1793703281.1155326,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "ancestry": [
+        {
+          "pid": 25788,
+          "name": "python.exe",
+          "created": 1793703281.1155326
+        },
+        {
+          "pid": 24716,
+          "name": "python.exe",
+          "created": 1793703281.058448
+        },
+        {
+          "pid": 8088,
+          "name": "powershell.exe",
+          "created": 1793703280.5793912
+        },
+        {
+          "pid": 6612,
+          "name": "python.exe",
+          "created": 1793702885.3501968
+        },
+        {
+          "pid": 14924,
+          "name": "python.exe",
+          "created": 1793702885.3305027
+        },
+        {
+          "pid": 27416,
+          "name": "powershell.exe",
+          "created": 1793702884.1895003
+        },
+        {
+          "pid": 2588,
+          "name": "svchost.exe",
+          "created": 1793343206.1652353
+        },
+        {
+          "pid": 1660,
+          "name": "services.exe",
+          "created": 1793343205.759123
+        },
+        {
+          "pid": 1524,
+          "name": "wininit.exe",
+          "created": 1793343205.0264885
+        }
+      ],
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-m",
+        "experiments.t2",
+        "train",
+        "--arm",
+        "e_priv",
+        "--seed",
+        "0",
+        "--steps",
+        "3000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--obs",
+        "reduced_priv",
+        "--checkpoints",
+        "500,1000,1500,2000,2500",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_12_EACC_20261104\\B\\TRAIN_e_priv_s0"
+      ]
+    }
+  },
+  "runs": {
+    "e_rel_s0": {
+      "manifest": {
+        "arm": "e_rel",
+        "seed": 0,
+        "steps": 3000,
+        "workers": 2,
+        "git_head": "2e7d838b680f88dbf16b4820e4862a7f9899ac99",
+        "smoke": false,
+        "model_beta": 0.5,
+        "model_start": 300,
+        "ent_coef": 0.05,
+        "k_candidates": 8,
+        "collection": "asynchronous",
+        "window": true,
+        "gradient_steps_per_transition": 2,
+        "entry_stages": 1,
+        "sync_updates": 100,
+        "age_cap": 2000,
+        "pooled_calibration": true,
+        "urgent_deadline_s": [
+          140.0,
+          200.0
+        ],
+        "guide": false,
+        "guide_p0": 0.0,
+        "guide_until": 0,
+        "obs_profile": "reduced_priv",
+        "pref": false,
+        "acc": false,
+        "relative": true,
+        "rel_beta": 0.5,
+        "cand_min_sep_m_s": 0.01,
+        "common_random_numbers": true,
+        "actor_view": 24,
+        "critic_view": 48,
+        "acc_dp": 0.4,
+        "acc_kappa": 0.5,
+        "acc_lambda_q": 10.0,
+        "acc_eta": 10.0,
+        "acc_min_labels": 200,
+        "acc_min_acc": 0.8,
+        "pref_lambda": 0.0,
+        "pref_delta": 50.0,
+        "pref_kappa": 0.5,
+        "pref_margin_cap": 100.0,
+        "env_version": "t2-stage-0.11.0",
+        "learner_version": "t2-learner-4.1"
+      },
+      "live_torch_threads": {
+        "intra_op": 1,
+        "interop": 6,
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1"
+      },
+      "progress": {
+        "jst": "2026-11-03T19:55:19.970878+09:00",
+        "steps": 12,
+        "updates": 0,
+        "episodes": 0,
+        "wall_s": 30.23399999999674,
+        "recent_decisions_per_s": 0.3969041476483857,
+        "overall_decisions_per_s": 0.3969041476483857,
+        "eta_s_estimate": 7528.265999999188,
+        "snapshot_not_prediction": true,
+        "replay": {
+          "transitions": 12,
+          "with_candidates": 0,
+          "candidates": 0,
+          "entry_candidates": 0,
+          "reason": {
+            "off": 11,
+            "entry_calibration": 1
+          },
+          "resampled": 0
+        },
+        "model_probes": 0,
+        "pending_truth_records": 0,
+        "final": false
+      }
+    },
+    "e_rel_s1": {
+      "manifest": {
+        "arm": "e_rel",
+        "seed": 1,
+        "steps": 3000,
+        "workers": 2,
+        "git_head": "2e7d838b680f88dbf16b4820e4862a7f9899ac99",
+        "smoke": false,
+        "model_beta": 0.5,
+        "model_start": 300,
+        "ent_coef": 0.05,
+        "k_candidates": 8,
+        "collection": "asynchronous",
+        "window": true,
+        "gradient_steps_per_transition": 2,
+        "entry_stages": 1,
+        "sync_updates": 100,
+        "age_cap": 2000,
+        "pooled_calibration": true,
+        "urgent_deadline_s": [
+          140.0,
+          200.0
+        ],
+        "guide": false,
+        "guide_p0": 0.0,
+        "guide_until": 0,
+        "obs_profile": "reduced_priv",
+        "pref": false,
+        "acc": false,
+        "relative": true,
+        "rel_beta": 0.5,
+        "cand_min_sep_m_s": 0.01,
+        "common_random_numbers": true,
+        "actor_view": 24,
+        "critic_view": 48,
+        "acc_dp": 0.4,
+        "acc_kappa": 0.5,
+        "acc_lambda_q": 10.0,
+        "acc_eta": 10.0,
+        "acc_min_labels": 200,
+        "acc_min_acc": 0.8,
+        "pref_lambda": 0.0,
+        "pref_delta": 50.0,
+        "pref_kappa": 0.5,
+        "pref_margin_cap": 100.0,
+        "env_version": "t2-stage-0.11.0",
+        "learner_version": "t2-learner-4.1"
+      },
+      "live_torch_threads": {
+        "intra_op": 1,
+        "interop": 6,
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1"
+      },
+      "progress": {
+        "jst": "2026-11-03T19:55:19.995261+09:00",
+        "steps": 12,
+        "updates": 0,
+        "episodes": 0,
+        "wall_s": 30.25,
+        "recent_decisions_per_s": 0.39669421487603307,
+        "overall_decisions_per_s": 0.39669421487603307,
+        "eta_s_estimate": 7532.25,
+        "snapshot_not_prediction": true,
+        "replay": {
+          "transitions": 12,
+          "with_candidates": 0,
+          "candidates": 0,
+          "entry_candidates": 0,
+          "reason": {
+            "off": 11,
+            "entry_calibration": 1
+          },
+          "resampled": 0
+        },
+        "model_probes": 0,
+        "pending_truth_records": 0,
+        "final": false
+      }
+    },
+    "e_priv_s0": {
+      "manifest": {
+        "arm": "e_priv",
+        "seed": 0,
+        "steps": 3000,
+        "workers": 2,
+        "git_head": "2e7d838b680f88dbf16b4820e4862a7f9899ac99",
+        "smoke": false,
+        "model_beta": 0.0,
+        "model_start": 300,
+        "ent_coef": 0.05,
+        "k_candidates": 0,
+        "collection": "asynchronous",
+        "window": true,
+        "gradient_steps_per_transition": 2,
+        "entry_stages": 2,
+        "sync_updates": 100,
+        "age_cap": 2000,
+        "pooled_calibration": false,
+        "urgent_deadline_s": [
+          140.0,
+          200.0
+        ],
+        "guide": false,
+        "guide_p0": 0.0,
+        "guide_until": 0,
+        "obs_profile": "reduced_priv",
+        "pref": false,
+        "acc": false,
+        "relative": false,
+        "rel_beta": 0.0,
+        "cand_min_sep_m_s": 0.0,
+        "common_random_numbers": false,
+        "actor_view": 24,
+        "critic_view": 48,
+        "acc_dp": 0.4,
+        "acc_kappa": 0.5,
+        "acc_lambda_q": 10.0,
+        "acc_eta": 10.0,
+        "acc_min_labels": 200,
+        "acc_min_acc": 0.8,
+        "pref_lambda": 0.0,
+        "pref_delta": 50.0,
+        "pref_kappa": 0.5,
+        "pref_margin_cap": 100.0,
+        "env_version": "t2-stage-0.11.0",
+        "learner_version": "t2-learner-4.1"
+      },
+      "live_torch_threads": {
+        "intra_op": 1,
+        "interop": 6,
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1"
+      },
+      "progress": {
+        "jst": "2026-11-03T19:55:20.051252+09:00",
+        "steps": 12,
+        "updates": 0,
+        "episodes": 0,
+        "wall_s": 30.31300000002375,
+        "recent_decisions_per_s": 0.3958697588490284,
+        "overall_decisions_per_s": 0.3958697588490284,
+        "eta_s_estimate": 7547.937000005913,
+        "snapshot_not_prediction": true,
+        "replay": {
+          "transitions": 12,
+          "with_candidates": 0,
+          "candidates": 0,
+          "entry_candidates": 0,
+          "reason": {
+            "off": 12
+          },
+          "resampled": 0
+        },
+        "model_probes": 0,
+        "pending_truth_records": 0,
+        "final": false
+      }
+    },
+    "e_priv_s1": {
+      "manifest": {
+        "arm": "e_priv",
+        "seed": 1,
+        "steps": 3000,
+        "workers": 2,
+        "git_head": "2e7d838b680f88dbf16b4820e4862a7f9899ac99",
+        "smoke": false,
+        "model_beta": 0.0,
+        "model_start": 300,
+        "ent_coef": 0.05,
+        "k_candidates": 0,
+        "collection": "asynchronous",
+        "window": true,
+        "gradient_steps_per_transition": 2,
+        "entry_stages": 2,
+        "sync_updates": 100,
+        "age_cap": 2000,
+        "pooled_calibration": false,
+        "urgent_deadline_s": [
+          140.0,
+          200.0
+        ],
+        "guide": false,
+        "guide_p0": 0.0,
+        "guide_until": 0,
+        "obs_profile": "reduced_priv",
+        "pref": false,
+        "acc": false,
+        "relative": false,
+        "rel_beta": 0.0,
+        "cand_min_sep_m_s": 0.0,
+        "common_random_numbers": false,
+        "actor_view": 24,
+        "critic_view": 48,
+        "acc_dp": 0.4,
+        "acc_kappa": 0.5,
+        "acc_lambda_q": 10.0,
+        "acc_eta": 10.0,
+        "acc_min_labels": 200,
+        "acc_min_acc": 0.8,
+        "pref_lambda": 0.0,
+        "pref_delta": 50.0,
+        "pref_kappa": 0.5,
+        "pref_margin_cap": 100.0,
+        "env_version": "t2-stage-0.11.0",
+        "learner_version": "t2-learner-4.1"
+      },
+      "live_torch_threads": {
+        "intra_op": 1,
+        "interop": 6,
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1"
+      },
+      "progress": {
+        "jst": "2026-11-03T19:55:19.985405+09:00",
+        "steps": 11,
+        "updates": 0,
+        "episodes": 0,
+        "wall_s": 30.25,
+        "recent_decisions_per_s": 0.36363636363636365,
+        "overall_decisions_per_s": 0.36363636363636365,
+        "eta_s_estimate": 8219.75,
+        "snapshot_not_prediction": true,
+        "replay": {
+          "transitions": 11,
+          "with_candidates": 0,
+          "candidates": 0,
+          "entry_candidates": 0,
+          "reason": {
+            "off": 11
+          },
+          "resampled": 0
+        },
+        "model_probes": 0,
+        "pending_truth_records": 0,
+        "final": false
+      }
+    }
+  },
+  "clock": {
+    "start_epoch": 1793703280.5640256,
+    "start_jst": "2026-11-03T19:54:40.564025+09:00",
+    "train_cap_epoch": 1793739280.5640256,
+    "new_eval_cap_epoch": 1793743960.5640256,
+    "hard_cap_epoch": 1793746480.5640256
+  },
+  "prior_failure_preserved": "0190faf2988e88e390bfa5f51013333a3d1c4df4",
+  "observers": {
+    "logging_adapter.py": "5fb458ba72f54d289f2ae207fcbab60c43fb032cdfd5955f948370e08bac2d2b",
+    "sitecustomize.py": "9b59495c78b9000f0c885d9e40b04b52cd837629e2e2885fc5b0a1786e1ba943"
+  }
+}

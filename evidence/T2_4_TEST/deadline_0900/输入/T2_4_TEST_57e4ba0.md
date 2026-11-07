@@ -1,0 +1,134 @@
+# 自主执行书：T2_4_TEST_20261025（下层本机，夜间约 10 小时无人值守；开发测试，非正式出图）
+
+**科学提交（冻结）：** `e13c8b1d52dafe7b90fac3eaaa3651294d253b0f`（分支 `claude/sac-mpc-coupling-design-ns7g6i`）。下层不得改任何代码。设计说明书已由上层另交用户与研究层。
+
+**本轮唯一改动对象：** 上行通路的标签链（研究层两份建议书的整合），共四处：
+1. 入口结局：从混合成功率改为历史执行回放，超时记录按删失数据处理；
+2. 反事实标签的时间语义：只有本 16 s 阶段内打开入口的候选，才得到入口终止标签；其余候选一律用阶段末状态做 bootstrap，不再用"保持同一意图再走一阶段"的结局；
+3. 候选级可信度：w_k = 1/(1+(ε_k/σ)²)，其中 ε_k = |已执行意图的模型误差| + b_k（ε_k 是候选误差的估计值）。b_k 按标签类型取值：
+   - 阶段标签：0；
+   - 已用本步真实入口结局校正过的入口标签：0；
+   - 只依赖结局模型的入口标签：取学习器当前测得的结局模型偏差，对回放池里的旧标签同样生效；偏差尚未测得时取一个 σ。
+4. 诊断：每个检查点落盘日志；记录损失占比、梯度余弦、入口偏差与可靠度、标签龄期、窗口重定时的相位。
+
+**本轮不改动：** 任务、奖励、观测、动作、执行层（G★、MPC、窗口承诺）、β、候选集合。
+
+**SAC 对照复用 T2.3 的结果。** 理由：SAC 臂不生成候选，本轮改动不影响它的轨迹。
+- 种子 0：复用 T2.3 已评估的 0–4000 步；
+- 种子 1：T2.3 训练到 3000 步停止，复用其检查点，在 1000–3000 步上比较。
+
+## 0. 准备（约 5 min）
+
+```powershell
+cd D:\py\DRL2; git fetch origin claude/sac-mpc-coupling-design-ns7g6i; git checkout --detach e13c8b1d52dafe7b90fac3eaaa3651294d253b0f
+$py  = "D:\py\DRL2\.venv\Scripts\python.exe"
+$R   = "C:\Users\35884\Documents\Spacecraft\过程文件\T2_4_TEST_20261025"
+$R23 = "C:\Users\35884\Documents\Spacecraft\过程文件\T2_3_TEST_20261023"
+New-Item -ItemType Directory -Force $R | Out-Null
+$env:OMP_NUM_THREADS = "1"; $env:MKL_NUM_THREADS = "1"; $env:OPENBLAS_NUM_THREADS = "1"
+& $py -B -m pytest -q tests/test_t2_stage.py *> "$R\pytest.log"          # 须 26 passed
+```
+
+pytest 未全部通过时停下，回报日志。
+
+## 1. 立即启动训练（约 8 h）
+
+EACC × 种子 0、1 × 4000 决策。两个进程同时启动，每个 3 个 worker。新版每个检查点都会写出 `episodes.json` 和 `model_stats.json`。
+
+```powershell
+foreach ($s in 0,1) {
+  Start-Process -FilePath $py -WorkingDirectory "D:\py\DRL2" -WindowStyle Hidden `
+    -ArgumentList "-B","-m","experiments.t2","train","--arm","e_mve","--seed",$s,"--steps","4000","--workers","3",
+                  "--checkpoints","1000,2000,3000","--output","$R\TRAIN_e_mve_s$s" `
+    -RedirectStandardOutput "$R\TRAIN_e_mve_s$s.out.log" -RedirectStandardError "$R\TRAIN_e_mve_s$s.err.log"
+}
+```
+
+## 2. 训练期间（低优先级，与训练并行）
+
+**2a. 准备 SAC 对照。** 复制 T2.3 的评估结果，并补评估 SAC 种子 1 的 3000 步。
+
+```powershell
+New-Item -ItemType Directory -Force "$R\B_eval" | Out-Null
+Copy-Item -Recurse "$R23\B_eval\e_sac_s0" "$R\B_eval\e_sac_s0"
+New-Item -ItemType Directory -Force "$R\B_eval\e_sac_s1" | Out-Null
+foreach ($k in 1000,2000) { Copy-Item -Recurse "$R23\B_eval_s1_partial\e_sac_s1\step_$k" "$R\B_eval\e_sac_s1\step_$k" }
+$p = Start-Process -FilePath $py -WorkingDirectory "D:\py\DRL2" -WindowStyle Hidden -PassThru `
+  -ArgumentList "-B","-m","experiments.t2","eval","--checkpoint","$R23\TRAIN_e_sac_s1\checkpoints\step_3000.zip","--label","e_sac_s1_step_3000",
+                "--openings","294000-294023","--workers","2","--output","$R\B_eval\e_sac_s1\step_3000" `
+  -RedirectStandardOutput "$R\eval_sac_s1.log" -RedirectStandardError "$R\eval_sac_s1.err"
+$p.PriorityClass = "BelowNormal"
+```
+
+注：若 T2.3 目录下种子 1 的 SAC 1000/2000 评估结果位置不同，按 T2.3 交付记录找到后复制，不重算。
+
+**2b. 机制核查：标签审计。** 在 6 个开局上核对入口标签偏差，2 个 worker，低优先级。
+
+```powershell
+$p = Start-Process -FilePath $py -WorkingDirectory "D:\py\DRL2" -WindowStyle Hidden -PassThru `
+  -ArgumentList "-B","-m","experiments.t2_audit","warmup","--output","$R\A1_CAL.json","--episodes","40","--workers","2" `
+  -RedirectStandardOutput "$R\A1_warmup.log" -RedirectStandardError "$R\A1_warmup.err"
+$p.PriorityClass = "BelowNormal"; $p.WaitForExit()
+$p = Start-Process -FilePath $py -WorkingDirectory "D:\py\DRL2" -WindowStyle Hidden -PassThru `
+  -ArgumentList "-B","-m","experiments.t2_audit","labels","--calibration","$R\A1_CAL.json","--openings","2910000-2910005","--workers","2","--output","$R\A1_audit" `
+  -RedirectStandardOutput "$R\A1_audit.log" -RedirectStandardError "$R\A1_audit.err"
+$p.PriorityClass = "BelowNormal"; $p.WaitForExit()
+& $py -B -m experiments.t2_audit summary --input "$R\A1_audit" --output "$R\A1_LABEL_AUDIT.json" *> "$R\A1_summary.log"
+```
+
+**2c. 中途读数（可选，不做判定）。** 两个训练都到 2000 步后，用 2 个 worker、低优先级评估 EACC 的 1000/2000 步，输出到 `$R\B_eval\e_mve_s$s\step_$k`。之后的正式评估会自动跳过已有文件。
+
+## 3. 训练结束后：评估、读出、判定（约 1 h）
+
+```powershell
+foreach ($s in 0,1) { foreach ($k in 0,1000,2000,3000,4000) {
+  & $py -B -m experiments.t2 eval --checkpoint "$R\TRAIN_e_mve_s$s\checkpoints\step_$k.zip" --label "e_mve_s${s}_step_$k" `
+    --openings 294000-294023 --workers 10 --output "$R\B_eval\e_mve_s$s\step_$k" *>> "$R\eval_eacc.log" } }
+& $py -B -m experiments.t2_readout curve --eval-root "$R\B_eval" --train-root "$R" --screen "$R23\A2_window" --output "$R\B_READOUT.json" *> "$R\B_readout.log"
+& $py -B -m experiments.t2_decide --criteria t24 --readout "$R\B_READOUT.json" --output "$R\DECISION.json" *> "$R\decide.log"
+```
+
+- `--screen` 指向 T2.3 的窗口筛选目录，只用来画参考线。若该目录名不同，按 T2.3 交付记录取 `A2_window`。
+- `verdict` 为 `incomplete` 时，用同一命令补跑缺失的评估，再判定一次。
+
+## 预先登记的判定标准（`t2_decide --criteria t24`，事后不得修改）
+
+| 项 | 标准 |
+|---|---|
+| C0 完整 | 种子 0 两臂 0–4000、种子 1 两臂 1000–3000 都是 24/24，且没有 ERROR 文件 |
+| C1 超过 T2.3 | EACC 种子 0 在 4000 步 > 42.365（T2.3 耦合臂） |
+| C2 耦合 | 配对 EACC − SAC 的检查点平均 > 0：种子 0 取 1000–4000，种子 1 取 1000–3000 |
+| C3 末点 | 末个共同检查点的配对差 ≥ −3：种子 0 在 4000，种子 1 在 3000 |
+| C4 收敛 | 种子 0 两臂：\|R(4000) − R(3000)\| ≤ 10 |
+| C5 安全 | 种子 0 在 4000：EACC 捕获 ≥ SAC − 1，且 EACC unsafe ≤ SAC + 1 |
+
+判定结果：
+- 全部满足：`pass`；
+- 种子 0 满足、种子 1 的 C2 或 C3 未满足：`seed0_only`；
+- 否则 C4 不满足：`not_converged`；
+- 其余：`coupling_failure`。
+
+**机制读数（只报告，不作为判定条件）：**
+- A1 审计中，入口标签误差拆成两组：已执行意图本步进了入口、没进入口；
+- 训练日志中的 `entry_bias_mean`、`entry_rel_mean`、`loss_share`、`grad_cos`、`q_pi_mean`；
+- 评估结果中的 `window_recoveries` 次数及每次的 `phase_deg`。
+
+## 交付（不跑任何后续分支）
+
+- 科学分支 `evidence/T2_4_TEST/`，逐个文件 `git add -f`，附 SHA256SUMS：
+  - `B_READOUT.json`、`DECISION.json`、`B_eval/**`；
+  - `A1_CAL.json`、`A1_LABEL_AUDIT.json`、`A1_audit/*.json`；
+  - 两个训练目录的 `manifest.json`、`finished.json`、`episodes.json`、`model_stats.json`、`heartbeat.json`；
+  - `pytest.log`。
+- collab `lower/handoffs/t2_4_test_20261025/RESULT.md`：
+  - 判定与 C0–C5 的取值；
+  - 两个种子的配对曲线，按紧急/经济拆分；
+  - 机制读数；
+  - 墙钟。
+- 只报告事实，不做解读。
+
+## 下层可以自行处理
+
+- 驱动层问题、单回合报错补跑、评估和审计的 worker 数，事后写明。
+- 训练崩溃：同配置从零重启一次；第二次仍崩溃就停下，交付已有结果。
+- 不得改代码、步数、开局、判据，也不得挑选检查点。

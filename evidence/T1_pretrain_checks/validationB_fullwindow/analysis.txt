@@ -1,0 +1,19 @@
+states 325 Counter({'m0': 193, 'rv0': 70, 'rv70': 62}) shadow==real closed loop 325 / 325
+kinds Counter({'replan_vs_keep': 145, 'keep_vs_shift': 80, 'request_vs_earliest': 47, 'descent_mode': 47, 'earliest_vs_later': 6})
+with alternative 278  structural gate open 136
+gate reasons Counter({'alt_saturation': 101, 'e_o': 54, 'e_p': 52, 'same_effective_tau': 50, 'e_r': 44, 'real_not_tracking': 41, 'alt_not_tracking': 41, 'alt_mode_switch': 30, 'real_mode_switch': 30, 'alt_predicted_violation': 2, 'real_predicted_violation': 2, 'alt_slack': 1, 'real_slack': 1})
+--- subset all with alternative 278
+ e_r: executed med 0.0213 p90 0.0764 max 149.7658 | counterfactual med 0.0195 p90 0.0604 max 149.7658 | cf/exec ratio med 1.00 p90 6.18; corr 1.00
+ e_p: executed med 0.0070 p90 0.0287 max 0.3398 | counterfactual med 0.0072 p90 0.0296 max 0.3398 | cf/exec ratio med 1.08 p90 1.78; corr 0.96
+ e_o: executed med 0.0246 p90 0.0966 max 0.1589 | counterfactual med 0.0254 p90 0.0854 max 0.1675 | cf/exec ratio med 1.08 p90 1.68; corr 0.75
+ largest cf obs-dim errors (mean |dz|): [('radial_closing_0p3m_s', np.float64(0.0246), np.float64(0.0267)), ('tangential_speed_0p5m_s', np.float64(0.0222), np.float64(0.0201)), ('fov_margin_50deg', np.float64(0.002), np.float64(0.002)), ('rho_perp_10m', np.float64(0.0006), np.float64(0.0006)), ('range_10m', np.float64(0.0005), np.float64(0.0006)), ('sin_phase', np.float64(0.0005), np.float64(0.0005))]
+ |z^(a~) - z^(a)| (signal size): med 0.2710 p90 0.9311 max 7.3089
+ events cf: Counter({None: 277, 'unsafe': 1})  sat_b med 0.1500 p90 1.0000 max 1.0000
+--- subset gate open 136
+ e_r: executed med 0.0150 p90 0.0373 max 0.0599 | counterfactual med 0.0132 p90 0.0426 max 0.0715 | cf/exec ratio med 1.08 p90 6.67; corr 0.61
+ e_p: executed med 0.0033 p90 0.0085 max 0.0163 | counterfactual med 0.0044 p90 0.0093 max 0.0187 | cf/exec ratio med 1.19 p90 1.72; corr 0.82
+ e_o: executed med 0.0124 p90 0.0315 max 0.0503 | counterfactual med 0.0140 p90 0.0349 max 0.0600 | cf/exec ratio med 1.14 p90 1.61; corr 0.89
+ largest cf obs-dim errors (mean |dz|): [('radial_closing_0p3m_s', np.float64(0.0131), np.float64(0.0121)), ('tangential_speed_0p5m_s', np.float64(0.0094), np.float64(0.0074)), ('fov_margin_50deg', np.float64(0.0011), np.float64(0.0011)), ('cos_phase', np.float64(0.0003), np.float64(0.0003)), ('sin_phase', np.float64(0.0003), np.float64(0.0002)), ('range_10m', np.float64(0.0003), np.float64(0.0002))]
+ |z^(a~) - z^(a)| (signal size): med 0.2545 p90 0.3180 max 1.3489
+ events cf: Counter({None: 136})  sat_b med 0.0000 p90 0.1250 max 0.5000
+pred wall a med 0.3114 p90 0.7188 max 1.2753  b med 0.2125 p90 0.3596 max 0.5061

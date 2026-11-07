@@ -1,0 +1,9 @@
+{"experiment": "T1_V2_S0: M1 seed 0, science 78eb63c (G* v0.4, gym interface v2, UTD 4, 6 envs), development validation, plateau stop at 32088 decisions",
+ "source": "lower delivery collab 13cbf38, lower/handoffs/t1_v2_seed0_20261013/T1_V2_S0_FINAL_20261013.zip (run directory t1v2_m1_s0_r1); models not published, SHA-256 in MODEL_SHA256.json",
+ "packed_by": "python -B -m experiments.t1_v2_review pack --package <unzipped> --output evidence/T1_V2_S0",
+ "readout": "python -B -m experiments.t1_v2_review readout --evidence evidence/T1_V2_S0 --r1 evidence/T1_R1_pass2/episodes.jsonl.gz --output evidence/T1_V2_S0/review_readout.json",
+ "files": {"dev_eval.jsonl.gz": "7 checkpoints x 16 development openings (295000-295054), deterministic policy, with per-decision logs",
+           "dev_summaries.json": "summary.json of each checkpoint", "episodes.jsonl.gz / decisions.jsonl.gz": "training logs (behaviour policy, not deployment performance)",
+           "cf_stats.json.gz": "M1 update statistics (real_loss, aux_loss, valid_fraction, gradient norms)", "cf_checkpoint_lengths.json": "number of updates recorded at each checkpoint",
+           "review_readout.json": "numbers of collab reviews/T1_V2_S0_UPPER_REVIEW_20261013.md"},
+ "status": "development validation, not the formal test block"}

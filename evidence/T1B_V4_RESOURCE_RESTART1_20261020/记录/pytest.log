@@ -1,0 +1,12 @@
+..............                                                           [100%]
+============================== warnings summary ===============================
+tests/test_t1_b_v2.py::test_v4_learner_uses_two_counterfactual_slots_and_exploration_half
+  D:\py\DRL2\tests\test_t1_b_v2.py:67: DeprecationWarning: Conversion of an array with ndim > 0 to a scalar is deprecated, and will error in future. Ensure you extract a single element from your array before performing this operation. (Deprecated NumPy 1.25.)
+    b.use(1); assert float(b.cf_weights[3, 0]) == np.float32(0.7)
+
+tests/test_t1_b_v2.py::test_v4_learner_uses_two_counterfactual_slots_and_exploration_half
+  D:\py\DRL2\tests\test_t1_b_v2.py:68: DeprecationWarning: Conversion of an array with ndim > 0 to a scalar is deprecated, and will error in future. Ensure you extract a single element from your array before performing this operation. (Deprecated NumPy 1.25.)
+    b.use(0); assert float(b.cf_weights[3, 0]) == np.float32(0.2)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+14 passed, 2 warnings in 47.27s

@@ -1,0 +1,5 @@
+{"experiment": "T1 M1 acceptance B (development, functional validation; not a paper result)",
+ "code": "env/t1_counterfactual.py as of this commit except: planner solver-cache mirroring (superseded by G* v0.3.2 fresh solves) and G* v0.3.1",
+ "start_states": "325 decision states: rule rv:0 on 291000/291013/291047/291061 (every 4th decision), rule rv:70 on 291027/291043/291016/291001 (every 4th), M0 smoke policy (400 decisions, 32x32, stochastic) on 291040/291061/291064 and 291002/291022/291010 (every 3rd)",
+ "per state": "executed action a and the design's single alternative a~: one isolated MPC solve each (nominal 2 s prediction) and the real 2 s closed loop of each in a synced shadow; errors e_r, e_p, e_o; structural gate (thresholds on executed error not applied)",
+ "scripts": "validation_b.py (runner), analyze_b.py (summary -> analysis.txt)"}

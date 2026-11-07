@@ -1,0 +1,7 @@
+M1 counterfactual overhead, upper sandbox (4 cores, idle unless noted), OMP_NUM_THREADS=1
+acceptance A script, 291000, 30 decisions (50 % keep), 0999037:            M0 1.73  M1 2.07 s/decision  (+20 %)   [valB running in parallel]
+idle, 291000/291027, 30 decisions (60 % keep), 403e366 (full window):     M0 1.886 M1 2.380 s/decision (+26.2 %)
+acceptance A script, 291000, 30 decisions, after shared target window:   M0 1.73  M1 2.17 s/decision  (+25 %)
+idle, 291000/291027/291043, 30 decisions (60 % keep), 53e4f3e:          M0 1.793 M1 2.203 s/decision (+22.9 %); in-step counterfactual overhead 0.507 s/decision (28 % of M0)
+full-window check alone: 0.013 s per prediction (2 per decision)
+formal-size smoke (4 processes on 4 cores, 403e366): M0 1.86 s/decision, M1 2.29 s/decision before learning starts

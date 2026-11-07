@@ -1,0 +1,1 @@
+V7冻结54c2587；本机指定18项测试及V7合同通过。共享V3专家1000步原文件SHA9c91cb76f10999ca36aecf4172bb092e4e52de9fcfbf62402a76306e701e1d0f，不重采，不BC。seed0两臂10k；最多两个种子，seed1严格条件且不自动启动。CPU0/1物理核保留桌面，BelowNormal/0xFFC/数值库单线程。

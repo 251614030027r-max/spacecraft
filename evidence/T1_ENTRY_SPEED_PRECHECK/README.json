@@ -1,0 +1,11 @@
+{
+ "experiment": "T1_ENTRY_SPEED_PRECHECK: technical admission of interface v4 (SAC chooses the inward entry speed of new G* plans; G* v0.6) and of the M2 entry-speed counterfactual, before the M0/M2 40k pair",
+ "code": "1dd38bd (env, counterfactual), a1ba4e9 (tooling), 429420f (audit fix), cd3d73d (counterfactual differences, admission script), 49cc389 (test)",
+ "files": {
+  "IMPLEMENTATION_AND_CHECKS.md": "what changed and the admission results (compatibility, effectiveness before the descent switch, safety, state dependence; M0/M2 consistency and counterfactual)",
+  "entry_speed_admission.json": "8 development openings x entry speed {0.02, 0.06, 0.10} m/s under the earliest-feasible rule (kappa 0.7), 24 deterministic episodes",
+  "precheck.json": "M0/M2 400-decision smoke statistics (interface v4), entry-speed counterfactual counts, prediction errors, reload",
+  "smoke_readout.json": "experiments.t1_fix_readout on the smoke runs (pipeline check only; no learning meaning)"
+ },
+ "status": "development admission in the upper sandbox; not training evidence"
+}

@@ -1,0 +1,2069 @@
+import numpy as np
+import torch as th
+
+from env.t2_stage import (STAGE_S, Calibration, InfoEnv, T2Mission, d_authority, spin_frame, stage_goal)
+
+
+def _frame():
+    # spin about +z, line of sight along +x, port axis tilted 30 deg from the spin axis towards -y
+    rot = np.eye(3); omega = np.array([0.0, 0.0, np.radians(2.4)])
+    axis = np.array([0.0, -np.sin(np.radians(30)), np.cos(np.radians(30))])
+    return spin_frame(rot, omega, np.array([12.0, 0.0, 0.0]), axis), axis
+
+
+def test_spin_frame_geometry():
+    f, _ = _frame()
+    b = f["basis"]
+    assert np.allclose(b @ b.T, np.eye(3), atol=1e-9)
+    assert np.allclose(b[1], [0, 0, 1]) and abs(f["lam_deg"] - 90) < 1e-9 and abs(f["beta_deg"] - 30) < 1e-9
+    assert abs(f["lat_err_deg"] - 60) < 1e-9
+    # the port's projection points along -y; rotating about +z it reaches +x after 90 deg (= 37.5 s at 2.4 deg/s)
+    assert abs(np.degrees(f["phase_rad"]) - 90) < 1e-6 and abs(f["time_to_pass_s"] - 37.5) < 1e-6
+    assert np.allclose(b[2], [0, -1, 0])      # towards the oncoming port
+
+
+def test_stage_goal_is_a_reachable_velocity_target():
+    from env.t2_stage import action_for_velocity, latitude_velocity, target_velocity
+    mass = 106.0
+    d = d_authority(mass)
+    assert 1.3 < d < 1.4 and 2 * d / STAGE_S < 0.18          # 1.35 m, 0.17 m/s at 1.6 N
+    f, _ = _frame(); b = f["basis"]
+    assert 0 < latitude_velocity(f) <= 0.12                  # lam > beta: move towards the spin axis
+    q = np.array([12.0, 0.0, 0.0])
+    v = target_velocity(f, np.zeros(2))
+    g0 = stage_goal(q, v, f, np.zeros(2), mass)
+    assert not g0['rate_limited'] and np.allclose(g0['v_goal'], v) and np.allclose(g0['q_goal'], q + STAGE_S * v)
+    g1 = stage_goal(q, v, f, np.array([0.5, -0.5]), mass)
+    assert not g1['rate_limited'] and np.allclose(g1['v_goal'], target_velocity(f, [0.5, -0.5]))
+    far = stage_goal(q, np.array([0.3, 0.0, 0.1]), f, np.array([1.0, 1.0]), mass)
+    assert far['rate_limited'] and abs(np.linalg.norm(far['v_goal'] - np.array([0.3, 0.0, 0.1])) - 2 * d / STAGE_S) < 1e-9
+    for a in ([0.3, -0.7], [-1.0, 1.0], [0.0, 0.0]):
+        vt = target_velocity(f, a)
+        assert np.allclose(action_for_velocity(f, -float(vt @ b[0]), float(vt @ b[2]) / 1.0), a)
+    assert target_velocity(f, [1, 0]) @ b[0] < target_velocity(f, [-1, 0]) @ b[0]   # a_p > 0 closes in
+    assert target_velocity(f, [0, 1]) @ b[2] > 0                                   # a_z > 0 meets the port earlier
+
+
+def test_info_env_hides_the_true_inertia_only():
+    from env.t1_env import T1Env
+    e = T1Env()
+    e.reset(1000000)
+    view = InfoEnv(e)
+    true = np.asarray(e.target_parameters.inertia)
+    iso = np.asarray(view.target_parameters.inertia)
+    assert np.allclose(iso, np.eye(3) * np.trace(true) / 3) and not np.allclose(iso, true)
+    assert view.time_s == e.time_s and view.target_state is e.target_state
+
+
+def test_calibration_fits_execution_against_plan():
+    c = Calibration()
+    for k in range(12):
+        c.add(0.1 + 0.01 * k, 0.02 + 1.2 * (0.1 + 0.01 * k), np.array([0.3, 0.0, 0.0]), np.array([0.0, -0.02, 0.0]))
+    assert c.ready
+    c0, c1 = c.coefficients()
+    assert abs(c0 - 0.02) < 3e-3 and abs(c1 - 1.2) < 2e-2
+    dq, dv = c.residuals()
+    assert np.allclose(dq, [0.3, 0, 0]) and np.allclose(dv, [0, -0.02, 0])
+
+
+def test_mission_profile_keeps_urgent_and_economy_deadlines():
+    m = T2Mission()
+    seen = {m.sample(o)['urgent'] for o in range(1000000, 1000040)}
+    assert seen == {True, False}
+    for o in range(1000000, 1000040):
+        x = m.sample(o)
+        lo, hi = m.urgent_deadline_s if x['urgent'] else m.economy_deadline_s
+        assert lo <= x['deadline_s'] <= hi and x == m.sample(o)
+
+
+def _sac(beta=0.5, batch=8):
+    from train.t2_mve_sac import SpacesEnv, make_model
+    from stable_baselines3.common.logger import configure
+    m = make_model(SpacesEnv(), 'e_mve' if beta > 0 else 'e_sac', 0, smoke=True, model_beta=beta)
+    m.model_start = 0; m.learning_starts = 0; m.batch_size = batch
+    m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0
+    return m
+
+
+def test_precision_fusion_weight_bounds_the_influence_of_model_error():
+    """M3: w = 1 / (1 + (e_a / sigma)^2) from the model's error on the executed intent; w |e_a| <= sigma / 2;
+    rows without a factual prediction release nothing; the SAC arm has no model term."""
+    from env.t2_stage import OBS_DIM
+    rng = np.random.default_rng(0)
+    m = _sac()
+    for k in range(16):
+        fact = {'reward': float(rng.normal(0, 30)), 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': False} if k % 2 else None
+        cands = [{'a': np.full(2, .1, np.float32), 'reward': -1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': False}]
+        m.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([-1.0]), np.array([False]),
+                            [{'model': {'fact': fact, 'cands': cands, 'diag': {'reason': 'stage'}}}])
+    c = m.replay_buffer.model_counts
+    assert (c['transitions'], c['with_candidates'], c['candidates']) == (16, 8, 8)
+    m.train(gradient_steps=3, batch_size=8)
+    data = m.replay_buffer.sample(8)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+        th.manual_seed(1); loss, info = m._model_loss(data, target, m.ent_coef_tensor)
+        b = m.replay_buffer.model_batch()
+        th.manual_seed(1); y_fact = b['fact_r'].reshape(-1, 1) + m.gamma * m._soft_value(b['fact_obs'], m.ent_coef_tensor)
+        e = (target - y_fact).reshape(-1)[b['fact_valid'] > 0]
+        w = 1 / (1 + e ** 2 / m.td_ms)
+    if loss is not None:
+        assert abs(info['w_mean'] - float(w.mean())) < 1e-5
+        assert info['w_err_max'] <= 0.5 * np.sqrt(m.td_ms) + 1e-6
+    m0 = _sac(beta=0.0)
+    for k in range(16):
+        m0.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([-1.0]), np.array([False]), [{}])
+    m0.train(gradient_steps=2, batch_size=8)
+    assert all(s['model_td'] is None for s in m0.model_stats)
+
+
+def test_intent_model_uses_the_given_attitude_and_calibration():
+    """M1: the stage-end label of an intent uses the calibration it is given and the target attitude the caller
+    supplies (the realized one in training), and the stage reward and potential shaping of this mission."""
+    from dynamics.lie import so3_exp
+    from env.t1_p_stage import plan_state, relative_inertial
+    from env.t2_stage import GAMMA_STAGE, EntryCalibration, T2StageEnv, frame_now, observe, stage_goal
+    env = T2StageEnv(openings=[1000001], shaping=True, candidates=3)
+    env.reset()
+    e = env.env
+    for k in range(12):
+        env.calibration.add(0.10, 0.12, np.array([0.05 * k, 0.0, 0.0]), np.array([0.0, 0.001 * k, 0.0]))
+    q, v = relative_inertial(e)
+    frame = frame_now(e, q)
+    a = np.array([0.3, 0.2])
+    goal = stage_goal(q, v, frame, a, e.chaser_parameters.mass)
+    plan = env.generator.planner.solve(q, v, goal['q_goal'], goal['v_goal'])
+    assert plan['feasible']
+    start = {"rotation": e.target_state.rotation.copy(), "omega": e.target_state.omega.copy(), "t": e.time_s, "dv": e._delta_v, "phi": env._phi(),
+             "q": q, "v": v, "basis": frame['basis'], "frame": frame}
+    cal = env.calibration.frozen(); env._model_t0 = start['t']
+    rot16 = start['rotation'] @ so3_exp(16.0 * start['omega']) @ so3_exp(np.array([0.0, 0.05, 0.0]))   # a "realized" attitude
+    attitude = lambda s: (rot16 if abs(s - 16.0) < 1e-9 else start['rotation'] @ so3_exp(s * start['omega']), start['omega'])
+    dq, dvv = cal.residuals(); b = frame['basis']
+    raw = lambda s: (b.T @ dq * (s / 16.0), b.T @ dvv * (s / 16.0), 0.0)
+    p = env.predict_intent(plan, a, start, cal, EntryCalibration(), raw, attitude)
+    assert not p['done']
+    q1, v1 = plan_state(plan, 16.0, e.chaser_parameters.mass)
+    assert np.allclose(p['q'], q1 + b.T @ dq) and np.allclose(p['v'], v1 + b.T @ dvv)
+    expected = observe(e, p['q'], p['v'], start['t'] + 16.0, start['dv'] + p['dv'], env.mission, rot16, start['omega'],
+                       {"position_residual_m": float(np.linalg.norm(dq)), "velocity_residual_m_s": float(np.linalg.norm(dvv)), "held": False})
+    assert np.allclose(p['obs'], expected)
+    w = e.config.reward
+    shaped = -w.time_cost_per_s * 16.0 - w.delta_v_cost_per_m_s * p['dv'] + GAMMA_STAGE * env.potential(p['q'], rot16, start['omega']) - start['phi']
+    assert abs(p['reward'] - shaped) < 1e-9
+
+
+def test_learner_gamma_is_the_stage_discount():
+    from env.t2_stage import GAMMA_STAGE
+    from train.t2_mve_sac import make_model
+    import inspect, train.t2_mve_sac as m
+    assert 'gamma=GAMMA_STAGE' in inspect.getsource(m.make_model)
+    assert abs(GAMMA_STAGE - 0.999 ** 8) < 1e-15
+
+
+def test_mission_preferences_trade_time_against_fuel():
+    m = T2Mission()
+    for o in range(1000000, 1000020):
+        x = m.sample(o)
+        if x['urgent']:
+            assert x['time_cost_per_s'] > 0.05 and x['fuel_cost_per_m_s'] < 20
+        else:
+            assert x['time_cost_per_s'] < 0.05 and x['fuel_cost_per_m_s'] > 20
+
+
+def test_pure_row_is_the_mpc_alone():
+    from env.t2_stage import T2StageEnv
+    env = T2StageEnv(openings=[1000000], shaping=False)
+    env.reset(options={'opening': 1000000})
+    for _ in range(2):
+        env.step_pure()
+    assert env.far_field_controls == 0 and env.generator is None
+
+
+def test_entry_calibration_replays_executed_entries():
+    """T2.4: each recorded entry's realized deviation (time beyond its plan, delta-v beyond its plan) is replayed
+    on the candidate's plan and remaining time. A timed-out record is censored: it counts as a failure only where
+    the candidate has no more slack than that record had; unsafe records always count."""
+    from env.t2_stage import EntryCalibration
+    from env.t1_env import T1Reward
+    w = T1Reward(time_cost_per_s=0.1, delta_v_cost_per_m_s=10.0)
+    c = EntryCalibration()
+    for k in range(19):                         # 19 captures, 40 s beyond the plan, +0.1 m/s beyond the plan
+        c.add(20.0, 0.3, 60.0, 0.4, True, 100.0, 150.0)
+    assert not c.ready
+    c.add(30.0, 0.3, 50.0, 0.4, False, 100.0, 50.0)   # timed out with 20 s of slack
+    assert c.ready
+    roomy = c.predict(25.0, 0.2, w, remaining=120.0)   # slack 95 s > 20 s: the censored record is left out
+    assert roomy['records'] == 19 and roomy['p_success'] == 1.0
+    assert abs(roomy['reward'] - (100 - 0.1 * 65.0 - 10 * 0.3)) < 1e-9
+    tight = c.predict(25.0, 0.2, w, remaining=40.0)    # 65 s needed > 40 s: every record times out here
+    assert tight['records'] == 20 and tight['p_success'] == 0.0 and abs(tight['reward'] - (-100 - 0.1 * 40.0 - 10 * 0.3)) < 1e-9
+    c.add(20.0, 0.3, 30.0, 0.5, False, 150.0, 150.0)  # an unsafe record always counts
+    assert c.predict(25.0, 0.2, w, remaining=120.0)['records'] == 20
+    old = EntryCalibration(rows=[(20.0, 0.3, 60.0, 0.4, True, 100.0)] * 20)   # rows without a remaining time still load
+    assert old.predict(25.0, 0.2, w, remaining=120.0)['p_success'] == 1.0
+
+
+def test_entry_label_reliability_uses_the_current_outcome_model_bias():
+    """T2.4: w_k = 1 / (1 + (eps_k / sigma)^2), eps_k = |e_a| + b_k. b_k is the *current* entry outcome-model bias for
+    entry labels resting on the outcome model alone (kind 2; one sigma while the bias is unknown), and 0 for entry
+    labels anchored to the decision's realized entry (kind 1) and for stage labels (kind 0)."""
+    from env.t2_stage import OBS_DIM
+    m = _sac(batch=4)
+    for k in range(4):
+        fact = {'reward': 0.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True}
+        cands = [{'a': np.zeros(2, np.float32), 'reward': 10.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True, 'kind': 2},
+                 {'a': np.ones(2, np.float32) * .5, 'reward': 1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True, 'kind': 1}]
+        m.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([0.0]), np.array([True]),
+                            [{'model': {'fact': fact, 'cands': cands}}])
+    m.td_ms = 100.0                              # sigma 10
+    data = m.replay_buffer.sample(4)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    _, info = m._model_loss(data, target, m.ent_coef_tensor)       # bias unknown: one sigma -> 1 / (1 + 1) = 0.5
+    assert abs(info['w_mean'] - (0.5 + 1.0) / 2) < 1e-6 and abs(info['entry_unanchored_share'] - 0.5) < 1e-9
+    m.entry_bias_now = -20.0                     # measured now: the stored labels are re-weighted, 1 / (1 + 4) = 0.2
+    _, info = m._model_loss(data, target, m.ent_coef_tensor)
+    assert abs(info['w_mean'] - (0.2 + 1.0) / 2) < 1e-6
+    m.entry_bias_now = 0.0
+    _, info = m._model_loss(data, target, m.ent_coef_tensor)
+    assert abs(info['w_mean'] - 1.0) < 1e-6
+
+def test_anchored_replay_reproduces_the_executed_intent():
+    """M1 + M2 consistency: the executed intent, predicted with its own realized residual path and the realized
+    target attitude, reproduces the truth -- the stage reward at every completed stage, and at the entry stage the
+    executor's entry (294000, full closing: ~6 s into the stage starting at 48 s, tau 25 s) and the realized
+    return. The executor model is the executor's own rule, not an imitation of it."""
+    from env.t2_stage import T2StageEnv
+    env = T2StageEnv(openings=[294000], shaping=True, candidates=3, seed=1)
+    env.diagnostics = True
+    env.reset(options={'opening': 294000})
+    for _ in range(12):
+        env.calibration.add(0.1, 0.1, np.zeros(3), np.zeros(3))
+    for _ in range(20):
+        env.entry_calibration.add(25.0, 0.35, 50.0, 0.6, True, 100.0)
+    a = np.array([1.0, 0.0]); done = False; checked = 0
+    while not done:
+        obs, r, term, trunc, info = env.step(a); done = term or trunc
+        d = info['model']['diag']
+        if d['reason'] in ('stage', 'entry'):
+            f = d['anchored_fact']
+            assert f['done'] == bool(term) and abs(f['reward'] - r) < 1e-6
+            checked += 1
+    assert term and info['event'] == 'success' and d['reason'] == 'entry'
+    assert d['anchored_fact']['entry']['tau'] == 25.0 and abs(d['anchored_fact']['entry']['s'] - 6.0) < 1e-9
+    assert checked == env.stats['stages'] and info['model']['cands'] and env.entry_calibration.rows[-1][0] == 25.0
+def test_terminal_model_labels_do_not_bootstrap():
+    from env.t2_stage import OBS_DIM
+    m = _sac(batch=4)
+    for k in range(4):
+        fact = {'reward': 0.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True}     # exact factual: w = 1
+        cands = [{'a': np.zeros(2, np.float32), 'reward': 50.0, 'next_obs': np.ones(OBS_DIM, np.float32) * 9, 'done': True, 'kind': 1}]
+        m.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([0.0]), np.array([True]),
+                            [{'model': {'fact': fact, 'cands': cands}}])
+    assert m.replay_buffer.model_counts['entry_candidates'] == 4                 # kind 1: an anchored entry label, no outcome-model bias (T2.6.1: kind 0 terminal = deadline)
+    m.td_ms = 1.0
+    data = m.replay_buffer.sample(4)
+    with th.no_grad():
+        for p in m.critic_target.parameters():     # whatever the critic says at s', a terminal label is the label
+            p.add_(1.0)
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    loss, info = m._model_loss(data, target, m.ent_coef_tensor)
+    q = th.cat(m.critic(data.observations, th.zeros(4, 2)), dim=1)
+    expected = 0.5 * ((q - 50.0) ** 2).sum() / 4
+    assert info['model_rows'] == 4 and info['w_mean'] == 1.0 and abs(float(loss) - float(expected)) < 1e-3
+
+
+def test_basic_layering_is_rotation_unaware_closing():
+    from env.t2_stage import target_velocity
+    f, _ = _frame(); b = f["basis"]
+    v = target_velocity(f, np.array([0.4, 0.9]), geometry=False)
+    assert np.allclose(v, -(0.05 + 0.15 * 0.4) * b[0])
+    assert abs(target_velocity(f, np.array([0.4, 0.9])) @ b[1]) > 0      # with the geometry: cone regulation
+
+
+def test_update_ratio_is_per_stored_transition():
+    import inspect, train.t2_mve_sac as m
+    assert 'gradient_steps=max(1, int(round(updates_per_transition)))' in inspect.getsource(m.make_model) and m.UPDATES_PER_TRANSITION == 2
+    assert 'model.train(gradient_steps=model.gradient_steps' in inspect.getsource(m.train)
+
+
+def test_candidates_cover_the_decisive_alternatives():
+    from env.t2_stage import T2StageEnv
+    env = T2StageEnv(openings=[294000], candidates=8, seed=0)
+    c = env.candidate_actions(np.array([1.0, 0.7]))
+    assert len(c) == 8 and all(np.all(np.abs(x) <= 1.0) for x in c)
+    assert np.allclose(c[0], [1.0, 0.0]) and np.allclose(c[1], [1.0, -0.7]) and np.allclose(c[2], [0.4, 0.7])
+    assert all(np.linalg.norm(x - [1.0, 0.7]) <= 0.5 + 1e-9 for x in c[4:])
+
+
+def test_lost_bridge_keeps_the_entry_record_open():
+    """T2.2 counted a lost bridge as a failed entry. The record now runs from the first bridge to the terminal
+    event; a lost bridge only ends the bridge."""
+    from env.t2_stage import T2StageEnv
+    env = T2StageEnv(openings=[294000], shaping=False)
+    env.reset(options={'opening': 294000})
+    e = env.env
+    env._bridge = {"t": e.time_s, "dv": e._delta_v, "tau": 60.0, "dv_plan": 0.5}
+    env._entry_open = {**env._bridge, "G": -3.0}
+    env._close_bridge("lost")
+    assert env._bridge is None and env._entry_open is not None and env.entry_calibration.rows == [] and env.stats['entries_lost'] == 1
+    env._bridge = {"t": e.time_s, "dv": e._delta_v, "tau": 25.0, "dv_plan": 0.3}
+    env._close_bridge("success")
+    assert env._entry_open is None and len(env.entry_calibration.rows) == 1
+    tau, dv_plan, _, _, success, _, remaining = env.entry_calibration.rows[0]
+    assert tau == 60.0 and dv_plan == 0.5 and success and remaining == env.mission["deadline_s"] - e.time_s
+
+
+def test_window_commitment_retimes_a_failed_replan_inside_the_pass():
+    """Sub-mechanism: a live entry whose fixed-time re-plan fails is re-timed (2, 4, 8 s later) at the plan bound,
+    then with the authority reserve; never beyond the deadline; a new request is unchanged."""
+    from types import SimpleNamespace
+    import env.t1_n_task as N
+    from env.t2_stage import WindowGStar
+    calls = []
+    class Planner:
+        def __init__(self, ok): self.ok = ok
+        def solve(self, q0, v0, tau, history, guess, entry_speed_m_s=None):
+            calls.append((self, tau)); return {"feasible": self.ok(tau), "tau_s": tau, "status": "optimal", "delta_v_m_s": 0.1}
+    st = SimpleNamespace(position=np.array([8.0, 0, 0]), velocity=np.zeros(3), rotation=np.eye(3), omega=np.array([0, 0, 0.04]))
+    tg = SimpleNamespace(position=np.zeros(3), velocity=np.zeros(3), rotation=np.eye(3), omega=np.array([0, 0, 0.04]))
+    env = SimpleNamespace(target_state=tg, chaser_state=st, time_s=50.0, config=SimpleNamespace(max_time_s=200.0),
+                          target_parameters=SimpleNamespace(inertia=np.eye(3) * 39.0))
+    def failed(self, env, tau):         # the conditional G* could not re-plan the remaining arrival
+        self.plan, self.last_outcome, self.last_status = None, "replan_failed", "hold:rejected:infeasible"
+    orig = N.ConditionalGStar.decide
+    N.ConditionalGStar.decide = failed
+    try:
+        g = WindowGStar(kappa=1.0, planner=Planner(lambda t: t >= 34.0), reserve_planner=Planner(lambda t: True), deadline_margin_s=45.0)
+        g.plan = {"tau_s": 60.0}
+        g.decide(env, 30.0)
+        assert g.plan is not None and g.tau_s == 34.0 and g.last_status == "window:4:plan" and g.recoveries == 1
+        calls.clear(); g.planner = Planner(lambda t: False); g.plan = {"tau_s": 60.0}
+        g.decide(env, 30.0)
+        assert g.last_status == "window:0:reserve" and [c[1] for c in calls] == [32.0, 34.0, 38.0, 30.0]
+        calls.clear(); g.plan = {"tau_s": 60.0}; g.reserve_planner = Planner(lambda t: False)
+        env.time_s = 120.0                 # deadline horizon 200 - 45 - 120 = 35 s: only slips up to 35 s
+        g.decide(env, 30.0)
+        assert g.plan is None and max(c[1] for c in calls) <= 35.0
+        calls.clear(); g.plan = None        # a new request: no recovery
+        g.decide(env, 30.0)
+        assert calls == []
+    finally:
+        N.ConditionalGStar.decide = orig
+
+
+def test_paired_readout_drops_the_two_largest_gains(tmp_path):
+    import json
+    from experiments.t2_readout import paired
+    for arm, rets in (('e_mve_s0', [10, 100, 50, 0]), ('e_sac_s0', [0, 0, 0, 5])):
+        d = tmp_path / arm / 'step_100'; d.mkdir(parents=True)
+        for k, ret in enumerate(rets):
+            (d / f'{k}.json').write_text(json.dumps({'opening': k, 'return': ret, 'event': 'success', 'time_s': 100.0, 'delta_v': 1.0,
+                                                     'mission': {'urgent': k % 2 == 0, 'deadline_s': 180.0 if k % 2 == 0 else 300.0}}))
+    p = paired(tmp_path)['s0/step_100']
+    assert p['n'] == 4 and abs(p['mean'] - 38.75) < 1e-9 and abs(p['without_top2'] - 2.5) < 1e-9
+    assert abs(p['urgent'] - 30.0) < 1e-9 and abs(p['economy'] - 47.5) < 1e-9 and p['positive'] == 3 and p['negative'] == 1
+
+
+def test_decision_applies_the_preregistered_criteria():
+    from experiments.t2_decide import decide
+    arm = lambda r0, r2, r3: {'0': {'mean_return': r0}, '2000': {'mean_return': r2}, '3000': {'mean_return': r3}}
+    pair = lambda m, u, t2: {'mean': m, 'urgent': u, 'without_top2': t2, 'capture_mve': 21, 'capture_sac': 20, 'unsafe_mve': 0, 'unsafe_sac': 0}
+    r = {'all_complete': True, 'arms': {'e_mve_s0': arm(-50, 20, 40), 'e_mve_s1': arm(-50, 20, 35), 'e_sac_s0': arm(-50, 10, 25), 'e_sac_s1': arm(-50, 10, 22)},
+         'paired': {'s0/step_2000': pair(10, 1, 1), 's1/step_2000': pair(10, 1, 1), 's0/step_3000': pair(15, 3, 2), 's1/step_3000': pair(13, 1, 1)}}
+    assert decide(r)['verdict'] == 'pass'
+    r['paired']['s1/step_3000'] = pair(13, -9, 1)
+    assert decide(r)['verdict'] == 'coupling_failure'
+    r['arms'] = {k: arm(-50, -40, -30) for k in r['arms']}
+    assert decide(r)['verdict'] == 'learning_failure'
+    r['all_complete'] = False
+    assert decide(r)['verdict'] == 'incomplete'
+
+
+def test_audit_branch_reproduces_the_continuation_bitwise():
+    from env.t2_stage import T2StageEnv
+    from experiments.t2_audit import branch
+    env = T2StageEnv(openings=[294001], shaping=True, candidates=0)
+    env.reset(options={'opening': 294001})
+    a = np.array([0.5, 0.3])
+    env.step(a)
+    b = branch(env)
+    r0, r1 = env.step(a), b.step(a)
+    assert np.array_equal(r0[0], r1[0]) and r0[1] == r1[1] and r0[4]['true_reward'] == r1[4]['true_reward']
+
+
+def test_t23_decision_applies_the_preregistered_criteria():
+    from experiments.t2_decide import decide_t23
+    arm = lambda xs: {str(k): {'mean_return': x} for k, x in zip((0, 1000, 2000, 3000, 4000), xs)}
+    pair = lambda m: {'mean': m, 'urgent': m, 'without_top2': m, 'capture_mve': 22, 'capture_sac': 22, 'unsafe_mve': 0, 'unsafe_sac': 0}
+    r = {'all_complete': True,
+         'arms': {'e_mve_s0': arm([-60, 40, 52, 56, 58]), 'e_mve_s1': arm([-60, 38, 50, 55, 57]),
+                  'e_sac_s0': arm([-60, 30, 45, 53, 57]), 'e_sac_s1': arm([-60, 31, 46, 54, 58])},
+         'paired': {f's{s}/step_{k}': pair(m) for s in (0, 1) for k, m in zip((1000, 2000, 3000, 4000), (9, 6, 2, 0))}}
+    assert decide_t23(r)['verdict'] == 'pass'
+    r['paired']['s1/step_4000'] = pair(-8)            # end level fails (seed mean -4)
+    assert decide_t23(r)['verdict'] == 'coupling_failure'
+    r['paired']['s1/step_4000'] = pair(0)
+    r['arms']['e_sac_s1'] = arm([-60, 31, 46, 40, 58])  # last step change 18: not converged
+    assert decide_t23(r)['verdict'] == 'not_converged'
+    r['all_complete'] = False
+    assert decide_t23(r)['verdict'] == 'incomplete'
+
+
+def test_window_readout_pairs_rigid_and_window(tmp_path):
+    import json
+    from experiments.t2_readout import window
+    for d, rets, lost in (('rigid', [10, 20], 2), ('window', [15, 18], 0)):
+        (tmp_path / d).mkdir()
+        for k, ret in enumerate(rets):
+            (tmp_path / d / f'rally_{k}.json').write_text(json.dumps({'opening': k, 'policy': 'rally', 'return': ret, 'event': 'success',
+                                                                     'time_s': 100, 'delta_v': 1.0, 'entries_lost': lost}))
+    window(tmp_path / 'rigid', tmp_path / 'window', tmp_path / 'w.json')
+    w = json.loads((tmp_path / 'w.json').read_text())
+    assert w['pairs'] == 2 and abs(w['paired_return']['mean'] - 1.5) < 1e-9 and w['entries_lost'] == {'rigid': 4, 'window': 0}
+
+
+def test_t24_decision_applies_the_preregistered_criteria():
+    from experiments.t2_decide import decide_t24
+    arm = lambda xs: {str(k): {'mean_return': x} for k, x in zip((0, 1000, 2000, 3000, 4000), xs)}
+    pair = lambda m: {'mean': m, 'urgent': m, 'without_top2': m, 'capture_mve': 23, 'capture_sac': 23, 'unsafe_mve': 0, 'unsafe_sac': 0}
+    r = {'all_complete': True, 'arms': {'e_mve_s0': arm([-15, 40, 50, 55, 56]), 'e_sac_s0': arm([-15, 36, 45, 55, 54]),
+                                        'e_mve_s1': arm([None, 30, 45, 50]), 'e_sac_s1': arm([None, 26, 44, 50])},
+         'paired': {**{f's0/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 5), (3000, 0), (4000, 2))},
+                    **{f's1/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 1), (3000, 0))}}}
+    assert decide_t24(r)['verdict'] == 'pass'
+    r['paired']['s1/step_3000'] = pair(-20)
+    assert decide_t24(r)['verdict'] == 'seed0_only'
+    r['arms']['e_mve_s0'] = arm([-15, 30, 35, 40, 41])
+    assert decide_t24(r)['verdict'] == 'coupling_failure'
+    r['all_complete'] = False
+    assert decide_t24(r)['verdict'] == 'incomplete'
+
+
+def test_two_stage_labels_use_the_policy_copy_and_the_executor_model():
+    """T2.5: a non-terminal candidate gets a stage-2 part flown by the policy copy's action (a2, log mu) on the
+    calibrated model from the candidate's predicted stage end; without a policy copy there is none (stage-1 label);
+    a candidate whose own stage opens the entry stays a terminal stage-1 label."""
+    from env.t2_stage import ENTRY_STAGES, T2StageEnv
+    assert ENTRY_STAGES == 2
+    env = T2StageEnv(openings=[294000], shaping=True, candidates=4, seed=1)
+    env.reset(options={'opening': 294000})
+    for _ in range(12):
+        env.calibration.add(0.1, 0.1, np.zeros(3), np.zeros(3))
+    for _ in range(20):
+        env.entry_calibration.add(25.0, 0.35, 50.0, 0.6, True, 100.0)
+    _, _, _, _, info = env.step(np.array([1.0, 0.0]))                  # no policy copy yet
+    assert info['model']['cands'] and all(c['s2'] is None for c in info['model']['cands'] if not c['done'])
+    calls = []
+    env.label_policy = lambda o: (calls.append(o) or (np.array([1.0, 0.0]), -1.5))
+    _, _, term, _, info = env.step(np.array([1.0, 0.0]))
+    cands = info['model']['cands']
+    two = [c for c in cands if not c['done'] and c['s2'] is not None]
+    assert two and len(calls) >= len(two)
+    for c in two:
+        assert c['s2']['logp'] == -1.5 and np.allclose(c['s2']['a'], [1.0, 0.0]) and np.isfinite(c['s2']['reward'])
+        assert c['s2']['kind'] == (2 if c['s2']['done'] else 0)
+    assert all(c['s2'] is None for c in cands if c['done'])
+
+
+def _retrace_fixture(c2_logp, created=0.0, d1=0.0, d2=0.0):
+    """One stored candidate with a stage-2 part; value functions replaced by known constants."""
+    from env.t2_stage import OBS_DIM
+    m = _sac(batch=1)
+    m.td_ms = 1e6
+    f = lambda v: th.full((1, 1), float(v))
+    batch = {'cand_obs': th.zeros(1, 1, OBS_DIM), 'cand_done': th.full((1, 1), d1), 'cand_r': f(2.0).reshape(1, 1), 'created': th.full((1,), created),
+             'cand_valid': th.ones(1, 1), 'cand_kind': th.zeros(1, 1), 'c2_valid': th.ones(1, 1), 'c2_a': th.zeros(1, 1, 2),
+             'c2_logp': th.full((1, 1), c2_logp), 'c2_r': th.full((1, 1), 3.0), 'c2_obs': th.ones(1, 1, OBS_DIM), 'c2_done': th.full((1, 1), d2),
+             'c2_kind': th.zeros(1, 1)}
+    m._soft_value = lambda obs, ec: th.where(obs[:, :1] > 0.5, th.full_like(obs[:, :1], 7.0), th.full_like(obs[:, :1], 5.0))   # V(o1)=5, V(o2)=7
+    m._q_target_min = lambda obs, a: th.full((obs.shape[0], 1), 4.0)                                                           # Qbar(o1, a2) = 4
+    m._log_pi = lambda obs, a: th.full((obs.shape[0], 1), -1.0)                                                                 # log pi(a2|o1) = -1
+    m.replay_buffer.stored = 10
+    return m, batch
+
+
+def test_two_stage_soft_retrace_target():
+    """T2.5 target: y = r1 + g V(o1) + g c (r2 + g (1 - d2) V(o2) - Qbar(o1, a2)), c = min(1, pi/mu); c = 0 past the age
+    cap; a terminal stage 1 is the label alone."""
+    from train.t2_mve_sac import AGE_CAP
+    g = __import__('env.t2_stage', fromlist=['GAMMA_STAGE']).GAMMA_STAGE
+    err = th.zeros(1)
+    m, b = _retrace_fixture(c2_logp=-1.0)                      # mu = pi: c = 1
+    y, c, delta, wk, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert abs(float(c) - 1.0) < 1e-6 and abs(float(delta) - (3 + g * 7 - 4)) < 1e-5
+    assert abs(float(y) - (2 + g * 5 + g * (3 + g * 7 - 4))) < 1e-5
+    m, b = _retrace_fixture(c2_logp=-1.0 + np.log(4.0))        # mu = 4 pi: c = 1/4
+    y, c, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert abs(float(c) - 0.25) < 1e-6 and abs(float(y) - (2 + g * 5 + g * 0.25 * (3 + g * 7 - 4))) < 1e-5
+    m, b = _retrace_fixture(c2_logp=-5.0)                      # mu << pi: truncated at 1
+    _, c, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert abs(float(c) - 1.0) < 1e-6
+    m, b = _retrace_fixture(c2_logp=-1.0, d2=1.0)              # stage 2 ends in the entry: no bootstrap beyond it
+    y, c, delta, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert abs(float(delta) - (3 - 4)) < 1e-6
+    m, b = _retrace_fixture(c2_logp=-1.0, created=-float(AGE_CAP) - 1)   # too old: stage-1 target only
+    y, c, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert float(c) == 0.0 and abs(float(y) - (2 + g * 5)) < 1e-5
+    m, b = _retrace_fixture(c2_logp=-1.0, d1=1.0)              # terminal stage 1: the label itself
+    y, c, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), err, 0.05)
+    assert float(c) == 0.0 and abs(float(y) - 2.0) < 1e-6
+
+
+def test_two_stage_error_estimate_counts_both_model_stages():
+    """eps_k = |e_a| + b1 + g c (|e_a| + b2); w_k = 1 / (1 + (eps_k / sigma)^2)."""
+    g = __import__('env.t2_stage', fromlist=['GAMMA_STAGE']).GAMMA_STAGE
+    m, b = _retrace_fixture(c2_logp=-1.0)
+    m.td_ms = 100.0; m.entry_bias_now = -20.0
+    b['c2_kind'] = th.full((1, 1), 2.0)                        # stage 2 ends in an entry resting on the outcome model alone
+    _, c, _, wk, *_ = m._candidate_targets(b, th.ones(1, 1, dtype=th.bool), th.full((1,), 3.0), 0.05)
+    eps = 3.0 + g * 1.0 * (3.0 + 20.0)
+    assert abs(float(wk) - 1.0 / (1.0 + eps ** 2 / 100.0)) < 1e-6
+
+
+def test_learner_refreshes_the_environment_policy_copy():
+    import inspect, train.t2_mve_sac as t
+    src = inspect.getsource(t.train)
+    assert "payload = ('actor', copy.deepcopy(model.actor).cpu())" in src and 'model._n_updates - synced[w_] >= SYNC_UPDATES' in src
+    assert t.SYNC_UPDATES == 100 and t.AGE_CAP == 2000
+    w = inspect.getsource(t.worker)
+    assert 'env.label_policy = label_policy' in w and 'actor.load_state_dict(payload[1])' in w
+
+
+def test_log_pi_matches_the_actor_sampling_density():
+    from env.t2_stage import OBS_DIM
+    m = _sac()
+    obs = th.randn(16, OBS_DIM)
+    with th.no_grad():
+        a, logp = m.actor.action_log_prob(obs)
+        assert th.allclose(m._log_pi(obs, a), logp.reshape(-1, 1), atol=2e-3)
+
+
+def test_t25_decision_applies_the_preregistered_criteria():
+    from experiments.t2_decide import decide_t25
+    ks = (0, 500, 1000, 1500, 2000, 2500, 3000)
+    arm = lambda xs: {str(k): {'mean_return': x} for k, x in zip(ks, xs)}
+    pair = lambda m, u=None, cm=23, cs=23, um=0, us=0: {'mean': m, 'urgent': m if u is None else u, 'without_top2': m,
+                                                        'capture_mve': cm, 'capture_sac': cs, 'unsafe_mve': um, 'unsafe_sac': us}
+    def build(diffs, urgent=None, final=None):
+        r = {'all_complete': True, 'arms': {}, 'paired': {}}
+        for s in (0, 1, 2):
+            r['arms'][f'e_mve_s{s}'] = arm([-15, 20, 35, 45, 50, 53, 54]); r['arms'][f'e_sac_s{s}'] = arm([-15, 15, 30, 42, 48, 53, 54])
+            for k in ks[1:]:
+                r['paired'][f's{s}/step_{k}'] = pair(diffs[s] if not (final is not None and k == 3000) else final, urgent)
+        return r
+    assert decide_t25(build([4, 3, -1]))['verdict'] == 'pass'
+    assert decide_t25(build([4, 3, -1], urgent=-2))['verdict'] == 'partial'
+    assert decide_t25(build([-4, 3, -1]))['verdict'] == 'no_gain'
+    assert decide_t25(build([4, 3, 1], final=-8))['verdict'] == 'harmful'
+    r = build([4, 3, -1]); r['all_complete'] = False
+    assert decide_t25(r)['verdict'] == 'incomplete'
+
+
+def test_t25_validation_mode_two_seeds_two_checkpoints():
+    from experiments.t2_decide import decide_t25
+    pair = lambda m: {'mean': m, 'urgent': m, 'without_top2': m, 'capture_mve': 23, 'capture_sac': 23, 'unsafe_mve': 0, 'unsafe_sac': 0}
+    r = {'all_complete': True, 'arms': {}, 'paired': {}}
+    for s, d in ((0, 3.0), (1, -1.0)):
+        r['arms'][f'e_mve_s{s}'] = {'0': {'mean_return': -15}, '1000': {'mean_return': 40}, '2000': {'mean_return': 52}}
+        r['arms'][f'e_sac_s{s}'] = {'1000': {'mean_return': 38}, '2000': {'mean_return': 50}}     # SAC 0k not required
+        for k in (1000, 2000):
+            r['paired'][f's{s}/step_{k}'] = pair(d)
+    assert decide_t25(r, (1000, 2000), 2, False)['verdict'] == 'pass'      # 12 change > 10 would fail C if required
+    assert decide_t25(r, (1000, 2000), 2, True)['verdict'] == 'partial'
+    assert decide_t25(r, (1000, 2000), 3, False)['verdict'] == 'incomplete'
+
+
+def test_v25_validation_decision():
+    from experiments.t2_decide import decide_v25
+    arm = lambda xs: {str(k): {'mean_return': x} for k, x in zip((0, 1000, 2000, 3000, 4000), xs)}
+    pair = lambda m: {'mean': m, 'urgent': m, 'without_top2': m, 'capture_mve': 23, 'capture_sac': 23, 'unsafe_mve': 0, 'unsafe_sac': 0}
+    r = {'all_complete': True, 'arms': {'e_mve_s0': arm([-15, 40, 50, 55, 56]), 'e_sac_s0': arm([-15, 36, 45, 55, 54]),
+                                        'e_mve_s1': arm([None, 30, 45, 50, 55]), 'e_sac_s1': arm([None, 26, 44, 50])},
+         'paired': {**{f's0/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 5), (3000, 0), (4000, 2))},
+                    **{f's1/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 1), (3000, 0))}}}
+    good = {'s0': {'two_stage_share': 0.8, 'decisive_share': 0.05, 'c_mean': 0.9, 'grad_cos': 0.3}}
+    assert decide_v25(r, good)['verdict'] == 'pass'
+    assert decide_v25(r, {'s0': dict(good['s0'], decisive_share=0.0)})['verdict'] == 'mechanism_failure'
+    r['paired']['s1/step_3000'] = pair(-20)
+    assert decide_v25(r, good)['verdict'] == 'mixed'
+
+
+def test_stage2_rows_are_one_step_labels_without_a_ratio():
+    """T2.5.1: Q(o1, a2) <- r2 + g (1 - d2) V(o2) for every non-terminal candidate with a stage 2, whatever pi/mu or the
+    label age; weight 1 / (1 + (eps2 / sigma)^2), eps2 = |e_a| + b2; none after a terminal stage 1."""
+    from train.t2_mve_sac import AGE_CAP
+    g = __import__('env.t2_stage', fromlist=['GAMMA_STAGE']).GAMMA_STAGE
+    one = th.ones(1, 1, dtype=th.bool)
+    for logp, created in ((-1.0, 0.0), (-1.0 + np.log(1e4), 0.0), (-1.0, -float(AGE_CAP) - 1)):   # c = 1, c = 1e-4, too old
+        m, b = _retrace_fixture(c2_logp=logp, created=created)
+        m.td_ms = 100.0
+        o1, a2, y2, w2, gap, d2, _ = m._stage2_rows(b, one, th.full((1,), 3.0), 0.05)
+        assert abs(float(y2) - (3 + g * 7)) < 1e-5 and abs(float(w2) - 1.0 / (1.0 + 9.0 / 100.0)) < 1e-6
+        assert float(gap) == 0.0                                 # Qbar is constant in the fixture
+    m, b = _retrace_fixture(c2_logp=-1.0, d2=1.0)                # stage 2 ends in the entry: no bootstrap beyond it
+    m.td_ms = 100.0; m.entry_bias_now = -20.0; b['c2_kind'] = th.full((1, 1), 2.0)
+    _, _, y2, w2, _, _, _ = m._stage2_rows(b, one, th.full((1,), 3.0), 0.05)
+    assert abs(float(y2) - 3.0) < 1e-6 and abs(float(w2) - 1.0 / (1.0 + 23.0 ** 2 / 100.0)) < 1e-6
+    m, b = _retrace_fixture(c2_logp=-1.0, d1=1.0)                # terminal stage 1: no stage-2 row
+    assert m._stage2_rows(b, one, th.zeros(1), 0.05) is None
+
+
+def test_model_loss_averages_over_stage1_and_stage2_rows():
+    """The model loss is the weighted mean over all model rows; the stage-2 rows enter at the predicted stage-1 state."""
+    import inspect, train.t2_mve_sac as t
+    src = inspect.getsource(t.T2SAC._model_loss)
+    assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
+    assert t.LEARNER_VERSION == 't2-learner-7.2'
+
+
+def test_v251_validation_decision_and_cli(tmp_path):
+    import json, subprocess, sys
+    from experiments.t2_decide import decide_v251
+    arm = lambda xs: {str(k): {'mean_return': x} for k, x in zip((0, 1000, 2000, 3000, 4000), xs)}
+    pair = lambda m: {'mean': m, 'urgent': m, 'without_top2': m, 'capture_mve': 23, 'capture_sac': 23, 'unsafe_mve': 0, 'unsafe_sac': 0}
+    r = {'all_complete': True, 'arms': {'e_mve_s0': arm([-15, 40, 50, 55, 56]), 'e_sac_s0': arm([-15, 36, 45, 55, 54]),
+                                        'e_mve_s1': arm([None, 30, 45, 50, 55]), 'e_sac_s1': arm([None, 26, 44, 50])},
+         'paired': {**{f's0/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 5), (3000, 0), (4000, 2))},
+                    **{f's1/step_{k}': pair(m) for k, m in ((1000, 4), (2000, 1), (3000, 0))}}}
+    good = {'s0': {'two_stage_share': 0.8, 'decisive_share': 0.05, 'c_mean': 0.15, 'w2_mean': 0.8, 'pi_gap_sigma_median': 0.05, 'grad_cos': 0.3}}
+    assert decide_v251(r, good)['verdict'] == 'pass'                                     # a low c no longer fails M
+    assert decide_v251(r, {'s0': dict(good['s0'], w2_mean=0.3)})['verdict'] == 'mechanism_failure'
+    assert decide_v251(r, {'s0': dict(good['s0'], pi_gap_sigma_median=0.4)})['verdict'] == 'mechanism_failure'
+    assert decide_v251(r, {})['verdict'] == 'mechanism_failure'
+    # the command line applies the named validation criteria with the training logs (v25 was not wired before T2.5.1)
+    (tmp_path / 'TRAIN_e_mve_s0').mkdir()
+    (tmp_path / 'TRAIN_e_mve_s0' / 'model_stats.json').write_text(json.dumps([dict(good['s0'], steps=1500)]))
+    (tmp_path / 'R.json').write_text(json.dumps(r))
+    for crit, verdict in (('v251', 'pass'), ('v25', 'mechanism_failure')):
+        subprocess.run([sys.executable, '-B', '-m', 'experiments.t2_decide', '--criteria', crit, '--readout', str(tmp_path / 'R.json'),
+                        '--train-root', str(tmp_path), '--output', str(tmp_path / 'D.json')], check=True, capture_output=True)
+        assert json.loads((tmp_path / 'D.json').read_text())['verdict'] == verdict
+
+
+def test_training_step_fits_stage2_rows_end_to_end():
+    """Replay with two-stage candidates: train() runs, the stage-2 rows enter the loss and their readings are logged."""
+    from env.t2_stage import OBS_DIM
+    rng = np.random.default_rng(0)
+    m = _sac()
+    for k in range(16):
+        fact = {'reward': float(rng.normal(0, 3)), 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': False}
+        s2 = {'a': np.full(2, .2, np.float32), 'logp': -1.0, 'reward': 1.0, 'next_obs': np.ones(OBS_DIM, np.float32), 'done': bool(k % 4 == 0), 'kind': 0}
+        cands = [{'a': np.full(2, .1, np.float32), 'reward': -1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': False, 's2': s2},
+                 {'a': np.full(2, -.1, np.float32), 'reward': -2.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': True, 's2': None}]
+        m.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([-1.0]), np.array([False]),
+                            [{'model': {'fact': fact, 'cands': cands, 'diag': {'reason': 'stage'}}}])
+    assert m.replay_buffer.model_counts['two_stage'] == 16
+    m.train(gradient_steps=30, batch_size=8)
+    used = [s for s in m.model_stats if s.get('model_td') is not None]
+    assert used and all(np.isfinite(s['model_td']) for s in used)
+    s = used[-1]
+    assert s['stage2_rows'] > 0 and 0 < s['w2_mean'] <= 1 and s['pi_gap_sigma_median'] >= 0 and 0 <= s['stage2_entry_share'] <= 1
+
+
+def test_time_pressure_profiles_pair_opening_by_opening():
+    """T2.6: a tighter urgent deadline range keeps every opening's mission class and deadline quantile; economy unchanged."""
+    from env.t2_stage import T2Mission
+    from experiments.t2 import mission_profile
+    std, p155 = T2Mission(), mission_profile((155, 195))
+    assert mission_profile(None) == std and p155.urgent_deadline_s == (155.0, 195.0) and p155.economy_deadline_s == std.economy_deadline_s
+    for op in range(294000, 294024):
+        a, b = std.sample(op), p155.sample(op)
+        assert a['urgent'] == b['urgent']
+        assert abs((a['deadline_s'] - b['deadline_s']) - (15.0 if a['urgent'] else 0.0)) <= 0.11
+
+
+def test_pressure_screen_selection(tmp_path):
+    """Selection: the tightest profile with G* >= 22/24, in-space reachability, safety and a drop of the learned urgent captures."""
+    import json
+    from experiments.t2_readout import pressure
+    def write(tag, gstar_fail=0, learned_fail=0, unsafe=0):
+        for sub in ('screen', 'probe'):
+            (tmp_path / tag / sub).mkdir(parents=True)
+        for o in range(24):
+            urgent = o < 12; m = {'urgent': urgent, 'deadline_s': 180.0 if urgent else 300.0}
+            rec = lambda pol, ev, ret: json.dumps({'policy': pol, 'opening': o, 'event': ev, 'return': ret, 'time_s': 100.0, 'delta_v': 1.0, 'mission': m})
+            (tmp_path / tag / 'screen' / f'gstar_{o}.json').write_text(rec('gstar', 'timeout' if o < gstar_fail else 'success', 60.0))
+            (tmp_path / tag / 'screen' / f'pure_{o}.json').write_text(rec('pure', 'success', 40.0))
+            (tmp_path / tag / 'screen' / f'rally_{o}.json').write_text(rec('rally', 'unsafe' if o < unsafe else ('success' if o % 2 else 'timeout'), 50.0 if o % 2 else -100.0))
+            (tmp_path / tag / 'screen' / f'c_10_0_{o}.json').write_text(rec('c_10_0', 'success' if o % 2 == 0 else 'timeout', 50.0 if o % 2 == 0 else -100.0))
+            (tmp_path / tag / 'probe' / f'sac_{o}.json').write_text(rec('sac', 'timeout' if o < learned_fail else 'success', 55.0))
+    write('p170'); write('p155', learned_fail=2); write('p140', gstar_fail=3, learned_fail=5)
+    pressure(tmp_path, ['p170', 'p155', 'p140'], tmp_path / 'P.json')
+    r = json.loads((tmp_path / 'P.json').read_text())
+    assert r['selected'] == 'p155' and r['profiles']['p140']['criteria']['F1_reference'] is False
+    assert r['profiles']['p155']['criteria'] == {'F1_reference': True, 'F2_reachable': True, 'F3_safe': True, 'D1_pressure': True}
+
+
+def test_t26_decision_applies_the_preregistered_criteria():
+    from experiments.t2_decide import decide_t26
+    ks = (500, 1000, 1500, 2000, 2500, 3000)
+    pair = lambda m, ug=1, um=0, us=0: {'n': 24, 'mean': m, 'urgent': m, 'capture_mve': 22, 'capture_sac': 22, 'unsafe_mve': um, 'unsafe_sac': us,
+                                        'urgent_capture_mve': 10 + ug, 'urgent_capture_sac': 10}
+    build = lambda d0, d1, ug=1, um=0: {'all_complete': True, 'paired': {**{f's0/step_{k}': pair(d0, ug, um) for k in ks}, **{f's1/step_{k}': pair(d1, ug, um) for k in ks}}}
+    mech = {'s0': {'two_stage_share': 0.6, 'decisive_share': 0.1, 'w2_mean': 0.9, 'pi_gap_sigma_median': 0.05, 'grad_cos': 0.3}}
+    assert decide_t26(build(8, 6), mech)['verdict'] == 'pass'
+    assert decide_t26(build(2, 1), mech)['verdict'] == 'partial'                   # positive but below +5
+    assert decide_t26(build(8, 6, ug=0), mech)['verdict'] == 'partial'             # no urgent capture gain
+    assert decide_t26(build(-2, -1, ug=0), mech)['verdict'] == 'no_gain'
+    assert decide_t26(build(8, 6, um=2), mech)['verdict'] == 'harmful'
+    assert decide_t26(build(8, 6), {'s0': dict(mech['s0'], w2_mean=0.2)})['verdict'] == 'mechanism_failure'
+    r = build(8, 6); r['paired']['s1/step_3000']['n'] = 23
+    assert decide_t26(r, mech)['verdict'] == 'incomplete'
+    r = build(8, 6); r['expected'] = 48                                             # T2.6W: 48 openings expected
+    assert decide_t26(r, mech)['verdict'] == 'incomplete'
+    r = build(8, 6)                                                                 # T2.6.1: the four checkpoints 1000..3000 present
+    assert decide_t26(r, mech, (1000, 2000, 3000))['verdict'] == 'pass' and decide_t26(r, mech, (1000, 4000))['verdict'] == 'incomplete'
+
+
+def test_training_passes_the_mission_profile_to_every_worker():
+    import inspect, train.t2_mve_sac as t
+    assert 'urgent_deadline_s=tuple(float(x) for x in urgent_deadline)' in inspect.getsource(t.worker)
+    src = inspect.getsource(t.train)
+    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref, cand_min_sep, label_det,' in src and "'urgent_deadline_s'" in src
+    assert "'obs_profile': obs_profile" in src and 'obs_profile=obs_profile' in inspect.getsource(t.worker)
+
+
+def test_t26w_readout_bins_late_window_and_both_success(tmp_path):
+    """T2.6W: urgent deadline bins, delta-v / time on both-captured openings, late window; the verdict stays t26."""
+    import json
+    from experiments.t2_readout import paired
+    from experiments.t2_decide import decide_t26w
+    ks = (0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000)
+    for arm in ('e_mve', 'e_sac'):          # 2 x 2 x 9 x 24 small files
+        for s in (0, 1):
+            for k in ks:
+                d = tmp_path / f'{arm}_s{s}' / f'step_{k}'; d.mkdir(parents=True)
+                for o in range(24):
+                    urgent = o < 12; dl = (145.0, 170.0, 190.0)[o % 3] if urgent else 300.0
+                    ok = not (arm == 'e_sac' and urgent and o % 3 == 0)          # SAC misses the high-pressure urgent openings
+                    rec = {'opening': o, 'event': 'success' if ok else 'timeout', 'return': (60.0 if ok else -150.0) + (1.0 if arm == 'e_mve' else 0.0),
+                           'time_s': 100.0, 'delta_v': 1.0 if arm == 'e_mve' else 1.2, 'mission': {'urgent': urgent, 'deadline_s': dl}}
+                    (d / f'x_{o}.json').write_text(json.dumps(rec))
+    P = paired(tmp_path)
+    b = P['s0/step_500']['urgent_bins']
+    assert b['high'] == {'n': 4, 'mean': 211.0, 'capture_mve': 4, 'capture_sac': 0} and b['low']['capture_sac'] == 4
+    e = P['s0/step_500']['both_success']['economy']
+    assert e['n'] == 12 and abs(e['delta_v'] + 0.2) < 1e-9 and e['time_s'] == 0.0
+    arms = {f'e_{a}_s{s}': {str(k): {'mean_return': 50.0} for k in ks} for a in ('mve', 'sac') for s in (0, 1)}
+    mech = {'s0': {'two_stage_share': 0.6, 'decisive_share': 0.1, 'w2_mean': 0.9, 'pi_gap_sigma_median': 0.05, 'grad_cos': 0.3}}
+    res = decide_t26w({'all_complete': True, 'paired': P, 'arms': arms}, mech)
+    assert res['verdict'] == 'pass'                                                  # +36.25 per opening, +4 urgent captures per checkpoint
+    rep = res['reported']
+    assert rep['urgent_bins_all_checkpoints']['high'] == {'openings': 4, 'capture_mve': 64, 'capture_sac': 0, 'paired_mean': 211.0}
+    assert rep['late_s1']['spread'] == {'mve': 0.0, 'sac': 0.0} and rep['late_s0']['capture'][4000] == (24, 20)
+    assert abs(rep['both_success']['economy']['delta_v'] + 0.2) < 1e-9
+
+
+def test_calibration_is_shared_by_the_workers():
+    """T2.6: an environment's own new stage / entry rows go to the learner; the learner forwards every other worker's
+    rows once; a worker appends them to its own calibrations (same sliding window)."""
+    from env.t2_stage import CALIBRATION_WINDOW, ENTRY_CAL_MIN, T2StageEnv
+    from train.t2_mve_sac import CalibrationPool, merge_calibration, share_calibration
+    envs = [T2StageEnv(openings=[294000], candidates=0) for _ in range(2)]
+    boxes = [share_calibration(e) for e in envs]
+    pool = CalibrationPool()
+    for k in range(12):                                   # each environment executes 12 entries and 1 stage
+        for w, e in enumerate(envs):
+            e.entry_calibration.add(20.0, 1.0, 21.0 + w, 1.1, True, 0.0, 100.0)
+    for w, e in enumerate(envs):
+        e.calibration.add(0.1, 0.12, np.zeros(3), np.zeros(3), near=False)
+    for w, b in enumerate(boxes):
+        assert len(b['entry']) == 12 and len(b['stage']) == 1
+        pool.add(w, {k: list(v) for k, v in b.items()}); b['entry'].clear(); b['stage'].clear()
+    for w, e in enumerate(envs):
+        assert not e.entry_calibration.ready             # 12 own entries < ENTRY_CAL_MIN
+        merge_calibration(e, pool.pending(w))
+        assert len(e.entry_calibration.rows) == 24 and e.entry_calibration.ready and len(e.calibration.rows) == 2
+        assert pool.pending(w) is None                   # forwarded once
+        assert not boxes[w]['entry']                     # merged rows are not reported back
+    assert ENTRY_CAL_MIN <= 24 <= CALIBRATION_WINDOW
+    e = envs[0]; merge_calibration(e, {'entry': [e.entry_calibration.rows[0]] * 100, 'stage': []})
+    assert len(e.entry_calibration.rows) == CALIBRATION_WINDOW
+
+
+def test_pooled_calibration_only_in_the_coupled_arm():
+    """The SAC arm uses no executor model, so it shares no calibration; the coupled arms (EACC labels, T2.10 preference,
+    learner 7.0 certificate maps) do."""
+    import inspect, train.t2_mve_sac as t
+    w = inspect.getsource(t.worker); src = inspect.getsource(t.train)
+    cond = "(POOL_CALIBRATION and (candidates > 0 or pref or obs_profile == 'reduced_priv_cert'))"
+    assert f'share_calibration(env) if {cond} else None' in w and 'merge_calibration(env, shared)' in w
+    assert f'CalibrationPool() if {cond} else None' in src and 'pool.pending(w_)' in src
+    assert "pref = arm in ('e_pref', 'e_acc')" in src
+
+
+def _intent_fixture(deadline_left=None, budget_left=None):
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import EntryCalibration, T2StageEnv, frame_now, stage_goal
+    env = T2StageEnv(openings=[1000001], shaping=True, candidates=3)
+    env.reset(); e = env.env
+    for k in range(12):
+        env.calibration.add(0.10, 0.12, np.zeros(3), np.zeros(3))
+    q, v = relative_inertial(e); frame = frame_now(e, q); a = np.array([0.3, 0.2])
+    goal = stage_goal(q, v, frame, a, e.chaser_parameters.mass)
+    plan = env.generator.planner.solve(q, v, goal['q_goal'], goal['v_goal'])
+    start = {"rotation": e.target_state.rotation.copy(), "omega": e.target_state.omega.copy(), "t": e.time_s, "dv": e._delta_v, "phi": env._phi(),
+             "q": q, "v": v, "basis": frame['basis'], "frame": frame}
+    if deadline_left is not None:
+        env.mission = dict(env.mission, deadline_s=start['t'] + deadline_left)
+    if budget_left is not None:
+        env.mission = dict(env.mission, budget_m_s=start['dv'] + budget_left)
+    cal = env.calibration.frozen(); env._model_t0 = start['t']
+    attitude = lambda s: (start['rotation'], start['omega'])
+    zero = lambda s: (np.zeros(3), np.zeros(3), 0.0)
+    return env, env.predict_intent(plan, a, start, cal, EntryCalibration(), zero, attitude), start
+
+
+def test_labels_end_at_the_deadline_and_the_budget():
+    """T2.6.1: a modelled stage without an entry ends where the truth ends it -- the deadline (timeout) or the spent
+    budget (resource exhausted): cost up to then minus the timeout penalty, terminal, no bootstrap (before: 16 s and
+    a bootstrapped next observation past the deadline)."""
+    env, free, start = _intent_fixture()
+    assert not free['done']
+    w = env.env.config.reward; dv = free['dv']
+    env, p, start = _intent_fixture(deadline_left=10.0)
+    assert p['done'] and p['entry'] is None and p['event'] == 'timeout'
+    true = -w.time_cost_per_s * 10.0 - w.delta_v_cost_per_m_s * dv * 10.0 / 16.0 - w.timeout_penalty
+    assert abs(p['true'] - true) < 1e-9 and abs(p['reward'] - (true - start['phi'])) < 1e-9
+    env, p, start = _intent_fixture(budget_left=0.5 * dv)
+    assert p['done'] and p['event'] == 'resource_exhausted'
+    assert abs(p['true'] - (-w.time_cost_per_s * 8.0 - w.delta_v_cost_per_m_s * 0.5 * dv - w.timeout_penalty)) < 1e-9
+    assert env._stage_cutoff(start['t'], start['dv'], 0.0) is None
+    env.mission = dict(env.mission, deadline_s=start['t'] + 4.0)
+    assert env._stage_cutoff(start['t'], start['dv'], 2 * (env.mission['budget_m_s'] - start['dv']))[2] == 'timeout'   # the earlier end
+
+
+def test_stage2_labels_end_at_the_deadline_and_are_not_entries():
+    import inspect
+    from env.t2_stage import T2StageEnv
+    src = inspect.getsource(T2StageEnv.predict_second_stage)
+    assert src.index('self._stage_cutoff(t1, start["dv"] + s1["dv"], dv2)') < src.index('if not 6.5 <= float(np.linalg.norm(q2)) <= 25.0')
+    lab = inspect.getsource(T2StageEnv._labels)
+    assert '"kind": (1 if anchored_outcome else 2) if p.get("entry") is not None else 0' in lab
+    assert '"kind": 2 if p2.get("entry") is not None else 0' in lab
+
+
+def _entry_fixture(budget_left=None, deadline_left=None, hit_s=6.0):
+    """The intent fixture with a ready entry calibration and the entry scan pinned: a predicted entry at ``hit_s``
+    into the stage (stage 1) and none after it (stage 2), so the event order is the only thing under test."""
+    from env.t2_stage import ENTRY_CAL_MIN, EntryCalibration
+    env, free, start = _intent_fixture()
+    ecal = EntryCalibration()
+    for k in range(ENTRY_CAL_MIN):
+        ecal.add(20.0, 0.3, 70.0, 0.35, True, 0.0, 150.0)
+    if budget_left is not None:
+        env.mission = dict(env.mission, budget_m_s=start['dv'] + budget_left)
+    if deadline_left is not None:
+        env.mission = dict(env.mission, deadline_s=start['t'] + deadline_left)
+    env._scan = lambda plan, resid, attitude, offset, budget, brake_model: (
+        {"s": hit_s, "tau": 20.0, "dv_plan": 0.3, "brake_dv": 0.0} if offset == 0.0 else None)
+    return env, free, start, ecal
+
+
+def test_budget_spent_before_a_predicted_entry_ends_the_label():
+    """T2.6.1 (env 0.4.3): the entry scan comes first, but delta-v spent before the predicted entry ends the episode
+    as in the truth -- resource exhausted, cost up to then minus the penalty, no entry, kind 0 (not an entry label)."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import frame_now, stage_goal
+    env, free, start, ecal = _entry_fixture()
+    a = np.array([0.3, 0.2])
+    e = env.env; q, v = relative_inertial(e); frame = frame_now(e, q)
+    goal = stage_goal(q, v, frame, a, e.chaser_parameters.mass)
+    plan = env.generator.planner.solve(q, v, goal['q_goal'], goal['v_goal'])
+    cal = env.calibration.frozen(); env._model_t0 = start['t']
+    attitude = lambda s: (start['rotation'], start['omega'])
+    zero = lambda s: (np.zeros(3), np.zeros(3), 0.0)
+    w = e.config.reward
+    p = env.predict_intent(plan, a, start, cal, ecal, zero, attitude)
+    assert p['done'] and p['entry'] is not None                       # ample budget: the entry label as before
+    dv6 = env._dv_model(plan, cal, 6.0)
+    env.mission = dict(env.mission, budget_m_s=start['dv'] + 0.5 * dv6)
+    p = env.predict_intent(plan, a, start, cal, ecal, zero, attitude)
+    assert p['done'] and p['entry'] is None and p['event'] == 'resource_exhausted'
+    assert abs(p['true'] - (-w.time_cost_per_s * 3.0 - w.delta_v_cost_per_m_s * 0.5 * dv6 - w.timeout_penalty)) < 1e-9
+    assert abs(p['reward'] - (p['true'] - start['phi'])) < 1e-9
+
+
+def test_stage2_labels_end_at_the_deadline_and_the_budget_when_run():
+    """T2.6.1, executed (the source-order check above only reads the code): a stage-2 prediction that the deadline
+    or the budget ends is terminal, no entry, the truth's reward; an entry predicted after the budget is spent is not
+    an entry either."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import frame_now, stage_goal
+    env, free, start, ecal = _entry_fixture(hit_s=6.0)
+    e = env.env; w = e.config.reward; a = np.array([0.3, 0.2])
+    cal = env.calibration.frozen(); attitude = lambda s: (start['rotation'], start['omega'])
+    assert not free['done']
+    env._scan = lambda *args, **kw: None
+    env.mission = dict(env.mission, deadline_s=start['t'] + 20.0)              # stage 1 fits, stage 2 ends 4 s in
+    p2 = env.predict_second_stage(free, a, start, cal, ecal, attitude)
+    assert p2 is not None and p2['done'] and p2['entry'] is None and p2['event'] == 'timeout'
+    assert float(np.abs(p2['obs']).sum()) == 0.0 and p2['true'] < -w.timeout_penalty + 1e-9
+    env.mission = dict(env.mission, deadline_s=start['t'] + 1000.0)
+    p2 = env.predict_second_stage(free, a, start, cal, ecal, attitude)
+    assert p2 is None or not p2['done']                                         # no deadline, no entry: a stage end
+    env._scan = lambda plan, resid, attitude, offset, budget, brake_model: {"s": 6.0, "tau": 20.0, "dv_plan": 0.3, "brake_dv": 0.0}
+    p2 = env.predict_second_stage(free, a, start, cal, ecal, attitude)
+    assert p2 is not None and p2['done'] and p2['entry'] is not None            # an entry in stage 2
+    env.mission = dict(env.mission, budget_m_s=start['dv'] + free['dv'] + 1e-6)  # the budget is gone at the stage-2 start
+    p2 = env.predict_second_stage(free, a, start, cal, ecal, attitude)
+    assert p2 is not None and p2['done'] and p2['entry'] is None and p2['event'] == 'resource_exhausted'
+
+
+def test_rank_audit_counts_decisive_pairs_per_scorer():
+    """experiments.t2_rank summary: decisive pairs (capture vs not, or truth returns >= 50 apart), right / wrong / tie per
+    scorer, Kendall tau, top-1 on decisions the truth separates, label errors split by event / bootstrap labels."""
+    from experiments.t2_rank import summarize
+    t = lambda g, ev=None: {'G': g, 'event': ev}
+    items = [{'executed': True, 'done': False, 'critic': 3.0, 'label1': 1.0, 'label2': 1.0, 'diff': 1.0, 'truth': t(80.0, 'success')},
+             {'executed': False, 'done': False, 'critic': 1.0, 'label1': 1.0, 'label2': 2.0, 'diff': 0.5, 'truth': t(-100.0, 'timeout')},
+             {'executed': False, 'done': True, 'critic': 2.0, 'label1': 2.0, 'label2': 3.0, 'diff': 0.0, 'truth': t(-90.0, 'timeout')}]
+    flat = [dict(x, truth=t(-10.0)) for x in items]                 # the truth separates nothing here
+    s = summarize([{'items': items}, {'items': flat}])
+    assert s['decisions'] == 2 and s['items'] == 6 and s['decisions_truth_separates'] == 1
+    assert s['critic']['decisive_pairs'] == 2 and s['critic']['right'] == 2 and s['critic']['accuracy'] == 1.0
+    assert s['label1']['right'] == 0 and s['label1']['wrong'] == 1 and s['label1']['tie'] == 1 and s['label1']['accuracy'] == 0.25
+    assert s['diff']['right'] == 2 and s['diff']['top1_on_separating'] == 1.0 and s['label2']['top1_on_separating'] == 0.0
+    assert s['label1_abs_error']['event']['n'] == 2 and s['label1_abs_error']['bootstrap']['n'] == 2
+    assert s['diff_abs_error']['bootstrap'] == {'n': 2, 'median': 55.5}           # |0.5 + 100| and |0.5 + 10|
+    assert s['critic']['kendall_tau_mean'] is not None
+
+
+def test_executor_guidance_schedule_and_collector():
+    """T2.7: the guidance probability decays linearly from GUIDE_P0 to 0 at GUIDE_UNTIL stored transitions and is 0
+    when off; the collector draws from its own stream only when guidance is on, flies the executor's intent when it
+    has one and stores the executed action; the manifest records the setting; evaluation is untouched."""
+    import inspect, experiments.t2 as x, train.t2_mve_sac as t
+    assert t.guide_probability(0, 0.5, 2000) == 0.5 and t.guide_probability(1000, 0.5, 2000) == 0.25
+    assert t.guide_probability(2000, 0.5, 2000) == 0.0 and t.guide_probability(5000, 0.5, 2000) == 0.0 and t.guide_probability(10, 0.0, 2000) == 0.0
+    w = inspect.getsource(t.worker)
+    assert 'if guide_p > 0 and guide_rng.uniform() < guide_p:' in w and 'action, guided = np.asarray(a_exec, np.float32), True' in w
+    assert w.index('a_exec = env.track_intent()') < w.index('next_obs, reward, term, trunc, info = env.step(action)')
+    assert 'np.asarray(action, np.float32), float(reward)' in w                    # the replay keeps the executed action
+    tr = inspect.getsource(t.train)
+    assert "guide_probability(model.num_timesteps, GUIDE_P0, GUIDE_UNTIL) if guide else 0.0" in tr and "'guide': bool(guide)" in tr
+    assert 'guide' not in inspect.getsource(x.eval_job) and 'track_intent' not in inspect.getsource(x.run_episode)
+
+
+def test_track_intent_projects_the_executors_plan_onto_the_action_space():
+    """T2.7: at a stage decision the executor's earliest feasible plan (direct grid, arrivals before deadline - margin)
+    projected onto the stage action grid; nothing when no arrival fits the deadline or outside a stage decision."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import BRIDGE_DEADLINE_MARGIN_S, OPPORTUNITY_TAUS_S, T2Mission, T2StageEnv, TRACK_GRID
+    env = T2StageEnv(openings=[2910001], seed_base=2_910_000, mission=T2Mission(urgent_deadline_s=(140.0, 200.0)))
+    env.reset(options={'opening': 2910001}); e = env.env
+    q, v = relative_inertial(e)
+    opp = env._opportunity(q, v, e.time_s, e.target_state.rotation, e.target_state.omega)
+    assert opp is not None and opp['tau'] in OPPORTUNITY_TAUS_S and opp['tau'] <= env.mission['deadline_s'] - BRIDGE_DEADLINE_MARGIN_S
+    assert env._opportunity(q, v, env.mission['deadline_s'] - BRIDGE_DEADLINE_MARGIN_S - 10.0, e.target_state.rotation, e.target_state.omega) is None
+    a = env.track_intent()
+    assert a is not None and tuple(float(x) for x in a) in TRACK_GRID
+    env.generator.mode = 'bridge'
+    assert env.track_intent() is None
+
+
+def test_t27_verdict_is_t26w_plus_the_guidance_check(tmp_path):
+    """t27: efficiency, urgent captures, final and safety exactly as t26w over 1000..4000 (on the T2.6W1 readout it
+    reproduces the native no_gain); the mechanism also needs the guidance to have flown (guided_share >= 0.03)."""
+    import json
+    from pathlib import Path
+    from experiments.t2_decide import decide_t26w, decide_t27, mechanism_readings
+    r = json.loads(Path('evidence/T2_6W1_CUTOFF/C_READOUT.json').read_text(encoding='utf-8'))
+    good = {'two_stage_share': 0.6, 'decisive_share': 0.1, 'w2_mean': 0.9, 'pi_gap_sigma_median': 0.05, 'grad_cos': 0.3}
+    mech = {'TRAIN_e_mve_s0': dict(good, guided_share=0.12), 'TRAIN_e_mve_s1': dict(good, guided_share=0.10)}
+    v, ref = decide_t27(r, mech), decide_t26w(r, mech, (1000, 2000, 3000, 4000))
+    assert v['verdict'] == ref['verdict'] == 'no_gain' and v['values']['paired_auc'] == ref['values']['paired_auc']
+    assert decide_t27(r, {k: dict(x, guided_share=0.0) for k, x in mech.items()})['verdict'] == 'mechanism_failure'
+    d = tmp_path / 'TRAIN_e_mve_s0'; d.mkdir()
+    (d / 'model_stats.json').write_text(json.dumps([dict(good, steps=1500)]))
+    (d / 'finished.json').write_text(json.dumps({'steps': 4000, 'replay': {'guided': 400}}))
+    assert mechanism_readings(tmp_path)['TRAIN_e_mve_s0']['guided_share'] == 0.1
+
+
+def test_stage_goal_is_projected_onto_the_truth_safety_set():
+    """T2.8 executor safety (named defect from T2.7): with the executor's task the stage goal ends no closer than
+    STAGE_RANGE_FLOOR_M and closes no faster than the radial braking envelope at its end range less the margin; far out
+    nothing changes; without a task (other callers) the goal is the T2.7 one."""
+    from env.t2_stage import STAGE_ENVELOPE_MARGIN_M_S, STAGE_RANGE_FLOOR_M, STAGE_S, T2StageEnv, spin_frame, stage_goal
+    env = T2StageEnv(); env.reset(); e = env.env; task = e.config.task; mass = e.chaser_parameters.mass
+    rot, om = e.target_state.rotation, e.target_state.omega
+    for r0, v_in in ((8.0, 0.18), (7.4, 0.15), (15.0, 0.10)):
+        q = np.array([r0, 0.0, 0.0]); v = np.array([-v_in, 0.0, 0.0])
+        f = spin_frame(rot, om, q, task.approach_axis)
+        old = stage_goal(q, v, f, np.array([1.0, 0.0]), mass)
+        g = stage_goal(q, v, f, np.array([1.0, 0.0]), mass, task=task)
+        r_end = float(np.linalg.norm(g['q_goal'])); u = g['q_goal'] / r_end
+        assert r_end >= STAGE_RANGE_FLOOR_M - 1e-9
+        assert -float(g['v_goal'] @ u) <= task.outer_radial_closing_speed_limit(r_end) - STAGE_ENVELOPE_MARGIN_M_S + 1e-9
+        if r0 >= 15.0:
+            assert not g['safety_projected'] and np.allclose(g['v_goal'], old['v_goal'])
+        else:
+            assert g['safety_projected'] and np.linalg.norm(g['q_goal']) > np.linalg.norm(old['q_goal'])
+    assert abs(np.linalg.norm(old['q_goal'] - (q + STAGE_S * (v + old['v_goal']) / 2.0))) < 1e-12
+
+
+def test_t28_arm_level_verdict():
+    """t28: arm means of per-run AUC (mean return over the checkpoints), not seed pairs; reliability needs the worst
+    EACC run 5 above the worst SAC run and all but one EACC run above the SAC mean; safety by arm unsafe totals."""
+    from experiments.t2_decide import decide_t28
+
+    def readout(mve, sac, unsafe_mve=0):
+        arms, comp = {}, {}
+        for a, xs in (('mve', mve), ('sac', sac)):
+            for i, x in enumerate(xs):
+                k = f'e_{a}_s{i}'
+                arms[k] = {str(ck): {'mean_return': x + (ck - 1000) / 100, 'unsafe': unsafe_mve if (a == 'mve' and i == 0) else 0,
+                                     'mean_delta_v_success': 1.0, 'mean_time_success': 100.0,
+                                     'urgent': {'capture': 20}, 'economy': {'capture': 23}} for ck in (1000, 2000)}
+                comp.update({f'{k}/step_{ck}': {'complete': True} for ck in (1000, 2000)})
+        return {'arms': arms, 'completeness': comp}
+    assert decide_t28(readout([30, 32, 34], [20, 30, 25]))['verdict'] == 'pass'          # +7, worst 30 vs 20
+    v = decide_t28(readout([45, 12, 40], [20, 30, 25]))                                    # +7.3 on average, one EACC run collapsed
+    assert v['verdict'] == 'partial' and v['criteria']['L_learning'] and not v['criteria']['R_reliability']
+    assert decide_t28(readout([40, 12, 35], [20, 30, 25]))['verdict'] == 'no_gain'       # +4, worst run below
+    assert decide_t28(readout([26, 24, 25], [20, 30, 25]))['verdict'] == 'no_gain'
+    assert decide_t28(readout([30, 32, 34], [20, 30, 25], unsafe_mve=2))['verdict'] == 'harmful'
+    r = readout([30, 32, 34], [20, 30, 25]); r['completeness']['e_mve_s1/step_2000']['complete'] = False
+    assert decide_t28(r)['verdict'] == 'incomplete'
+
+
+def test_raw_interface_has_no_executor_features(tmp_path):
+    """T2.9: the 'raw' decision interface is range, relative velocity, port direction and spin vector in a neutral
+    line-of-sight frame, the mission clock and fuel (14 values, zero-padded); it ignores the execution residuals and is
+    used for actual and modelled observations alike; evaluation reads the interface from the run's manifest."""
+    import json
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import OBS_DIM, RAW_FEATURES, T2StageEnv, observe, observe_raw
+    from experiments.t2 import obs_profile_of
+    env = T2StageEnv(obs_profile='raw'); env.reset(options={'opening': 294000})
+    o = env.observation()
+    assert o.shape == (OBS_DIM,) and np.all(np.isfinite(o)) and not np.any(o[RAW_FEATURES:])
+    q, v = relative_inertial(env.env); t = env.env.target_state
+    a = observe_raw(env.env, q, v, env.env.time_s, 0.3, env.mission, t.rotation, t.omega, {'position_residual_m': 0.0})
+    b = observe_raw(env.env, q, v, env.env.time_s, 0.3, env.mission, t.rotation, t.omega, {'position_residual_m': 2.0, 'held': True})
+    assert np.array_equal(a, b)
+    assert abs(float(np.linalg.norm(o[4:7])) - 1.0) < 1e-5            # the port direction is a unit vector
+    assert env._observe.__func__ is T2StageEnv._observe and np.array_equal(env._observe(env.env, q, v, env.env.time_s, env.env._delta_v,
+                                                                                         env.mission, t.rotation, t.omega, None), o)
+    eng = T2StageEnv(); eng.reset(options={'opening': 294000})
+    assert np.array_equal(eng.observation(), observe(eng.env, q, v, eng.env.time_s, eng.env._delta_v, eng.mission, t.rotation, t.omega, eng.last))
+    import pytest
+    with pytest.raises(ValueError):
+        T2StageEnv(obs_profile='oracle')
+    run = tmp_path / 'RUN'; (run / 'checkpoints').mkdir(parents=True)
+    (run / 'manifest.json').write_text(json.dumps({'obs_profile': 'raw'}))
+    assert obs_profile_of(run / 'checkpoints' / 'step_1000.zip') == 'raw'
+    (run / 'manifest.json').write_text(json.dumps({}))
+    assert obs_profile_of(run / 'checkpoints' / 'step_1000.zip') == 'engineered'
+    with pytest.raises(FileNotFoundError):
+        obs_profile_of(tmp_path / 'nowhere' / 'checkpoints' / 'step_1.zip')
+
+
+def test_geometric_interface_zeroes_only_the_executor_features():
+    """T2.9 default for the interface study: 'geometric' is the engineered vector with the seven executor-derived
+    features (pass time, residuals, hold, window reachability, braking margin, slack) zeroed; every other feature equal."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import EXECUTOR_FEATURES, T2StageEnv, observe
+    env = T2StageEnv(obs_profile='geometric'); env.reset(options={'opening': 294003})
+    env.last = {'position_residual_m': 1.0, 'velocity_residual_m_s': 0.05, 'held': True}
+    q, v = relative_inertial(env.env); t = env.env.target_state
+    full = observe(env.env, q, v, env.env.time_s, env.env._delta_v, env.mission, t.rotation, t.omega, env.last)
+    g = env.observation(); keep = [i for i in range(len(full)) if i not in EXECUTOR_FEATURES]
+    assert not np.any(g[list(EXECUTOR_FEATURES)]) and np.array_equal(g[keep], full[keep])
+    assert np.any(full[list(EXECUTOR_FEATURES)])                       # the engineered vector does carry them
+
+
+def test_reduced_interface_zeroes_only_the_planner_answers():
+    """T2.10 'reduced': only the time to the pass, window reachability and slack after the pass are zeroed."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import PLANNER_FEATURES, T2StageEnv, observe
+    env = T2StageEnv(obs_profile='reduced'); env.reset(options={'opening': 294003})
+    q, v = relative_inertial(env.env); t = env.env.target_state
+    full = observe(env.env, q, v, env.env.time_s, env.env._delta_v, env.mission, t.rotation, t.omega, env.last)
+    o = env.observation(); keep = [i for i in range(len(full)) if i not in PLANNER_FEATURES]
+    assert not np.any(o[list(PLANNER_FEATURES)]) and np.array_equal(o[keep], full[keep]) and np.any(full[list(PLANNER_FEATURES)])
+
+
+def test_opportunity_value_is_the_validated_signal_and_reaches_the_step_info():
+    """T2.10: T2StageEnv.opportunity_value is opp2 of the P4 addendum (same state, same number), None until the entry
+    calibration is ready, and a pref environment reports the grid and the executed intent at every stage decision."""
+    import importlib.util, sys
+    from pathlib import Path
+    from env.t2_stage import PREF_GRID, T2Mission, T2StageEnv
+    from experiments.t2_audit import load_calibration
+    cal = Path('evidence/T2_8_PRECHECK/输入/CAL.json')
+    argv = sys.argv; sys.argv = ['opp2_probe', str(cal), 'unused', '0', '1', '1']
+    try:
+        spec = importlib.util.spec_from_file_location('opp2_probe', 'evidence/T2_8_PRECHECK/脚本/opp2_probe.py')
+        probe = importlib.util.module_from_spec(spec); spec.loader.exec_module(probe)
+    finally:
+        sys.argv = argv
+    env = T2StageEnv(openings=[2910012], seed_base=2_910_000, mission=T2Mission(urgent_deadline_s=(140.0, 200.0)), pref=True)
+    env.reset(options={'opening': 2910012})
+    assert env.opportunity_value((1.0, 0.0)) is None                 # no executed entries yet
+    load_calibration(env, cal)
+    for a in PREF_GRID[:4]:
+        assert env.opportunity_value(a) == probe.opp2_signal(env, a)['value']
+    env.policy_action = np.array([-0.5, 0.5])
+    _, _, _, _, info = env.step(np.array([1.0, 0.0], np.float32))
+    assert len(info['pref']['a']) == len(PREF_GRID) + 2 and info['pref']['a'][-2] == [1.0, 0.0] and info['pref']['a'][-1] == [-0.5, 0.5]
+    assert all(x is not None for x in info['pref']['v']) and all(f['value'] == v for f, v in zip(info['pref']['f'], info['pref']['v']))
+    assert env.policy_action is None                                 # one decision only
+
+
+def test_pref_loss_orders_the_critic_by_the_executor_values():
+    """T2.10: the hinge counts only pairs at least PREF_DELTA apart, and a few critic steps on it order those pairs."""
+    import torch as th
+    import train.t2_mve_sac as t
+    model = t.make_model(t.SpacesEnv(), 'e_pref', 0, smoke=True)
+    assert model.pref_lambda == t.PREF_LAMBDA and model.model_beta == 0.0
+    rb = model.replay_buffer; rng = np.random.default_rng(0)
+    for i in range(64):
+        o = rng.normal(size=(1, 24)).astype(np.float32)
+        acts = rng.uniform(-1, 1, size=(10, 2)).tolist(); vals = [100.0 * x[0] for x in acts]   # prefers a large first component
+        vals[3] = None
+        rb.add(o, o, np.zeros((1, 2), np.float32), np.zeros(1), np.zeros(1), [{'model': {}, 'pref': {'a': acts, 'v': vals}}])
+    assert rb.pref_valid[:64, 0].sum() == 64 * 9 and t.PREF_K == 11
+    data = rb.sample(64)
+    loss0, info0 = model._pref_loss(data)
+    assert loss0 is not None and info0['pref_pairs'] > 0
+    for _ in range(200):
+        data = rb.sample(64); loss, info = model._pref_loss(data)
+        model.critic.optimizer.zero_grad(); loss.backward(); model.critic.optimizer.step()
+    assert info['pref_ordered'] > max(info0['pref_ordered'], 0.9) and float(loss) < float(loss0)
+
+
+
+def test_decision_calibration_learns_and_is_trusted_only_when_accurate():
+    """T2.11: the decision-level execution calibration fits capture from the opportunity features of executed decisions,
+    measures its accuracy predict-then-observe, and is trusted only after ACC_MIN_LABELS outcomes at >= ACC_MIN_ACC."""
+    import train.t2_mve_sac as t
+    rng = np.random.default_rng(0); cal = t.DecisionCalibration()
+    for i in range(600):
+        rem, tau = rng.uniform(20, 200), rng.uniform(20, 150); feas = rng.uniform() < 0.8
+        f = {'remaining_s': rem, 'range_m': rng.uniform(7, 20), 'urgent': True, 'feasible': feas, 'tau': tau, 'p_success': 0.9}
+        cal.observe(t.dec_features(f), bool(feas and rem - tau > 60))
+        if i == 100:
+            assert not cal.trusted
+    assert cal.trusted and cal.accuracy >= 0.9 and len(cal.y) == 600
+    noise = t.DecisionCalibration()
+    for i in range(600):
+        noise.observe(t.dec_features({'remaining_s': 100, 'range_m': 10, 'urgent': True, 'feasible': True, 'tau': 50, 'p_success': 0.9}), bool(rng.uniform() < 0.5))
+    assert not noise.trusted                                         # an uninformative calibration is never used
+
+
+def test_acc_terms_order_the_critic_and_pull_the_actor_to_the_trusted_better_candidate():
+    """T2.11: with a trusted calibration that says candidate 0 captures and the policy's own intent does not, the critic
+    hinge orders Q(s, a_0) above Q(s, a_pi) and the actor's mean intent moves to a_0; untrusted, nothing happens."""
+    import torch as th
+    from stable_baselines3.common.logger import configure
+    import train.t2_mve_sac as t
+    model = t.make_model(t.SpacesEnv(), 'e_acc', 0, smoke=True)
+    model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
+    assert model.acc and model.model_beta == t.MODEL_BETA and model.pref_lambda == 0.0
+    rb = model.replay_buffer; rng = np.random.default_rng(1)
+    good = {'remaining_s': 150, 'range_m': 10, 'urgent': True, 'feasible': True, 'tau': 40, 'p_success': 1.0}
+    bad = {'remaining_s': 150, 'range_m': 10, 'urgent': True, 'feasible': False, 'tau': None, 'p_success': 0.0}
+    target = [0.8, -0.6]
+    for i in range(64):
+        o = rng.normal(size=(1, 24)).astype(np.float32)
+        acts = [target] + [rng.uniform(-1, 1, 2).tolist() for _ in range(10)]
+        feats = [good] + [bad] * 10
+        rb.add(o, o, np.zeros((1, 2), np.float32), np.zeros(1), np.zeros(1),
+               [{'model': {}, 'pref': {'a': acts, 'v': [0.0] * 11, 'f': feats}}])
+    data = rb.sample(32)
+    assert model._acc_terms(data)[0] is None                         # untrusted: no term
+    model.dec_cal.w = np.array([-2.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0]); model.dec_cal.hits = [1.0] * t.ACC_MIN_LABELS
+    assert model.dec_cal.trusted
+    obs = th.as_tensor(rb.observations[:64, 0])
+    d0 = float(((th.tanh(model.actor.get_action_dist_params(obs)[0]) - th.tensor(target)) ** 2).sum(1).sqrt().mean())
+    for _ in range(150):
+        data = rb.sample(32)
+        loss, rows, tgt, wt, info = model._acc_terms(data)
+        assert loss is not None and bool(rows.all()) and th.allclose(tgt, th.tensor(target).expand_as(tgt))
+        model.critic.optimizer.zero_grad(); (t.ACC_LAMBDA_Q * loss).backward(); model.critic.optimizer.step()
+        mean_a, _, _ = model.actor.get_action_dist_params(data.observations[rows])
+        bc = (wt * ((th.tanh(mean_a) - tgt) ** 2).sum(1)).mean()
+        model.actor.optimizer.zero_grad(); (t.ACC_ETA * bc).backward(); model.actor.optimizer.step()
+    d1 = float(((th.tanh(model.actor.get_action_dist_params(obs)[0]) - th.tensor(target)) ** 2).sum(1).sqrt().mean())
+    assert info['acc_q_ordered'] > 0.9 and d1 < 0.25 * d0
+
+
+def test_split_views_keep_the_executor_information_out_of_the_actor(tmp_path):
+    """T2.11: 'reduced_priv' = the reduced interface followed by the executor's judgements (the engineered vector); the
+    actor of every arm reads only the reduced part; EACC-A's critic reads both, the SAC baseline's critic only the reduced
+    part; the split survives save / load."""
+    import torch as th
+    import train.t2_mve_sac as t
+    from env.t2_stage import OBS_DIM, OBS_DIM_PRIV, PLANNER_FEATURES, T2StageEnv
+    env = T2StageEnv(obs_profile='reduced_priv'); o = env.reset(options={'opening': 294003})[0]
+    eng = T2StageEnv(); e = eng.reset(options={'opening': 294003})[0]
+    red = e.copy(); red[list(PLANNER_FEATURES)] = 0.0
+    assert o.shape == (OBS_DIM_PRIV,) and np.array_equal(o[:OBS_DIM], red) and np.array_equal(o[OBS_DIM:], e)
+    x = th.as_tensor(np.stack([o, o]))
+    x[1, OBS_DIM:] += 5.0                                            # change only the executor's information
+    a = th.zeros((2, 2))
+    for arm, critic_sees in (('e_acc', True), ('e_sac', False)):
+        m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True)
+        with th.no_grad():
+            mu = m.actor.get_action_dist_params(x)[0]; q = m.critic(x, a)[0]
+        assert th.allclose(mu[0], mu[1])                             # the deployed actor never reads it
+        assert (not th.allclose(q[0], q[1])) == critic_sees
+    m.save(tmp_path / 'm.zip'); m2 = t.T2SAC.load(tmp_path / 'm.zip', device='cpu')
+    assert m2.policy.actor_dim == OBS_DIM and m2.policy.critic_dim == OBS_DIM
+    with th.no_grad():
+        assert th.allclose(m2.actor.get_action_dist_params(x)[0], m.actor.get_action_dist_params(x)[0])
+
+
+def _rel_model(arm='e_rel'):
+    import train.t2_mve_sac as t
+    from stable_baselines3.common.logger import configure
+    from env.t2_stage import OBS_DIM_PRIV
+    m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True)
+    m.model_start = 0; m.learning_starts = 0
+    m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0
+    return m
+
+
+def _rel_fill(m, n=32, shift=0.0, same_kind=0, cand_kind=0, cand_done=False, seed=0):
+    """Transitions whose executed intent and candidates share the decision state; ``shift`` is added to every model
+    reward of a decision (a model error common to all its predictions)."""
+    from env.t2_stage import OBS_DIM_PRIV
+    rng = np.random.default_rng(seed)
+    for i in range(n):
+        o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+        a = rng.uniform(-1, 1, size=(1, 2)).astype(np.float32)
+        same = {'reward': -2.0 + shift, 'next_obs': o1, 'done': same_kind > 0, 'kind': same_kind}
+        fact = {'reward': -2.5, 'next_obs': o1, 'done': False, 'same': same}
+        cands = [{'a': a[0], 'reward': -2.0 + shift, 'next_obs': o1, 'done': same_kind > 0, 'kind': same_kind},       # the executed intent itself
+                 {'a': np.array([0.9, -0.9], np.float32), 'reward': 30.0 + shift, 'next_obs': np.zeros(OBS_DIM_PRIV, np.float32),
+                  'done': cand_done, 'kind': cand_kind}]
+        m.replay_buffer.add(o, o1[None], a, np.array([-2.0]), np.array([False]),
+                            [{'model': {'fact': fact, 'cands': cands, 'diag': {'reason': 'stage'}}}])
+
+
+def test_relative_labels_are_invariant_to_errors_common_to_a_decision():
+    """T2.12 EACC: the relative target of a candidate is sg Q(s, a_f) + Y(a_j) - Y(a_f); a model error common to every
+    prediction of a decision (here a reward offset; the PBRS decision-state potential is one) leaves the loss unchanged,
+    and the executed intent's own label is its anchor (zero difference)."""
+    import torch as th
+    losses = []
+    for shift in (0.0, 37.0):
+        m = _rel_model(); _rel_fill(m, shift=shift)
+        m.td_ms = 100.0
+        th.manual_seed(3); data = m.replay_buffer.sample(16)
+        with th.no_grad():
+            target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+        current = m.critic(data.observations, data.actions)
+        th.manual_seed(5); loss, info = m._relative_loss(data, current, target, m.ent_coef_tensor)
+        losses.append(float(loss.detach())); assert info['model_rows'] == 32
+    # the common offset enters e_same (the trust term) but not the difference; compare with the offset in the weight removed
+    m = _rel_model(); _rel_fill(m, shift=0.0); m.td_ms = 1e12
+    th.manual_seed(3); data = m.replay_buffer.sample(16)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    cur = m.critic(data.observations, data.actions)
+    th.manual_seed(5); l0, _ = m._relative_loss(data, cur, target, m.ent_coef_tensor)
+    m2 = _rel_model(); _rel_fill(m2, shift=37.0); m2.td_ms = 1e12
+    th.manual_seed(3); data2 = m2.replay_buffer.sample(16)
+    cur2 = m2.critic(data2.observations, data2.actions)
+    th.manual_seed(5); l1, _ = m2._relative_loss(data2, cur2, target, m2.ent_coef_tensor)
+    assert abs(float(l0) - float(l1)) < 1e-4 * max(1.0, float(l0))
+    assert abs(losses[1] - losses[0]) < 1e-4 * max(1.0, losses[0])      # comparable pairs: the offset cancels, weights included
+
+
+def test_relative_loss_fits_differences_and_never_moves_the_anchor():
+    """The anchor carries no gradient; trained as in the learner (real TD loss + relative loss), the critic's value at the
+    executed intent goes to the real target and its difference Q(s, a_j) - Q(s, a_f) to the model's difference. The
+    bootstrap is fixed at zero so that the targets are exact (real -2, difference 30 - (-2) = 32); seeded. (Before
+    2026-11-03 this test fitted the relative rows alone: with no real loss the anchor drifts through the shared weights and
+    the fit depended on the platform's random stream -- the lower window's preflight failed on Windows, 0190faf.)"""
+    import torch as th
+    import torch.nn.functional as F
+    np.random.seed(0); th.manual_seed(0)
+    m = _rel_model(); _rel_fill(m, n=24); m.td_ms = 1e12
+    data = m.replay_buffer.sample(24)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    current = m.critic(data.observations, data.actions)
+    loss, _ = m._relative_loss(data, current, target, m.ent_coef_tensor)
+    assert all(g is None for g in th.autograd.grad(loss, list(current), allow_unused=True))   # the anchors carry no gradient
+    zero = lambda obs, *a: th.zeros((obs.shape[0], 1))
+    m._soft_value = zero; m._soft_value_noise = zero
+    m.critic.optimizer = th.optim.Adam(m.critic.parameters(), lr=1e-3)
+    for _ in range(1000):
+        data = m.replay_buffer.sample(24)
+        cur = m.critic(data.observations, data.actions)
+        real = 0.5 * sum(F.mse_loss(q, data.rewards) for q in cur)
+        rel, _ = m._relative_loss(data, cur, data.rewards, m.ent_coef_tensor)
+        m.critic.optimizer.zero_grad(); (real + rel).backward(); m.critic.optimizer.step()
+    b = m.replay_buffer
+    o = th.as_tensor(b.observations[:24, 0]); af = th.as_tensor(b.actions[:24, 0]); aj = th.as_tensor(b.cand_a[:24, 0, 1])
+    with th.no_grad():
+        qf = m.critic(o, af)[0].reshape(-1); dq = (m.critic(o, aj)[0] - qf).reshape(-1)
+    # robust criteria: a fixture row whose random executed intent lies close to the candidate's fixed intent asks the
+    # network for two values almost at one input and may stay unfitted (seen in 3 of 10 seeds, one row each)
+    assert float((dq - 32.0).abs().median()) < 0.15 * 32.0 and float((dq > 0).float().mean()) >= 0.9
+    assert float((qf + 2.0).abs().median()) < 1.0                    # the level at the executed intent comes from the real loss
+
+
+def test_relative_trust_charges_unshared_entry_bias_and_inconsistency():
+    """eps = |e_raw| + b 1[k_j = 2] (1 - c_j 1[k_f = 2]): an unanchored entry against a stage end carries the entry bias,
+    two unanchored entries of one decision do not."""
+    import torch as th
+    out = {}
+    for name, sk, ck, cd in (('stage_vs_entry', 0, 2, True), ('entry_vs_entry', 2, 2, True)):
+        m = _rel_model(); _rel_fill(m, same_kind=sk, cand_kind=ck, cand_done=cd)
+        m.td_ms = 25.0; m.entry_bias_now = 20.0
+        th.manual_seed(1); data = m.replay_buffer.sample(32)
+        with th.no_grad():
+            target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+        cur = m.critic(data.observations, data.actions)
+        th.manual_seed(2); out[name] = m._relative_loss(data, cur, target, m.ent_coef_tensor)[1]
+    assert out['stage_vs_entry']['w_mean'] < out['entry_vs_entry']['w_mean']
+
+
+def test_t212_arms_views_and_label_switches():
+    """e_rel: critic reads the executor's judgements, relative labels; e_priv: the same critic view without labels;
+    e_sac keeps the reduced critic; e_acc (T2.11) is unchanged."""
+    import inspect, train.t2_mve_sac as t
+    from env.t2_stage import OBS_DIM, OBS_DIM_PRIV
+    for arm, cdim, beta, rel, acc in (('e_rel', OBS_DIM_PRIV, t.MODEL_BETA, True, False), ('e_priv', OBS_DIM_PRIV, 0.0, False, False),
+                                      ('e_sac', OBS_DIM, 0.0, False, False), ('e_acc', OBS_DIM_PRIV, t.MODEL_BETA, False, True)):
+        m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True)
+        assert (m.policy.critic_dim, m.model_beta, m.relative, m.acc) == (cdim, beta, rel, acc)
+    src = inspect.getsource(t.train)
+    assert "candidates = K_CANDIDATES if (arm in LABEL_ARMS or arm in FB_ARMS) else 0" in src and "if arm == 'e_rel':\n        entry_stages = 1" in src
+    assert t.LABEL_ARMS[:3] == ('e_mve', 'e_acc', 'e_rel') and 'e_priv' not in t.LABEL_ARMS
+
+
+def test_executed_intent_is_labelled_with_the_candidates_treatment():
+    """env 0.10.0: the labels of a decision carry the executed intent through the candidates' own treatment
+    (``fact.same``); with the realized residual path it reproduces the executed stage end closely."""
+    from env.t2_stage import T2StageEnv, OBS_DIM
+    env = T2StageEnv(openings=[1000001], shaping=True, candidates=4, entry_stages=1)
+    env.reset()
+    for k in range(12):
+        env.calibration.add(0.10, 0.12, np.zeros(3), np.zeros(3))
+    for k in range(25):
+        env.entry_calibration.add(30.0, 0.3, 45.0, 0.5, True, 0.0, 120.0)
+    env.diagnostics = True
+    for _ in range(4):
+        obs, r, term, trunc, info = env.step(np.array([0.4, 0.3]))
+        m = info['model']
+        if m['diag']['reason'] == 'stage':
+            same = m['fact']['same']
+            assert same['kind'] in (0, 1, 2) and same['next_obs'].shape == (OBS_DIM,)
+            if not same['done']:
+                assert np.max(np.abs(same['next_obs'][:4] - obs[:4])) < 0.05     # range / relative velocity reproduced
+            return
+        if term or trunc:
+            break
+    raise AssertionError('no labelled stage decision')
+
+
+def test_t212_training_curves_and_decision(tmp_path):
+    """experiments.t2_curves: the true return of a logged episode (recorded or rebuilt from event, time, delta-v and mission
+    costs), the rolling curve on the decision grid, and the pre-registered t212 verdict order."""
+    import json
+    from experiments import t2_curves as c
+    mis = {'urgent': True, 'time_cost_per_s': 0.1, 'fuel_cost_per_m_s': 10.0}
+    ep = {'steps': 10, 'event': 'timeout', 'time_s': 162.8, 'delta_v': 1.6566312125692255, 'mission': mis}
+    assert abs(c.true_return(ep) - (-132.84631212569226)) < 1e-9
+    assert c.true_return({**ep, 'return_true': 5.0}) == 5.0
+    eps = [{'steps': 10 * k, 'event': 'success' if k % 2 else 'timeout', 'time_s': 100.0, 'delta_v': 1.0, 'mission': mis} for k in range(1, 201)]
+    r = c.run_curve(eps, window=4, steps=2000)
+    assert r['grid'][0] == 250 and r['grid'][-1] == 2000 and abs(r['curve_auc'] - (-20.0)) < 1e-9 and r['late_urgent_capture'] == 0.5
+    def arms(**v):
+        return {a: {'curve_auc': x[0], 'late_return': 0, 'late_urgent_capture': 0, 'runs': [f'{a}_s0', f'{a}_s1']} for a, x in v.items()}
+    def finals(**v):
+        return {a: {'mean_return': x[1], 'urgent_capture': [0, 0], 'economy_capture': [0, 0], 'unsafe': x[2], 'runs': [f'{a}_s0', f'{a}_s1']} for a, x in v.items()}
+    def case(rel, priv, acc=(22.7, 33.3, 0), sac=(-0.5, -10.3, 0)):
+        cv = {'arms': arms(e_rel=rel, e_priv=priv, e_acc=acc, e_sac=sac), 'runs': {f'{a}_s{s}': {'curve_auc': x[0]} for a, x in
+              (('e_rel', rel), ('e_priv', priv), ('e_acc', acc), ('e_sac', sac)) for s in (0, 1)}}
+        fv = {'arms': finals(e_rel=rel, e_priv=priv, e_acc=acc, e_sac=sac), 'runs': {f'{a}_s{s}': {'mean_return': x[1], 'complete': True} for a, x in
+              (('e_rel', rel), ('e_priv', priv), ('e_acc', acc), ('e_sac', sac)) for s in (0, 1)}}
+        return c.decide_t212(cv, fv)['verdict']
+    assert case((25, 35, 0), (15, 20, 0)) == 'adopt'
+    assert case((25, 35, 1), (15, 20, 0)) == 'unsafe'
+    assert case((12, 20, 0), (5, 10, 0)) == 'revert'
+    assert case((20, 30, 0), (21, 30, 0)) == 'no_increment'
+
+
+def test_relative_reference_is_the_real_value_across_outcome_classes():
+    """A candidate whose label is of another outcome class than the executed intent's (stage end against a predicted entry)
+    is referenced to the real executed value, not to the model's prediction of the executed intent: a large error of that
+    prediction does not enter its target."""
+    import torch as th
+    from env.t2_stage import OBS_DIM_PRIV
+    out = {}
+    for name, same_reward in (('small', -2.0), ('large', 500.0)):
+        m = _rel_model(); rng = np.random.default_rng(0)
+        for i in range(32):
+            o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+            a = rng.uniform(-1, 1, size=(1, 2)).astype(np.float32)
+            same = {'reward': same_reward, 'next_obs': np.zeros(OBS_DIM_PRIV, np.float32), 'done': True, 'kind': 2}   # predicted entry
+            fact = {'reward': -2.0, 'next_obs': o1, 'done': False, 'same': same}
+            cands = [{'a': np.array([0.5, 0.5], np.float32), 'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}]
+            m.replay_buffer.add(o, o1[None], a, np.array([-2.0]), np.array([False]), [{'model': {'fact': fact, 'cands': cands, 'diag': {'reason': 'stage'}}}])
+        m.td_ms = 100.0
+        th.manual_seed(3); data = m.replay_buffer.sample(16)
+        with th.no_grad():
+            target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+        cur = m.critic(data.observations, data.actions)
+        th.manual_seed(5); out[name] = m._relative_loss(data, cur, target, m.ent_coef_tensor)[1]
+    assert out['small']['class_differs_share'] == 1.0
+    assert abs(out['large']['delta_abs_mean_sigma'] - out['small']['delta_abs_mean_sigma']) < 1e-6
+
+
+def test_common_random_numbers_soft_value_matches_sb3_and_cancels_in_differences():
+    """learner 4.1: the soft value with a given noise equals SB3's squashed-Gaussian sample and log-probability, and a
+    candidate whose predicted transition equals the reference's gets D_j = 0 exactly."""
+    import torch as th
+    from env.t2_stage import OBS_DIM_PRIV
+    m = _rel_model()
+    obs = th.randn((6, OBS_DIM_PRIV)); noise = th.randn((6, 2))
+    with th.no_grad():
+        v = m._soft_value_noise(obs, noise, m.ent_coef_tensor)
+        mean, log_std, kw = m.actor.get_action_dist_params(obs)
+        a = th.tanh(mean + log_std.exp() * noise)
+        dist = m.actor.action_dist.proba_distribution(mean, log_std, **kw)
+        ref = th.min(th.cat(m.critic_target(obs, a), dim=1), dim=1, keepdim=True).values - m.ent_coef_tensor * dist.log_prob(a).reshape(-1, 1)
+    assert float((v - ref).abs().max()) < 1e-3
+    rng = np.random.default_rng(0)
+    for i in range(16):
+        o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+        same = {'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}
+        cands = [{'a': rng.uniform(-1, 1, 2).astype(np.float32), 'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0} for _ in range(3)]
+        m.replay_buffer.add(o, o1[None], np.zeros((1, 2), np.float32), np.array([-2.0]), np.array([False]),
+                            [{'model': {'fact': {'reward': -2.0, 'next_obs': o1, 'done': False, 'same': same}, 'cands': cands, 'diag': {'reason': 'stage'}}}])
+    m.td_ms = 100.0
+    data = m.replay_buffer.sample(8)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    info = m._relative_loss(data, m.critic(data.observations, data.actions), target, m.ent_coef_tensor)[1]
+    assert info['delta_abs_mean_sigma'] == 0.0
+
+
+def test_candidates_are_separated_in_the_executors_terms():
+    """env 0.11.0: with cand_min_sep > 0 the candidates' stage goals keep that distance from the executed intent's and
+    from each other (unless the redraw budget runs out); with 0 the T2.11 generator is unchanged, draw for draw."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_stage import T2StageEnv, CANDIDATE_MIN_SEP_M_S, CANDIDATE_RESAMPLES, frame_now, stage_goal
+    old = T2StageEnv(openings=[1000003], candidates=8, seed=7); old.reset()
+    new = T2StageEnv(openings=[1000003], candidates=8, seed=7, cand_min_sep=0.0); new.reset()
+    a = np.array([0.95, 0.9])
+    assert all(np.array_equal(x, y) for x, y in zip(old.candidate_actions(a), new.candidate_actions(a)))
+    env = T2StageEnv(openings=[1000003], candidates=8, seed=7, cand_min_sep=CANDIDATE_MIN_SEP_M_S); env.reset(); e = env.env
+    q, v = relative_inertial(e); fr = frame_now(e, q); mass = e.chaser_parameters.mass
+    goal_of = lambda x: stage_goal(q, v, fr, np.asarray(x, float), mass, task=e.config.task)['v_goal']
+    for a in (np.array([0.95, 0.9]), np.array([1.0, 1.0]), np.array([-0.2, 0.1])):
+        cands = env.candidate_actions(a, goal_of)
+        assert len(cands) == 8
+        G = [goal_of(a)] + [goal_of(c) for c in cands]
+        dmin = [min(np.linalg.norm(G[i] - G[j]) for j in range(i)) for i in range(1, len(G))]
+        assert all(d >= CANDIDATE_MIN_SEP_M_S for d in dmin) or env.last_resampled >= CANDIDATE_RESAMPLES
+
+
+def test_curves_read_longer_runs_on_the_same_budget_and_leave_shorter_runs_empty():
+    """A 3000-decision run read with steps=2000 uses only what it had by 2000 (late window included); a 2000-decision run
+    read on a 3000 axis has no values after its end."""
+    from experiments import t2_curves as c
+    mis = {'urgent': True, 'time_cost_per_s': 0.1, 'fuel_cost_per_m_s': 10.0}
+    ep = lambda k, ev: {'steps': k, 'event': ev, 'time_s': 100.0, 'delta_v': 1.0, 'mission': mis}
+    long = [ep(10 * k, 'timeout') for k in range(1, 201)] + [ep(2000 + 10 * k, 'success') for k in range(1, 101)]
+    r = c.run_curve(long, window=4, steps=2000)
+    assert r['late_return'] == -120.0 and r['grid'][-1] == 2000 and abs(r['curve_auc'] - (-120.0)) < 1e-9
+    short = [ep(10 * k, 'success') for k in range(1, 201)]
+    r = c.run_curve(short, window=4, steps=3000)
+    vals = dict(zip(r['grid'], r['grid_rolling']))
+    assert vals[2000] == 80.0 and vals[2150] is None and abs(r['curve_auc'] - 80.0) < 1e-9
+
+
+def _term_fill(m, same_done=True, same_kind=1, real_done=True, real_r=60.0, same_r=70.0, n=16, seed=0):
+    """One decision type: the executed intent (real reward real_r, terminal real_done; same-treatment label same_r with
+    same_done / same_kind) and three candidates -- a stage end, a stage-1 entry (kind 1, 80.0) and a stage end whose
+    stage 2 under the label policy ends in an entry (r1 -1.5, r2 75.0)."""
+    from env.t2_stage import OBS_DIM_PRIV
+    rng = np.random.default_rng(seed)
+    z = np.zeros(OBS_DIM_PRIV, np.float32)
+    for i in range(n):
+        o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+        same = {'reward': same_r, 'next_obs': z if same_done else o1, 'done': same_done, 'kind': same_kind}
+        fact = {'reward': same_r, 'next_obs': z if same_done else o1, 'done': same_done, 'same': same}
+        cands = [{'a': np.array([0.1, 0.1], np.float32), 'reward': -1.6, 'next_obs': o1, 'done': False, 'kind': 0, 's2': None},
+                 {'a': np.array([0.9, -0.9], np.float32), 'reward': 80.0, 'next_obs': z, 'done': True, 'kind': 1},
+                 {'a': np.array([-0.5, 0.5], np.float32), 'reward': -1.5, 'next_obs': o1, 'done': False, 'kind': 0,
+                  's2': {'a': np.zeros(2, np.float32), 'logp': 0.0, 'reward': 75.0, 'next_obs': z, 'done': True, 'kind': 2}}]
+        m.replay_buffer.add(o, (z if real_done else o1)[None], np.zeros((1, 2), np.float32), np.array([real_r]), np.array([real_done]),
+                            [{'model': {'fact': fact, 'cands': cands, 'diag': {'reason': 'stage'}}}])
+
+
+def test_terminal_counterfactuals_keep_only_executor_evaluable_rows_with_constant_targets():
+    """learner 5.0: only candidates whose modelled continuation ends in a terminal event within the horizon are labelled;
+    a stage-1 terminal of the executed intent's kind is corrected by the model's error on the executed outcome
+    (T = Y_j + y_f - Y_f); a stage-2 terminal is r1 + gamma r2; no target reads the critic."""
+    import torch as th
+    import train.t2_mve_sac as t
+    from env.t2_stage import OBS_DIM_PRIV
+    from stable_baselines3.common.logger import configure
+    out = {}
+    for arm in ('e_term', 'e_term2'):
+        m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True); m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0
+        assert m.terminal == t.TERM_ARMS[arm] and m.model_beta == t.TERM_BETA and m.policy.critic_dim == OBS_DIM_PRIV
+        _term_fill(m); m.td_ms = 1e12; m.entry_bias_now = 0.0     # a known, zero entry bias: every row at full weight
+        th.manual_seed(0); data = m.replay_buffer.sample(8)
+        target = data.rewards.clone()                       # terminal real transitions: y_f = r_f = 60
+        loss, info = m._terminal_loss(data, target)
+        rows = 8 * (1 if arm == 'e_term' else 2)
+        assert info['term_rows'] == rows and info['term2_rows'] == (0 if arm == 'e_term' else 8)
+        with th.no_grad():
+            q1 = [q.reshape(-1) for q in m.critic(data.observations, th.tensor([[0.9, -0.9]]).expand(8, -1))]
+            q2 = [q.reshape(-1) for q in m.critic(data.observations, th.tensor([[-0.5, 0.5]]).expand(8, -1))]
+        t1 = 80.0 + (60.0 - 70.0)                              # same terminal kind (entry): corrected by y_f - Y_f
+        t2 = -1.5 + m.gamma * 75.0
+        terms = [(q - t1) ** 2 for q in q1] + ([(q - t2) ** 2 for q in q2] if arm == 'e_term2' else [])
+        expected = 0.5 * sum(x.sum() for x in terms) / rows
+        assert abs(float(loss) - float(expected)) < 1e-3 * max(1.0, float(expected))
+        out[arm] = info
+    # no correction when the executed intent's label is not a terminal of the same kind
+    m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), 'e_term', 0, smoke=True); m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0
+    _term_fill(m, same_done=False, same_kind=0, real_done=False, real_r=-1.6, same_r=-1.6); m.td_ms = 1e12
+    data = m.replay_buffer.sample(8)
+    with th.no_grad():
+        target = data.rewards + (1 - data.dones) * m.gamma * m._soft_value(data.next_observations, m.ent_coef_tensor)
+    info = m._terminal_loss(data, target)[1]
+    assert info['comp_share'] == 0.0 and abs(info['term_target_mean'] - 80.0) < 1e-4
+
+
+def test_terminal_arms_fly_stage_two_under_the_policy_mean():
+    """e_term2 asks the environment for a second stage (entry_stages 2) flown under the policy's deterministic intent."""
+    import inspect, train.t2_mve_sac as t
+    w = inspect.getsource(t.worker); src = inspect.getsource(t.train)
+    assert 'if label_deterministic:' in w and 'deterministic=True' in w
+    assert "if arm in TERM_ARMS:\n        entry_stages = TERM_ARMS[arm]" in src and 'label_det = arm in TERM_ARMS' in src
+    assert t.TERM_ARMS == {'e_term': 1, 'e_term2': 2} and set(t.TERM_ARMS) <= set(t.LABEL_ARMS) and set(t.TERM_ARMS) <= set(t.PRIV_CRITIC_ARMS)
+
+
+def _fb_model(arm='e_pi'):
+    import train.t2_mve_sac as t
+    from env.t2_stage import OBS_DIM_PRIV
+    from stable_baselines3.common.logger import configure
+    m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True)
+    m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0; m.model_start = 0; m.learning_starts = 0
+    return m
+
+
+def _fb_fill(m, n=24, good=(0.3, 0.0), bad=(-0.3, 0.0), gain=20.0, ref=(0.0, 0.0), terminal=False, seed=0):
+    """Decisions whose executor evidence says intents towards +a_p are better (the 'good' candidate predicted gain above the
+    reference, the 'bad' one gain below); the reference is the policy's intent ``ref``."""
+    from env.t2_stage import OBS_DIM_PRIV
+    rng = np.random.default_rng(seed); z = np.zeros(OBS_DIM_PRIV, np.float32)
+    for i in range(n):
+        o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+        fact = {'reward': -2.0, 'next_obs': o1, 'done': False, 'same': {'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}}
+        refd = {'a': np.asarray(ref, np.float32), 'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}
+        cands = [{'a': np.asarray(good, np.float32), 'reward': (60.0 if terminal else -2.0 + gain), 'next_obs': z if terminal else o1, 'done': terminal, 'kind': 1 if terminal else 0},
+                 {'a': np.asarray(bad, np.float32), 'reward': (-100.0 if terminal else -2.0 - gain), 'next_obs': z if terminal else o1, 'done': terminal, 'kind': 1 if terminal else 0}]
+        m.replay_buffer.add(o, o1[None], np.asarray(ref, np.float32)[None], np.array([-2.0]), np.array([False]),
+                            [{'model': {'fact': fact, 'cands': cands, 'ref': refd, 'diag': {'reason': 'stage'}}}])
+
+
+def test_execution_advantage_corrects_only_the_actor_and_points_to_the_better_intent():
+    """learner 6.0 (e_pi): the critic update is e_priv's (no counterfactual regression); the correction slope points from
+    the policy's intent towards the intents the executor's evidence prefers over the critic's own ranking."""
+    import torch as th
+    m = _fb_model('e_pi'); assert m.feedback == 'rel' and m.model_beta == 0.0 and m.policy.critic_dim == 48
+    _fb_fill(m); m.td_ms = 25.0; m.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0)
+    ob, sel, g, a_ref, info = m._actor_correction()
+    assert ob.shape[0] == t_fb_batch() and bool(sel.all()) and info['fb_cands'] == 2 * t_fb_batch()
+    assert bool((g[:, 0] > 0).all())          # towards +a_p, where the evidence says the value rises
+    assert m._model_loss.__name__ and not m.relative and m.terminal == 0
+
+
+def test_execution_feedback_switched_off_is_the_e_priv_update():
+    """With no executor evidence the e_pi update equals the e_priv update (same critic and actor parameters after
+    identical updates on identical data)."""
+    import torch as th
+    out = []
+    for arm in ('e_priv', 'e_pi'):
+        m = _fb_model(arm)
+        from env.t2_stage import OBS_DIM_PRIV
+        rng = np.random.default_rng(0)
+        for i in range(32):
+            o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32); o1 = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32)
+            m.replay_buffer.add(o, o1, rng.uniform(-1, 1, (1, 2)).astype(np.float32), np.array([rng.normal()]), np.array([False]), [{'model': {}}])
+        np.random.seed(1); th.manual_seed(1)
+        m.train(gradient_steps=5, batch_size=8)
+        out.append(th.cat([p.detach().reshape(-1) for p in m.policy.parameters()]))
+    assert th.equal(out[0], out[1])
+
+
+def test_terminal_execution_feedback_uses_only_executor_complete_values():
+    """e_pit: only candidates whose modelled stage ends in a terminal event carry evidence; the correction compares that
+    complete value with the critic's value at the candidate."""
+    import torch as th
+    m = _fb_model('e_pit'); assert m.feedback == 'term'
+    _fb_fill(m, terminal=True); m.td_ms = 25.0; m.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0)
+    ob, sel, g, a_ref, info = m._actor_correction()
+    assert info['fb_cands'] == 2 * t_fb_batch() and bool(sel.all())   # the two terminal candidates (and a_pi, correction 0)
+    assert bool((g[:, 0] > 0).all())               # towards the capture, away from the timeout
+
+
+def test_environment_predicts_the_policy_intent_with_the_candidates_treatment():
+    """env 0.12.0: with ref_labels and a policy intent set by the collector, the labels carry ``ref``."""
+    from env.t2_stage import T2StageEnv, OBS_DIM
+    env = T2StageEnv(openings=[1000001], shaping=True, candidates=4, entry_stages=1)
+    env.reset(); env.ref_labels = True
+    for k in range(12):
+        env.calibration.add(0.10, 0.12, np.zeros(3), np.zeros(3))
+    for k in range(25):
+        env.entry_calibration.add(30.0, 0.3, 45.0, 0.5, True, 0.0, 120.0)
+    for _ in range(4):
+        env.policy_action = np.array([0.5, 0.2])
+        obs, r, term, trunc, info = env.step(np.array([0.4, 0.3]))
+        m = info['model']
+        if m['diag']['reason'] == 'stage':
+            assert m.get('ref') is not None and m['ref']['next_obs'].shape == (OBS_DIM,) and np.allclose(m['ref']['a'], [0.5, 0.2])
+            return
+        if term or trunc:
+            break
+    raise AssertionError('no labelled stage decision')
+
+
+def t_fb_batch():
+    import train.t2_mve_sac as t
+    return t.FB_BATCH
+
+
+def test_centred_slope_ignores_a_common_offset_and_needs_an_identifiable_direction():
+    """learner 6.1: the correction slope is fitted with an intercept -- an error common to every point gives no gradient;
+    one point, or points without spread, give no direction."""
+    import torch as th
+    from train.t2_mve_sac import centred_slope
+    d = th.tensor([[[0.3, 0.0], [-0.3, 0.0], [0.0, 0.3], [0.0, 0.0]]])
+    w = th.ones((1, 4))
+    g, ok = centred_slope(d, th.full((1, 4), 88.5), w)
+    assert bool(ok.all()) and float(g.abs().max()) < 1e-6                  # a common offset (the 6.0 e_pit failure) is no direction
+    g, ok = centred_slope(d, 5.0 + (d * th.tensor([10.0, -4.0])).sum(-1), w, ridge=1e-6)
+    assert th.allclose(g, th.tensor([[10.0, -4.0]]), atol=1e-3)            # a linear field is recovered
+    g, ok = centred_slope(d, th.ones((1, 4)), th.tensor([[1.0, 0.0, 0.0, 0.0]]))
+    assert not bool(ok.any()) and float(g.abs().max()) == 0.0              # one point: not identifiable
+
+
+def test_feedback_rows_come_from_the_most_recent_transitions():
+    """learner 6.1: the feedback minibatch is drawn from the FB_WINDOW most recently stored transitions."""
+    import train.t2_mve_sac as t
+    m = _fb_model('e_pi'); _fb_fill(m, n=t.FB_WINDOW + 100)
+    np.random.seed(0)
+    m.replay_buffer.recent_sample(500, t.FB_WINDOW)
+    idx = m.replay_buffer._last[0]
+    stored = m.replay_buffer.pos
+    assert int(idx.min()) >= stored - t.FB_WINDOW and int(idx.max()) <= stored - 1
+
+
+def test_direction_audit_uses_the_learner_correction_on_one_transition():
+    """T2.16 gate (experiments.t2_direction): on one labelled transition the audit's correction is the learner's own
+    (points towards the intents the executor prefers) and gq is the critic's action gradient at the policy's intent."""
+    import torch as th
+    from env.t2_stage import OBS_DIM_PRIV
+    from experiments.t2_direction import correction
+    m = _fb_model('e_pi'); m.td_ms = 25.0
+    rng = np.random.default_rng(3); o = rng.normal(size=OBS_DIM_PRIV).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+    fact = {'reward': -2.0, 'next_obs': o1, 'done': False}
+    refd = {'a': np.zeros(2, np.float32), 'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}
+    cands = [{'a': np.array([0.3, 0.0], np.float32), 'reward': 18.0, 'next_obs': o1, 'done': False, 'kind': 0},
+             {'a': np.array([-0.3, 0.0], np.float32), 'reward': -22.0, 'next_obs': o1, 'done': False, 'kind': 0}]
+    info = {'model': {'fact': fact, 'cands': cands, 'ref': refd, 'diag': {'reason': 'stage', 'entry_bias': 0.0}}}
+    g, gq, finfo = correction(m, o, o1, np.zeros(2), -2.0, False, info, seed=0)
+    assert g is not None and g[0] > 0 and finfo['fb_identified'] == t_fb_batch()
+    a = th.zeros((1, 2), requires_grad=True)
+    ref = th.autograd.grad(th.min(th.cat(m.critic(th.as_tensor(o[None]), a), dim=1), dim=1).values.sum(), a)[0][0].numpy()
+    assert np.allclose(gq, ref, atol=1e-6)
+
+
+def test_training_entry_accepts_every_learner_arm():
+    """T2.16 launch failure (frozen 323b8c8 refused --arm e_pi): the command line offers every arm the learner builds."""
+    import train.t2_mve_sac as t
+    from experiments.t2 import arm_choices
+    arms = arm_choices()
+    for a in ('e_sac', 'e_mve', 'e_pref', *t.LABEL_ARMS, *t.PRIV_CRITIC_ARMS, *t.TERM_ARMS, *t.FB_ARMS):
+        assert a in arms, a
+    assert len(arms) == len(set(arms))
+
+
+def test_rotated_correction_turns_the_critic_step_without_changing_its_length():
+    """learner 6.2: the added term turns gq into the audited corrected direction (experiments.t2_direction's u_M) at the
+    critic's own length; evidence agreeing with the critic, or exactly opposing it, adds nothing."""
+    import torch as th
+    from train.t2_mve_sac import FB_CLIP, rotated_correction
+    rng = np.random.default_rng(5)
+    gq = th.as_tensor(rng.normal(size=(64, 2)), dtype=th.float32); g = th.as_tensor(rng.normal(size=(64, 2)) * 3, dtype=th.float32)
+    h, g_c = rotated_correction(gq, g)
+    assert th.allclose((gq + h).norm(dim=1), gq.norm(dim=1), atol=1e-5)
+    for i in range(64):                                   # the audit's u_M, row by row
+        q, gi = gq[i].numpy().astype(float), g[i].numpy().astype(float)
+        gc = gi * min(1.0, FB_CLIP * np.linalg.norm(q) / max(np.linalg.norm(gi), 1e-9))
+        um = (q + gc) / np.linalg.norm(q + gc)
+        assert np.allclose((gq[i] + h[i]).numpy() / np.linalg.norm(q), um, atol=1e-4)
+    h2, _ = rotated_correction(gq, 2.0 * gq); h3, _ = rotated_correction(gq, -5.0 * gq)
+    assert float(h2.abs().max()) < 1e-5 and float(h3.abs().max()) < 1e-5
+
+
+def test_execution_feedback_enters_the_actor_update():
+    """learner 6.2: with evidence near the policy's intent, a training step applies the rotated correction (readings)."""
+    import torch as th
+    m = _fb_model('e_pi'); _fb_fill(m, n=32); m.td_ms = 25.0; m.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0)
+    m.train(gradient_steps=1, batch_size=8)
+    s = [x for x in m.model_stats if 'fb_rows' in x]
+    assert s and s[-1].get('fb_applied', 0) > 0 and abs(s[-1]['fb_turn_cos']) <= 1.0 and s[-1]['fb_m_ratio'] >= 0.0
+
+
+def test_pull_feedback_turns_towards_a_far_better_candidate_beyond_the_noise():
+    """learner 6.3 (e_pull): the best candidate on the fused advantage, anywhere in the square, sets the direction when
+    its advantage exceeds the critic's TD noise; a gain within the noise gives no correction."""
+    import torch as th
+    from train.t2_mve_sac import toward_correction
+    m = _fb_model('e_pull'); assert m.feedback == 'pull'
+    _fb_fill(m, good=(0.9, 0.9), bad=(-0.3, 0.0), gain=20.0); m.td_ms = 25.0; m.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0)
+    ob, sel, g, a_ref, info = m._actor_correction()
+    assert bool(m._fb_pull_rows.all()) and info['fb_pull_dist_mean'] > 1.0      # the far candidate (beyond FB_RADIUS)
+    u = g / g.norm(dim=1, keepdim=True)
+    assert bool((u[:, 0] > 0.69).all()) and bool((u[:, 1] > 0.69).all())
+    m2 = _fb_model('e_pull'); _fb_fill(m2, good=(0.9, 0.9), bad=(-0.3, 0.0), gain=2.0); m2.td_ms = 25.0; m2.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0)
+    _, sel2, _, _, _ = m2._actor_correction()
+    assert not bool(m2._fb_pull_rows.any())                                  # within the noise: no pull (the local slope may act)
+    gq = th.tensor([[1.0, 0.0], [0.0, 2.0]]); v = th.tensor([[0.0, 3.0], [1.0, 1.0]])
+    h = toward_correction(gq, v)
+    assert th.allclose((gq + h).norm(dim=1), gq.norm(dim=1)) and th.allclose(gq[0] + h[0], th.tensor([0.0, 1.0]), atol=1e-6)
+
+
+def test_direction_audit_pull_branch_uses_the_learner_pull_direction():
+    """Gate A2 (experiments.t2_direction, branch P): the audit's pull direction is the learner's e_pull direction on the
+    transition, and computing it leaves the model on the e_pi slope ('rel') for the Q / M / E branches."""
+    from env.t2_stage import OBS_DIM_PRIV
+    from experiments.t2_direction import correction
+    m = _fb_model('e_pi'); m.td_ms = 25.0
+    rng = np.random.default_rng(4); o = rng.normal(size=OBS_DIM_PRIV).astype(np.float32); o1 = rng.normal(size=OBS_DIM_PRIV).astype(np.float32)
+    refd = {'a': np.zeros(2, np.float32), 'reward': -2.0, 'next_obs': o1, 'done': False, 'kind': 0}
+    cands = [{'a': np.array([0.9, 0.9], np.float32), 'reward': 18.0, 'next_obs': o1, 'done': False, 'kind': 0},
+             {'a': np.array([-0.3, 0.0], np.float32), 'reward': -22.0, 'next_obs': o1, 'done': False, 'kind': 0}]
+    info = {'model': {'fact': {'reward': -2.0, 'next_obs': o1, 'done': False}, 'cands': cands, 'ref': refd, 'diag': {'reason': 'stage', 'entry_bias': 0.0}}}
+    gp, gq, pinfo = correction(m, o, o1, np.zeros(2), -2.0, False, info, seed=0, feedback='pull')
+    assert gp is not None and gp[0] > 0 and gp[1] > 0 and abs(gp[0] - gp[1]) < 1e-3 * abs(gp[0]) and pinfo['fb_pull_dist_mean'] > 1.0
+    g, _, _ = correction(m, o, o1, np.zeros(2), -2.0, False, info, seed=0)
+    assert m.feedback == 'rel' and g is not None
+
+
+def test_pull_feedback_enters_the_actor_update():
+    """learner 6.3: a training step of e_pull with a far better candidate applies the non-local correction."""
+    import torch as th
+    m = _fb_model('e_pull'); _fb_fill(m, n=32, good=(0.9, 0.9), gain=20.0); m.td_ms = 25.0; m.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0)
+    m.train(gradient_steps=1, batch_size=8)
+    s = [x for x in m.model_stats if 'fb_rows' in x]
+    assert s and s[-1].get('fb_applied', 0) > 0 and s[-1].get('fb_pull_rows', 0) > 0
+
+
+def test_pull2_trusts_less_the_further_a_candidate_lies_from_the_executed_intent():
+    """learner 6.4 (e_pull2): the non-local step ignores candidates beyond FB_PULL_MAX of the policy's intent and discounts
+    the executor's advantage by its extrapolation from the executed intent; a moderate, clearly better candidate still pulls."""
+    import torch as th
+    import train.t2_mve_sac as t
+    far = _fb_model('e_pull2'); assert far.feedback == 'pull2'
+    _fb_fill(far, good=(0.9, 0.9), gain=20.0); far.td_ms = 25.0; far.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0); far._actor_correction()
+    assert not bool(far._fb_pull_rows.any())                                   # 1.27 > FB_PULL_MAX
+    mid = _fb_model('e_pull2'); _fb_fill(mid, good=(0.6, 0.5), gain=20.0); mid.td_ms = 25.0; mid.entry_bias_now = 0.0
+    np.random.seed(0); th.manual_seed(0); _, _, g, _, info = mid._actor_correction()
+    assert bool(mid._fb_pull_rows.all()) and info['fb_pull_adv_mean'] < 20.0      # pulled, with a discounted advantage
+    u = g[mid._fb_pull_rows] / g[mid._fb_pull_rows].norm(dim=1, keepdim=True)
+    assert bool((u @ th.tensor([0.6, 0.5]) / np.hypot(0.6, 0.5) > 0.99).all())
+    assert t.FB_PULL_MAX == 1.0 and t.FB_EXTRAP == 1.0
+
+
+def test_delayed_feedback_is_the_e_priv_update_until_it_starts():
+    """learner 6.5 (e_pull3): before FB_START_LATE stored decisions the update equals e_priv's even with evidence in the
+    buffer (no correction, no random numbers drawn); afterwards the correction applies."""
+    import torch as th
+    import train.t2_mve_sac as t
+    out = []
+    for arm in ('e_priv', 'e_pull3'):
+        m = _fb_model(arm); _fb_fill(m, n=32, good=(0.6, 0.5), gain=20.0); m.td_ms = 25.0; m.entry_bias_now = 0.0
+        np.random.seed(1); th.manual_seed(1)
+        m.train(gradient_steps=5, batch_size=8)
+        out.append(th.cat([p.detach().reshape(-1) for p in m.policy.parameters()]))
+        if arm == 'e_pull3':
+            assert m.fb_start == t.FB_START_LATE == 500 and m.feedback == 'pull2'
+            assert not [x for x in m.model_stats if x.get('fb_applied')]
+            m.fb_start = 0; m.train(gradient_steps=21, batch_size=8)          # readings every 25 updates
+            assert [x for x in m.model_stats if x.get('fb_applied')]
+    assert th.equal(out[0], out[1])
+
+
+def test_certificate_profile_appends_the_calibrated_opportunity_map_for_the_critic_only():
+    """env 0.13.0 'reduced_priv_cert': the first OBS_DIM_PRIV values are the 'reduced_priv' observation; the map is zero
+    until the entry calibration is ready, then carries the ready flag and per-intent judgements; with ``cert_live`` off it
+    is zero. Arm e_cert: the critic reads all of it, the actor only the reduced interface, so the deployed action does
+    not depend on the map."""
+    import torch as th
+    import train.t2_mve_sac as t
+    from env.t2_stage import CERT_DIM, OBS_DIM, OBS_DIM_CERT, OBS_DIM_PRIV, PREF_GRID, T2StageEnv
+    from experiments.t2_audit import load_calibration
+    a = T2StageEnv(openings=[1000003], obs_profile='reduced_priv_cert'); b = T2StageEnv(openings=[1000003], obs_profile='reduced_priv')
+    oa, _ = a.reset(options={'opening': 1000003}); ob, _ = b.reset(options={'opening': 1000003})
+    assert oa.shape == (OBS_DIM_CERT,) and np.array_equal(oa[:OBS_DIM_PRIV], ob) and not oa[OBS_DIM_PRIV:].any()
+    load_calibration(a, 'evidence/T2_8_PRECHECK/输入/CAL.json')
+    m = a.observation()[OBS_DIM_PRIV:]
+    assert m.shape == (CERT_DIM,) and m[-1] == 1.0 and len(PREF_GRID) * 3 + 1 == CERT_DIM
+    assert set(np.unique(m[0:-1:3])) <= {0.0, 1.0} and ((m[1:-1:3] >= 0) & (m[1:-1:3] <= 1)).all()
+    a.cert_live = False
+    assert not a.observation()[OBS_DIM_PRIV:].any()
+    q_, v_ = __import__('env.t1_p_stage', fromlist=['relative_inertial']).relative_inertial(a.env); ts = a.env.target_state
+    assert not a._observe(a.env, q_, v_, a.env.time_s, a.env._delta_v, a.mission, ts.rotation, ts.omega, a.last)[OBS_DIM_PRIV:].any()
+    model = t.make_model(t.SpacesEnv(OBS_DIM_CERT), 'e_cert', 0, smoke=True)
+    assert model.policy.critic_dim == OBS_DIM_CERT and model.policy.actor_dim == OBS_DIM and model.feedback is None and model.model_beta == 0.0
+    o_live = th.as_tensor(np.concatenate([oa[:OBS_DIM_PRIV], m])[None]); o_zero = o_live.clone(); o_zero[:, OBS_DIM_PRIV:] = 0
+    assert th.equal(model.actor(o_live, deterministic=True), model.actor(o_zero, deterministic=True))
+    q = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), 'e_pullq', 0, smoke=True)
+    assert q.policy.critic_dim == OBS_DIM and q.feedback == 'pull2'
+    full = t.make_model(t.SpacesEnv(OBS_DIM_CERT), 'e_full', 0, smoke=True)
+    assert full.policy.critic_dim == OBS_DIM_CERT and full.feedback == 'pull2' and full.fb_start == t.FB_START_LATE
+
+
+def test_certificate_readings_enter_the_training_statistics():
+    """learner 7.0: e_cert reports the certificate maps of the recent decisions (ready share, best success share,
+    feasible reference intents) in its training statistics; e_priv reports none."""
+    import torch as th
+    import train.t2_mve_sac as t
+    from env.t2_stage import CERT_DIM, OBS_DIM_CERT, OBS_DIM_PRIV
+    from stable_baselines3.common.logger import configure
+    m = t.make_model(t.SpacesEnv(OBS_DIM_CERT), 'e_cert', 0, smoke=True)
+    m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0
+    rng = np.random.default_rng(0)
+    for i in range(30):
+        o = rng.normal(size=(1, OBS_DIM_CERT)).astype(np.float32); o[0, OBS_DIM_PRIV:] = 0.0
+        if i % 2:
+            o[0, OBS_DIM_PRIV:-1:3] = 1.0; o[0, OBS_DIM_PRIV + 1:-1:3] = 0.7; o[0, -1] = 1.0
+        m.replay_buffer.add(o, o, rng.uniform(-1, 1, (1, 2)).astype(np.float32), np.array([0.0]), np.array([False]), [{'model': {}}])
+    np.random.seed(0); th.manual_seed(0); m.train(gradient_steps=25, batch_size=8)
+    s = m.model_stats[-1]
+    assert abs(s['cert_ready_share'] - 0.5) < 1e-6 and abs(s['cert_pmax_mean'] - 0.7) < 1e-6 and abs(s['cert_feasible_mean'] - (CERT_DIM - 1) / 3) < 1e-6
+
+
+def test_capacity_control_profile_repeats_the_actor_view():
+    """Final experiments (U1 capacity control): 'reduced_dup' is 48 values, both halves the actor's reduced view; its first
+    half equals 'reduced_priv''s; e_priv on it keeps the 24 / 48 split."""
+    import train.t2_mve_sac as t
+    from env.t2_stage import OBS_DIM, OBS_DIM_PRIV, T2StageEnv
+    a = T2StageEnv(openings=[1000004], obs_profile='reduced_dup'); b = T2StageEnv(openings=[1000004], obs_profile='reduced_priv')
+    oa, _ = a.reset(options={'opening': 1000004}); ob, _ = b.reset(options={'opening': 1000004})
+    assert oa.shape == (OBS_DIM_PRIV,) and np.array_equal(oa[:OBS_DIM], oa[OBS_DIM:]) and np.array_equal(oa[:OBS_DIM], ob[:OBS_DIM])
+    assert not np.array_equal(oa[OBS_DIM:], ob[OBS_DIM:])
+    m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), 'e_priv', 0, smoke=True)
+    assert m.policy.actor_dim == OBS_DIM and m.policy.critic_dim == OBS_DIM_PRIV
+
+
+def test_final_entry_refuses_unregistered_runs_and_reads_the_executor_configuration(tmp_path):
+    """experiments.final: only registered configurations and stage seeds train; a manifest that departs from its
+    registered configuration is refused; evaluation reads window / geometry from the run's manifest."""
+    import argparse, json, pytest
+    import experiments.final as fin
+    from experiments.t2 import exec_config_of
+    ns = lambda **k: argparse.Namespace(**{'workers': None, 'smoke_steps': None, **k})
+    with pytest.raises(SystemExit):
+        fin.cmd_train(ns(stage='pretest', config='e_cert', seed=10, output=str(tmp_path / 'x')))
+    with pytest.raises(SystemExit):
+        fin.cmd_train(ns(stage='pretest', config='EACH', seed=0, output=str(tmp_path / 'y')))
+    with pytest.raises(SystemExit):
+        fin.cmd_train(ns(stage='pretest', config='RIGID', seed=10, output=str(tmp_path / 'z')))
+    reg = fin.registry(); c = reg['trained']['NO_GEOM']
+    m = {'arm': c['arm'], 'obs_profile': c['obs'], 'window': c['window'], 'geometry': c['geometry'], 'actor_view': 24, 'critic_view': 48,
+         'k_candidates': 0, 'model_beta': 0.0, 'pref': False, 'acc': False, 'guide': False, 'relative': False, 'feedback': None, 'terminal_horizon': 0}
+    fin.verify_manifest(m, 'NO_GEOM')
+    with pytest.raises(SystemExit):
+        fin.verify_manifest({**m, 'geometry': True}, 'NO_GEOM')
+    with pytest.raises(SystemExit):
+        fin.verify_manifest({**m, 'k_candidates': 8}, 'NO_GEOM')
+    run = tmp_path / 'run'; (run / 'checkpoints').mkdir(parents=True)
+    (run / 'manifest.json').write_text(json.dumps(m), encoding='utf-8')
+    assert exec_config_of(run / 'checkpoints' / 'step_2000.zip') == {'window': True, 'geometry': False, 'certify': False}
+    assert set(fin.block('294100-294147')) & fin._forbidden_eval('pretest') == set()
+    assert set(fin.block('300000-300095')) <= fin._forbidden_eval('pretest') and set(fin.block('294000-294047')) <= fin._forbidden_eval('formal')
+    p = reg['protocol']['stages']
+    assert not set(p['pretest']['seeds']) & set(p['formal']['seeds']) and not set(p['pretest']['seeds']) & set(reg['protocol']['used_before']['dev_train_seeds'])
+
+
+def test_sweep_cone_scan_places_the_line_of_sight_at_the_requested_latitude_and_phase():
+    """Figure A geometry: the scan's construction reproduces the executor's own spin-frame latitude error and phase."""
+    from env.t2_stage import T2StageEnv, angle_deg, spin_frame
+    from experiments.final import _los_for
+    env = T2StageEnv(openings=[1000006]); env.reset(options={'opening': 1000006})
+    t = env.env.target_state; axis = np.asarray(env.env.config.task.approach_axis)
+    s_hat = t.rotation @ t.omega / np.linalg.norm(t.omega); port = t.rotation @ axis; beta = angle_deg(port, s_hat)
+    for dl in (-40.0, 0.0, 25.0):
+        for ph in (10.0, 135.0, 300.0):
+            f = spin_frame(t.rotation, t.omega, 10.0 * _los_for(s_hat, port, beta + dl, ph), axis)
+            assert abs(f['lat_err_deg'] - dl) < 1e-6 and abs(((np.degrees(f['phase_rad']) - ph + 180) % 360) - 180) < 1e-6
+
+
+def test_u2_probe_profiles_split_views_and_are_deterministic():
+    """U2 (env 0.14.0): 'reduced_probe' = the actor's reduced view + 27 probe values, 'reduced_priv_probe' = 'reduced_priv'
+    + the same probes; the probe is a fixed function of the state (a fresh executor model gives the same values), zeros
+    when ``probe_live`` is off; e_priv keeps the 24-value actor and reads everything in the critic."""
+    import train.t2_mve_sac as t
+    from env.t2_probe import PROBE_DIM, ExecutorProbe
+    from env.t2_stage import OBS_DIM, OBS_DIM_PRIV, OBS_DIM_PRIV_PROBE, OBS_DIM_PROBE, T2StageEnv
+    op = 1000004
+    a = T2StageEnv(openings=[op], obs_profile='reduced_probe'); b = T2StageEnv(openings=[op], obs_profile='reduced_priv')
+    c = T2StageEnv(openings=[op], obs_profile='reduced_priv_probe')
+    oa, _ = a.reset(options={'opening': op}); ob, _ = b.reset(options={'opening': op}); oc, _ = c.reset(options={'opening': op})
+    assert oa.shape == (OBS_DIM_PROBE,) == (OBS_DIM + PROBE_DIM,) and oc.shape == (OBS_DIM_PRIV_PROBE,)
+    assert np.array_equal(oa[:OBS_DIM], ob[:OBS_DIM]) and np.array_equal(oc[:OBS_DIM_PRIV], ob) and np.array_equal(oa[OBS_DIM:], oc[OBS_DIM_PRIV:])
+    p = oa[OBS_DIM:].reshape(-1, 3)
+    assert set(np.unique(p[:, 0])) <= {0.0, 1.0} and (p[:, 1] > 0).all() and (p[:, 1] <= 1.0 + 1e-6).all() and (p[:, 2] >= 0).all()
+    fresh, rows = ExecutorProbe(a).probe(a)
+    assert np.array_equal(fresh, oa[OBS_DIM:]) and len(rows) == 9
+    a.probe_live = False
+    assert not a.observation()[OBS_DIM:].any()
+    for dim in (OBS_DIM_PROBE, OBS_DIM_PRIV_PROBE):
+        m = t.make_model(t.SpacesEnv(dim), 'e_priv', 0, smoke=True)
+        assert m.policy.actor_dim == OBS_DIM and m.policy.critic_dim == dim
+        m = t.make_model(t.SpacesEnv(dim), 'e_sac', 0, smoke=True)
+        assert m.policy.actor_dim == OBS_DIM and m.policy.critic_dim == OBS_DIM
+
+
+def test_u2_probe_gate_is_the_executor_rule_and_probing_leaves_execution_unchanged():
+    """The probe's gate reproduces the executor's metrics (range, radial envelope margin) and descent region on real
+    states; the probe uses its own planner instances, so the executed episode is the same with and without probing."""
+    from env.t1_p_stage import relative_inertial
+    from env.t2_probe import executor_gate
+    from env.t2_stage import T2StageEnv
+    op = 1000006
+    a = T2StageEnv(openings=[op], obs_profile='reduced_priv_probe'); b = T2StageEnv(openings=[op], obs_profile='reduced_priv')
+    a.reset(options={'opening': op}); b.reset(options={'opening': op})
+    for k in range(4):
+        for env in (a, b):
+            _, _, term, trunc, info = env.step(np.array([1.0, 0.3 * (k % 2)]))
+        ea, eb = a.env, b.env
+        assert ea.time_s == eb.time_s and ea._delta_v == eb._delta_v and np.array_equal(ea.chaser_state.position, eb.chaser_state.position)
+        q, v = relative_inertial(ea); m = ea.metrics()
+        g = executor_gate(q, v, ea.target_state.rotation, ea.config.task, a.generator.bridge.descent_radius_m)
+        assert abs(g['range_m'] - m.range_m) < 1e-6 and g['descending'] == a.generator.descending(a.info_env, m)   # rounding of two frames
+        assert (g['radial_margin_m_s'] == m.radial_envelope_margin_m_s) or abs(g['radial_margin_m_s'] - m.radial_envelope_margin_m_s) < 1e-6
+        if term or trunc:
+            break
+
+
+def test_u2_stage_registry():
+    """Stage u2: PROBE / EACH_PROBE trained with the pretest's seeds; the pretest's EACH / SAC re-evaluated; its evaluation
+    block is new and reserved from the other stages."""
+    import experiments.final as fin
+    reg = fin.registry(); p = reg['protocol']['stages']; u = p['u2']
+    assert u['trained'] == ['PROBE', 'EACH_PROBE'] and u['seeds'] == p['pretest']['seeds'] and u['steps'] == p['pretest']['steps']
+    assert set(u['reused']) == {'EACH', 'SAC'} and all(v == 'pretest' for v in u['reused'].values())
+    ops = set(fin.block(u['eval_openings']))
+    assert len(ops) == 48 and not ops & fin._forbidden_eval('u2') and ops <= fin._forbidden_eval('pretest') and ops <= fin._forbidden_eval('formal')
+    assert not ops & set(fin.block(reg['protocol']['figure_openings']))
+    for c in ('PROBE', 'EACH_PROBE'):
+        assert reg['trained'][c]['arm'] == 'e_priv' and reg['trained'][c]['actor_view'] == 24
+
+
+def test_u2_readout_gates_are_seed_matched_and_flip_robust(tmp_path):
+    """U2 stage B decision: PROBE vs SAC over seed-matched, opening-paired evaluations; a gain carried by two flips per
+    seed fails G2, a gain in one seed only fails G3, an unsafe episode fails G5."""
+    import json
+    from experiments.u2_readout import readout
+    def write(cfg, seed, rets, events=None):
+        d = tmp_path / 'C' / f'{cfg}_s{seed}'; d.mkdir(parents=True, exist_ok=True)
+        for i, r in enumerate(rets):
+            ev = (events or {}).get(i, 'success' if r > -50 else 'timeout')
+            (d / f'{cfg}_{i}.json').write_text(json.dumps({'opening': 294148 + i, 'event': ev, 'return': r, 'time_s': 100.0, 'delta_v': 1.0,
+                                                           'mission': {'urgent': i % 2 == 0}}))
+    base = [40.0] * 46 + [-150.0, -150.0]
+    for s in (10, 11):
+        write('SAC', s, base); write('EACH', s, base); write('EACH_PROBE', s, base)
+    for s in (10, 11):
+        write('PROBE', s, [40.0] * 46 + [50.0, 50.0])         # two flips per seed: mean +8.3, nothing else
+    r = readout(tmp_path, None)
+    assert r['complete'] and r['main']['gates']['G1'] and not r['main']['gates']['G2'] and r['main']['verdict'] == 'no_gain'
+    write('PROBE', 10, [50.0] * 46 + [50.0, 50.0]); write('PROBE', 11, [40.0] * 48)
+    r = readout(tmp_path, None)
+    assert r['main']['gates']['G2'] and r['main']['gates']['G3'] and r['main']['verdict'] == 'pass'
+    write('PROBE', 11, [39.0] * 46 + [-150.0, -150.0])        # seed 11 slightly worse, seed 10 carries the mean
+    r = readout(tmp_path, None)
+    assert r['main']['gates']['G1'] and not r['main']['gates']['G3'] and r['main']['verdict'] == 'no_gain'
+    write('PROBE', 11, [40.0] * 47 + [-150.0], events={47: 'unsafe'})
+    assert not readout(tmp_path, None)['main']['gates']['G5']
+    assert readout(tmp_path, None)['secondary']['verdict'] == 'kept'
+
+
+def test_u2_certification_rule_and_default_off():
+    """env 0.15.0: certification is off by default (info 'cert' None); when on it replaces the intent only if the
+    intent brings no mode switch, a probe intent does and the pass is binding; the nearest such probe is flown."""
+    from env.t2_stage import T2StageEnv
+    env = T2StageEnv(openings=[1000004], obs_profile='reduced_priv'); env.reset(options={'opening': 1000004})
+    assert env.certify is False
+    class Fake:
+        def __init__(self, events): self.events = events
+        def probe_intent(self, a, *args):
+            t = self.events.get(tuple(np.round(np.asarray(a, float), 3)))
+            return {'event': int(t is not None), 't': float(t if t is not None else 48.0), 'kind': 'entry' if t is not None else None, 'dv': 0.1}
+    env.mission = dict(env.mission, deadline_s=env.env.time_s + 100.0)     # latest admissible arrival 55 s ahead: binding
+    a = np.array([0.4, 0.2])
+    env._opp = None; env.cert_prober = Fake({(0.4, 0.2): 10.0, (1.0, 0.0): 6.0})
+    out, rec = env._certify(a); assert np.array_equal(out, a) and not rec['intervened']          # own switch: unchanged
+    env._opp = None; env.cert_prober = Fake({(1.0, 0.0): 20.0, (0.0, 0.0): 30.0, (1.0, 1.0): 20.0})
+    out, rec = env._certify(a); assert rec['intervened'] and tuple(out) == (0.0, 0.0)            # nearest to the intent
+    env._opp = None; env.cert_prober = Fake({(1.0, 0.0): 20.0, (0.0, 1.0): 12.0})
+    out, rec = env._certify(np.array([0.5, 0.5])); assert tuple(out) == (0.0, 1.0)                # tie in distance: earlier switch
+    env.mission = dict(env.mission, deadline_s=env.env.time_s + 1000.0)    # deadline far: another pass fits, not binding
+    env._opp = None; env.cert_prober = Fake({(0.0, 0.0): 30.0})
+    out, rec = env._certify(a); assert np.array_equal(out, a) and not rec['intervened']
+    env.certify = False
+    _, _, _, _, info = env.step(a); assert info['cert'] is None
+
+
+def test_ecc_interface_certificate_and_certification_map():
+    """env 0.16.0 (ECC): 'cut_priv' / 'cut_ecc' drop the planner answers and the executor's internal execution state from
+    the decision layer's view for every configuration; the critic part carries the full engineered vector and (cut_ecc)
+    the certified-set indicator that defines the certification map; a probe that would exhaust the budget is not
+    certified; the map flies the nearest certified probe only when the intent itself brings no entry-mode switch."""
+    import train.t2_mve_sac as t
+    from env.t2_probe import PROBE_GRID
+    from env.t2_stage import ECC_CERT_DIM, EXEC_STATE_FEATURES, OBS_DIM, OBS_DIM_ECC, OBS_DIM_PRIV, PLANNER_FEATURES, T2StageEnv
+    op = 1000004
+    a = T2StageEnv(openings=[op], obs_profile='cut_ecc'); b = T2StageEnv(openings=[op], obs_profile='reduced_priv')
+    oa, _ = a.reset(options={'opening': op}); ob, _ = b.reset(options={'opening': op})
+    assert oa.shape == (OBS_DIM_ECC,) == (OBS_DIM_PRIV + ECC_CERT_DIM,)
+    cut = list(PLANNER_FEATURES) + list(EXEC_STATE_FEATURES)
+    keep = [i for i in range(OBS_DIM) if i not in cut]
+    assert not oa[cut].any() and np.array_equal(oa[keep], ob[keep]) and np.array_equal(oa[OBS_DIM:OBS_DIM_PRIV], ob[OBS_DIM:])
+    assert np.array_equal(oa[OBS_DIM_PRIV:], a.opportunity_certificate())
+    for dim, arm, critic in ((OBS_DIM_ECC, 'e_priv', OBS_DIM_ECC), (OBS_DIM_PRIV, 'e_sac', OBS_DIM)):
+        m = t.make_model(t.SpacesEnv(dim), arm, 0, smoke=True); assert m.policy.actor_dim == OBS_DIM and m.policy.critic_dim == critic
+    # certified set and map on a fabricated evaluation
+    rows = [{'event': 0, 't': 48.0, 'dv': 0.1, 'kind': None, 'certified': False} for _ in PROBE_GRID]
+    i_near, i_far = PROBE_GRID.index((0.0, 0.0)), PROBE_GRID.index((1.0, 1.0))
+    rows[i_near] = {'event': 1, 't': 30.0, 'dv': 0.2, 'kind': 'entry', 'certified': True}
+    rows[i_far] = {'event': 1, 't': 10.0, 'dv': 0.2, 'kind': 'entry', 'certified': True}
+    class Own:
+        def __init__(self, ev): self.ev = ev
+        def probe_intent(self, x, *args): return {'event': self.ev, 't': 20.0 if self.ev else 48.0, 'kind': 'entry' if self.ev else None}
+    a._opp = {'t': float(a.env.time_s), 'episode': a.episode, 'args': (), 'rows': rows, 'period': 150.0, 'latest': 100.0}
+    cert = a.opportunity_certificate()
+    assert cert[i_near] == 1 and cert[i_far] == 1 and cert.sum() == 2 + cert[-1] and abs(cert[-1] - 10.0 / 48.0) < 1e-6
+    a.cert_prober = Own(0)
+    x, rec = a._certify(np.array([0.2, 0.1])); assert rec['intervened'] and tuple(x) == (0.0, 0.0)
+    a.cert_prober = Own(1)
+    x, rec = a._certify(np.array([0.2, 0.1])); assert not rec['intervened'] and tuple(x) == (0.2, 0.1)
+    # the resource condition of the certified set (a real evaluation): a budget already spent certifies nothing
+    a._opp = None; a.cert_prober = None; a.mission = dict(a.mission, budget_m_s=float(a.env._delta_v))
+    assert not any(d['certified'] for d in a._opportunity_eval()['rows'])

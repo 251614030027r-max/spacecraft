@@ -1,0 +1,522 @@
+{
+  "generated_at": "2026-09-29T06:15:45.807435+09:00",
+  "training_modified": false,
+  "evaluation_60k_started": false,
+  "reason": "50k safety difference requires upper review under section 5; no numeric threshold invented",
+  "runs": [
+    {
+      "seed": 262420,
+      "manifest": {
+        "status": "completed",
+        "code_commit": "a03632a304bf8af50c4be42cc9d3e450fb23d5ad",
+        "code_dirty": false,
+        "requested_decision_steps": 60000,
+        "actual_decision_steps": 60000,
+        "completed_at_utc": "2026-09-28T20:39:21.601249+00:00",
+        "observation_dimension": 42,
+        "action_dimension": 2,
+        "training_branch": "learned",
+        "waypoint_parametrization": "task_state_v3",
+        "fresh_initialization": true
+      },
+      "timeout_is_terminal": true,
+      "health": {
+        "run": "D:\\py\\DRL2_v3e\\logs\\v3e_262420",
+        "decisions": 59988,
+        "episodes": 548,
+        "reference_jump_violations_total": 0,
+        "qp_zero_fallback_rate_last_window": 0.0,
+        "max_reference_jump_target_m_last_window": 2.8728052328193447,
+        "completed_last_window": 73,
+        "window": 100,
+        "mean_return_last_window": 15.057168240000001,
+        "status": "OK",
+        "stop_reasons": []
+      },
+      "model_zip_bad_member": null,
+      "model_num_timesteps": 60000,
+      "model_gradient_updates": 58000,
+      "artifacts": [
+        {
+          "path": "D:\\py\\DRL2_v3e\\logs\\v3e_262420\\manifest.json",
+          "bytes": 13350,
+          "sha256": "87ab95cc0ec59ad7089520b862f9435e7dbeb45080660a69fb18af527ae42078"
+        },
+        {
+          "path": "D:\\py\\DRL2_v3e\\logs\\v3e_262420\\train.monitor.csv",
+          "bytes": 109310,
+          "sha256": "41c3aa05c005687045a174142a7e38a2c89d8d8b15a59f58f2d84384d77bfe29"
+        },
+        {
+          "path": "D:\\py\\DRL2_v3e\\logs\\v3e_262420\\final_model.zip",
+          "bytes": 9289886,
+          "sha256": "fb7652cdb7c8a7a4cdec4e7d733793b1d48a1b1be0dfe62c030606543db98107"
+        }
+      ],
+      "bins_by_episode_start": [
+        {
+          "start_decisions": 0,
+          "end_decisions": 10000,
+          "episodes": 80,
+          "completed": 20,
+          "completion_rate": 0.25,
+          "mean_return": 3.7903739625,
+          "timeout_proxy_fraction": 0.5625,
+          "mean_episode_decisions": 125.65
+        },
+        {
+          "start_decisions": 10000,
+          "end_decisions": 20000,
+          "episodes": 82,
+          "completed": 29,
+          "completion_rate": 0.35365853658536583,
+          "mean_return": 6.103193268292682,
+          "timeout_proxy_fraction": 0.47560975609756095,
+          "mean_episode_decisions": 122.09756097560975
+        },
+        {
+          "start_decisions": 20000,
+          "end_decisions": 30000,
+          "episodes": 95,
+          "completed": 65,
+          "completion_rate": 0.6842105263157895,
+          "mean_return": 13.794710768421053,
+          "timeout_proxy_fraction": 0.17894736842105263,
+          "mean_episode_decisions": 105.8
+        },
+        {
+          "start_decisions": 30000,
+          "end_decisions": 40000,
+          "episodes": 97,
+          "completed": 72,
+          "completion_rate": 0.7422680412371134,
+          "mean_return": 16.26723925773196,
+          "timeout_proxy_fraction": 0.14432989690721648,
+          "mean_episode_decisions": 102.12371134020619
+        },
+        {
+          "start_decisions": 40000,
+          "end_decisions": 50000,
+          "episodes": 97,
+          "completed": 73,
+          "completion_rate": 0.7525773195876289,
+          "mean_return": 16.360236546391754,
+          "timeout_proxy_fraction": 0.10309278350515463,
+          "mean_episode_decisions": 103.72164948453609
+        },
+        {
+          "start_decisions": 50000,
+          "end_decisions": 60000,
+          "episodes": 97,
+          "completed": 72,
+          "completion_rate": 0.7422680412371134,
+          "mean_return": 15.37906387628866,
+          "timeout_proxy_fraction": 0.09278350515463918,
+          "mean_episode_decisions": 102.12371134020619
+        }
+      ],
+      "final_integrity_pass": true
+    },
+    {
+      "seed": 262421,
+      "manifest": {
+        "status": "completed",
+        "code_commit": "a03632a304bf8af50c4be42cc9d3e450fb23d5ad",
+        "code_dirty": false,
+        "requested_decision_steps": 60000,
+        "actual_decision_steps": 60000,
+        "completed_at_utc": "2026-09-28T20:29:15.736593+00:00",
+        "observation_dimension": 42,
+        "action_dimension": 2,
+        "training_branch": "learned",
+        "waypoint_parametrization": "task_state_v3",
+        "fresh_initialization": true
+      },
+      "timeout_is_terminal": true,
+      "health": {
+        "run": "D:\\py\\DRL2_v3e\\logs\\v3e_262421",
+        "decisions": 59980,
+        "episodes": 545,
+        "reference_jump_violations_total": 0,
+        "qp_zero_fallback_rate_last_window": 0.00016793606575190903,
+        "max_reference_jump_target_m_last_window": 2.872210401489146,
+        "completed_last_window": 81,
+        "window": 100,
+        "mean_return_last_window": 17.99230095,
+        "status": "OK",
+        "stop_reasons": []
+      },
+      "model_zip_bad_member": null,
+      "model_num_timesteps": 60000,
+      "model_gradient_updates": 58000,
+      "artifacts": [
+        {
+          "path": "D:\\py\\DRL2_v3e\\logs\\v3e_262421\\manifest.json",
+          "bytes": 13350,
+          "sha256": "b5f3241306de3a8cec248915efed6007a295a6b74bf9cad2e96d793adc8f96cc"
+        },
+        {
+          "path": "D:\\py\\DRL2_v3e\\logs\\v3e_262421\\train.monitor.csv",
+          "bytes": 108168,
+          "sha256": "920e721d63aa742ba8fd7103bd830b0e14fbe9283ec071a02a559bf078068325"
+        },
+        {
+          "path": "D:\\py\\DRL2_v3e\\logs\\v3e_262421\\final_model.zip",
+          "bytes": 9289886,
+          "sha256": "27cb0c4291d8c8f927c925aa30145db7abd5e02a5253631ab0d39089885c43a2"
+        }
+      ],
+      "bins_by_episode_start": [
+        {
+          "start_decisions": 0,
+          "end_decisions": 10000,
+          "episodes": 79,
+          "completed": 13,
+          "completion_rate": 0.16455696202531644,
+          "mean_return": 1.1057411898734177,
+          "timeout_proxy_fraction": 0.6329113924050633,
+          "mean_episode_decisions": 127.60759493670886
+        },
+        {
+          "start_decisions": 10000,
+          "end_decisions": 20000,
+          "episodes": 84,
+          "completed": 38,
+          "completion_rate": 0.4523809523809524,
+          "mean_return": 8.229154595238096,
+          "timeout_proxy_fraction": 0.39285714285714285,
+          "mean_episode_decisions": 118.46428571428571
+        },
+        {
+          "start_decisions": 20000,
+          "end_decisions": 30000,
+          "episodes": 90,
+          "completed": 62,
+          "completion_rate": 0.6888888888888889,
+          "mean_return": 16.018640666666666,
+          "timeout_proxy_fraction": 0.24444444444444444,
+          "mean_episode_decisions": 110.83333333333333
+        },
+        {
+          "start_decisions": 30000,
+          "end_decisions": 40000,
+          "episodes": 95,
+          "completed": 69,
+          "completion_rate": 0.7263157894736842,
+          "mean_return": 16.299629610526317,
+          "timeout_proxy_fraction": 0.17894736842105263,
+          "mean_episode_decisions": 105.3578947368421
+        },
+        {
+          "start_decisions": 40000,
+          "end_decisions": 50000,
+          "episodes": 99,
+          "completed": 71,
+          "completion_rate": 0.7171717171717171,
+          "mean_return": 15.654922767676767,
+          "timeout_proxy_fraction": 0.15151515151515152,
+          "mean_episode_decisions": 101.35353535353535
+        },
+        {
+          "start_decisions": 50000,
+          "end_decisions": 60000,
+          "episodes": 98,
+          "completed": 79,
+          "completion_rate": 0.8061224489795918,
+          "mean_return": 17.891597704081633,
+          "timeout_proxy_fraction": 0.09183673469387756,
+          "mean_episode_decisions": 101.3265306122449
+        }
+      ],
+      "final_integrity_pass": true
+    },
+    {
+      "seed": 262422,
+      "manifest": {
+        "status": "completed",
+        "code_commit": "a03632a304bf8af50c4be42cc9d3e450fb23d5ad",
+        "code_dirty": false,
+        "requested_decision_steps": 60000,
+        "actual_decision_steps": 60000,
+        "completed_at_utc": "2026-09-28T20:33:14.151066+00:00",
+        "observation_dimension": 42,
+        "action_dimension": 2,
+        "training_branch": "learned",
+        "waypoint_parametrization": "task_state_v3",
+        "fresh_initialization": true
+      },
+      "timeout_is_terminal": true,
+      "health": {
+        "run": "D:\\py\\DRL2_v3e\\logs\\v3e_262422",
+        "decisions": 59951,
+        "episodes": 543,
+        "reference_jump_violations_total": 0,
+        "qp_zero_fallback_rate_last_window": 4.700904924197908e-06,
+        "max_reference_jump_target_m_last_window": 2.726398687555827,
+        "completed_last_window": 77,
+        "window": 100,
+        "mean_return_last_window": 15.89239472,
+        "status": "OK",
+        "stop_reasons": []
+      },
+      "model_zip_bad_member": null,
+      "model_num_timesteps": 60000,
+      "model_gradient_updates": 58000,
+      "artifacts": [
+        {
+          "path": "D:\\py\\DRL2_v3e\\logs\\v3e_262422\\manifest.json",
+          "bytes": 13350,
+          "sha256": "93761019db7c93535e66d869e2f7f4e9ca0698450784ec89e2cad42bf5ab0785"
+        },
+        {
+          "path": "D:\\py\\DRL2_v3e\\logs\\v3e_262422\\train.monitor.csv",
+          "bytes": 108676,
+          "sha256": "9f1df32eaf46c42723ca67e01a32f6049a3fe450c0aafe48fed6cc119baaf2f6"
+        },
+        {
+          "path": "D:\\py\\DRL2_v3e\\logs\\v3e_262422\\final_model.zip",
+          "bytes": 9289886,
+          "sha256": "044e9d6ee7b8e602a1ad1db5e2c624a88e4e1b0c590d672a706a09793bb8b41e"
+        }
+      ],
+      "bins_by_episode_start": [
+        {
+          "start_decisions": 0,
+          "end_decisions": 10000,
+          "episodes": 92,
+          "completed": 41,
+          "completion_rate": 0.44565217391304346,
+          "mean_return": 2.503012065217391,
+          "timeout_proxy_fraction": 0.29347826086956524,
+          "mean_episode_decisions": 109.68478260869566
+        },
+        {
+          "start_decisions": 10000,
+          "end_decisions": 20000,
+          "episodes": 80,
+          "completed": 32,
+          "completion_rate": 0.4,
+          "mean_return": 6.7323213625,
+          "timeout_proxy_fraction": 0.4375,
+          "mean_episode_decisions": 124.775
+        },
+        {
+          "start_decisions": 20000,
+          "end_decisions": 30000,
+          "episodes": 89,
+          "completed": 56,
+          "completion_rate": 0.6292134831460674,
+          "mean_return": 11.419601494382022,
+          "timeout_proxy_fraction": 0.25842696629213485,
+          "mean_episode_decisions": 111.59550561797752
+        },
+        {
+          "start_decisions": 30000,
+          "end_decisions": 40000,
+          "episodes": 93,
+          "completed": 57,
+          "completion_rate": 0.6129032258064516,
+          "mean_return": 10.233221333333333,
+          "timeout_proxy_fraction": 0.22580645161290322,
+          "mean_episode_decisions": 108.94623655913979
+        },
+        {
+          "start_decisions": 40000,
+          "end_decisions": 50000,
+          "episodes": 95,
+          "completed": 64,
+          "completion_rate": 0.6736842105263158,
+          "mean_return": 12.1348534,
+          "timeout_proxy_fraction": 0.21052631578947367,
+          "mean_episode_decisions": 104.18947368421053
+        },
+        {
+          "start_decisions": 50000,
+          "end_decisions": 60000,
+          "episodes": 94,
+          "completed": 72,
+          "completion_rate": 0.7659574468085106,
+          "mean_return": 15.684524787234043,
+          "timeout_proxy_fraction": 0.1702127659574468,
+          "mean_episode_decisions": 105.48936170212765
+        }
+      ],
+      "final_integrity_pass": true
+    }
+  ],
+  "v3d_health": [
+    {
+      "run": "D:\\py\\DRL2\\logs\\v3d_262420",
+      "decisions": 53196,
+      "episodes": 489,
+      "reference_jump_violations_total": 0,
+      "qp_zero_fallback_rate_last_window": 0.0,
+      "max_reference_jump_target_m_last_window": 2.8726168863153947,
+      "completed_last_window": 73,
+      "window": 100,
+      "mean_return_last_window": 15.68022453,
+      "status": "OK",
+      "stop_reasons": []
+    },
+    {
+      "run": "D:\\py\\DRL2\\logs\\v3d_262421",
+      "decisions": 53395,
+      "episodes": 474,
+      "reference_jump_violations_total": 0,
+      "qp_zero_fallback_rate_last_window": 4.6647665517579176e-06,
+      "max_reference_jump_target_m_last_window": 2.871159611666366,
+      "completed_last_window": 67,
+      "window": 100,
+      "mean_return_last_window": 13.97515649,
+      "status": "OK",
+      "stop_reasons": []
+    },
+    {
+      "run": "D:\\py\\DRL2\\logs\\v3d_262422",
+      "decisions": 53553,
+      "episodes": 487,
+      "reference_jump_violations_total": 0,
+      "qp_zero_fallback_rate_last_window": 0.00010608525212928257,
+      "max_reference_jump_target_m_last_window": 2.8724025864469027,
+      "completed_last_window": 77,
+      "window": 100,
+      "mean_return_last_window": 16.28596509,
+      "status": "OK",
+      "stop_reasons": []
+    }
+  ],
+  "existing_50k_package": {
+    "json_hashes_checked": 17,
+    "hash_failures": [],
+    "zip_bad_member": null,
+    "archive_differences": [],
+    "archive": {
+      "path": "C:\\Users\\35884\\Documents\\Spacecraft\\V3E_50K_DELIVERY_20260928.zip",
+      "bytes": 8769186,
+      "sha256": "6eccf686fd2fc5182ce1764f6db62a4a48d2444635235db9a44190dced936add"
+    }
+  },
+  "gate_50k": {
+    "defects": [],
+    "requires_upper_review": [
+      "v3e@50k 262420: truth-violation episodes 3 vs Pure MPC 0; order defines 'obviously more' qualitatively, no invented numeric threshold",
+      "v3e@50k 262421: truth-violation episodes 5 vs Pure MPC 0; order defines 'obviously more' qualitatively, no invented numeric threshold",
+      "v3e@50k 262422: truth-violation episodes 4 vs Pure MPC 0; order defines 'obviously more' qualitatively, no invented numeric threshold"
+    ],
+    "decision": "STOP before full 60k evaluation"
+  },
+  "safety_counts": [
+    {
+      "label": "Pure MPC",
+      "episodes": 0,
+      "totals": {},
+      "minimum_truth_normalized_margin": null
+    },
+    {
+      "label": "v3_nominal",
+      "episodes": 1,
+      "totals": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 1,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0,
+        "reference_jump_target_violation_count": 0
+      },
+      "minimum_truth_normalized_margin": -0.0015542814755771578
+    },
+    {
+      "label": "v3d@50k 262420",
+      "episodes": 1,
+      "totals": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 1,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0,
+        "reference_jump_target_violation_count": 0
+      },
+      "minimum_truth_normalized_margin": -0.0015437544428324856
+    },
+    {
+      "label": "v3d@50k 262421",
+      "episodes": 2,
+      "totals": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 2,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0,
+        "reference_jump_target_violation_count": 0
+      },
+      "minimum_truth_normalized_margin": -0.003200214540552607
+    },
+    {
+      "label": "v3d@50k 262422",
+      "episodes": 0,
+      "totals": {},
+      "minimum_truth_normalized_margin": null
+    },
+    {
+      "label": "v3e@50k 262420",
+      "episodes": 3,
+      "totals": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 3,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 0,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0,
+        "reference_jump_target_violation_count": 0
+      },
+      "minimum_truth_normalized_margin": -0.004238862718835301
+    },
+    {
+      "label": "v3e@50k 262421",
+      "episodes": 5,
+      "totals": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 4,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 1,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0,
+        "reference_jump_target_violation_count": 0
+      },
+      "minimum_truth_normalized_margin": -0.02461854923583847
+    },
+    {
+      "label": "v3e@50k 262422",
+      "episodes": 4,
+      "totals": {
+        "keepout_violation_steps": 0,
+        "fov_violation_steps": 3,
+        "outer_speed_violation_steps": 0,
+        "outer_radial_violation_steps": 0,
+        "corridor_violation_steps": 1,
+        "total_speed_violation_steps": 0,
+        "closing_speed_violation_steps": 0,
+        "reference_jump_target_violation_count": 0
+      },
+      "minimum_truth_normalized_margin": -0.004655659887705148
+    }
+  ],
+  "git": {
+    "v3e": {
+      "head": "e2c6f0b3c4f0b23733216441eac2a77ae4e72d72",
+      "tracked_status": ""
+    },
+    "v3d": {
+      "head": "b05e389483cafab15c94c4852cecf08579f29111",
+      "tracked_status": ""
+    }
+  }
+}

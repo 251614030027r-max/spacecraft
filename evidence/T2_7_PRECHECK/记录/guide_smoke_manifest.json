@@ -1,0 +1,28 @@
+{
+ "arm": "e_mve",
+ "seed": 0,
+ "steps": 40,
+ "workers": 2,
+ "git_head": "7dac3ddfab51e0f8e2429475b3fbab026eeadf08",
+ "smoke": true,
+ "model_beta": 0.5,
+ "model_start": 16,
+ "ent_coef": 0.05,
+ "k_candidates": 8,
+ "collection": "asynchronous",
+ "window": true,
+ "gradient_steps_per_transition": 2,
+ "entry_stages": 2,
+ "sync_updates": 100,
+ "age_cap": 2000,
+ "pooled_calibration": true,
+ "urgent_deadline_s": [
+  140.0,
+  200.0
+ ],
+ "guide": true,
+ "guide_p0": 0.5,
+ "guide_until": 2000,
+ "env_version": "t2-stage-0.5.0",
+ "learner_version": "t2-learner-2.7"
+}

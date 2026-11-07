@@ -1,0 +1,339 @@
+{
+  "probe_kind": "isolated same-interpreter readback; not direct execution inside running formal processes",
+  "intra_op_threads": 1,
+  "interop_threads": 6,
+  "env": {
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "formal_evidence": "Frozen train/t2_mve_sac.py calls th.set_num_threads(1) before make_model/manifest. Existing formal manifest proves that point was reached. No hot observer change or training restart.",
+  "processes": [
+    {
+      "name": "train_s0_attempt0",
+      "pid": 9604,
+      "created": 1793344306.1455493,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "os_thread_count": 1,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029\\脚本\\train_with_logs.py",
+        "train",
+        "--arm",
+        "e_mve",
+        "--seed",
+        "0",
+        "--steps",
+        "4000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--checkpoints",
+        "1000,2000,3000",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029\\B\\TRAIN_e_mve_s0"
+      ]
+    },
+    {
+      "name": "train_s0_attempt0",
+      "pid": 21984,
+      "created": 1793344306.1557713,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "os_thread_count": 2,
+      "command": [
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+        "0x4"
+      ]
+    },
+    {
+      "name": "train_s0_attempt0",
+      "pid": 22788,
+      "created": 1793344306.1739352,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "os_thread_count": 7,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029\\脚本\\train_with_logs.py",
+        "train",
+        "--arm",
+        "e_mve",
+        "--seed",
+        "0",
+        "--steps",
+        "4000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--checkpoints",
+        "1000,2000,3000",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029\\B\\TRAIN_e_mve_s0"
+      ]
+    },
+    {
+      "name": "train_s0_attempt0",
+      "pid": 23344,
+      "created": 1793344319.2817383,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "os_thread_count": 4,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=22788, pipe_handle=2812)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "name": "train_s0_attempt0",
+      "pid": 18532,
+      "created": 1793344319.2904155,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "os_thread_count": 4,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=22788, pipe_handle=2952)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "name": "train_s1_attempt0",
+      "pid": 21324,
+      "created": 1793344306.1578033,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "os_thread_count": 1,
+      "command": [
+        "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029\\脚本\\train_with_logs.py",
+        "train",
+        "--arm",
+        "e_mve",
+        "--seed",
+        "1",
+        "--steps",
+        "4000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--checkpoints",
+        "1000,2000,3000",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029\\B\\TRAIN_e_mve_s1"
+      ]
+    },
+    {
+      "name": "train_s1_attempt0",
+      "pid": 10540,
+      "created": 1793344306.1679037,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "os_thread_count": 2,
+      "command": [
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+        "0x4"
+      ]
+    },
+    {
+      "name": "train_s1_attempt0",
+      "pid": 14192,
+      "created": 1793344306.1855698,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "os_thread_count": 7,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029\\脚本\\train_with_logs.py",
+        "train",
+        "--arm",
+        "e_mve",
+        "--seed",
+        "1",
+        "--steps",
+        "4000",
+        "--workers",
+        "2",
+        "--urgent-deadline",
+        "140,200",
+        "--checkpoints",
+        "1000,2000,3000",
+        "--output",
+        "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_6W1_CUTOFF_20261029\\B\\TRAIN_e_mve_s1"
+      ]
+    },
+    {
+      "name": "train_s1_attempt0",
+      "pid": 12632,
+      "created": 1793344319.281569,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "os_thread_count": 4,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=14192, pipe_handle=2184)",
+        "--multiprocessing-fork"
+      ]
+    },
+    {
+      "name": "train_s1_attempt0",
+      "pid": 10036,
+      "created": 1793344319.291344,
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "priority": 32,
+      "os_thread_count": 4,
+      "command": [
+        "C:\\Users\\35884\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "-c",
+        "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=14192, pipe_handle=2576)",
+        "--multiprocessing-fork"
+      ]
+    }
+  ]
+}

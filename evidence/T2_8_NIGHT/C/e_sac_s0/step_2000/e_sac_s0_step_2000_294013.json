@@ -1,0 +1,102 @@
+{
+ "opening": 294013,
+ "event": "success",
+ "return": 67.62890799445634,
+ "time_s": 149.7,
+ "delta_v": 1.740109200554366,
+ "stages": 4,
+ "holds": 1,
+ "rejected": 0,
+ "bridge_attempts": 7,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 156.7,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 176.8151352405548,
+ "decisions": [
+  {
+   "a": [
+    0.8886809349060059,
+    0.9970099925994873
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 11.903197366185742,
+   "planned_dv": 0.1688066038849827,
+   "executed_dv": 0.16905898912359732,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.9810075759887695,
+    0.9927594661712646
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 9.589728545534701,
+   "planned_dv": 0.07218800611616645,
+   "executed_dv": 0.07253006253908895,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.9712353944778442,
+    0.07948136329650879
+   ],
+   "t": 98.0,
+   "mode": "hold",
+   "held": true,
+   "range_m": 7.297699204773237,
+   "planned_dv": 0.15318216651288746,
+   "executed_dv": 0.9227852062470988,
+   "model": "off",
+   "event": null
+  },
+  {
+   "a": [
+    0.9818947315216064,
+    -0.9126168489456177
+   ],
+   "t": 149.7,
+   "mode": "descent",
+   "held": false,
+   "range_m": 2.9934233245740796,
+   "planned_dv": 0.15791075335700255,
+   "executed_dv": 0.5757349426445808,
+   "model": "off",
+   "event": "success"
+  }
+ ],
+ "policy": "e_sac_s0_step_2000",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\T2_8_NIGHT_20261101\\B\\TRAIN_e_sac_s0\\checkpoints\\step_2000.zip",
+ "window": true,
+ "entries_lost": 1,
+ "window_recoveries": [
+  {
+   "t": 56.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.806160551050889
+  },
+  {
+   "t": 68.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.806420577593931
+  },
+  {
+   "t": 80.0,
+   "slip_s": 2.0,
+   "reserve": true,
+   "phase_deg": 4.903028866284812
+  }
+ ]
+}

@@ -1,0 +1,61 @@
+{
+  "e_sac_s0": {
+    "closed_pairs": 0,
+    "valid_pairs": 0,
+    "directions": {
+      "earlier": 0,
+      "later": 0,
+      "same": 0
+    },
+    "on_probes_including_zero": 0,
+    "median_applied_gradient_share": null,
+    "delta_calibration": {},
+    "feedback_audit": {},
+    "label_decomposition": {},
+    "caution": "Labels below are recomputed using each frozen checkpoint target critic on existing released pairs; exact historical per-update targets were not logged.",
+    "valid_by_cf_slot": {
+      "0": 0,
+      "1": 0
+    }
+  },
+  "e_tcpf_s0": {
+    "closed_pairs": 252,
+    "valid_pairs": 197,
+    "directions": {
+      "earlier": 55,
+      "later": 142,
+      "same": 0
+    },
+    "on_probes_including_zero": 442,
+    "median_applied_gradient_share": 0.1,
+    "delta_calibration": {},
+    "feedback_audit": {},
+    "label_decomposition": {
+      "2000": {
+        "n": 62,
+        "model_sha256": "d5c1d6b5e825e9e46c4b937a87db5b161b536cb00f788608261e37e5899714cb",
+        "median_abs_immediate": 0.20453699826402083,
+        "median_abs_bootstrap": 0.20913225067214936,
+        "bootstrap_dominates_fraction": 0.4838709677419355,
+        "bootstrap_sign_agrees_Y_fraction": 0.7096774193548387,
+        "both_successors_committed_fraction": 1,
+        "scope": "Existing pairs at first audit snapshot, frozen target critic recomputation; not the original per-update labels."
+      },
+      "5000": {
+        "n": 193,
+        "model_sha256": "a0bcbaff9f22068c39ad1ac4803c45ef42276371e0c119c43bdb57e4381a2500",
+        "median_abs_immediate": 0.19553392153755933,
+        "median_abs_bootstrap": 2.0357125977582786,
+        "bootstrap_dominates_fraction": 0.9533678756476683,
+        "bootstrap_sign_agrees_Y_fraction": 0.9740932642487047,
+        "both_successors_committed_fraction": 1,
+        "scope": "Existing pairs at first audit snapshot, frozen target critic recomputation; not the original per-update labels."
+      }
+    },
+    "caution": "Labels below are recomputed using each frozen checkpoint target critic on existing released pairs; exact historical per-update targets were not logged.",
+    "valid_by_cf_slot": {
+      "0": 112,
+      "1": 85
+    }
+  }
+}

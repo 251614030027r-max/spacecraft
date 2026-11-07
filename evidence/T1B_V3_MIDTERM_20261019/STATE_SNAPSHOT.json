@@ -1,0 +1,72 @@
+{
+ "topic": "t1b_v3_round",
+ "phase": "seed0_training_and_readout",
+ "pid": 20604,
+ "scientific_commit": "e33a0dd7b0bd0d73b7d3ad16561f1dd494d242fa",
+ "run_order": "docs/collaboration/upper/run_orders/T1_B_V3_ROUND_20261019.md",
+ "training": {
+  "e_sac_s0": {
+   "pid": 27564,
+   "command": [
+    "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+    "-B",
+    "-m",
+    "experiments.t1b_v2",
+    "train",
+    "--interface",
+    "v3",
+    "--arm",
+    "e_sac",
+    "--seed",
+    "0",
+    "--steps",
+    "20000",
+    "--expert",
+    "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V3_ROUND_20261019\\expert\\expert_replay.pkl",
+    "--output",
+    "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V3_ROUND_20261019\\TRAIN_e_sac_s0"
+   ],
+   "output": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V3_ROUND_20261019\\TRAIN_e_sac_s0"
+  },
+  "e_tcpf_s0": {
+   "pid": 12692,
+   "command": [
+    "D:\\py\\DRL2\\.venv\\Scripts\\python.exe",
+    "-B",
+    "-m",
+    "experiments.t1b_v2",
+    "train",
+    "--interface",
+    "v3",
+    "--arm",
+    "e_tcpf",
+    "--seed",
+    "0",
+    "--steps",
+    "20000",
+    "--expert",
+    "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V3_ROUND_20261019\\expert\\expert_replay.pkl",
+    "--output",
+    "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V3_ROUND_20261019\\TRAIN_e_tcpf_s0"
+   ],
+   "output": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T1B_V3_ROUND_20261019\\TRAIN_e_tcpf_s0"
+  }
+ },
+ "training_active": true,
+ "completed_evaluations": 96,
+ "active_evaluations": [],
+ "cpu_policy": {
+  "logical": 12,
+  "each_arm_envs": 4,
+  "evaluation_slots": "4 with two arms;8 with one;12 after both",
+  "blas_threads": 1
+ },
+ "authorization": "seed0x2x20k; M fail stop; L pass automatic seed1,2 eachpaired20k; frozen scientific modules unchanged",
+ "updated_utc": "2026-10-19T13:35:11.576237+00:00",
+ "seed": 0,
+ "eval_worker_budget": 4,
+ "last_steps": {
+  "e_sac": 13000,
+  "e_tcpf": 11100
+ }
+}

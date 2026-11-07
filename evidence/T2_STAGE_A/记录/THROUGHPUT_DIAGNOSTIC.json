@@ -1,0 +1,23 @@
+{
+  "jst": "2026-10-22T07:00:20.1712246+09:00",
+  "kind": "read_only_nonblocking_stack_sample",
+  "tool": "py-spy 0.4.2 standalone wheel extracted under process records; science venv unmodified",
+  "learner_pids": [
+    3320,
+    25024
+  ],
+  "observations": [
+    "Both learners sampled waiting in SubprocVecEnv.step_wait / multiprocessing pipe recv",
+    "Two successfully sampled busy environments were in MPC reference trajectory generation and prediction rollout",
+    "Several other workers sampled idle awaiting the next command",
+    "Worker CPU counters continued increasing; no Traceback in either training log"
+  ],
+  "interpretation": "Samples support expensive MPC/truth environment steps and synchronous slow-worker waiting; not evidence of optimizer failure or proof of deadlock",
+  "limitations": [
+    "Nonblocking reads sometimes failed with OS error299; preserved locally, not training failures",
+    "Scalar locals can be torn/inaccurate; not used as physics or training-step evidence",
+    "No exact num_timesteps established before first1000 checkpoint"
+  ],
+  "scientific_changes": false,
+  "process_restart": false
+}
