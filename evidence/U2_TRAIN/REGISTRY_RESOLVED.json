@@ -1,0 +1,77 @@
+{
+ "stage": "u2",
+ "registry_sha256": "a68561d39dbd091bd5e4a0913192cd840b862ebc2200db3999fec93bbde31dd3",
+ "science_sha": "e7acaa340cbff41a2e618c200cd7bdeb0438118f",
+ "steps": 2000,
+ "eval_openings": "294148-294195",
+ "runs": {
+  "TRAIN_EACH_PROBE_s10": {
+   "config": "EACH_PROBE",
+   "display": "EACH + U2",
+   "seed": 10,
+   "git_head": "e7acaa340cbff41a2e618c200cd7bdeb0438118f",
+   "steps": 2000,
+   "model": "B\\TRAIN_EACH_PROBE_s10\\checkpoints\\step_2000.zip",
+   "model_sha256": "382c6f0d19c91cd7150436422db8e3150c7ad766eab1998b36d27560a91ea520",
+   "finished": true,
+   "episodes": "B\\TRAIN_EACH_PROBE_s10\\episodes.json"
+  },
+  "TRAIN_EACH_PROBE_s11": {
+   "config": "EACH_PROBE",
+   "display": "EACH + U2",
+   "seed": 11,
+   "git_head": "e7acaa340cbff41a2e618c200cd7bdeb0438118f",
+   "steps": 2000,
+   "model": "B\\TRAIN_EACH_PROBE_s11\\checkpoints\\step_2000.zip",
+   "model_sha256": "108e2e698212b3e6dbe4d27a3b7a24fc1bf496bad4edbfd3fba5683b7e3bf9b4",
+   "finished": true,
+   "episodes": "B\\TRAIN_EACH_PROBE_s11\\episodes.json"
+  },
+  "TRAIN_PROBE_s10": {
+   "config": "PROBE",
+   "display": "U2 probe (C1)",
+   "seed": 10,
+   "git_head": "e7acaa340cbff41a2e618c200cd7bdeb0438118f",
+   "steps": 2000,
+   "model": "B\\TRAIN_PROBE_s10\\checkpoints\\step_2000.zip",
+   "model_sha256": "d361751f58c76b4c6b7d978cad078e2c12d9755c28f671ed075933547ba4c67e",
+   "finished": true,
+   "episodes": "B\\TRAIN_PROBE_s10\\episodes.json"
+  },
+  "TRAIN_PROBE_s11": {
+   "config": "PROBE",
+   "display": "U2 probe (C1)",
+   "seed": 11,
+   "git_head": "e7acaa340cbff41a2e618c200cd7bdeb0438118f",
+   "steps": 2000,
+   "model": "B\\TRAIN_PROBE_s11\\checkpoints\\step_2000.zip",
+   "model_sha256": "7615bf0ba1a8ed402ce5f5b56bba0ddcd60f3e9503486e69021ec0c535082b0b",
+   "finished": true,
+   "episodes": "B\\TRAIN_PROBE_s11\\episodes.json"
+  }
+ },
+ "configs": {
+  "EACH_PROBE": {
+   "display": "EACH + U2",
+   "arm": "e_priv",
+   "obs": "reduced_priv_probe",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 75,
+   "role": "U1 and U2 together",
+   "color": "#0b5d8c"
+  },
+  "PROBE": {
+   "display": "U2 probe (C1)",
+   "arm": "e_priv",
+   "obs": "reduced_probe",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 51,
+   "role": "U2 in place of U1: the critic reads the actor's view and the executor's mode responses to nine fixed probe intents",
+   "color": "#1b9e77"
+  }
+ }
+}
