@@ -188,6 +188,42 @@
     "window_pairs": [],
     "rigid_pair_trained": [],
     "note": "U2 decision-time certification (spec docs/final_method/U2_CERT_SPEC.md): the pretest's EACH and SAC models evaluated with and without the executor's certification on new openings; no training. Main: EACH + certification vs SAC; U2 contribution: EACH + certification vs EACH (same model, paired)"
+   },
+   "ecc": {
+    "steps": 2000,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [
+     500,
+     1000,
+     1500
+    ],
+    "eval_openings": "294320-294367",
+    "trained": [
+     "SAC_C",
+     "EACH_C",
+     "ECC"
+    ],
+    "certified": [
+     "EACH_C"
+    ],
+    "uncertified": [
+     "ECC"
+    ],
+    "smoke_only": [],
+    "fixed": [],
+    "window_pairs": [],
+    "rigid_pair_trained": [],
+    "batches": [
+     [
+      "SAC_C",
+      "EACH_C",
+      "ECC"
+     ]
+    ],
+    "note": "ECC development round (spec docs/final_method/ECC_SPEC.md): all configurations on the ECC interface, trained from zero; ECC also evaluated with certification off (paired), EACH_C also with deployment certification (pre-registered fallback). Decision order in experiments/ecc_readout.py"
    }
   },
   "figure_openings": "294200-294211",
@@ -288,6 +324,40 @@
    "critic_view": 75,
    "role": "U1 and U2 together",
    "color": "#0b5d8c"
+  },
+  "SAC_C": {
+   "display": "SAC",
+   "arm": "e_sac",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 24,
+   "role": "no feedback (ECC interface: the decision layer sees no executor-internal state)",
+   "color": "#eb6834"
+  },
+  "EACH_C": {
+   "display": "ECC w/o action-level certificate",
+   "arm": "e_priv",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "pass-level opportunity in the critic only; no certification (ECC interface)",
+   "color": "#7fb3e6"
+  },
+  "ECC": {
+   "display": "ECC",
+   "arm": "e_priv",
+   "obs": "cut_ecc",
+   "window": true,
+   "geometry": true,
+   "certify": true,
+   "actor_view": 24,
+   "critic_view": 58,
+   "role": "main method: execution-opportunity certificate in the critic and certification map in training and deployment",
+   "color": "#2a78d6"
   }
  },
  "fixed": {

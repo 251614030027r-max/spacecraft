@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.15.0"
+T2_VERSION = "t2-stage-0.16.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -103,15 +103,24 @@ OBS_DIM = 24
 #: executor's mode responses to nine fixed probe intents (PROBE_DIM values) -- U2 in place of U1. 'reduced_priv_probe':
 #: 'reduced_priv' followed by the same responses -- U1 and U2. The actor reads the first OBS_DIM values; the responses
 #: are computed at real decision states only (zeros at modelled states and when ``probe_live`` is off, i.e. evaluation).
+#: 'cut_priv' / 'cut_ecc' (env 0.16.0, ECC): the decision layer's view also drops the executor's internal execution state
+#: (last stage's position / velocity residual and hold flag, EXEC_STATE_FEATURES) -- for every configuration alike; the
+#: executor's knowledge reaches learning only through the feedback channel. 'cut_priv' = that view + the full engineered
+#: vector (the executor's pass-level opportunity judgements and execution state; critic only). 'cut_ecc' = 'cut_priv' + the
+#: action-level opportunity certificate (ECC_CERT_DIM values, ``opportunity_certificate``; critic only).
 OBS_PROFILES = ("engineered", "reduced", "geometric", "raw", "reduced_priv", "reduced_priv_cert", "reduced_dup",
-                "reduced_probe", "reduced_priv_probe")
+                "reduced_probe", "reduced_priv_probe", "cut_priv", "cut_ecc")
+EXEC_STATE_FEATURES = (14, 15, 16)
 OBS_DIM_PRIV = 2 * 24
 CERT_DIM = 3 * 9 + 1
 OBS_DIM_CERT = OBS_DIM_PRIV + CERT_DIM
 PROBE_PROFILES = ("reduced_probe", "reduced_priv_probe")
 OBS_DIM_PROBE = 24 + 27                 # = OBS_DIM + t2_probe.PROBE_DIM (asserted in the environment)
 OBS_DIM_PRIV_PROBE = 2 * 24 + 27
+ECC_CERT_DIM = 9 + 1                    # certified-set indicator of the nine probe intents + earliest certified switch time
+OBS_DIM_ECC = 2 * 24 + ECC_CERT_DIM
 OBS_DIMS = {"reduced_priv": OBS_DIM_PRIV, "reduced_priv_cert": OBS_DIM_CERT, "reduced_dup": OBS_DIM_PRIV,
+            "cut_priv": OBS_DIM_PRIV, "cut_ecc": OBS_DIM_ECC,
             "reduced_probe": OBS_DIM_PROBE, "reduced_priv_probe": OBS_DIM_PRIV_PROBE}
 CERT_VALUE_SCALE = 200.0
 PLANNER_FEATURES = (8, 17, 19)
@@ -601,6 +610,7 @@ class T2StageEnv(gym.Env):
         #: env 0.15.0 (U2 decision-time certification, ``_certify``): off by default -- every earlier path is unchanged
         self.certify = False
         self.cert_prober = None
+        self._opp = None                       # env 0.16.0: the decision state's opportunity evaluation (shared)
         if self.obs_profile in PROBE_PROFILES:
             from env.t2_probe import PROBE_DIM
             assert self.obs_dim == (OBS_DIM_PRIV if self.obs_profile == "reduced_priv_probe" else OBS_DIM) + PROBE_DIM
@@ -651,6 +661,8 @@ class T2StageEnv(gym.Env):
             self.probe_wall_s = perf_counter() - started
             self.stats["probe_wall_s"] = self.stats.get("probe_wall_s", 0.0) + self.probe_wall_s
             self.stats["probes"] = self.stats.get("probes", 0) + 1
+        elif self.obs_profile == "cut_ecc" and self.probe_live:      # env 0.16.0 (ECC): the decision state's certificate
+            o[-ECC_CERT_DIM:] = self.opportunity_certificate()
         return o
 
     def _observe(self, *args) -> np.ndarray:
@@ -665,6 +677,10 @@ class T2StageEnv(gym.Env):
             r = o.copy(); r[list(PLANNER_FEATURES)] = 0.0
             head = [r, o] if self.obs_profile == "reduced_priv_probe" else [r]
             return np.concatenate([*head, np.zeros(self.obs_dim - OBS_DIM * len(head), np.float32)]).astype(np.float32)
+        if self.obs_profile in ("cut_priv", "cut_ecc"):         # env 0.16.0: the certificate is filled in at real decision states
+            r = o.copy(); r[list(PLANNER_FEATURES) + list(EXEC_STATE_FEATURES)] = 0.0
+            tail = [np.zeros(ECC_CERT_DIM, np.float32)] if self.obs_profile == "cut_ecc" else []
+            return np.concatenate([r, o, *tail]).astype(np.float32)
         if self.obs_profile in ("reduced_priv", "reduced_priv_cert"):
             r = o.copy(); r[list(PLANNER_FEATURES)] = 0.0
             if self.obs_profile == "reduced_priv_cert":      # a modelled state carries no certificate (map and ready flag 0)
@@ -762,6 +778,7 @@ class T2StageEnv(gym.Env):
         self._trace = []
         self.prober = None                     # env 0.14.0: the probe's planner instances are built per episode
         self.cert_prober = None                # env 0.15.0: so are the certification's
+        self._opp = None
         self.return_true = 0.0
         self.stats = {"stages": 0, "holds": 0, "rejected": 0, "bridge_attempts": 0, "macro": None}
         return self.observation(), {"opening": opening, "mission": dict(self.mission)}
@@ -1291,34 +1308,62 @@ class T2StageEnv(gym.Env):
         return self.observation(), float(shaped), terminated, event == "numerical_failure", info
 
     # ---------------------------------------------------------------- U2 decision-time certification
-    def _certify(self, a: np.ndarray) -> tuple[np.ndarray, dict]:
-        """env 0.15.0 (U2 decision-time certification; spec ``docs/final_method/U2_CERT_SPEC.md``). The executor probes
-        the policy's intent and the nine fixed probe intents (``env/t2_probe.py``: its own stage layer, 2 s entry rule,
-        conditional G*, at most three stages). It replaces the intent for this stage only when (i) the intent itself
-        brings no mode switch (entry accepted or descent) within the horizon, (ii) a probe intent does, and (iii) the
-        pass is binding: after that switch time one more spin period would end beyond the latest admissible arrival
-        (deadline - BRIDGE_DEADLINE_MARGIN_S), i.e. missing this pass leaves no other before the deadline. Among such
-        probes the one nearest the policy's intent is flown (ties: the earlier switch). Otherwise the intent is flown
-        unchanged. No value, no learning signal: a fixed function of the state and the intent."""
+    def _opportunity_eval(self) -> dict:
+        """env 0.16.0 (ECC, spec ``docs/final_method/ECC_SPEC.md``): the executor's opportunity evaluation of the current
+        decision state, shared by the certificate (critic input) and the certification (decision). For each probe intent
+        b of PROBE_GRID the execution opportunity omega(s, b) = (switch, time, delta-v) from the executor's own model
+        (``ExecutorProbe.probe_intent``), and whether b is certified: it switches to an entry mode within the horizon, the
+        pass is binding (switch time + one spin period beyond the latest admissible arrival, deadline -
+        BRIDGE_DEADLINE_MARGIN_S: missing it leaves no other pass) and the resource holds (delta-v used + stage plan +
+        entry plan <= budget). A fixed function of the state: no value, no history, no learning."""
         from env.t2_probe import PROBE_GRID, ExecutorProbe
+        e = self.env
+        if self._opp is not None and self._opp["t"] == float(e.time_s) and self._opp["episode"] == self.episode:
+            return self._opp
         if self.cert_prober is None:
             self.cert_prober = ExecutorProbe(self)
-        e = self.env; q, v = relative_inertial(e); t = e.target_state
+        q, v = relative_inertial(e); t = e.target_state
         args = (q, v, t.rotation.copy(), t.omega.copy(), float(e.time_s), float(e._delta_v), self.mission, self.geometry)
-        own = self.cert_prober.probe_intent(a, *args)
+        period = 2.0 * np.pi / max(float(np.linalg.norm(t.omega)), 1e-9)
+        latest = float(self.mission["deadline_s"]) - BRIDGE_DEADLINE_MARGIN_S
+        budget, used = float(self.mission["budget_m_s"]), float(e._delta_v)
+        rows = []
+        for b in PROBE_GRID:
+            d = self.cert_prober.probe_intent(np.asarray(b, np.float64), *args)
+            d["certified"] = bool(d["event"] and float(e.time_s) + d["t"] + period > latest
+                                  and used + d["dv"] + d.get("dv_entry", 0.0) <= budget)
+            rows.append(d)
+        self._opp = {"t": float(e.time_s), "episode": self.episode, "args": args, "rows": rows, "period": period, "latest": latest}
+        return self._opp
+
+    def opportunity_certificate(self) -> np.ndarray:
+        """env 0.16.0 (ECC): the action-level opportunity certificate of the decision state (ECC_CERT_DIM values): the
+        certified-set indicator of the probe intents and the earliest certified switch time / horizon (1 when none) --
+        the set that defines the certification map C(s, .), i.e. the structure of the value the critic learns."""
+        from env.t2_probe import PROBE_STAGES
+        rows = self._opportunity_eval()["rows"]
+        flags = [float(d["certified"]) for d in rows]
+        ts = [d["t"] for d in rows if d["certified"]]
+        return np.array(flags + [min(ts) / (PROBE_STAGES * STAGE_S) if ts else 1.0], np.float32)
+
+    def _certify(self, a: np.ndarray) -> tuple[np.ndarray, dict]:
+        """env 0.16.0 (ECC certification map C(s, a)): the intent is flown unless it brings no entry-mode switch within the
+        horizon while the certified set of the probe intents is non-empty; then the certified probe nearest the intent
+        (ties: the earlier switch) is flown for this stage. Training and deployment use the same map (env 0.15.0's rule plus
+        the resource condition of the certified set)."""
+        from env.t2_probe import PROBE_GRID
+        opp = self._opportunity_eval()
+        own = self.cert_prober.probe_intent(a, *opp["args"])
         rec = {"a": [float(x) for x in a], "own_event": int(own["event"]), "own_t": float(own["t"]), "intervened": False}
         if own["event"]:
             return a, rec
-        period = 2.0 * np.pi / max(float(np.linalg.norm(t.omega)), 1e-9)
-        latest = float(self.mission["deadline_s"]) - BRIDGE_DEADLINE_MARGIN_S
         best = None
-        for x in PROBE_GRID:
-            d = self.cert_prober.probe_intent(np.asarray(x, np.float64), *args)
-            if not d["event"] or float(e.time_s) + d["t"] + period <= latest:
+        for b, d in zip(PROBE_GRID, opp["rows"]):
+            if not d["certified"]:
                 continue
-            key = (float(np.linalg.norm(np.asarray(x) - a)), float(d["t"]))
+            key = (float(np.linalg.norm(np.asarray(b) - a)), float(d["t"]))
             if best is None or key < best[0]:
-                best = (key, x, d)
+                best = (key, b, d)
         if best is None:
             return a, rec
         self.stats["cert_interventions"] = self.stats.get("cert_interventions", 0) + 1

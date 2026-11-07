@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-7.1'
+    assert t.LEARNER_VERSION == 't2-learner-7.2'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -1894,7 +1894,7 @@ def test_final_entry_refuses_unregistered_runs_and_reads_the_executor_configurat
         fin.verify_manifest({**m, 'k_candidates': 8}, 'NO_GEOM')
     run = tmp_path / 'run'; (run / 'checkpoints').mkdir(parents=True)
     (run / 'manifest.json').write_text(json.dumps(m), encoding='utf-8')
-    assert exec_config_of(run / 'checkpoints' / 'step_2000.zip') == {'window': True, 'geometry': False}
+    assert exec_config_of(run / 'checkpoints' / 'step_2000.zip') == {'window': True, 'geometry': False, 'certify': False}
     assert set(fin.block('294100-294147')) & fin._forbidden_eval('pretest') == set()
     assert set(fin.block('300000-300095')) <= fin._forbidden_eval('pretest') and set(fin.block('294000-294047')) <= fin._forbidden_eval('formal')
     p = reg['protocol']['stages']
@@ -2015,17 +2015,55 @@ def test_u2_certification_rule_and_default_off():
         def __init__(self, events): self.events = events
         def probe_intent(self, a, *args):
             t = self.events.get(tuple(np.round(np.asarray(a, float), 3)))
-            return {'event': int(t is not None), 't': float(t if t is not None else 48.0), 'kind': 'entry' if t is not None else None}
+            return {'event': int(t is not None), 't': float(t if t is not None else 48.0), 'kind': 'entry' if t is not None else None, 'dv': 0.1}
     env.mission = dict(env.mission, deadline_s=env.env.time_s + 100.0)     # latest admissible arrival 55 s ahead: binding
     a = np.array([0.4, 0.2])
-    env.cert_prober = Fake({(0.4, 0.2): 10.0, (1.0, 0.0): 6.0})
+    env._opp = None; env.cert_prober = Fake({(0.4, 0.2): 10.0, (1.0, 0.0): 6.0})
     out, rec = env._certify(a); assert np.array_equal(out, a) and not rec['intervened']          # own switch: unchanged
-    env.cert_prober = Fake({(1.0, 0.0): 20.0, (0.0, 0.0): 30.0, (1.0, 1.0): 20.0})
+    env._opp = None; env.cert_prober = Fake({(1.0, 0.0): 20.0, (0.0, 0.0): 30.0, (1.0, 1.0): 20.0})
     out, rec = env._certify(a); assert rec['intervened'] and tuple(out) == (0.0, 0.0)            # nearest to the intent
-    env.cert_prober = Fake({(1.0, 0.0): 20.0, (0.0, 1.0): 12.0})
+    env._opp = None; env.cert_prober = Fake({(1.0, 0.0): 20.0, (0.0, 1.0): 12.0})
     out, rec = env._certify(np.array([0.5, 0.5])); assert tuple(out) == (0.0, 1.0)                # tie in distance: earlier switch
     env.mission = dict(env.mission, deadline_s=env.env.time_s + 1000.0)    # deadline far: another pass fits, not binding
-    env.cert_prober = Fake({(0.0, 0.0): 30.0})
+    env._opp = None; env.cert_prober = Fake({(0.0, 0.0): 30.0})
     out, rec = env._certify(a); assert np.array_equal(out, a) and not rec['intervened']
     env.certify = False
     _, _, _, _, info = env.step(a); assert info['cert'] is None
+
+
+def test_ecc_interface_certificate_and_certification_map():
+    """env 0.16.0 (ECC): 'cut_priv' / 'cut_ecc' drop the planner answers and the executor's internal execution state from
+    the decision layer's view for every configuration; the critic part carries the full engineered vector and (cut_ecc)
+    the certified-set indicator that defines the certification map; a probe that would exhaust the budget is not
+    certified; the map flies the nearest certified probe only when the intent itself brings no entry-mode switch."""
+    import train.t2_mve_sac as t
+    from env.t2_probe import PROBE_GRID
+    from env.t2_stage import ECC_CERT_DIM, EXEC_STATE_FEATURES, OBS_DIM, OBS_DIM_ECC, OBS_DIM_PRIV, PLANNER_FEATURES, T2StageEnv
+    op = 1000004
+    a = T2StageEnv(openings=[op], obs_profile='cut_ecc'); b = T2StageEnv(openings=[op], obs_profile='reduced_priv')
+    oa, _ = a.reset(options={'opening': op}); ob, _ = b.reset(options={'opening': op})
+    assert oa.shape == (OBS_DIM_ECC,) == (OBS_DIM_PRIV + ECC_CERT_DIM,)
+    cut = list(PLANNER_FEATURES) + list(EXEC_STATE_FEATURES)
+    keep = [i for i in range(OBS_DIM) if i not in cut]
+    assert not oa[cut].any() and np.array_equal(oa[keep], ob[keep]) and np.array_equal(oa[OBS_DIM:OBS_DIM_PRIV], ob[OBS_DIM:])
+    assert np.array_equal(oa[OBS_DIM_PRIV:], a.opportunity_certificate())
+    for dim, arm, critic in ((OBS_DIM_ECC, 'e_priv', OBS_DIM_ECC), (OBS_DIM_PRIV, 'e_sac', OBS_DIM)):
+        m = t.make_model(t.SpacesEnv(dim), arm, 0, smoke=True); assert m.policy.actor_dim == OBS_DIM and m.policy.critic_dim == critic
+    # certified set and map on a fabricated evaluation
+    rows = [{'event': 0, 't': 48.0, 'dv': 0.1, 'kind': None, 'certified': False} for _ in PROBE_GRID]
+    i_near, i_far = PROBE_GRID.index((0.0, 0.0)), PROBE_GRID.index((1.0, 1.0))
+    rows[i_near] = {'event': 1, 't': 30.0, 'dv': 0.2, 'kind': 'entry', 'certified': True}
+    rows[i_far] = {'event': 1, 't': 10.0, 'dv': 0.2, 'kind': 'entry', 'certified': True}
+    class Own:
+        def __init__(self, ev): self.ev = ev
+        def probe_intent(self, x, *args): return {'event': self.ev, 't': 20.0 if self.ev else 48.0, 'kind': 'entry' if self.ev else None}
+    a._opp = {'t': float(a.env.time_s), 'episode': a.episode, 'args': (), 'rows': rows, 'period': 150.0, 'latest': 100.0}
+    cert = a.opportunity_certificate()
+    assert cert[i_near] == 1 and cert[i_far] == 1 and cert.sum() == 2 + cert[-1] and abs(cert[-1] - 10.0 / 48.0) < 1e-6
+    a.cert_prober = Own(0)
+    x, rec = a._certify(np.array([0.2, 0.1])); assert rec['intervened'] and tuple(x) == (0.0, 0.0)
+    a.cert_prober = Own(1)
+    x, rec = a._certify(np.array([0.2, 0.1])); assert not rec['intervened'] and tuple(x) == (0.2, 0.1)
+    # the resource condition of the certified set (a real evaluation): a budget already spent certifies nothing
+    a._opp = None; a.cert_prober = None; a.mission = dict(a.mission, budget_m_s=float(a.env._delta_v))
+    assert not any(d['certified'] for d in a._opportunity_eval()['rows'])

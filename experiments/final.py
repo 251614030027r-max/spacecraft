@@ -80,7 +80,7 @@ def cmd_train(a):
     smoke = a.smoke_steps is not None or bool(st.get('smoke', False))       # dryrun stage: smoke learner settings
     train(out, c['arm'], int(a.seed), steps, int(a.workers or reg['protocol']['workers']), marks, smoke,
           updates_per_transition=float(reg['protocol']['updates_per_transition']), window=bool(c['window']),
-          urgent_deadline=tuple(reg['protocol']['urgent_deadline_s']), obs_profile=c['obs'], geometry=bool(c['geometry']),
+          urgent_deadline=tuple(reg['protocol']['urgent_deadline_s']), obs_profile=c['obs'], geometry=bool(c['geometry']), certify=bool(c.get('certify', False)),
           manifest_extra={'final_config': a.config, 'final_stage': a.stage,
                           'final_registry_sha256': hashlib.sha256(REGISTRY.read_bytes()).hexdigest()})
     verify_manifest(json.loads((out / 'manifest.json').read_text(encoding='utf-8')), a.config)
@@ -92,6 +92,8 @@ def verify_manifest(m: dict, config: str) -> None:
     want = {'arm': c['arm'], 'obs_profile': c['obs'], 'window': c['window'], 'geometry': c['geometry'], 'actor_view': c['actor_view'],
             'critic_view': c['critic_view']}
     want.update({k: v for k, v in reg['main_switches'].items() if k in m})
+    if bool(m.get('certify', False)) != bool(c.get('certify', False)):
+        want['certify'] = bool(c.get('certify', False))
     bad = {k: (m.get(k), v) for k, v in want.items() if m.get(k) != v}
     if m.get('k_candidates', 0) != 0 or (m.get('model_beta') or 0.0) != 0.0:
         bad['labels'] = (m.get('k_candidates'), m.get('model_beta'))
@@ -119,7 +121,7 @@ def cmd_eval(a):
     ckpt = budget_checkpoint(run, steps)
     from experiments.t2 import evaluate
     evaluate(Path(a.output), str(ckpt), a.label, ops, int(a.workers), False if a.rigid else None, tuple(reg['protocol']['urgent_deadline_s']),
-             certify=bool(getattr(a, 'certify', False)))
+             certify=True if getattr(a, 'certify', False) else (False if getattr(a, 'no_certify', False) else None))
 
 
 def cmd_screen(a):
@@ -360,7 +362,8 @@ def check(stage: str, root: Path) -> dict:
                 files = [f for f in e.glob('*.json')] if e.exists() else []
                 rep['evaluations'][f'{cfg}_s{s}{tag}'] = {'files': len(files), 'expected': n}
                 rep['errors'] += [str(f) for f in files if f.name.startswith('ERROR_')]
-    for cfg, tag in [(c, '') for c in st.get('reused', {})] + [(c, '_cert') for c in st.get('certified', [])]:
+    for cfg, tag in ([(c, '') for c in st.get('reused', {})] + [(c, '_cert') for c in st.get('certified', [])]
+                     + [(c, '_nocert') for c in st.get('uncertified', [])]):
         for s in st['seeds']:                   # stage u2 / u2c: earlier models re-evaluated here (u2c: also with certification)
             e = root / 'C' / f'{cfg}_s{s}{tag}'
             files = [f for f in e.glob('*.json')] if e.exists() else []
@@ -392,6 +395,7 @@ def main():
     e = s.add_parser('eval'); e.add_argument('--stage', required=True); e.add_argument('--run', required=True); e.add_argument('--label', required=True)
     e.add_argument('--output', required=True); e.add_argument('--rigid', action='store_true'); e.add_argument('--workers', type=int, default=4); e.add_argument('--openings')
     e.add_argument('--certify', action='store_true', help='env 0.15.0: U2 decision-time certification (the executor checks each intent)')
+    e.add_argument('--no-certify', action='store_true', help='env 0.16.0: certification off for a run trained with it (paired ablation)')
     c = s.add_parser('screen'); c.add_argument('--stage', required=True); c.add_argument('--policy', required=True); c.add_argument('--output', required=True)
     c.add_argument('--rigid', action='store_true'); c.add_argument('--workers', type=int, default=4); c.add_argument('--openings')
     j = s.add_parser('traj'); j.add_argument('--entry', action='append', required=True); j.add_argument('--openings', required=True)

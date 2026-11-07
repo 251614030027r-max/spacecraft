@@ -145,13 +145,13 @@ def exec_config_of(checkpoint) -> dict:
     for m in (c.parent.parent / 'manifest.json', c.parent / 'manifest.json'):
         if m.exists():
             d = json.loads(m.read_text(encoding='utf-8'))
-            return {'window': bool(d.get('window', True)), 'geometry': bool(d.get('geometry', True))}
+            return {'window': bool(d.get('window', True)), 'geometry': bool(d.get('geometry', True)), 'certify': bool(d.get('certify', False))}
     raise FileNotFoundError(f'no manifest.json beside {checkpoint}')
 
 
 def eval_job(job):
     opening, checkpoint, label, out, window, urgent = job[:6]
-    certify = bool(job[6]) if len(job) > 6 else False
+    certify = job[6] if len(job) > 6 else False
     import torch; torch.set_num_threads(1)
     file = Path(out) / f'{label}_{opening}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
@@ -164,6 +164,7 @@ def eval_job(job):
                      obs_profile=obs_profile_of(checkpoint))
     env.cert_live = False          # env 0.13.0: the certificate map is for the critic only; the actor reads OBS_DIM values
     env.probe_live = False         # env 0.14.0: so are the U2 executor probes
+    certify = cfg['certify'] if certify is None else bool(certify)    # None: as trained (env 0.16.0 ECC); True / False: forced
     env.certify = certify          # env 0.15.0: U2 decision-time certification (the executor checks the intent)
     res = run_episode(env, opening, lambda e, o: model.predict(o, deterministic=True)[0])
     res['certify'] = certify; res['cert_interventions'] = env.stats.get('cert_interventions', 0)

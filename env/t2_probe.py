@@ -100,7 +100,7 @@ class ExecutorProbe:
             res = self.entry_planner.solve(np.asarray(q, float), np.asarray(v, float), tau, history, None, entry_speed_m_s=self.entry_speed)
             solves += 1
             if res["feasible"]:
-                return {"kind": "entry", "tau": float(tau), "solves": solves}
+                return {"kind": "entry", "tau": float(tau), "dv_plan": float(res.get("delta_v_m_s", 0.0)), "solves": solves}
         return {"kind": None, "solves": solves} if solves else None
 
     # ------------------------------------------------------------------ one probe intent
@@ -136,7 +136,7 @@ class ExecutorProbe:
                     solves += hit["solves"]
                     if hit["kind"] is not None:
                         return {"event": 1, "kind": hit["kind"], "t": t, "dv": dv_used + cum, "tau": hit.get("tau"), "end": "event",
-                                "solves": solves, "holds": holds}
+                                "dv_entry": float(hit.get("dv_plan", 0.0)), "solves": solves, "holds": holds}
             if plan["feasible"]:
                 q, v = plan_state(plan, STAGE_S, self.mass)
                 dv_used += cum

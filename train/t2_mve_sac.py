@@ -78,7 +78,7 @@ AGE_CAP = 2000
 #: 4.1 (EACC iteration): common random numbers in the bootstrap values of one decision's relative labels, and candidates
 #: separated in the executor's stage-goal terms (env 0.11.0, ``cand_min_sep``; arm e_rel only);
 #: 5.0: arms e_term / e_term2 -- executor-evaluable (terminal) counterfactual values only, ``_terminal_loss``)
-LEARNER_VERSION = "t2-learner-7.1"
+LEARNER_VERSION = "t2-learner-7.2"
 #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
 #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
 #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
@@ -1040,7 +1040,7 @@ def merge_calibration(env, rows) -> None:
 
 def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool, urgent_deadline=None,
            obs_profile: str = 'engineered', pref: bool = False, cand_min_sep: float = 0.0, label_deterministic: bool = False,
-           ref_labels: bool = False, geometry: bool = True) -> None:
+           ref_labels: bool = False, geometry: bool = True, certify: bool = False) -> None:
     """One environment: send (transition or None, observation to act on), receive the action; until 'stop'.
     ``geometry=False``: the C1 geometry ablation (rotation-unaware stage targets, ``target_velocity``)."""
     import os
@@ -1053,6 +1053,8 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
                      entry_stages=entry_stages, window=window, mission=mission, obs_profile=obs_profile, pref=pref, cand_min_sep=cand_min_sep,
                      geometry=geometry)
     env.ref_labels = bool(ref_labels)            # learner 6.0: the policy's own intent through the candidates' treatment
+    env.certify = bool(certify)                  # learner 7.2 (ECC): the executor's certification acts during training as at deployment;
+                                                 # the stored action is the policy's own proposal (the certified MDP)
     obs, _ = env.reset(); transition = None
     actor = None
     guide_rng = np.random.default_rng([seed, rank, 2707])        # T2.7 guidance draws (own stream)
@@ -1092,7 +1094,7 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
             st = env.stats or {}
             info['exec_stats'] = {**{k: st.get(k, 0) for k in ('stages', 'holds', 'rejected', 'bridge_attempts', 'rate_limited', 'entries_lost')},
                                   'window_recoveries': int(getattr(env.generator.bridge, 'recoveries', 0)) if env.generator is not None else 0,
-                                  **({k: st[k] for k in ('probes', 'probe_wall_s') if k in st})}      # learner 7.1: U2 probe cost (probe arms only)
+                                  **({k: st[k] for k in ('probes', 'probe_wall_s', 'cert_interventions') if k in st})}      # learner 7.1 / 7.2: U2 probe cost, ECC interventions
         transition = (obs, next_obs, np.asarray(action, np.float32), float(reward), bool(term), bool(trunc), _slim(info))
         obs = env.reset()[0] if (term or trunc) else next_obs
     conn.close()
@@ -1101,14 +1103,14 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
 def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[int], smoke: bool = False,
           updates_per_transition: float = UPDATES_PER_TRANSITION, entry_stages: int | None = None, window: bool = True,
           model_beta: float = MODEL_BETA, urgent_deadline=None, guide: bool = False, obs_profile: str = 'engineered',
-          geometry: bool = True, manifest_extra: dict | None = None) -> None:
+          geometry: bool = True, manifest_extra: dict | None = None, certify: bool = False) -> None:
     import multiprocessing as mp
     from multiprocessing.connection import wait
     from stable_baselines3.common.logger import configure
     from env.t2_stage import CANDIDATE_MIN_SEP_M_S, ENTRY_STAGES, T2_VERSION
     entry_stages = ENTRY_STAGES if entry_stages is None else int(entry_stages)
     if arm in ('e_rel', 'e_priv', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3', 'e_pullq') and obs_profile != 'reduced_priv' \
-            and not (arm == 'e_priv' and obs_profile in ('reduced_dup', 'reduced_probe', 'reduced_priv_probe')):   # final experiments: U1 capacity control, U2 probes
+            and not (arm == 'e_priv' and obs_profile in ('reduced_dup', 'reduced_probe', 'reduced_priv_probe', 'cut_priv', 'cut_ecc')):   # final experiments: U1 capacity control, U2 probes, ECC
         raise ValueError(f'arm {arm} needs --obs reduced_priv')
     if arm in CERT_ARMS and obs_profile != 'reduced_priv_cert':
         raise ValueError(f'arm {arm} needs --obs reduced_priv_cert')
@@ -1150,13 +1152,14 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'acc_min_labels': ACC_MIN_LABELS, 'acc_min_acc': ACC_MIN_ACC,
                                                    'pref_lambda': PREF_LAMBDA if pref else 0.0, 'pref_delta': PREF_DELTA, 'pref_kappa': PREF_KAPPA,
                                                    'pref_margin_cap': PREF_MARGIN_CAP,
-                                                   'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION, **(manifest_extra or {})}, indent=1), encoding='utf-8')
+                                                   'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION, **({'certify': True} if certify else {}),
+                                                   **(manifest_extra or {})}, indent=1), encoding='utf-8')
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
     for rank in range(workers):
         a, b = ctx.Pipe()
         p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref, cand_min_sep, label_det,
-                                                       arm in FB_ARMS, bool(geometry)), daemon=True)
+                                                       arm in FB_ARMS, bool(geometry), bool(certify)), daemon=True)
         p.start(); pipes.append(a); procs.append(p)
     marks = sorted(set([m for m in marks if m <= steps] + [steps]))
     model.save(out / 'checkpoints' / 'step_0')
