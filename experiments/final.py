@@ -118,7 +118,8 @@ def cmd_eval(a):
     steps = int(m['steps'])
     ckpt = budget_checkpoint(run, steps)
     from experiments.t2 import evaluate
-    evaluate(Path(a.output), str(ckpt), a.label, ops, int(a.workers), False if a.rigid else None, tuple(reg['protocol']['urgent_deadline_s']))
+    evaluate(Path(a.output), str(ckpt), a.label, ops, int(a.workers), False if a.rigid else None, tuple(reg['protocol']['urgent_deadline_s']),
+             certify=bool(getattr(a, 'certify', False)))
 
 
 def cmd_screen(a):
@@ -359,11 +360,11 @@ def check(stage: str, root: Path) -> dict:
                 files = [f for f in e.glob('*.json')] if e.exists() else []
                 rep['evaluations'][f'{cfg}_s{s}{tag}'] = {'files': len(files), 'expected': n}
                 rep['errors'] += [str(f) for f in files if f.name.startswith('ERROR_')]
-    for cfg in st.get('reused', {}):            # stage u2: models of an earlier stage re-evaluated on this stage's openings
-        for s in st['seeds']:
-            e = root / 'C' / f'{cfg}_s{s}'
+    for cfg, tag in [(c, '') for c in st.get('reused', {})] + [(c, '_cert') for c in st.get('certified', [])]:
+        for s in st['seeds']:                   # stage u2 / u2c: earlier models re-evaluated here (u2c: also with certification)
+            e = root / 'C' / f'{cfg}_s{s}{tag}'
             files = [f for f in e.glob('*.json')] if e.exists() else []
-            rep['evaluations'][f'{cfg}_s{s}'] = {'files': len(files), 'expected': n}
+            rep['evaluations'][f'{cfg}_s{s}{tag}'] = {'files': len(files), 'expected': n}
             rep['errors'] += [str(f) for f in files if f.name.startswith('ERROR_')]
     for pol in st['fixed']:
         for tag in ('', '_rigid') if pol in st['window_pairs'] else ('',):
@@ -390,6 +391,7 @@ def main():
     t.add_argument('--output', required=True); t.add_argument('--workers', type=int); t.add_argument('--smoke-steps', type=int)
     e = s.add_parser('eval'); e.add_argument('--stage', required=True); e.add_argument('--run', required=True); e.add_argument('--label', required=True)
     e.add_argument('--output', required=True); e.add_argument('--rigid', action='store_true'); e.add_argument('--workers', type=int, default=4); e.add_argument('--openings')
+    e.add_argument('--certify', action='store_true', help='env 0.15.0: U2 decision-time certification (the executor checks each intent)')
     c = s.add_parser('screen'); c.add_argument('--stage', required=True); c.add_argument('--policy', required=True); c.add_argument('--output', required=True)
     c.add_argument('--rigid', action='store_true'); c.add_argument('--workers', type=int, default=4); c.add_argument('--openings')
     j = s.add_parser('traj'); j.add_argument('--entry', action='append', required=True); j.add_argument('--openings', required=True)

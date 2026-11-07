@@ -61,7 +61,8 @@ def run_episode(env, opening, act, record=None):
         a = act(env, obs)
         obs, r, term, trunc, i = env.step(a); done = term or trunc; ret += i['true_reward']
         decisions.append({'a': np.asarray(a).tolist(), 't': i['time_s'], 'mode': i['mode'], 'held': i['held'], 'range_m': i['range_m'],
-                          'planned_dv': i['planned_dv'], 'executed_dv': i['executed_dv'], 'model': (i.get('model') or {}).get('diag', {}).get('reason'), 'event': i['event']})
+                          'planned_dv': i['planned_dv'], 'executed_dv': i['executed_dv'], 'model': (i.get('model') or {}).get('diag', {}).get('reason'), 'event': i['event'],
+                          **({'cert': i['cert']} if i.get('cert') is not None else {})})
     s = env.stats
     return {'opening': opening, 'event': i['event'], 'return': ret, 'time_s': env.env.time_s, 'delta_v': env.env._delta_v,
             'stages': s['stages'], 'holds': s['holds'], 'rejected': s['rejected'], 'bridge_attempts': s['bridge_attempts'],
@@ -149,7 +150,8 @@ def exec_config_of(checkpoint) -> dict:
 
 
 def eval_job(job):
-    opening, checkpoint, label, out, window, urgent = job
+    opening, checkpoint, label, out, window, urgent = job[:6]
+    certify = bool(job[6]) if len(job) > 6 else False
     import torch; torch.set_num_threads(1)
     file = Path(out) / f'{label}_{opening}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
@@ -162,15 +164,17 @@ def eval_job(job):
                      obs_profile=obs_profile_of(checkpoint))
     env.cert_live = False          # env 0.13.0: the certificate map is for the critic only; the actor reads OBS_DIM values
     env.probe_live = False         # env 0.14.0: so are the U2 executor probes
+    env.certify = certify          # env 0.15.0: U2 decision-time certification (the executor checks the intent)
     res = run_episode(env, opening, lambda e, o: model.predict(o, deterministic=True)[0])
+    res['certify'] = certify; res['cert_interventions'] = env.stats.get('cert_interventions', 0)
     res.update(policy=label, checkpoint=str(checkpoint), window=window, geometry=cfg['geometry'], entries_lost=env.stats.get('entries_lost', 0),
                window_recoveries=env.generator.bridge.recovery_log); dump(file, res); return res
 
 
-def evaluate(out, checkpoint, label, ops, workers, window=True, urgent=None):
+def evaluate(out, checkpoint, label, ops, workers, window=True, urgent=None, certify=False):
     out.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(workers) as pool:
-        for f in as_completed([pool.submit(guarded_eval, (o, checkpoint, label, str(out), window, urgent)) for o in ops]):
+        for f in as_completed([pool.submit(guarded_eval, (o, checkpoint, label, str(out), window, urgent, certify)) for o in ops]):
             r = f.result(); print(json.dumps({k: r.get(k) for k in STAGE_EVAL_KEYS}, default=str), flush=True)
 
 

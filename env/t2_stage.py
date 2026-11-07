@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.14.0"
+T2_VERSION = "t2-stage-0.15.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -598,6 +598,9 @@ class T2StageEnv(gym.Env):
         self.prober = None
         self.last_probe = None
         self.probe_wall_s = 0.0
+        #: env 0.15.0 (U2 decision-time certification, ``_certify``): off by default -- every earlier path is unchanged
+        self.certify = False
+        self.cert_prober = None
         if self.obs_profile in PROBE_PROFILES:
             from env.t2_probe import PROBE_DIM
             assert self.obs_dim == (OBS_DIM_PRIV if self.obs_profile == "reduced_priv_probe" else OBS_DIM) + PROBE_DIM
@@ -758,6 +761,7 @@ class T2StageEnv(gym.Env):
         self._entry_open = None
         self._trace = []
         self.prober = None                     # env 0.14.0: the probe's planner instances are built per episode
+        self.cert_prober = None                # env 0.15.0: so are the certification's
         self.return_true = 0.0
         self.stats = {"stages": 0, "holds": 0, "rejected": 0, "bridge_attempts": 0, "macro": None}
         return self.observation(), {"opening": opening, "mission": dict(self.mission)}
@@ -1286,12 +1290,50 @@ class T2StageEnv(gym.Env):
                 "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission), "far_field_controls": self.far_field_controls}
         return self.observation(), float(shaped), terminated, event == "numerical_failure", info
 
+    # ---------------------------------------------------------------- U2 decision-time certification
+    def _certify(self, a: np.ndarray) -> tuple[np.ndarray, dict]:
+        """env 0.15.0 (U2 decision-time certification; spec ``docs/final_method/U2_CERT_SPEC.md``). The executor probes
+        the policy's intent and the nine fixed probe intents (``env/t2_probe.py``: its own stage layer, 2 s entry rule,
+        conditional G*, at most three stages). It replaces the intent for this stage only when (i) the intent itself
+        brings no mode switch (entry accepted or descent) within the horizon, (ii) a probe intent does, and (iii) the
+        pass is binding: after that switch time one more spin period would end beyond the latest admissible arrival
+        (deadline - BRIDGE_DEADLINE_MARGIN_S), i.e. missing this pass leaves no other before the deadline. Among such
+        probes the one nearest the policy's intent is flown (ties: the earlier switch). Otherwise the intent is flown
+        unchanged. No value, no learning signal: a fixed function of the state and the intent."""
+        from env.t2_probe import PROBE_GRID, ExecutorProbe
+        if self.cert_prober is None:
+            self.cert_prober = ExecutorProbe(self)
+        e = self.env; q, v = relative_inertial(e); t = e.target_state
+        args = (q, v, t.rotation.copy(), t.omega.copy(), float(e.time_s), float(e._delta_v), self.mission, self.geometry)
+        own = self.cert_prober.probe_intent(a, *args)
+        rec = {"a": [float(x) for x in a], "own_event": int(own["event"]), "own_t": float(own["t"]), "intervened": False}
+        if own["event"]:
+            return a, rec
+        period = 2.0 * np.pi / max(float(np.linalg.norm(t.omega)), 1e-9)
+        latest = float(self.mission["deadline_s"]) - BRIDGE_DEADLINE_MARGIN_S
+        best = None
+        for x in PROBE_GRID:
+            d = self.cert_prober.probe_intent(np.asarray(x, np.float64), *args)
+            if not d["event"] or float(e.time_s) + d["t"] + period <= latest:
+                continue
+            key = (float(np.linalg.norm(np.asarray(x) - a)), float(d["t"]))
+            if best is None or key < best[0]:
+                best = (key, x, d)
+        if best is None:
+            return a, rec
+        self.stats["cert_interventions"] = self.stats.get("cert_interventions", 0) + 1
+        rec.update(intervened=True, a_exec=[float(x) for x in best[1]], alt_t=float(best[2]["t"]), alt_kind=best[2]["kind"])
+        return np.asarray(best[1], np.float64), rec
+
     # ---------------------------------------------------------------- step
     def step(self, action):
         e, g, mass = self.env, self.generator, self.env.chaser_parameters.mass
         if g.mode in ("bridge", "descent"):
             return self._macro_to_end()
         a = np.clip(np.asarray(action, dtype=np.float64).reshape(-1)[:2], -1.0, 1.0)
+        cert = None
+        if self.certify and g.mode in ("stage", "hold"):    # env 0.15.0: the executor certifies the intent before it is flown
+            a, cert = self._certify(a)
         pref = None
         if self.pref and self.entry_calibration.ready:      # T2.10 / T2.11: before the stage is flown (the decision's own state)
             # candidates: the grid, the executed intent and (T2.11) the policy's own deterministic intent at this decision
@@ -1377,7 +1419,7 @@ class T2StageEnv(gym.Env):
             self.stats["macro"] = g.mode
         info = {"event": event, "true_reward": reward, "stage_s": e.time_s - t0, "held": held, "mode": g.mode,
                 "plan_status": plan["status"], "rate_limited": goal["rate_limited"], "planned_dv": plan.get("delta_v_m_s"), "executed_dv": e._delta_v - dv0,
-                "model": model, "pref": pref, "time_s": e.time_s, "delta_v": e._delta_v,
+                "model": model, "pref": pref, "cert": cert, "time_s": e.time_s, "delta_v": e._delta_v,
                 "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission), "far_field_controls": self.far_field_controls}
         return self.observation(), float(shaped), terminated, truncated, info
 

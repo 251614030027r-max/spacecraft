@@ -165,6 +165,29 @@
     "window_pairs": [],
     "rigid_pair_trained": [],
     "note": "U2 executor mode probing (spec docs/final_method/U2_PROBE_SPEC.md): PROBE and EACH_PROBE trained with the pretest's seeds and protocol; the pretest's EACH and SAC models re-evaluated on the same new openings; main criterion PROBE vs SAC"
+   },
+   "u2c": {
+    "steps": 2000,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [],
+    "eval_openings": "294220-294267",
+    "trained": [],
+    "reused": {
+     "EACH": "pretest",
+     "SAC": "pretest"
+    },
+    "certified": [
+     "EACH",
+     "SAC"
+    ],
+    "smoke_only": [],
+    "fixed": [],
+    "window_pairs": [],
+    "rigid_pair_trained": [],
+    "note": "U2 decision-time certification (spec docs/final_method/U2_CERT_SPEC.md): the pretest's EACH and SAC models evaluated with and without the executor's certification on new openings; no training. Main: EACH + certification vs SAC; U2 contribution: EACH + certification vs EACH (same model, paired)"
    }
   },
   "figure_openings": "294200-294211",

@@ -2003,3 +2003,29 @@ def test_u2_readout_gates_are_seed_matched_and_flip_robust(tmp_path):
     write('PROBE', 11, [40.0] * 47 + [-150.0], events={47: 'unsafe'})
     assert not readout(tmp_path, None)['main']['gates']['G5']
     assert readout(tmp_path, None)['secondary']['verdict'] == 'kept'
+
+
+def test_u2_certification_rule_and_default_off():
+    """env 0.15.0: certification is off by default (info 'cert' None); when on it replaces the intent only if the
+    intent brings no mode switch, a probe intent does and the pass is binding; the nearest such probe is flown."""
+    from env.t2_stage import T2StageEnv
+    env = T2StageEnv(openings=[1000004], obs_profile='reduced_priv'); env.reset(options={'opening': 1000004})
+    assert env.certify is False
+    class Fake:
+        def __init__(self, events): self.events = events
+        def probe_intent(self, a, *args):
+            t = self.events.get(tuple(np.round(np.asarray(a, float), 3)))
+            return {'event': int(t is not None), 't': float(t if t is not None else 48.0), 'kind': 'entry' if t is not None else None}
+    env.mission = dict(env.mission, deadline_s=env.env.time_s + 100.0)     # latest admissible arrival 55 s ahead: binding
+    a = np.array([0.4, 0.2])
+    env.cert_prober = Fake({(0.4, 0.2): 10.0, (1.0, 0.0): 6.0})
+    out, rec = env._certify(a); assert np.array_equal(out, a) and not rec['intervened']          # own switch: unchanged
+    env.cert_prober = Fake({(1.0, 0.0): 20.0, (0.0, 0.0): 30.0, (1.0, 1.0): 20.0})
+    out, rec = env._certify(a); assert rec['intervened'] and tuple(out) == (0.0, 0.0)            # nearest to the intent
+    env.cert_prober = Fake({(1.0, 0.0): 20.0, (0.0, 1.0): 12.0})
+    out, rec = env._certify(np.array([0.5, 0.5])); assert tuple(out) == (0.0, 1.0)                # tie in distance: earlier switch
+    env.mission = dict(env.mission, deadline_s=env.env.time_s + 1000.0)    # deadline far: another pass fits, not binding
+    env.cert_prober = Fake({(0.0, 0.0): 30.0})
+    out, rec = env._certify(a); assert np.array_equal(out, a) and not rec['intervened']
+    env.certify = False
+    _, _, _, _, info = env.step(a); assert info['cert'] is None
