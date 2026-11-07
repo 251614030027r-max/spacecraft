@@ -6,7 +6,7 @@
 
 | 项 | 状态 |
 |---|---|
-| 运行中 | 下层：[RUN_U2C](upper/run_orders/RUN_U2C.md)（U2 决策时认证的配对评估，不训练，约 2.5 小时；转发即下发）。RUN_U2 已交付：主判定 `no_gain`（PROBE − SAC +1.34），次要 `kept`；同批新开局 EACH − SAC +10.6 五项全过（科学 `83bc7f6a`，collab `93657249`） |
+| 运行中 | 下层：[RUN_ECC](upper/run_orders/RUN_ECC.md)（ECC 开发轮，3 组 × 2 种子 × 2000，统一信息边界、从零训练，约 15 小时；转发即下发）。RUN_U2C 已交付：EACH+认证 对 SAC `pass`（+23.3），同模型认证 `no_effect`（EACH +6.3、SAC +5.5），按登记触发保底（collab `a60b0d8c`，科学 `bcab9207`） |
 | 最终方法 | **EACH = U1 + C1**（代码 arm `e_priv`），研究层 11-05 定稿、用户批准冻结；与 T2.12 `e_priv`（`2e7d838`）逐位等价。材料：科学分支 `docs/final_method/`；唯一实验入口 `experiments/final.py`，注册表 `docs/final_method/METHOD_REGISTRY.json` |
 | 预实验结果（48 个新开局 × 2 种子 × 2000 决策） | 捕获：EACH 90/96、SAC 80/96、SAC + 规划特征 85/96、等宽 critic（无 U1）76/96、无 C1 几何 41/96；纯 MPC 29/48（unsafe 11）、直接 G★ 45/48。平均真实回报：EACH 45.7、SAC 27.5、SAC + 规划特征 35.7、等宽 critic 15.1、无几何 −54.2、G★ 50.1。窗口承诺：EACH 刚性 → 窗口，入口丢失 50 → 1、35 → 1。学习方法 unsafe 全为 0。证据 `evidence/final_pretest/TABLES.json` |
 | 预实验需正视的点 | 直接 G★ 与 EACH 打平略好（G★ 不是论文基线，但须在论文中定位）；EACH 对 SAC 的逐开局中位差约 0，均值优势来自 7 个只有 EACH 能捕获的开局；训练曲线 AUC 差距小于开发期（EACH 12.8 / 16.8，SAC −4.9 / 12.7）；只有 2 个种子 |
@@ -20,6 +20,8 @@
 
 | 状态 | 执行书 |
 |---|---|
+| 用户 11-07 批准（研究层"ECC 最终统筹意见"），最快推进；转发即下发 | [RUN_ECC](upper/run_orders/RUN_ECC.md)：ECC（执行机会证书耦合：一个执行机会评估同时给出 critic 证书与认证映射，训练与部署一致）。SAC_C、EACH_C、ECC × 种子 10、11 × 2000，决策层统一去掉规划答案与执行内部状态；评估新开局 294320–294367，另评 ECC 认证关闭与 EACH_C 部署认证；判定顺序 ECC → 部署认证 ECC → none（`experiments/ecc_readout.py`）；冻结科学 `1cddbae2`（106 项测试）；规格 `docs/final_method/ECC_SPEC.md` |
+| 已交付（collab `a60b0d8c`，科学 `bcab9207`） | [RUN_U2C](upper/run_orders/RUN_U2C.md)：主比较 `pass`，同模型认证 `no_effect` |
 | 用户 11-07 批准，最快推进；转发即下发 | [RUN_U2C](upper/run_orders/RUN_U2C.md)：U2 探询改为决策时认证（SAC 意图赶不上过顶、探测意图能赶上、且过顶约束成立时，改执行最近的认证意图）。预实验 EACH、SAC 模型在新开局 294220–294267 上认证开 / 关配对，不训练；主判据 EACH+认证 对 SAC（G1–G5），同模型分档 pass / improved / no_effect；冻结科学 `28a40799`。保底（两同模型比较都 no_effect）：统一信息边界后重训，已登记于 `docs/final_method/U2_CERT_SPEC.md` 第 4 节 |
 | 已交付（collab `93657249`，科学 `83bc7f6a`） | [RUN_U2](upper/run_orders/RUN_U2.md)：主判定 `no_gain`，次要 `kept`；U2 作为 critic 输入按规则结束 |
 | 用户 11-06 同意由下层执行；转发即下发 | [RUN_U2](upper/run_orders/RUN_U2.md)：`PROBE`（U2 替代 U1）与 `EACH_PROBE`（U1 + U2）各种子 10、11 × 2000；复用预实验 EACH、SAC 模型；评估新开局 294148–294195；主判据 PROBE 对 SAC（G1–G5，种子与开局配对）；冻结科学 `e7acaa34`；与阶段 A 并行，A 未过则作废 |
