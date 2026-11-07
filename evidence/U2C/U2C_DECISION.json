@@ -1,0 +1,328 @@
+{
+ "evaluations": {
+  "EACH_s10": 48,
+  "EACH_CERT_s10": 48,
+  "EACH_s11": 48,
+  "EACH_CERT_s11": 48,
+  "SAC_s10": 48,
+  "SAC_CERT_s10": 48,
+  "SAC_s11": 48,
+  "SAC_CERT_s11": 48
+ },
+ "complete": true,
+ "arms": {
+  "EACH_s10": {
+   "n": 48,
+   "capture": 37,
+   "unsafe": 0,
+   "timeout": 11,
+   "urgent_n": 27,
+   "urgent_capture": 16,
+   "mean_return": 11.919143386131738,
+   "median_return": 48.85568866343129,
+   "entries_lost": 3
+  },
+  "EACH_CERT_s10": {
+   "n": 48,
+   "capture": 40,
+   "unsafe": 0,
+   "timeout": 8,
+   "urgent_n": 27,
+   "urgent_capture": 19,
+   "mean_return": 24.62400447175747,
+   "median_return": 51.10708685498883,
+   "entries_lost": 3
+  },
+  "EACH_s11": {
+   "n": 48,
+   "capture": 43,
+   "unsafe": 0,
+   "timeout": 5,
+   "urgent_n": 27,
+   "urgent_capture": 22,
+   "mean_return": 39.685463648290444,
+   "median_return": 54.99850707813042,
+   "entries_lost": 2
+  },
+  "EACH_CERT_s11": {
+   "n": 48,
+   "capture": 43,
+   "unsafe": 0,
+   "timeout": 5,
+   "urgent_n": 27,
+   "urgent_capture": 22,
+   "mean_return": 39.59732600345701,
+   "median_return": 54.99850707813042,
+   "entries_lost": 2
+  },
+  "SAC_s10": {
+   "n": 48,
+   "capture": 31,
+   "unsafe": 0,
+   "timeout": 17,
+   "urgent_n": 27,
+   "urgent_capture": 10,
+   "mean_return": -13.325494356388353,
+   "median_return": 29.8834355234063,
+   "entries_lost": 1
+  },
+  "SAC_CERT_s10": {
+   "n": 48,
+   "capture": 34,
+   "unsafe": 0,
+   "timeout": 13,
+   "urgent_n": 27,
+   "urgent_capture": 14,
+   "mean_return": -2.324356705557063,
+   "median_return": 44.73962919057418,
+   "entries_lost": 2
+  },
+  "SAC_s11": {
+   "n": 48,
+   "capture": 41,
+   "unsafe": 0,
+   "timeout": 7,
+   "urgent_n": 27,
+   "urgent_capture": 20,
+   "mean_return": 30.859932692197916,
+   "median_return": 53.353379921501265,
+   "entries_lost": 3
+  },
+  "SAC_CERT_s11": {
+   "n": 48,
+   "capture": 41,
+   "unsafe": 0,
+   "timeout": 7,
+   "urgent_n": 27,
+   "urgent_capture": 20,
+   "mean_return": 30.854429470817635,
+   "median_return": 53.353379921501265,
+   "entries_lost": 3
+  }
+ },
+ "interventions": {
+  "EACH_CERT_s10": 16,
+  "EACH_CERT_s11": 5,
+  "SAC_CERT_s10": 50,
+  "SAC_CERT_s11": 17
+ },
+ "main": {
+  "comparison": "EACH_CERT - SAC",
+  "pairs": 96,
+  "mean": 23.343446069702463,
+  "median": 0.4374473538148358,
+  "without_top2_per_seed": 15.48756159412435,
+  "per_seed": {
+   "10": {
+    "n": 48,
+    "mean": 37.94949882814581,
+    "median": 0.332484493230659,
+    "without_top2": 30.752507261294465
+   },
+   "11": {
+    "n": 48,
+    "mean": 8.7373933112591,
+    "median": 0.5256627624590955,
+    "without_top2": 0.22261592695422913
+   }
+  },
+  "capture": [
+   83,
+   72
+  ],
+  "unsafe_first": 0,
+  "flips": {
+   "only_first_captures": 12,
+   "only_second_captures": 1
+  },
+  "both_captured": {
+   "n": 71,
+   "time_s": [
+    132.7535211267606,
+    137.74788732394367
+   ],
+   "delta_v": [
+    1.323830766848071,
+    1.3686495241496044
+   ]
+  },
+  "gates": {
+   "G1": true,
+   "G2": true,
+   "G3": true,
+   "G4": true,
+   "G5": true
+  },
+  "verdict": "pass"
+ },
+ "u2_each": {
+  "comparison": "EACH_CERT - EACH",
+  "pairs": 96,
+  "mean": 6.308361720396154,
+  "median": 0.0,
+  "without_top2_per_seed": 2.1876581969710025,
+  "per_seed": {
+   "10": {
+    "n": 48,
+    "mean": 12.704861085625732,
+    "median": 0.0,
+    "without_top2": 4.4786114800844725
+   },
+   "11": {
+    "n": 48,
+    "mean": -0.08813764483342545,
+    "median": 0.0,
+    "without_top2": -0.10329508614246787
+   }
+  },
+  "capture": [
+   83,
+   80
+  ],
+  "unsafe_first": 0,
+  "flips": {
+   "only_first_captures": 3,
+   "only_second_captures": 0
+  },
+  "both_captured": {
+   "n": 80,
+   "time_s": [
+    133.48375000000001,
+    133.52375
+   ],
+   "delta_v": [
+    1.3322314233094226,
+    1.3311141915427132
+   ]
+  },
+  "gates": {
+   "G1": false,
+   "G2": true,
+   "G3": false,
+   "G4": true,
+   "G5": true
+  },
+  "urgent": {
+   "n": 54,
+   "mean": 11.214865280704274,
+   "capture": [
+    41,
+    38
+   ]
+  },
+  "economy": {
+   "n": 42,
+   "mean": 0.0,
+   "capture": [
+    42,
+    42
+   ]
+  },
+  "verdict": "no_effect"
+ },
+ "u2_sac": {
+  "comparison": "SAC_CERT - SAC",
+  "pairs": 96,
+  "mean": 5.497817214725501,
+  "median": 0.0,
+  "without_top2_per_seed": 1.3875376223290457,
+  "per_seed": {
+   "10": {
+    "n": 48,
+    "mean": 11.001137650831284,
+    "median": 0.0,
+    "without_top2": 2.901127132267689
+   },
+   "11": {
+    "n": 48,
+    "mean": -0.005503221380282734,
+    "median": 0.0,
+    "without_top2": -0.1260518876095977
+   }
+  },
+  "capture": [
+   75,
+   72
+  ],
+  "unsafe_first": 0,
+  "flips": {
+   "only_first_captures": 4,
+   "only_second_captures": 1
+  },
+  "both_captured": {
+   "n": 71,
+   "time_s": [
+    135.8507042253521,
+    135.95774647887325
+   ],
+   "delta_v": [
+    1.3414952384625973,
+    1.3419527640660576
+   ]
+  },
+  "gates": {
+   "G1": false,
+   "G2": true,
+   "G3": false,
+   "G4": true,
+   "G5": true
+  },
+  "urgent": {
+   "n": 54,
+   "mean": 13.56333878975113,
+   "capture": [
+    34,
+    30
+   ]
+  },
+  "economy": {
+   "n": 42,
+   "mean": -4.872139096021738,
+   "capture": [
+    41,
+    42
+   ]
+  },
+  "verdict": "no_effect"
+ },
+ "report_each_vs_sac": {
+  "pairs": 96,
+  "mean": 17.035084349306306,
+  "median": 0.2786916459813895,
+  "without_top2_per_seed": 8.90053539142242,
+  "per_seed": {
+   "10": {
+    "n": 48,
+    "mean": 25.244637742520087,
+    "median": 0.24414667437653748,
+    "without_top2": 17.483725661752484
+   },
+   "11": {
+    "n": 48,
+    "mean": 8.825530956092527,
+    "median": 0.5256627624590955,
+    "without_top2": 0.31734512109235524
+   }
+  },
+  "capture": [
+   80,
+   72
+  ],
+  "unsafe_first": 0,
+  "flips": {
+   "only_first_captures": 9,
+   "only_second_captures": 1
+  },
+  "both_captured": {
+   "n": 71,
+   "time_s": [
+    132.7577464788733,
+    137.74788732394367
+   ],
+   "delta_v": [
+    1.323548935970859,
+    1.3686495241496044
+   ]
+  }
+ }
+}
