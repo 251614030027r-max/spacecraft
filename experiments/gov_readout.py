@@ -5,7 +5,7 @@
     python -B -m experiments.gov_readout b      --root DIR --output B_DECISION.json [--coordination gov|cert] [--a-decision A.json]
 
 ``screen`` (step 0): ``DIR/S/<policy>/`` of the stage ``gov_screen`` (opportunity-scarcity condition, non-learning policies);
-gates F, D1, D2, M (section 6). ``a`` (step A): ``DIR/C/{EACH_C,SAC_C}_s{10,11}_{monitor,gov,cert}`` -- same model, monitor
+gates L1-L3 (section 6). ``a`` (step A): ``DIR/C/{EACH_C,SAC_C}_s{10,11}_{monitor,gov,cert}`` -- same model, monitor
 (= uncoordinated) against governor; criteria M1-M5 (section 7); M2 or M3 failing rejects the governor (step B then uses the old
 certification). ``b`` (step B): ``DIR/C/...`` of the stage ``gov_b`` (and ``*_natural``); the selection order of section 7:
 1 in-loop method, 2 EACH_C + deployment coordination, 3 the frozen ``ECC_deploy``. G1-G5 are ``experiments.u2_readout.gates``
@@ -24,7 +24,9 @@ from experiments.u2_readout import MARGIN, SEEDS, arm_summary, gates, load_eval,
 TIERS = (1, 2, 3)
 STAGE_PAIRED_FLIP = 200.0                  # one capture / timeout flip (capture +100 against timeout -100)
 FIXED_STAGE_POLICIES = ('rally', 'c_10_0', 'c_10_-5', 'c_6_5', 'b_10')
-GATE_F, GATE_D1, GATE_D2, GATE_M = 0.80, 0.15, 0.10, 0.80
+GATE_L1, GATE_L2, GATE_L3 = 0.80, 0.10, 0.15          # ECC_FINAL_SPEC section 6 (user 2026-11-08)
+SHORTEST_N1 = 6
+N_TIER = {1: 96, 2: 48, 3: 48}; N_NATURAL = 48
 N3_REPLACE_PER_EPISODE = 0.05
 
 
@@ -55,16 +57,45 @@ def screen(root: Path) -> dict:
     best = max(fixed.values())
     ops = sorted(set.intersection(*[set(t1[k]) for k in fixed]))
     oracle = float(np.mean([any(t1[k][o]['event'] == 'success' for k in fixed) for o in ops])) if ops else float('nan')
-    g3 = out['tiers'][3]['gstar']['capture_rate']
-    gates_ = {'F': g >= GATE_F, 'D1': best <= g - GATE_D1, 'D2': oracle >= best + GATE_D2, 'M': g3 >= GATE_M}
-    out.update(gstar_n1=g, best_fixed_n1=best, best_fixed_policy=max(fixed, key=fixed.get), oracle_fixed_n1=oracle, gstar_n3=g3,
+    gates_ = {'L1': g >= GATE_L1, 'L2': oracle >= g - GATE_L2, 'L3': best <= g - GATE_L3}
+    short = sorted(t1['gstar'].values(), key=lambda r: r['mission']['deadline_s'])[:SHORTEST_N1]
+    out.update(gstar_n1=g, best_fixed_n1=best, best_fixed_policy=max(fixed, key=fixed.get), oracle_fixed_n1=oracle,
+               gstar_n3=out['tiers'][3]['gstar']['capture_rate'], fixed_policies_screened=sorted(fixed),
+               shortest_n1_gstar=[{'opening': r['opening'], 'deadline_s': r['mission']['deadline_s'], 'event': r['event']} for r in short],
+               only_gstar_n1=[o for o in ops if t1['gstar'][o]['event'] == 'success' and not any(t1[k][o]['event'] == 'success' for k in fixed)],
                gates={k: bool(v) for k, v in gates_.items()})
     if all(gates_.values()):
         out['verdict'] = 'pass'
-    elif not gates_['F'] or not gates_['M']:
-        out['verdict'] = 'too_hard'; out['alternative'] = 'scarcity:strict'
+    elif not gates_['L1'] or not gates_['L2']:
+        out['verdict'] = 'too_hard'
     else:
-        out['verdict'] = 'too_easy'; out['alternative'] = 'scarcity:inside'
+        out['verdict'] = 'too_easy'
+    return out
+
+
+def paired_fixed(root: Path) -> dict:
+    """Section 6B sandbox paired check: ``DIR/S/<policy>`` (uncoordinated = the screen), ``DIR/S/<policy>_cert`` and
+    ``DIR/S/<policy>_gov`` on the screen openings. Requirement: the governor loses no capture, introduces no unsafe and
+    rescues at least as many as the old certification. Reported: interventions, realization, persistence."""
+    out = {'policies': {}}
+    tot = {'gov_rescued': 0, 'cert_rescued': 0, 'gov_lost': 0, 'gov_unsafe_introduced': 0, 'cert_lost': 0}
+    for d in sorted((root / 'S').iterdir()):
+        if not d.is_dir() or d.name.endswith(('_cert', '_gov')):
+            continue
+        base, cert, gov = load_eval(d), load_eval(root / 'S' / f'{d.name}_cert'), load_eval(root / 'S' / f'{d.name}_gov')
+        if not cert or not gov:
+            continue
+        gm, cm = same_model(gov, base), same_model(cert, base)
+        out['policies'][d.name] = {'gov_vs_off': gm, 'cert_vs_off': cm, 'gov_replacements': sum(r.get('gov_replacements', 0) or 0 for r in gov.values()),
+                                   'cert_interventions': sum(r.get('cert_interventions', 0) or 0 for r in cert.values()),
+                                   **realization_persistence(gov), 'gov_wall': gov_wall(gov)}
+        tot['gov_rescued'] += len(gm['rescued']); tot['cert_rescued'] += len(cm['rescued']); tot['gov_lost'] += len(gm['lost'])
+        tot['gov_unsafe_introduced'] += len(gm['unsafe_introduced']); tot['cert_lost'] += len(cm['lost'])
+    allgov = {(p, o): r for p in out['policies'] for o, r in load_eval(root / 'S' / f'{p}_gov').items()}
+    out.update(totals=tot, **{f'pooled_{k}': v for k, v in realization_persistence(allgov).items()},
+               requirement={'no_lost': tot['gov_lost'] == 0, 'no_unsafe_introduced': tot['gov_unsafe_introduced'] == 0,
+                            'rescued_ge_cert': tot['gov_rescued'] >= tot['cert_rescued']})
+    out['pass'] = all(out['requirement'].values())
     return out
 
 
@@ -132,9 +163,17 @@ def same_model(a: dict, b: dict) -> dict:
 def readout_a(root: Path) -> dict:
     models = [f'{c}_s{s}' for c in ('EACH_C', 'SAC_C') for s in SEEDS]
     ev = {(m, k): load_eval(root / 'C' / f'{m}_{k}') for m in models for k in ('monitor', 'gov', 'cert')}
-    out = {'evaluations': {f'{m}_{k}': len(v) for (m, k), v in ev.items()}, 'tiers': {}}
-    out['complete'] = all(v == 96 for v in out['evaluations'].values())
+    nat = {(m, k): load_eval(root / 'C' / f'{m}_{k}_natural') for m in models for k in ('monitor', 'gov', 'cert')}
+    out = {'evaluations': {f'{m}_{k}': len(v) for (m, k), v in ev.items()},
+           'natural_evaluations': {f'{m}_{k}_natural': len(v) for (m, k), v in nat.items()}, 'tiers': {}}
+    out['complete'] = (all(v == sum(N_TIER.values()) for v in out['evaluations'].values())
+                       and all(v == N_NATURAL for v in out['natural_evaluations'].values()))
     lost, unsafe = [], []
+    out['natural'] = {}
+    for m in models:
+        gm, cm = same_model(nat[(m, 'gov')], nat[(m, 'monitor')]), same_model(nat[(m, 'cert')], nat[(m, 'monitor')])
+        out['natural'][m] = {'gov_vs_monitor': gm, 'cert_vs_monitor': cm, 'gov_replace_per_episode': replace_per_episode(nat[(m, 'gov')])}
+        lost += [(m, 'natural', o) for o in gm['lost']]; unsafe += [(m, 'natural', o) for o in gm['unsafe_introduced']]
     for n in TIERS:
         rows = {}
         pooled = {'gov_vs_monitor': [], 'cert_vs_monitor': [], 'gov_vs_cert': []}
@@ -194,7 +233,8 @@ def readout_b(root: Path, coordination: str = 'gov') -> dict:
             nat[f'{k}_s{s}'] = load_eval(root / 'C' / f'{d}_natural')
     out = {'coordination': coordination, 'evaluations': {k: len(v) for k, v in ev.items()},
            'natural_evaluations': {k: len(v) for k, v in nat.items()}}
-    out['complete'] = all(v == 96 for v in out['evaluations'].values()) and all(v == 96 for v in out['natural_evaluations'].values())
+    out['complete'] = (all(v == sum(N_TIER.values()) for v in out['evaluations'].values())
+                       and all(v == N_NATURAL for v in out['natural_evaluations'].values()))
 
     def rung(cand):
         p = paired(tiered(ev, 1), cand, 'SAC_C'); g = gates(p)
@@ -249,13 +289,15 @@ def readout_b(root: Path, coordination: str = 'gov') -> dict:
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('cmd', choices=('screen', 'a', 'b'))
+    p.add_argument('cmd', choices=('screen', 'fixedcheck', 'a', 'b'))
     p.add_argument('--root', required=True); p.add_argument('--output', required=True)
     p.add_argument('--coordination', choices=('gov', 'cert')); p.add_argument('--a-decision')
     a = p.parse_args()
     root = Path(a.root)
     if a.cmd == 'screen':
         res = screen(root)
+    elif a.cmd == 'fixedcheck':
+        res = paired_fixed(root)
     elif a.cmd == 'a':
         res = readout_a(root)
     else:
@@ -264,7 +306,8 @@ def main():
             coord = json.loads(Path(a.a_decision).read_text(encoding='utf-8'))['b_coordination']
         res = readout_b(root, coord or 'gov')
     Path(a.output).write_text(json.dumps(res, indent=1, default=str), encoding='utf-8')
-    keys = {'screen': ('verdict', 'gates', 'gstar_n1', 'best_fixed_n1', 'oracle_fixed_n1', 'gstar_n3'),
+    keys = {'screen': ('verdict', 'gates', 'gstar_n1', 'best_fixed_n1', 'oracle_fixed_n1', 'gstar_n3', 'shortest_n1_gstar'),
+            'fixedcheck': ('pass', 'requirement', 'totals', 'pooled_realization', 'pooled_persistence'),
             'a': ('complete', 'criteria', 'mechanism_pass', 'governor_rejected', 'b_coordination'),
             'b': ('complete', 'final_method', 'final_config')}[a.cmd]
     print(json.dumps({k: res.get(k) for k in keys}, indent=1, default=str))

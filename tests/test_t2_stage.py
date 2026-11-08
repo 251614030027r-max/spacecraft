@@ -2207,7 +2207,7 @@ def test_ecc_final_round_registry_entry_and_readouts(tmp_path):
 
     def ep(op, tier, event, ret, gov=()):
         return {'opening': op, 'event': event, 'return': ret, 'time_s': 100.0, 'delta_v': 1.0,
-                'mission': {'tier': tier, 'urgent': tier < 3}, 'decisions': [{'t': 16.0 * (i + 1), 'mode': 'stage', 'gov': x} for i, x in enumerate(gov)]}
+                'mission': {'tier': tier, 'urgent': tier < 3, 'deadline_s': 150.0 + op % 7}, 'decisions': [{'t': 16.0 * (i + 1), 'mode': 'stage', 'gov': x} for i, x in enumerate(gov)]}
     # screen
     for pol, ok in (('gstar', 1.0), ('rally', 0.5), ('c_10_0', 0.5), ('c_10_-5', 0.0), ('c_6_5', 0.0), ('b_10', 0.0), ('pure', 0.0)):
         d = tmp_path / 'S' / pol; d.mkdir(parents=True)
@@ -2216,7 +2216,7 @@ def test_ecc_final_round_registry_entry_and_readouts(tmp_path):
             win = ok == 1.0 or (pol == 'rally' and i % 4 == 0) or (pol == 'c_10_0' and i % 4 == 1) or tier == 3
             (d / f'{pol}_{op}.json').write_text(json.dumps(ep(op, tier, 'success' if win else 'timeout', 50.0 if win else -130.0)))
     s = gr.screen(tmp_path)
-    assert s['gates']['F'] and s['gates']['D1'] and s['gates']['D2'] and s['verdict'] == 'pass'
+    assert s['gates'] == {'L1': True, 'L2': True, 'L3': True} and s['verdict'] == 'pass' and len(s['shortest_n1_gstar']) == 4
     # step A: a lost capture rejects the governor
     rep = {'status': 'replace', 'act': True, 't': 16.0, 'alt_t': 20.0, 'wall_s': 0.1}
     for mdl in ('EACH_C_s10', 'EACH_C_s11', 'SAC_C_s10', 'SAC_C_s11'):
@@ -2240,7 +2240,7 @@ def test_ecc_final_round_selection_order(tmp_path):
 
     def write(name, wins, natural=False):
         d = tmp_path / 'C' / (name + ('_natural' if natural else '')); d.mkdir(parents=True, exist_ok=True)
-        for op in range(294600, 294696):
+        for op in (range(295000, 295048) if natural else range(294800, 294992)):
             tier = (1, 1, 2, 3)[op % 4]
             ok = wins(op, tier)
             (d / f'x_{op}.json').write_text(json.dumps({'opening': op, 'event': 'success' if ok else 'timeout', 'return': 50.0 if ok else -130.0,
