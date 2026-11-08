@@ -2293,3 +2293,20 @@ def test_ecc_final_round_selection_order(tmp_path):
             write(f'ECC_GOV_s{s}', base if cond != 'natural' else (lambda op, urg: False), cond)    # in-loop: no gain, natural inferior
     r = gr.readout_b(tmp_path, 'gov')
     assert r['complete'] and not r['rung1_in_loop']['pass'] and r['rung2_deploy']['pass'] and r['final_method'] == 'deploy'
+
+
+def test_gov_b_accepts_the_registered_fallback_configuration(tmp_path):
+    """Step B chains on step A: ECC_CERT_LOOP (old certification in the loop) is the registered alternative of ECC_GOV in
+    gov_b; the completeness check accepts its evaluation directories in place of ECC_GOV's."""
+    import json
+    from experiments import final
+    st = final.registry()['protocol']['stages']['gov_b']
+    assert st['alternatives'] == {'ECC_GOV': 'ECC_CERT_LOOP'}
+    c = final.registry()['trained']['ECC_CERT_LOOP']
+    assert c['certify'] is True and c['obs'] == 'cut_priv' and c['arm'] == 'e_priv' and c.get('govern') is None
+    d = tmp_path / 'C' / 'ECC_CERT_LOOP_s10'; d.mkdir(parents=True)
+    (d / 'x_294800.json').write_text(json.dumps({'opening': 294800}))
+    rep = final.check('gov_b', tmp_path)
+    assert rep['evaluations']['ECC_CERT_LOOP_s10']['files'] == 1 and 'ECC_GOV_s10' not in rep['evaluations']
+    (tmp_path / 'B' / 'TRAIN_ECC_CERT_LOOP_s10').mkdir(parents=True)
+    assert 'TRAIN_ECC_CERT_LOOP_s10' in final.check('gov_b', tmp_path)['missing_runs']

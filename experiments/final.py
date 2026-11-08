@@ -91,7 +91,7 @@ def cmd_train(a):
     if a.smoke_steps is None:
         if a.seed not in st['seeds']:
             raise SystemExit(f'seed {a.seed} is not a {a.stage} seed {st["seeds"]}')
-        if a.config not in st['trained']:
+        if a.config not in st['trained'] and a.config not in (st.get('alternatives') or {}).values():
             raise SystemExit(f'{a.config} is not trained in the {a.stage} stage ({st["trained"]}); use --smoke-steps for a configuration check')
     steps = int(a.smoke_steps) if a.smoke_steps is not None else int(st['steps'])
     marks = [m for m in st['checkpoints'] if m < steps] if a.smoke_steps is None else [max(steps // 2, 1)]
@@ -379,14 +379,17 @@ def check(stage: str, root: Path) -> dict:
     """Completeness of a stage directory: every planned run finished, every evaluation / screen complete, no duplicates."""
     reg = registry(); st = stage_of(stage); n = len(block(st['eval_openings']))
     rep = {'stage': stage, 'missing_runs': [], 'unfinished_runs': [], 'evaluations': {}, 'screens': {}, 'errors': []}
-    for cfg in st['trained']:
+    for cfg0 in st['trained']:
+        alt = (st.get('alternatives') or {}).get(cfg0)        # registered fallback (gov_b: ECC_CERT_LOOP for ECC_GOV)
+        cfg = alt if (alt and not (root / 'B' / f'TRAIN_{cfg0}_s{st["seeds"][0]}').exists()
+                      and (root / 'B' / f'TRAIN_{alt}_s{st["seeds"][0]}').exists()) else cfg0
         for s in st['seeds']:
             d = root / 'B' / f'TRAIN_{cfg}_s{s}'
             if not (d / 'manifest.json').exists():
                 rep['missing_runs'].append(d.name)
             elif not (d / 'finished.json').exists():
                 rep['unfinished_runs'].append(d.name)
-            for tag in ('', '_rigid') if cfg in st.get('rigid_pair_trained', []) else ('',):
+            for tag in (('', '_rigid') if cfg in st.get('rigid_pair_trained', []) else ('',)) if 'evaluations' not in st else ():
                 e = root / 'C' / f'{cfg}_s{s}{tag}'
                 files = [f for f in e.glob('*.json')] if e.exists() else []
                 rep['evaluations'][f'{cfg}_s{s}{tag}'] = {'files': len(files), 'expected': n}
@@ -399,6 +402,9 @@ def check(stage: str, root: Path) -> dict:
             rep['evaluations'][f'{cfg}_s{s}{tag}'] = {'files': len(files), 'expected': n}
             rep['errors'] += [str(f) for f in files if f.name.startswith('ERROR_')]
     for name in st.get('evaluations', []):     # env 0.17.0 stages: every evaluation directory is listed in the registry
+        for k, alt in (st.get('alternatives') or {}).items():      # registered fallback configuration (gov_b: ECC_CERT_LOOP)
+            if name.startswith(k + '_') and not (root / 'C' / name).exists() and (root / 'C' / name.replace(k, alt, 1)).exists():
+                name = name.replace(k, alt, 1)
         e = root / 'C' / name
         files = [f for f in e.glob('*.json')] if e.exists() else []
         cond = next((c for c in (st.get('conditions') or {}) if name.endswith('_' + c)), 'urgent')
