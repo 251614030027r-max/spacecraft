@@ -9,13 +9,10 @@ gravity and J2, 0.1 s control). Current line: the **T2 staged approach**
 sweep speed; latitude regulated onto the port's sweep cone); a stage planner and
 a far-field tracking law fly it; when the port's pass is reachable a window-
 committed conditional G* plans the entry and the frozen MPC flies entry, descent
-and capture. **EACC** (executor-calibrated counterfactual coupling) is the
-training-time upward path: counterfactual labels for K = 8 candidate intents from
-the executor's own model (M1), anchored to the executed stage (M2), Cauchy-
-weighted (M3), entry outcomes by historical execution replay, two-stage labels
-(soft Retrace + one-step stage-2 rows), calibration shared by the workers, labels
-ending at the deadline / budget. Arms: `e_sac` (no model), `e_mve` (EACC on the engineered interface) and, current,
-`e_acc` (EACC-A on `reduced_priv`; see State).
+and capture. **Current method (2026-11-08): ECC** (execution-opportunity certificate coupling,
+`docs/final_method/ECC_SPEC.md`): one executor opportunity evaluation per decision feeds the critic certificate and a
+decision-time certification map; the pre-registered RUN_ECC order selected `ECC_deploy` (see the last State paragraph).
+The EACC / EACC-A counterfactual line below is history (DEAD_ENDS D39-D44).
 
 **State (2026-11-03):** env `t2-stage-0.9.0`, learner `t2-learner-3.0`, code `ec394ef`, 68 tests. T2.3-T2.8
 tied because the engineered observation already handed SAC the planner's answers (P4, `evidence/T2_8_P4_INFO_UPPER`).
@@ -96,6 +93,9 @@ full ECC only. User 11-08: optimise one final version before the formal runs; th
 Readouts: `experiments/u2_readout.py`, `experiments/cert_readout.py`, `experiments/ecc_readout.py`.
 
 ## Phase 2 ground rules (user 2026-11-03: consolidation and optimisation)
+
+*(Historical: the EACC-A baseline lock and three-group comparison were superseded by EACH (11-05) and ECC (11-08);
+the current state and open points are in collab `PROJECT_STATE.md` and HANDOFF section 0B.)*
 
 - **Baseline lock.** The working foundation is T2.11 EACC-A (`ec394ef`, `evidence/T2_11_EACCA`): on the development
   protocol (urgent U(140, 200) s, openings 294000-294047, two seeds x 2000, checkpoints 500-2000, `t28`) EACC-A AUC
