@@ -1,0 +1,106 @@
+{
+ "opening": 294414,
+ "event": "success",
+ "return": 77.41829849605098,
+ "time_s": 113.7,
+ "delta_v": 1.1211701503949019,
+ "stages": 3,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 5,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 188.6,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 45.23159956932068,
+ "decisions": [
+  {
+   "a": [
+    0.6,
+    0.5
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 15.151798686205515,
+   "planned_dv": 0.16880660379554613,
+   "executed_dv": 0.1688445347763481,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     0.6,
+     0.5
+    ],
+    "own_event": 0,
+    "own_t": 48.0,
+    "intervened": false
+   }
+  },
+  {
+   "a": [
+    0.6,
+    0.5
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.893835116246136,
+   "planned_dv": 0.12877866077763483,
+   "executed_dv": 0.12905160166321683,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     0.6,
+     0.5
+    ],
+    "own_event": 0,
+    "own_t": 48.0,
+    "intervened": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "alt_t": 24.0,
+    "alt_kind": "entry"
+   }
+  },
+  {
+   "a": [
+    0.6,
+    0.5
+   ],
+   "t": 113.7,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.064737980511918,
+   "planned_dv": 0.07657758267383848,
+   "executed_dv": 0.823274013955337,
+   "model": "off",
+   "event": "success",
+   "cert": {
+    "a": [
+     0.6,
+     0.5
+    ],
+    "own_event": 1,
+    "own_t": 8.0,
+    "intervened": false
+   }
+  }
+ ],
+ "coordination": "cert",
+ "cert_interventions": 1,
+ "gov_replacements": 0,
+ "gov_decisions": 0,
+ "gov_wall_s": 0,
+ "policy": "c_6_5_cert",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": []
+}

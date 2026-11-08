@@ -1,0 +1,223 @@
+{
+ "opening": 294443,
+ "event": "timeout",
+ "return": -141.5345345439502,
+ "time_s": 185.6,
+ "delta_v": 2.29745345439501,
+ "stages": 7,
+ "holds": 1,
+ "rejected": 0,
+ "bridge_attempts": 11,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 185.6,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 70.95869612693787,
+ "decisions": [
+  {
+   "a": [
+    1.0,
+    -0.5
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 11.185867591245733,
+   "planned_dv": 0.168806603868993,
+   "executed_dv": 0.1688006835593668,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     1.0,
+     -0.5
+    ],
+    "own_event": 0,
+    "own_t": 48.0,
+    "intervened": false
+   }
+  },
+  {
+   "a": [
+    1.0,
+    -0.5
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 8.851959688855613,
+   "planned_dv": 0.16880660382792315,
+   "executed_dv": 0.1685730321757681,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     1.0,
+     -0.5
+    ],
+    "own_event": 0,
+    "own_t": 48.0,
+    "intervened": true,
+    "a_exec": [
+     1.0,
+     1.0
+    ],
+    "alt_t": 46.0,
+    "alt_kind": "entry"
+   }
+  },
+  {
+   "a": [
+    1.0,
+    -0.5
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 6.87002781104386,
+   "planned_dv": 0.12388247182712293,
+   "executed_dv": 0.16094893827880458,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     1.0,
+     -0.5
+    ],
+    "own_event": 0,
+    "own_t": 48.0,
+    "intervened": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "alt_t": 44.0,
+    "alt_kind": "entry"
+   }
+  },
+  {
+   "a": [
+    1.0,
+    -0.5
+   ],
+   "t": 64.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.640082826417293,
+   "planned_dv": 0.08856153204814686,
+   "executed_dv": 0.24662319065946603,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     1.0,
+     -0.5
+    ],
+    "own_event": 0,
+    "own_t": 48.0,
+    "intervened": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "alt_t": 28.0,
+    "alt_kind": "entry"
+   }
+  },
+  {
+   "a": [
+    1.0,
+    -0.5
+   ],
+   "t": 122.0,
+   "mode": "hold",
+   "held": true,
+   "range_m": 8.345626283345728,
+   "planned_dv": 0.16880660394378627,
+   "executed_dv": 0.7554802981161141,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     1.0,
+     -0.5
+    ],
+    "own_event": 0,
+    "own_t": 48.0,
+    "intervened": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "alt_t": 14.0,
+    "alt_kind": "entry"
+   }
+  },
+  {
+   "a": [
+    1.0,
+    -0.5
+   ],
+   "t": 138.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.25373517704742,
+   "planned_dv": 0.13107409212666837,
+   "executed_dv": 0.12838453149082407,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     1.0,
+     -0.5
+    ],
+    "own_event": 1,
+    "own_t": 20.0,
+    "intervened": false
+   }
+  },
+  {
+   "a": [
+    1.0,
+    -0.5
+   ],
+   "t": 185.6,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.023448201333821,
+   "planned_dv": 0.15252332583543857,
+   "executed_dv": 0.6686427801146664,
+   "model": "off",
+   "event": "timeout",
+   "cert": {
+    "a": [
+     1.0,
+     -0.5
+    ],
+    "own_event": 1,
+    "own_t": 4.0,
+    "intervened": false
+   }
+  }
+ ],
+ "coordination": "cert",
+ "cert_interventions": 4,
+ "gov_replacements": 0,
+ "gov_decisions": 0,
+ "gov_wall_s": 0,
+ "policy": "c_10_-5_cert",
+ "window": true,
+ "entries_lost": 1,
+ "window_recoveries": [
+  {
+   "t": 104.0,
+   "slip_s": 0.0,
+   "reserve": true,
+   "phase_deg": 0.0
+  }
+ ]
+}
