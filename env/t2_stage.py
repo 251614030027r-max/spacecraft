@@ -706,6 +706,7 @@ class T2StageEnv(gym.Env):
         self.govern = None
         self.gov_prober = None
         self._incumbent = None
+        self._commit_t = None                  # env 0.17.0: the committed absolute event time of the critical opportunity
         if self.obs_profile in PROBE_PROFILES:
             from env.t2_probe import PROBE_DIM
             assert self.obs_dim == (OBS_DIM_PRIV if self.obs_profile == "reduced_priv_probe" else OBS_DIM) + PROBE_DIM
@@ -876,6 +877,7 @@ class T2StageEnv(gym.Env):
         self._opp = None
         self.gov_prober = None                 # env 0.17.0: and the governor's
         self._incumbent = None
+        self._commit_t = None
         self.return_true = 0.0
         self.stats = {"stages": 0, "holds": 0, "rejected": 0, "bridge_attempts": 0, "macro": None}
         return self.observation(), {"opening": opening, "mission": dict(self.mission)}
@@ -1490,8 +1492,9 @@ class T2StageEnv(gym.Env):
         cands = [np.asarray(b, np.float64) for b in PROBE_GRID] + ([np.asarray(self._incumbent, np.float64)] if self._incumbent is not None else [])
         rows = [pr.probe_intent(b, q, v, rot, omega, t0, dv0, self.mission, self.geometry, gate=True) for b in cands]
         adm = [(b, d) for b, d in zip(cands, rows) if d["admissible"]]
-        rec = {"t": t0, "a": [float(x) for x in a], "status": None, "critical": False, "n_admissible": len(adm), "act": self.govern == "act"}
-        a_exec = a
+        rec = {"t": t0, "a": [float(x) for x in a], "status": None, "critical": False, "n_admissible": len(adm), "act": self.govern == "act",
+               "commit_before": self._commit_t}
+        a_exec, commit = a, None
         if not adm:
             rec["status"] = "none"
         else:
@@ -1501,29 +1504,38 @@ class T2StageEnv(gym.Env):
             if not rec["critical"]:
                 rec["status"] = "not_critical"
             else:
+                bound = self._commit_t if self._commit_t is not None else float("inf")     # opportunity-time commitment
                 own = pr.probe_intent(a, q, v, rot, omega, t0, dv0, self.mission, self.geometry, gate=True)
                 rec.update(own_event=int(own["event"]), own_kind=own["kind"], own_t=float(own["t"]), own_admissible=bool(own["admissible"]))
-                destroys = True
-                if own["admissible"]:
-                    rec["status"] = "own"; destroys = False
-                elif "x1" in own:                       # no event in the first stage: the opportunity after one macro decision
+                if own["admissible"] and t0 + own["t"] <= bound + 1e-6:
+                    rec["status"] = "own"; commit = t0 + own["t"]
+                elif "x1" in own and not (own["event"] and own["t"] <= STAGE_S):   # no event in the first stage: after one macro decision
                     q1, v1, dv1 = own["x1"]
                     rot1 = rot @ so3_exp(STAGE_S * omega)
-                    order = [a] + sorted((np.asarray(b, np.float64) for b in PROBE_GRID), key=lambda b: float(np.linalg.norm(b - a)))
-                    for b in order:
+                    best_t, best_b = None, None
+                    for b in [a] + [np.asarray(x, np.float64) for x in PROBE_GRID]:
                         d1 = pr.probe_intent(b, q1, v1, rot1, omega, t0 + STAGE_S, dv0 + dv1, self.mission, self.geometry, gate=True)
-                        if d1["admissible"]:
-                            rec["status"] = "successor"; rec["successor_by"] = [float(x) for x in b]; destroys = False
-                            break
-                if destroys:
-                    best = min(adm, key=lambda bd: (float(np.linalg.norm(bd[0] - a)), float(bd[1]["t"])))
+                        if d1["admissible"] and (best_t is None or t0 + STAGE_S + d1["t"] < best_t):
+                            best_t, best_b = t0 + STAGE_S + d1["t"], b
+                    if best_t is not None and best_t <= bound + 1e-6:
+                        rec["status"] = "successor"; rec["successor_by"] = [float(x) for x in best_b]; rec["successor_t"] = best_t; commit = best_t
+                if rec["status"] is None:
+                    keep = [(b, d) for b, d in adm if t0 + d["t"] <= bound + 1e-6]
+                    rec["recommitted"] = not keep
+                    pool = keep or adm                  # truth drift: re-commit to the earliest still certified (no forced unconfirmed action)
+                    best = min(pool, key=lambda bd: (float(np.linalg.norm(bd[0] - a)), float(bd[1]["t"])))
                     rec.update(status="replace", alt=[float(x) for x in best[0]], alt_t=float(best[1]["t"]), alt_kind=best[1]["kind"],
                                alt_incumbent=bool(self._incumbent is not None and np.array_equal(best[0], np.asarray(self._incumbent, np.float64))))
+                    commit = t0 + float(best[1]["t"])
                     if self.govern == "act":
                         a_exec = best[0]
                         self.stats["gov_replacements"] = self.stats.get("gov_replacements", 0) + 1
                     else:
                         self.stats["gov_would_replace"] = self.stats.get("gov_would_replace", 0) + 1
+                        commit = self._commit_t         # monitor: the intent is flown; the commitment is not advanced by a judgement
+        if self.govern == "act" or rec["status"] != "replace":
+            self._commit_t = commit if rec["critical"] else None
+        rec["commit_after"] = self._commit_t
         rec["a_exec"] = [float(x) for x in a_exec]
         rec["wall_s"] = perf_counter() - started
         self.stats["gov_wall_s"] = self.stats.get("gov_wall_s", 0.0) + rec["wall_s"]

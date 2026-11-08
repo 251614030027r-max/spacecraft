@@ -2154,18 +2154,33 @@ def test_governor_rule_on_fabricated_executor_answers():
     assert r['status'] == 'own' and np.array_equal(x, a)
     env.gov_prober = Fake({(0.0, 0.0): (20.0, True)}, succ={(0.0, 0.0)}); x, r = env._govern(a)
     assert r['status'] == 'successor' and np.array_equal(x, a)                 # premature intervention removed
+    assert env._commit_t == T + 16.0 + 10.0                                    # the opportunity time is committed
+    env._commit_t = None
     env.gov_prober = Fake({(0.0, 0.0): (30.0, True), (1.0, 1.0): (10.0, True)}); x, r = env._govern(a)
     assert r['status'] == 'replace' and tuple(x) == (0.0, 0.0) and r['alt_t'] == 30.0     # nearest, not earliest
+    # commitment: a later own event than the committed time is a postponement -> the nearest candidate keeping the time
+    env._commit_t = T + 20.0
+    env.gov_prober = Fake({(0.0, 0.0): (30.0, True), (1.0, 1.0): (15.0, True), (0.4, 0.2): (25.0, True)}); x, r = env._govern(a)
+    assert r['status'] == 'replace' and tuple(x) == (1.0, 1.0) and env._commit_t == T + 15.0
+    env.gov_prober = Fake({(1.0, 1.0): (15.0, True), (0.4, 0.2): (12.0, True)}); x, r = env._govern(a)
+    assert r['status'] == 'own' and np.array_equal(x, a) and env._commit_t == T + 12.0     # advancing is allowed
+    env._commit_t = T + 5.0                                                    # truth drift: nothing keeps the time
+    env.gov_prober = Fake({(0.0, 0.0): (30.0, True)}); x, r = env._govern(a)
+    assert r['status'] == 'replace' and r['recommitted'] and tuple(x) == (0.0, 0.0) and env._commit_t == T + 30.0
+    env._commit_t = None
+    env._commit_t = None
     env.gov_prober = Fake({(1.0, 0.0): (20.0, True), (0.0, 1.0): (12.0, True)}); x, r = env._govern(np.array([0.5, 0.5]))
     assert tuple(x) == (0.0, 1.0)                                              # distance tie: the earlier event
+    env._commit_t = None
     env.gov_prober = Fake({(0.0, 0.0): (30.0, True), (0.4, 0.2): (8.0, False, 'descent')}); x, r = env._govern(a)
     assert r['status'] == 'replace' and tuple(x) == (0.0, 0.0)                 # an inadmissible switch in this step destroys
-    env.govern = 'monitor'
+    env.govern = 'monitor'; env._commit_t = None
     env.gov_prober = Fake({(0.0, 0.0): (30.0, True)}); x, r = env._govern(a)
     assert r['status'] == 'replace' and np.array_equal(x, a) and not r['act']
-    env.govern = 'act'; env._incumbent = np.array([0.4, 0.25])
+    env.govern = 'act'; env._incumbent = np.array([0.4, 0.25]); env._commit_t = None
     env.gov_prober = Fake({(0.0, 0.0): (30.0, True), (0.4, 0.25): (20.0, True)}); x, r = env._govern(a)
     assert r['status'] == 'replace' and tuple(x) == (0.4, 0.25) and r['alt_incumbent']
+    env._commit_t = None
     env.gov_prober = Fake({(0.0, 0.0): (30.0, True), (0.4, 0.25): (20.0, False)}); x, r = env._govern(a)
     assert tuple(x) == (0.0, 0.0)                                              # the incumbent is re-certified, not assumed
     assert len(PROBE_GRID) == 9
