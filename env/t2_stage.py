@@ -1519,10 +1519,13 @@ class T2StageEnv(gym.Env):
                             best_t, best_b = t0 + STAGE_S + d1["t"], b
                     if best_t is not None and best_t <= bound + 1e-6:
                         rec["status"] = "successor"; rec["successor_by"] = [float(x) for x in best_b]; rec["successor_t"] = best_t; commit = best_t
+                planned = [(b, d) for b, d in adm if d["kind"] == "entry"]   # replacements steer only into the planned entry mode
+                if rec["status"] is None and not planned:
+                    rec["status"] = "lost"              # no certified planned entry: the intent is flown (no forced unconfirmed action)
                 if rec["status"] is None:
-                    keep = [(b, d) for b, d in adm if t0 + d["t"] <= bound + 1e-6]
+                    keep = [(b, d) for b, d in planned if t0 + d["t"] <= bound + 1e-6]
                     rec["recommitted"] = not keep
-                    pool = keep or adm                  # truth drift: re-commit to the earliest still certified (no forced unconfirmed action)
+                    pool = keep or planned              # truth drift: re-commit to the earliest still certified (no forced unconfirmed action)
                     best = min(pool, key=lambda bd: (float(np.linalg.norm(bd[0] - a)), float(bd[1]["t"])))
                     rec.update(status="replace", alt=[float(x) for x in best[0]], alt_t=float(best[1]["t"]), alt_kind=best[1]["kind"],
                                alt_incumbent=bool(self._incumbent is not None and np.array_equal(best[0], np.asarray(self._incumbent, np.float64))))
@@ -1534,7 +1537,7 @@ class T2StageEnv(gym.Env):
                         self.stats["gov_would_replace"] = self.stats.get("gov_would_replace", 0) + 1
                         commit = self._commit_t         # monitor: the intent is flown; the commitment is not advanced by a judgement
         if self.govern == "act" or rec["status"] != "replace":
-            self._commit_t = commit if rec["critical"] else None
+            self._commit_t = commit if (rec["critical"] and commit is not None) else None
         rec["commit_after"] = self._commit_t
         rec["a_exec"] = [float(x) for x in a_exec]
         rec["wall_s"] = perf_counter() - started

@@ -2181,6 +2181,9 @@ def test_governor_rule_on_fabricated_executor_answers():
     env.gov_prober = Fake({(0.0, 0.0): (30.0, True), (0.4, 0.25): (20.0, True)}); x, r = env._govern(a)
     assert r['status'] == 'replace' and tuple(x) == (0.4, 0.25) and r['alt_incumbent']
     env._commit_t = None
+    env.gov_prober = Fake({(0.0, 0.0): (30.0, True, 'descent')}); x, r = env._govern(a)
+    assert r['status'] == 'lost' and np.array_equal(x, a)                      # replacements steer only into the planned entry
+    env._commit_t = None
     env.gov_prober = Fake({(0.0, 0.0): (30.0, True), (0.4, 0.25): (20.0, False)}); x, r = env._govern(a)
     assert tuple(x) == (0.0, 0.0)                                              # the incumbent is re-certified, not assumed
     assert len(PROBE_GRID) == 9

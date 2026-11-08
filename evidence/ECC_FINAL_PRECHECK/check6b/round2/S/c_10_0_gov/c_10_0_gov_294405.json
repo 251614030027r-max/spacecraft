@@ -1,0 +1,120 @@
+{
+ "opening": 294405,
+ "event": "success",
+ "return": 76.5009692525386,
+ "time_s": 122.6,
+ "delta_v": 1.123903074746141,
+ "stages": 2,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 1,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 192.3,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 48.248390436172485,
+ "decisions": [
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 13.025059006494654,
+   "planned_dv": 0.1688066038475669,
+   "executed_dv": 0.1688269623635578,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 2,
+    "act": true,
+    "commit_before": null,
+    "tau_min": 26.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 30.0,
+    "own_admissible": true,
+    "commit_after": 30.0,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.9204002730002685
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 122.6,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.117550506071177,
+   "planned_dv": 0.15624973139020687,
+   "executed_dv": 0.9550761123825832,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 16.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "replace",
+    "critical": true,
+    "n_admissible": 8,
+    "act": true,
+    "commit_before": 30.0,
+    "tau_min": 14.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 16.0,
+    "own_admissible": true,
+    "recommitted": false,
+    "alt": [
+     1.0,
+     1.0
+    ],
+    "alt_t": 14.0,
+    "alt_kind": "entry",
+    "alt_incumbent": false,
+    "commit_after": 30.0,
+    "a_exec": [
+     1.0,
+     1.0
+    ],
+    "wall_s": 1.1285179690003133
+   }
+  }
+ ],
+ "coordination": "gov",
+ "cert_interventions": 0,
+ "gov_replacements": 1,
+ "gov_decisions": 2,
+ "gov_wall_s": 2.048918242000582,
+ "policy": "c_10_0_gov",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 58.0,
+   "slip_s": 2.0,
+   "reserve": false,
+   "phase_deg": 4.364572631233258
+  }
+ ]
+}
