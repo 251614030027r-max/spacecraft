@@ -86,7 +86,7 @@ class ExecutorProbe:
                                   BRIDGE_TAUS_S, angle_deg)
         g = executor_gate(q, v, rotation, self.task, self.descent_radius_m)
         if g["descending"]:
-            return {"kind": "descent", "solves": 0}
+            return {"kind": "descent", "solves": 0, "margin": g["radial_margin_m_s"]}
         if g["range_m"] > BRIDGE_RANGE_M or g["radial_margin_m_s"] < BRIDGE_ENVELOPE_MARGIN_M_S:
             return None
         horizon = float(t_left_s) - BRIDGE_DEADLINE_MARGIN_S
@@ -104,7 +104,12 @@ class ExecutorProbe:
         return {"kind": None, "solves": solves} if solves else None
 
     # ------------------------------------------------------------------ one probe intent
-    def probe_intent(self, a, q0, v0, rot0, omega, t_abs0: float, dv0: float, mission: dict, geometry: bool) -> dict:
+    def probe_intent(self, a, q0, v0, rot0, omega, t_abs0: float, dv0: float, mission: dict, geometry: bool, gate: bool = False) -> dict:
+        """``gate`` (env 0.17.0, the ECC governor): an event is also judged admissible -- the lower mode's own takeover
+        conditions: an entry passes the executor's entry rule (range, braking envelope, arrival <= deadline - 45 s); a
+        descent needs the braking envelope margin >= BRIDGE_ENVELOPE_MARGIN_M_S at the switch state (the mouth region counts
+        as met, as in the executor's gate) and a switch no later than deadline - 45 s; both need delta-v used + planned
+        (stage and entry) <= budget. ``x1`` holds the predicted state after the first stage when no event occurs in it."""
         from env.t1_p_stage import plan_state
         from env.t2_stage import ENTRY_NODES_S, STAGE_S, spin_frame, stage_goal
         q, v = np.asarray(q0, float).copy(), np.asarray(v0, float).copy()
@@ -128,21 +133,35 @@ class ExecutorProbe:
                 else:
                     qs, vs = q, np.zeros(3)
                 if t_abs0 + t >= deadline - 1e-9:
-                    return {"event": 0, "kind": None, "t": max(deadline - t_abs0, 0.0), "dv": dv_used + cum, "end": "deadline", "solves": solves, "holds": holds}
+                    return {"event": 0, "kind": None, "t": max(deadline - t_abs0, 0.0), "dv": dv_used + cum, "end": "deadline", "solves": solves, "holds": holds,
+                            **({"admissible": False, **({"x1": x1} if k > 0 else {})} if gate else {})}
                 if dv0 + dv_used + cum >= budget:
-                    return {"event": 0, "kind": None, "t": t, "dv": dv_used + cum, "end": "budget", "solves": solves, "holds": holds}
+                    return {"event": 0, "kind": None, "t": t, "dv": dv_used + cum, "end": "budget", "solves": solves, "holds": holds,
+                            **({"admissible": False, **({"x1": x1} if k > 0 else {})} if gate else {})}
                 hit = self.entry_check(qs, vs, rot0 @ so3_exp(t * omega), omega, deadline - (t_abs0 + t))
                 if hit is not None:
                     solves += hit["solves"]
                     if hit["kind"] is not None:
-                        return {"event": 1, "kind": hit["kind"], "t": t, "dv": dv_used + cum, "tau": hit.get("tau"), "end": "event",
-                                "dv_entry": float(hit.get("dv_plan", 0.0)), "solves": solves, "holds": holds}
+                        out = {"event": 1, "kind": hit["kind"], "t": t, "dv": dv_used + cum, "tau": hit.get("tau"), "end": "event",
+                               "dv_entry": float(hit.get("dv_plan", 0.0)), "solves": solves, "holds": holds}
+                        if gate:
+                            from env.t2_stage import BRIDGE_DEADLINE_MARGIN_S, BRIDGE_ENVELOPE_MARGIN_M_S
+                            ok = dv0 + out["dv"] + out["dv_entry"] <= budget
+                            if hit["kind"] == "descent":
+                                ok = ok and hit["margin"] >= BRIDGE_ENVELOPE_MARGIN_M_S and t_abs0 + t <= deadline - BRIDGE_DEADLINE_MARGIN_S + 1e-9
+                            out["admissible"] = bool(ok)
+                            if k > 0:
+                                out["x1"] = x1
+                        return out
             if plan["feasible"]:
                 q, v = plan_state(plan, STAGE_S, self.mass)
                 dv_used += cum
             else:
                 v = np.zeros(3)
-        return {"event": 0, "kind": None, "t": PROBE_STAGES * STAGE_S, "dv": dv_used, "end": "horizon", "solves": solves, "holds": holds}
+            if k == 0 and gate:
+                x1 = (np.asarray(q, float).copy(), np.asarray(v, float).copy(), float(dv_used))
+        return {"event": 0, "kind": None, "t": PROBE_STAGES * STAGE_S, "dv": dv_used, "end": "horizon", "solves": solves, "holds": holds,
+                **({"admissible": False, "x1": x1} if gate else {})}
 
     # ------------------------------------------------------------------ the decision's probe vector
     def probe(self, env) -> tuple[np.ndarray, list[dict]]:

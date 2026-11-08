@@ -62,7 +62,7 @@ def run_episode(env, opening, act, record=None):
         obs, r, term, trunc, i = env.step(a); done = term or trunc; ret += i['true_reward']
         decisions.append({'a': np.asarray(a).tolist(), 't': i['time_s'], 'mode': i['mode'], 'held': i['held'], 'range_m': i['range_m'],
                           'planned_dv': i['planned_dv'], 'executed_dv': i['executed_dv'], 'model': (i.get('model') or {}).get('diag', {}).get('reason'), 'event': i['event'],
-                          **({'cert': i['cert']} if i.get('cert') is not None else {})})
+                          **({'cert': i['cert']} if i.get('cert') is not None else {}), **({'gov': i['gov']} if i.get('gov') is not None else {})})
     s = env.stats
     return {'opening': opening, 'event': i['event'], 'return': ret, 'time_s': env.env.time_s, 'delta_v': env.env._delta_v,
             'stages': s['stages'], 'holds': s['holds'], 'rejected': s['rejected'], 'bridge_attempts': s['bridge_attempts'],
@@ -83,8 +83,15 @@ def guarded(fn):
 
 
 def mission_profile(urgent):
-    """T2Mission with the urgent deadline range ``urgent`` = (lo, hi) s, or the standard one (None)."""
-    from env.t2_stage import T2Mission
+    """T2Mission with the urgent deadline range ``urgent`` = (lo, hi) s, or the standard one (None).
+    env 0.17.0: ``urgent`` = 'scarcity' / 'scarcity:strict' / 'scarcity:inside' -- the opportunity-scarcity condition
+    (``ScarcityMission``, ECC final round)."""
+    from env.t2_stage import ScarcityMission, T2Mission
+    if isinstance(urgent, str):
+        name, _, definition = urgent.partition(':')
+        if name != 'scarcity':
+            raise ValueError(urgent)
+        return ScarcityMission(definition=definition or 'base')
     return T2Mission() if urgent is None else T2Mission(urgent_deadline_s=(float(urgent[0]), float(urgent[1])))
 
 
@@ -145,13 +152,15 @@ def exec_config_of(checkpoint) -> dict:
     for m in (c.parent.parent / 'manifest.json', c.parent / 'manifest.json'):
         if m.exists():
             d = json.loads(m.read_text(encoding='utf-8'))
-            return {'window': bool(d.get('window', True)), 'geometry': bool(d.get('geometry', True)), 'certify': bool(d.get('certify', False))}
+            return {'window': bool(d.get('window', True)), 'geometry': bool(d.get('geometry', True)), 'certify': bool(d.get('certify', False)),
+                    'govern': d.get('govern')}
     raise FileNotFoundError(f'no manifest.json beside {checkpoint}')
 
 
 def eval_job(job):
     opening, checkpoint, label, out, window, urgent = job[:6]
     certify = job[6] if len(job) > 6 else False
+    govern = job[7] if len(job) > 7 else None      # env 0.17.0: None as trained; 'act' / 'monitor' / 'off' forced
     import torch; torch.set_num_threads(1)
     file = Path(out) / f'{label}_{opening}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
@@ -166,16 +175,22 @@ def eval_job(job):
     env.probe_live = False         # env 0.14.0: so are the U2 executor probes
     certify = cfg['certify'] if certify is None else bool(certify)    # None: as trained (env 0.16.0 ECC); True / False: forced
     env.certify = certify          # env 0.15.0: U2 decision-time certification (the executor checks the intent)
+    govern = cfg.get('govern') if govern is None else (None if govern == 'off' else govern)
+    if govern is not None and certify:
+        raise ValueError('the governor and the old certification are exclusive')
+    env.govern = govern            # env 0.17.0: the execution-opportunity governor ('act' / 'monitor')
     res = run_episode(env, opening, lambda e, o: model.predict(o, deterministic=True)[0])
     res['certify'] = certify; res['cert_interventions'] = env.stats.get('cert_interventions', 0)
+    res['govern'] = govern
+    res.update({k: env.stats.get(k, 0) for k in ('gov_replacements', 'gov_would_replace', 'gov_decisions', 'gov_wall_s')})
     res.update(policy=label, checkpoint=str(checkpoint), window=window, geometry=cfg['geometry'], entries_lost=env.stats.get('entries_lost', 0),
                window_recoveries=env.generator.bridge.recovery_log); dump(file, res); return res
 
 
-def evaluate(out, checkpoint, label, ops, workers, window=True, urgent=None, certify=False):
+def evaluate(out, checkpoint, label, ops, workers, window=True, urgent=None, certify=False, govern=None):
     out.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(workers) as pool:
-        for f in as_completed([pool.submit(guarded_eval, (o, checkpoint, label, str(out), window, urgent, certify)) for o in ops]):
+        for f in as_completed([pool.submit(guarded_eval, (o, checkpoint, label, str(out), window, urgent, certify, govern)) for o in ops]):
             r = f.result(); print(json.dumps({k: r.get(k) for k in STAGE_EVAL_KEYS}, default=str), flush=True)
 
 

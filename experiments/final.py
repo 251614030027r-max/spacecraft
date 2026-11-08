@@ -1,4 +1,5 @@
-"""Final experiments of EACH (U1 + C1): the only entry for the pretest and the formal experiments.
+"""Final experiments (EACH, ECC; env 0.17.0: the ECC final round, ``docs/final_method/ECC_FINAL_SPEC.md``): the only entry
+for the pretest, the development rounds and the formal experiments.
 
 Every configuration, opening block, seed list and budget comes from ``docs/final_method/METHOD_REGISTRY.json``; the
 historical arms (counterfactual labels, opportunity maps, actor feedback) cannot be launched from here.
@@ -47,6 +48,14 @@ def stage_of(name: str) -> dict:
     return s[name]
 
 
+def stage_mission(st: dict, natural: bool = False):
+    """env 0.17.0: a stage's mission -- 'scarcity[:definition]' (the opportunity-scarcity condition, ECC final round) or
+    the natural urgent-deadline range of the protocol (also with ``natural``)."""
+    if st.get('mission') and not natural:
+        return st['mission']
+    return tuple(registry()['protocol']['urgent_deadline_s'])
+
+
 def training_openings(seed: int) -> range:
     """Training openings of a seed (``train.t2_mve_sac.worker``: 1,000,000 (seed + 1) + 100,000 rank + episode)."""
     return range(1_000_000 * (seed + 1), 1_000_000 * (seed + 2))
@@ -80,7 +89,8 @@ def cmd_train(a):
     smoke = a.smoke_steps is not None or bool(st.get('smoke', False))       # dryrun stage: smoke learner settings
     train(out, c['arm'], int(a.seed), steps, int(a.workers or reg['protocol']['workers']), marks, smoke,
           updates_per_transition=float(reg['protocol']['updates_per_transition']), window=bool(c['window']),
-          urgent_deadline=tuple(reg['protocol']['urgent_deadline_s']), obs_profile=c['obs'], geometry=bool(c['geometry']), certify=bool(c.get('certify', False)),
+          urgent_deadline=stage_mission(st), obs_profile=c['obs'], geometry=bool(c['geometry']), certify=bool(c.get('certify', False)),
+          govern=c.get('govern'),
           manifest_extra={'final_config': a.config, 'final_stage': a.stage,
                           'final_registry_sha256': hashlib.sha256(REGISTRY.read_bytes()).hexdigest()})
     verify_manifest(json.loads((out / 'manifest.json').read_text(encoding='utf-8')), a.config)
@@ -94,6 +104,8 @@ def verify_manifest(m: dict, config: str) -> None:
     want.update({k: v for k, v in reg['main_switches'].items() if k in m})
     if bool(m.get('certify', False)) != bool(c.get('certify', False)):
         want['certify'] = bool(c.get('certify', False))
+    if m.get('govern') != c.get('govern'):
+        want['govern'] = c.get('govern')
     bad = {k: (m.get(k), v) for k, v in want.items() if m.get(k) != v}
     if m.get('k_candidates', 0) != 0 or (m.get('model_beta') or 0.0) != 0.0:
         bad['labels'] = (m.get('k_candidates'), m.get('model_beta'))
@@ -120,8 +132,10 @@ def cmd_eval(a):
     steps = int(m['steps'])
     ckpt = budget_checkpoint(run, steps)
     from experiments.t2 import evaluate
-    evaluate(Path(a.output), str(ckpt), a.label, ops, int(a.workers), False if a.rigid else None, tuple(reg['protocol']['urgent_deadline_s']),
-             certify=True if getattr(a, 'certify', False) else (False if getattr(a, 'no_certify', False) else None))
+    mission = stage_mission(st, natural=bool(getattr(a, 'natural', False)))
+    evaluate(Path(a.output), str(ckpt), a.label, ops, int(a.workers), False if a.rigid else None, mission,
+             certify=True if getattr(a, 'certify', False) else (False if getattr(a, 'no_certify', False) else None),
+             govern=getattr(a, 'govern', None))
 
 
 def cmd_screen(a):
@@ -135,7 +149,7 @@ def cmd_screen(a):
     if clash:
         raise SystemExit(f'screen openings overlap a reserved block: {sorted(clash)[:5]} ...')
     from experiments.t2 import screen
-    screen(Path(a.output), ops, [a.policy], int(a.workers), not a.rigid, tuple(reg['protocol']['urgent_deadline_s']))
+    screen(Path(a.output), ops, [a.policy], int(a.workers), not a.rigid, stage_mission(st, natural=bool(getattr(a, 'natural', False))))
 
 
 # ---------------------------------------------------------------------- trajectories (figure B)
@@ -369,6 +383,11 @@ def check(stage: str, root: Path) -> dict:
             files = [f for f in e.glob('*.json')] if e.exists() else []
             rep['evaluations'][f'{cfg}_s{s}{tag}'] = {'files': len(files), 'expected': n}
             rep['errors'] += [str(f) for f in files if f.name.startswith('ERROR_')]
+    for name in st.get('evaluations', []):     # env 0.17.0 stages: every evaluation directory is listed in the registry
+        e = root / 'C' / name
+        files = [f for f in e.glob('*.json')] if e.exists() else []
+        rep['evaluations'][name] = {'files': len(files), 'expected': n}
+        rep['errors'] += [str(f) for f in files if f.name.startswith('ERROR_')]
     for pol in st['fixed']:
         for tag in ('', '_rigid') if pol in st['window_pairs'] else ('',):
             e = root / 'S' / f'{pol}{tag}'
@@ -396,8 +415,11 @@ def main():
     e.add_argument('--output', required=True); e.add_argument('--rigid', action='store_true'); e.add_argument('--workers', type=int, default=4); e.add_argument('--openings')
     e.add_argument('--certify', action='store_true', help='env 0.15.0: U2 decision-time certification (the executor checks each intent)')
     e.add_argument('--no-certify', action='store_true', help='env 0.16.0: certification off for a run trained with it (paired ablation)')
+    e.add_argument('--govern', choices=('act', 'monitor', 'off'), help='env 0.17.0: the execution-opportunity governor (default: as trained)')
+    e.add_argument('--natural', action='store_true', help='env 0.17.0: the natural mission distribution instead of the stage mission')
     c = s.add_parser('screen'); c.add_argument('--stage', required=True); c.add_argument('--policy', required=True); c.add_argument('--output', required=True)
     c.add_argument('--rigid', action='store_true'); c.add_argument('--workers', type=int, default=4); c.add_argument('--openings')
+    c.add_argument('--natural', action='store_true')
     j = s.add_parser('traj'); j.add_argument('--entry', action='append', required=True); j.add_argument('--openings', required=True)
     j.add_argument('--output', required=True); j.add_argument('--rigid', action='store_true')
     g = s.add_parser('geoscan'); g.add_argument('--openings', required=True); g.add_argument('--output', required=True)

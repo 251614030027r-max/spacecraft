@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
 from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
 from env.t1_task import T1InitialDistribution
 
-T2_VERSION = "t2-stage-0.16.0"
+T2_VERSION = "t2-stage-0.17.0"
 STAGE_S = 16.0
 STAGE_NODES = 16
 PLAN_FORCE_N = 1.6
@@ -183,6 +183,72 @@ class T2Mission:
         return {"deadline_s": float(round(d, 1)), "urgent": urgent, "budget_m_s": self.budget_m_s,
                 "time_cost_per_s": self.urgent_time_cost_per_s if urgent else self.economy_time_cost_per_s,
                 "fuel_cost_per_m_s": self.urgent_fuel_cost_per_m_s if urgent else self.economy_fuel_cost_per_m_s}
+
+
+#: env 0.17.0 (ECC final round, ``docs/final_method/ECC_FINAL_SPEC.md`` section 6): opportunity-scarcity tiers by opening
+SCARCITY_TIER_CYCLE = (1, 1, 2, 3)          # opening mod 4 -> N catchable windows before the deadline
+SCARCITY_DEFINITIONS = ("base", "strict", "inside")   # base; the two pre-registered alternatives (used at most once)
+
+
+def opportunity_windows(q: np.ndarray, v: np.ndarray, rotation: np.ndarray, omega_body: np.ndarray, approach_axis: np.ndarray,
+                        horizon_s: float = 900.0) -> dict[str, Any]:
+    """Geometric window timetable of an initial state under the executor's constant-rate model (no policy, no learning):
+    pass times t_k = t_pass0 + k P of the port through the line-of-sight meridian, window half-width h = 35 deg / |omega|,
+    nominal approach time t_app (closing at the action box's 0.20 m/s to the 12 m entry range while the fixed latitude law
+    brings the latitude error inside 35 deg) and the earliest arrival t_app + 15 s."""
+    f = spin_frame(rotation, omega_body, q, approach_axis)
+    w = float(f["rate_rad_s"]); period = 2.0 * np.pi / max(w, 1e-9)
+    h = float(np.radians(BRIDGE_ANGLE_DEG) / max(w, 1e-9))
+    v_max = CLOSING_M_S[0] + CLOSING_M_S[1]
+    r, lat, t = float(f["r"]), float(f["lat_err_deg"]), 0.0
+    while t < horizon_s and not (r <= BRIDGE_RANGE_M + 1e-9 and abs(lat) <= BRIDGE_ANGLE_DEG):
+        dt = 0.5
+        v_l = float(np.clip(LAT_GAIN_PER_S * r * np.radians(lat), -LAT_SPEED_M_S, LAT_SPEED_M_S))
+        lat -= float(np.degrees(v_l * dt / max(r, 1e-6)))
+        r = max(BRIDGE_RANGE_M, r - v_max * dt)
+        t += dt
+    t_arr = t + min(BRIDGE_TAUS_S)
+    passes = [float(f["time_to_pass_s"]) + k * period for k in range(int(horizon_s / period) + 3)]
+    return {"passes": passes, "period": period, "half_width": h, "t_app": t, "t_arr": t_arr}
+
+
+@dataclass(frozen=True)
+class ScarcityMission(T2Mission):
+    """env 0.17.0: the opportunity-scarcity condition. Tier N by opening (``SCARCITY_TIER_CYCLE``); the deadline is built from
+    the opening's own geometric window timetable so that nominally exactly N windows are catchable:
+    T_d = 45 + c_N + h + u (P - 2 h) (``base``). Pre-registered alternatives: ``strict`` (a window counts only when it lies
+    wholly after the earliest arrival) and ``inside`` (the latest admissible arrival inside the first half of window N:
+    T_d = 45 + c_N - h + u h). N = 1, 2 carry the urgent costs, N = 3 the economy costs; budget 3 m/s."""
+
+    definition: str = "base"
+
+    def tier(self, opening: int) -> int:
+        return SCARCITY_TIER_CYCLE[int(opening) % len(SCARCITY_TIER_CYCLE)]
+
+    def sample(self, opening: int) -> dict[str, Any]:
+        from env.t1_task import sample_t1_initial_states
+        if self.definition not in SCARCITY_DEFINITIONS:
+            raise ValueError(self.definition)
+        cfg = t2_env_config()
+        target, chaser = sample_t1_initial_states(np.random.default_rng(int(opening)), cfg.initial, cfg.task)
+        q = chaser.position - target.position
+        v = chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
+        win = opportunity_windows(q, v, target.rotation, target.omega, cfg.task.approach_axis)
+        h, period = win["half_width"], win["period"]
+        if self.definition == "strict":
+            catch = [c for c in win["passes"] if c - h >= win["t_arr"] - 1e-9]
+        else:
+            catch = [c for c in win["passes"] if c + h >= win["t_arr"] - 1e-9]
+        n = self.tier(opening)
+        u = float(np.random.default_rng(np.random.SeedSequence([int(opening), 291108])).uniform())
+        c_n = catch[n - 1]
+        latest = c_n - h + u * h if self.definition == "inside" else c_n + h + u * max(period - 2.0 * h, 0.0)
+        urgent = n < 3
+        return {"deadline_s": float(round(BRIDGE_DEADLINE_MARGIN_S + latest, 1)), "urgent": urgent, "budget_m_s": self.budget_m_s,
+                "time_cost_per_s": self.urgent_time_cost_per_s if urgent else self.economy_time_cost_per_s,
+                "fuel_cost_per_m_s": self.urgent_fuel_cost_per_m_s if urgent else self.economy_fuel_cost_per_m_s,
+                "tier": n, "scarcity_definition": self.definition, "window_period_s": float(period), "window_half_width_s": float(h),
+                "t_arrival_s": float(win["t_arr"]), "catchable_windows_s": [float(x) for x in catch[:4]]}
 
 
 def t2_env_config(mission: T2Mission = T2Mission()) -> T1EnvConfig:
@@ -611,6 +677,10 @@ class T2StageEnv(gym.Env):
         self.certify = False
         self.cert_prober = None
         self._opp = None                       # env 0.16.0: the decision state's opportunity evaluation (shared)
+        #: env 0.17.0 (ECC final round, ``_govern``): None (off, every earlier path unchanged), 'act' or 'monitor'
+        self.govern = None
+        self.gov_prober = None
+        self._incumbent = None
         if self.obs_profile in PROBE_PROFILES:
             from env.t2_probe import PROBE_DIM
             assert self.obs_dim == (OBS_DIM_PRIV if self.obs_profile == "reduced_priv_probe" else OBS_DIM) + PROBE_DIM
@@ -779,6 +849,8 @@ class T2StageEnv(gym.Env):
         self.prober = None                     # env 0.14.0: the probe's planner instances are built per episode
         self.cert_prober = None                # env 0.15.0: so are the certification's
         self._opp = None
+        self.gov_prober = None                 # env 0.17.0: and the governor's
+        self._incumbent = None
         self.return_true = 0.0
         self.stats = {"stages": 0, "holds": 0, "rejected": 0, "bridge_attempts": 0, "macro": None}
         return self.observation(), {"opening": opening, "mission": dict(self.mission)}
@@ -1370,6 +1442,69 @@ class T2StageEnv(gym.Env):
         rec.update(intervened=True, a_exec=[float(x) for x in best[1]], alt_t=float(best[2]["t"]), alt_kind=best[2]["kind"])
         return np.asarray(best[1], np.float64), rec
 
+    # ---------------------------------------------------------------- env 0.17.0: execution-opportunity governor
+    def _govern(self, a: np.ndarray) -> tuple[np.ndarray, dict]:
+        """ECC final round (``docs/final_method/ECC_FINAL_SPEC.md`` section 3): the minimal-intervention execution-opportunity
+        governor G(x, a). The intent is flown unless the opportunity is critical, the intent triggers no admissible event,
+        and after flying it for one macro decision the executor's model finds no admissible event any more; then the
+        admissible candidate (3 x 3 probes and the incumbent, re-certified at the true state) nearest the intent is flown,
+        or -- with none -- the intent itself. 'monitor' computes the same and always flies the intent. A fixed function of
+        the state and the intent: no value, no history, no learning."""
+        from time import perf_counter
+        from env.t2_probe import PROBE_GRID, ExecutorProbe
+        started = perf_counter()
+        e = self.env
+        if self.gov_prober is None:
+            self.gov_prober = ExecutorProbe(self)
+        pr = self.gov_prober
+        q, v = relative_inertial(e); tg = e.target_state
+        rot, omega, t0, dv0 = tg.rotation.copy(), tg.omega.copy(), float(e.time_s), float(e._delta_v)
+        period = 2.0 * np.pi / max(float(np.linalg.norm(tg.rotation @ omega)), 1e-9)
+        latest = float(self.mission["deadline_s"]) - BRIDGE_DEADLINE_MARGIN_S
+        a = np.asarray(a, np.float64)
+        cands = [np.asarray(b, np.float64) for b in PROBE_GRID] + ([np.asarray(self._incumbent, np.float64)] if self._incumbent is not None else [])
+        rows = [pr.probe_intent(b, q, v, rot, omega, t0, dv0, self.mission, self.geometry, gate=True) for b in cands]
+        adm = [(b, d) for b, d in zip(cands, rows) if d["admissible"]]
+        rec = {"t": t0, "a": [float(x) for x in a], "status": None, "critical": False, "n_admissible": len(adm), "act": self.govern == "act"}
+        a_exec = a
+        if not adm:
+            rec["status"] = "none"
+        else:
+            tmin = min(d["t"] for _, d in adm)
+            rec["tau_min"] = float(tmin)
+            rec["critical"] = bool(t0 + tmin + period > latest)
+            if not rec["critical"]:
+                rec["status"] = "not_critical"
+            else:
+                own = pr.probe_intent(a, q, v, rot, omega, t0, dv0, self.mission, self.geometry, gate=True)
+                rec.update(own_event=int(own["event"]), own_kind=own["kind"], own_t=float(own["t"]), own_admissible=bool(own["admissible"]))
+                destroys = True
+                if own["admissible"]:
+                    rec["status"] = "own"; destroys = False
+                elif "x1" in own:                       # no event in the first stage: the opportunity after one macro decision
+                    q1, v1, dv1 = own["x1"]
+                    rot1 = rot @ so3_exp(STAGE_S * omega)
+                    order = [a] + sorted((np.asarray(b, np.float64) for b in PROBE_GRID), key=lambda b: float(np.linalg.norm(b - a)))
+                    for b in order:
+                        d1 = pr.probe_intent(b, q1, v1, rot1, omega, t0 + STAGE_S, dv0 + dv1, self.mission, self.geometry, gate=True)
+                        if d1["admissible"]:
+                            rec["status"] = "successor"; rec["successor_by"] = [float(x) for x in b]; destroys = False
+                            break
+                if destroys:
+                    best = min(adm, key=lambda bd: (float(np.linalg.norm(bd[0] - a)), float(bd[1]["t"])))
+                    rec.update(status="replace", alt=[float(x) for x in best[0]], alt_t=float(best[1]["t"]), alt_kind=best[1]["kind"],
+                               alt_incumbent=bool(self._incumbent is not None and np.array_equal(best[0], np.asarray(self._incumbent, np.float64))))
+                    if self.govern == "act":
+                        a_exec = best[0]
+                        self.stats["gov_replacements"] = self.stats.get("gov_replacements", 0) + 1
+                    else:
+                        self.stats["gov_would_replace"] = self.stats.get("gov_would_replace", 0) + 1
+        rec["a_exec"] = [float(x) for x in a_exec]
+        rec["wall_s"] = perf_counter() - started
+        self.stats["gov_wall_s"] = self.stats.get("gov_wall_s", 0.0) + rec["wall_s"]
+        self.stats["gov_decisions"] = self.stats.get("gov_decisions", 0) + 1
+        return a_exec, rec
+
     # ---------------------------------------------------------------- step
     def step(self, action):
         e, g, mass = self.env, self.generator, self.env.chaser_parameters.mass
@@ -1379,6 +1514,10 @@ class T2StageEnv(gym.Env):
         cert = None
         if self.certify and g.mode in ("stage", "hold"):    # env 0.15.0: the executor certifies the intent before it is flown
             a, cert = self._certify(a)
+        gov = None
+        if self.govern is not None and g.mode in ("stage", "hold"):    # env 0.17.0: the execution-opportunity governor
+            a, gov = self._govern(a)
+            self._incumbent = np.array(a, np.float64)
         pref = None
         if self.pref and self.entry_calibration.ready:      # T2.10 / T2.11: before the stage is flown (the decision's own state)
             # candidates: the grid, the executed intent and (T2.11) the policy's own deterministic intent at this decision
@@ -1464,7 +1603,7 @@ class T2StageEnv(gym.Env):
             self.stats["macro"] = g.mode
         info = {"event": event, "true_reward": reward, "stage_s": e.time_s - t0, "held": held, "mode": g.mode,
                 "plan_status": plan["status"], "rate_limited": goal["rate_limited"], "planned_dv": plan.get("delta_v_m_s"), "executed_dv": e._delta_v - dv0,
-                "model": model, "pref": pref, "cert": cert, "time_s": e.time_s, "delta_v": e._delta_v,
+                "model": model, "pref": pref, "cert": cert, **({"gov": gov} if gov is not None else {}), "time_s": e.time_s, "delta_v": e._delta_v,
                 "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission), "far_field_controls": self.far_field_controls}
         return self.observation(), float(shaped), terminated, truncated, info
 

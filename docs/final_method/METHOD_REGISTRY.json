@@ -224,6 +224,107 @@
      ]
     ],
     "note": "ECC development round (spec docs/final_method/ECC_SPEC.md): all configurations on the ECC interface, trained from zero; ECC also evaluated with certification off (paired), EACH_C also with deployment certification (pre-registered fallback). Decision order in experiments/ecc_readout.py"
+   },
+   "gov_screen": {
+    "steps": 0,
+    "seeds": [],
+    "checkpoints": [],
+    "eval_openings": "294400-294447",
+    "mission": "scarcity",
+    "trained": [],
+    "smoke_only": [],
+    "fixed": [
+     "gstar",
+     "rally",
+     "c_10_0",
+     "c_10_-5",
+     "c_6_5",
+     "b_10",
+     "pure"
+    ],
+    "window_pairs": [],
+    "rigid_pair_trained": [],
+    "note": "ECC final round step 0: one non-learning screen of the opportunity-scarcity condition (gates in ECC_FINAL_SPEC.md section 6; alternatives scarcity:strict / scarcity:inside used at most once)"
+   },
+   "gov_a": {
+    "steps": 2000,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [],
+    "eval_openings": "294500-294595",
+    "mission": "scarcity",
+    "trained": [],
+    "smoke_only": [],
+    "fixed": [],
+    "window_pairs": [],
+    "rigid_pair_trained": [],
+    "reused_from": "ecc",
+    "evaluations": [
+     "EACH_C_s10_monitor",
+     "EACH_C_s10_gov",
+     "EACH_C_s10_cert",
+     "EACH_C_s11_monitor",
+     "EACH_C_s11_gov",
+     "EACH_C_s11_cert",
+     "SAC_C_s10_monitor",
+     "SAC_C_s10_gov",
+     "SAC_C_s10_cert",
+     "SAC_C_s11_monitor",
+     "SAC_C_s11_gov",
+     "SAC_C_s11_cert"
+    ],
+    "note": "ECC final round step A (no training): RUN_ECC EACH_C / SAC_C models under the scarcity condition, monitor (= uncoordinated) / governor / old certification; criteria M1-M5 (experiments/gov_readout.py a)"
+   },
+   "gov_b": {
+    "steps": 3000,
+    "seeds": [
+     10,
+     11
+    ],
+    "checkpoints": [
+     1000,
+     2000
+    ],
+    "eval_openings": "294600-294695",
+    "mission": "scarcity",
+    "trained": [
+     "SAC_C",
+     "EACH_C",
+     "ECC_GOV"
+    ],
+    "smoke_only": [],
+    "fixed": [],
+    "window_pairs": [],
+    "rigid_pair_trained": [],
+    "evaluations": [
+     "SAC_C_s10",
+     "EACH_C_s10_monitor",
+     "EACH_C_s10_gov",
+     "EACH_C_s10_cert",
+     "ECC_GOV_s10",
+     "ECC_GOV_s10_monitor",
+     "SAC_C_s11",
+     "EACH_C_s11_monitor",
+     "EACH_C_s11_gov",
+     "EACH_C_s11_cert",
+     "ECC_GOV_s11",
+     "ECC_GOV_s11_monitor",
+     "SAC_C_s10_natural",
+     "EACH_C_s10_monitor_natural",
+     "EACH_C_s10_gov_natural",
+     "EACH_C_s10_cert_natural",
+     "ECC_GOV_s10_natural",
+     "ECC_GOV_s10_monitor_natural",
+     "SAC_C_s11_natural",
+     "EACH_C_s11_monitor_natural",
+     "EACH_C_s11_gov_natural",
+     "EACH_C_s11_cert_natural",
+     "ECC_GOV_s11_natural",
+     "ECC_GOV_s11_monitor_natural"
+    ],
+    "note": "ECC final round step B: SAC_C, EACH_C and the in-loop method (ECC_GOV; ECC_CERT_LOOP if step A rejects the governor) x seeds 10/11 x 3000 decisions from zero on the scarcity condition; selection order in experiments/gov_readout.py b"
    }
   },
   "figure_openings": "294200-294211",
@@ -358,6 +459,30 @@
    "critic_view": 58,
    "role": "main method: execution-opportunity certificate in the critic and certification map in training and deployment",
    "color": "#2a78d6"
+  },
+  "ECC_GOV": {
+   "display": "ECC (governor in the loop)",
+   "arm": "e_priv",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "ECC final round (ECC_GOV), ECC_FINAL_SPEC.md",
+   "color": "#c0392b",
+   "govern": "act"
+  },
+  "ECC_CERT_LOOP": {
+   "display": "ECC (old certification in the loop, cut_priv critic)",
+   "arm": "e_priv",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "ECC final round (ECC_CERT_LOOP), ECC_FINAL_SPEC.md",
+   "color": "#8e44ad",
+   "certify": true
   }
  },
  "fixed": {

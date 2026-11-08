@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
     import inspect, train.t2_mve_sac as t
     src = inspect.getsource(t.T2SAC._model_loss)
     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
-    assert t.LEARNER_VERSION == 't2-learner-7.2'
+    assert t.LEARNER_VERSION == 't2-learner-7.3'
 
 
 def test_v251_validation_decision_and_cli(tmp_path):
@@ -1894,7 +1894,7 @@ def test_final_entry_refuses_unregistered_runs_and_reads_the_executor_configurat
         fin.verify_manifest({**m, 'k_candidates': 8}, 'NO_GEOM')
     run = tmp_path / 'run'; (run / 'checkpoints').mkdir(parents=True)
     (run / 'manifest.json').write_text(json.dumps(m), encoding='utf-8')
-    assert exec_config_of(run / 'checkpoints' / 'step_2000.zip') == {'window': True, 'geometry': False, 'certify': False}
+    assert exec_config_of(run / 'checkpoints' / 'step_2000.zip') == {'window': True, 'geometry': False, 'certify': False, 'govern': None}
     assert set(fin.block('294100-294147')) & fin._forbidden_eval('pretest') == set()
     assert set(fin.block('300000-300095')) <= fin._forbidden_eval('pretest') and set(fin.block('294000-294047')) <= fin._forbidden_eval('formal')
     p = reg['protocol']['stages']
@@ -2067,3 +2067,166 @@ def test_ecc_interface_certificate_and_certification_map():
     # the resource condition of the certified set (a real evaluation): a budget already spent certifies nothing
     a._opp = None; a.cert_prober = None; a.mission = dict(a.mission, budget_m_s=float(a.env._delta_v))
     assert not any(d['certified'] for d in a._opportunity_eval()['rows'])
+
+
+# ---------------------------------------------------------------------- env 0.17.0: ECC final round
+def test_scarcity_mission_builds_the_deadline_from_the_opening_window_timetable():
+    """ECC_FINAL_SPEC section 6: tier by opening (mod 4 -> 1, 1, 2, 3); the latest admissible arrival lies after window N
+    ends and before window N + 1 opens (base); deterministic; urgent costs for N = 1, 2, economy for N = 3; the two
+    pre-registered alternatives change only the catchability rule / the deadline inside window N."""
+    from env.t2_stage import BRIDGE_DEADLINE_MARGIN_S, ScarcityMission, T2StageEnv
+    m = ScarcityMission()
+    for op in range(294400, 294412):
+        r = m.sample(op); assert r == m.sample(op) and r['tier'] == (1, 1, 2, 3)[op % 4]
+        c, h, P = r['catchable_windows_s'], r['window_half_width_s'], r['window_period_s']
+        latest = r['deadline_s'] - BRIDGE_DEADLINE_MARGIN_S
+        n = r['tier']
+        assert c[n - 1] + h - 0.06 <= latest <= c[n] - h + 0.06 and c[0] + h >= r['t_arrival_s'] - 1e-6
+        assert r['urgent'] == (n < 3) and r['time_cost_per_s'] == (0.10 if n < 3 else 0.02)
+        s = ScarcityMission(definition='strict').sample(op)
+        assert s['catchable_windows_s'][0] - h >= s['t_arrival_s'] - 1e-6
+        i = ScarcityMission(definition='inside').sample(op)
+        li = i['deadline_s'] - BRIDGE_DEADLINE_MARGIN_S
+        assert i['catchable_windows_s'][n - 1] - h - 0.06 <= li <= i['catchable_windows_s'][n - 1] + 0.06
+    env = T2StageEnv(openings=[294401], mission=m, obs_profile='cut_priv'); env.reset(options={'opening': 294401})
+    assert env.env.config.max_time_s == env.mission['deadline_s'] == m.sample(294401)['deadline_s']
+
+
+def test_gated_probe_keeps_the_ungated_answer_and_is_shift_consistent():
+    """The gate only adds the admissibility judgement (the ungated answer is unchanged); A2: the continuation of a probe
+    from its own one-stage prediction gives the same event 16 s earlier."""
+    from env.t2_probe import ExecutorProbe
+    from env.t2_stage import STAGE_S, T2StageEnv, relative_inertial, so3_exp
+    from experiments.t2 import mission_profile
+    env = T2StageEnv(openings=[294404], mission=mission_profile('scarcity'), obs_profile='cut_priv', shaping=False)
+    env.reset(options={'opening': 294404})
+    for _ in range(2):
+        env.step(np.array([1.0, 0.0]))
+    pr = ExecutorProbe(env); q, v = relative_inertial(env.env); tg = env.env.target_state
+    args = (q, v, tg.rotation.copy(), tg.omega.copy(), float(env.env.time_s), float(env.env._delta_v), env.mission, True)
+    found = 0
+    for b in ((1.0, 0.0), (1.0, -1.0), (1.0, 1.0), (0.0, 0.0)):
+        u = pr.probe_intent(np.array(b), *args); g = pr.probe_intent(np.array(b), *args, gate=True)
+        assert 'admissible' not in u and all(u[k] == g[k] for k in ('event', 'kind', 't', 'dv', 'end'))
+        if g['event'] and g['t'] > STAGE_S:
+            q1, v1, dv1 = g['x1']
+            g1 = pr.probe_intent(np.array(b), q1, v1, args[2] @ so3_exp(STAGE_S * args[3]), args[3], args[4] + STAGE_S, args[5] + dv1,
+                                 env.mission, True, gate=True)
+            assert g1['event'] == 1 and g1['kind'] == g['kind'] and abs(g1['t'] - (g['t'] - STAGE_S)) < 1e-6
+            found += 1
+    assert found >= 1
+
+
+def test_governor_rule_on_fabricated_executor_answers():
+    """ECC_FINAL_SPEC section 3: none / not_critical / own / successor keep the intent; replace flies the nearest admissible
+    candidate (ties: the earlier event) only when the intent has no admissible event and its one-step successor none;
+    monitor computes the same and flies the intent; the incumbent is a re-certified candidate; default off."""
+    from env.t2_probe import PROBE_GRID
+    from env.t2_stage import T2StageEnv
+    env = T2StageEnv(openings=[1000004], obs_profile='cut_priv'); env.reset(options={'opening': 1000004})
+    assert env.govern is None
+    T = float(env.env.time_s)
+
+    class Fake:
+        """events: intent -> (t, admissible) at the decision; succ: intents admissible from the successor."""
+        def __init__(self, events, succ=(), x1=True):
+            self.events, self.succ, self.x1 = events, set(succ), x1
+        def probe_intent(self, a, q, v, rot, om, t_abs, dv0, mission, geometry, gate=False):
+            key = tuple(np.round(np.asarray(a, float), 3))
+            if t_abs > T + 1.0:                  # a successor probe
+                ok = key in self.succ
+                return {'event': int(ok), 'kind': 'entry' if ok else None, 't': 10.0 if ok else 48.0, 'dv': 0.0, 'admissible': ok}
+            ev = self.events.get(key)
+            d = {'event': int(ev is not None), 'kind': None if ev is None else ev[2] if len(ev) > 2 else 'entry',
+                 't': 48.0 if ev is None else ev[0], 'dv': 0.0, 'admissible': bool(ev is not None and ev[1])}
+            if self.x1 and (ev is None or ev[0] > 16.0):
+                d['x1'] = (np.asarray(q), np.asarray(v), 0.0)
+            return d
+    critical = dict(env.mission, deadline_s=T + 100.0)       # latest 55 s ahead: a 20 s event + one period is too late
+    a = np.array([0.4, 0.2])
+    env.govern = 'act'
+    env.mission = dict(critical); env.gov_prober = Fake({}); x, r = env._govern(a)
+    assert r['status'] == 'none' and np.array_equal(x, a)
+    env.mission = dict(critical, deadline_s=T + 1000.0); env.gov_prober = Fake({(0.0, 0.0): (20.0, True)}); x, r = env._govern(a)
+    assert r['status'] == 'not_critical' and np.array_equal(x, a)
+    env.mission = dict(critical)
+    env.gov_prober = Fake({(0.0, 0.0): (20.0, True), (0.4, 0.2): (30.0, True)}); x, r = env._govern(a)
+    assert r['status'] == 'own' and np.array_equal(x, a)
+    env.gov_prober = Fake({(0.0, 0.0): (20.0, True)}, succ={(0.0, 0.0)}); x, r = env._govern(a)
+    assert r['status'] == 'successor' and np.array_equal(x, a)                 # premature intervention removed
+    env.gov_prober = Fake({(0.0, 0.0): (30.0, True), (1.0, 1.0): (10.0, True)}); x, r = env._govern(a)
+    assert r['status'] == 'replace' and tuple(x) == (0.0, 0.0) and r['alt_t'] == 30.0     # nearest, not earliest
+    env.gov_prober = Fake({(1.0, 0.0): (20.0, True), (0.0, 1.0): (12.0, True)}); x, r = env._govern(np.array([0.5, 0.5]))
+    assert tuple(x) == (0.0, 1.0)                                              # distance tie: the earlier event
+    env.gov_prober = Fake({(0.0, 0.0): (30.0, True), (0.4, 0.2): (8.0, False, 'descent')}); x, r = env._govern(a)
+    assert r['status'] == 'replace' and tuple(x) == (0.0, 0.0)                 # an inadmissible switch in this step destroys
+    env.govern = 'monitor'
+    env.gov_prober = Fake({(0.0, 0.0): (30.0, True)}); x, r = env._govern(a)
+    assert r['status'] == 'replace' and np.array_equal(x, a) and not r['act']
+    env.govern = 'act'; env._incumbent = np.array([0.4, 0.25])
+    env.gov_prober = Fake({(0.0, 0.0): (30.0, True), (0.4, 0.25): (20.0, True)}); x, r = env._govern(a)
+    assert r['status'] == 'replace' and tuple(x) == (0.4, 0.25) and r['alt_incumbent']
+    env.gov_prober = Fake({(0.0, 0.0): (30.0, True), (0.4, 0.25): (20.0, False)}); x, r = env._govern(a)
+    assert tuple(x) == (0.0, 0.0)                                              # the incumbent is re-certified, not assumed
+    assert len(PROBE_GRID) == 9
+
+
+def test_governor_monitor_leaves_the_trajectory_unchanged():
+    """Monitor mode (the uncoordinated reference of step A) flies exactly the episode the governor-off environment flies."""
+    from env.t2_stage import T2StageEnv
+    from experiments.t2 import mission_profile
+    runs = []
+    for mode in (None, 'monitor'):
+        env = T2StageEnv(openings=[294404], mission=mission_profile('scarcity'), obs_profile='cut_priv', shaping=False)
+        o, _ = env.reset(options={'opening': 294404}); env.govern = mode; rows = []
+        for _ in range(3):
+            o, r, term, trunc, info = env.step(np.array([0.8, -0.3])); rows.append((o.tobytes(), r, info['event'], info['time_s']))
+            if term or trunc:
+                break
+        runs.append(rows)
+        assert (info.get('gov') is not None) == (mode is not None)
+    assert runs[0] == runs[1]
+
+
+def test_ecc_final_round_registry_entry_and_readouts(tmp_path):
+    """Registry: ECC_GOV = EACH_C + governor in the loop; stages gov_screen / gov_a / gov_b with the scarcity mission;
+    readouts: screen gates, step A criteria (lost capture rejects the governor), step B selection order."""
+    import json
+    from experiments import final, gov_readout as gr
+    reg = final.registry()
+    g, c = reg['trained']['ECC_GOV'], reg['trained']['EACH_C']
+    assert g['govern'] == 'act' and all(g[k] == c[k] for k in ('arm', 'obs', 'window', 'geometry', 'actor_view', 'critic_view'))
+    st = reg['protocol']['stages']
+    assert st['gov_b']['steps'] == 3000 and st['gov_b']['mission'] == 'scarcity' and final.stage_mission(st['gov_b']) == 'scarcity'
+    assert final.stage_mission(st['gov_b'], natural=True) == tuple(reg['protocol']['urgent_deadline_s'])
+    m = {'arm': 'e_priv', 'obs_profile': 'cut_priv', 'window': True, 'geometry': True, 'actor_view': 24, 'critic_view': 48, 'govern': 'act'}
+    final.verify_manifest(m, 'ECC_GOV')
+    import pytest
+    with pytest.raises(SystemExit):
+        final.verify_manifest(dict(m, govern=None), 'ECC_GOV')
+
+    def ep(op, tier, event, ret, gov=()):
+        return {'opening': op, 'event': event, 'return': ret, 'time_s': 100.0, 'delta_v': 1.0,
+                'mission': {'tier': tier, 'urgent': tier < 3}, 'decisions': [{'t': 16.0 * (i + 1), 'mode': 'stage', 'gov': x} for i, x in enumerate(gov)]}
+    # screen
+    for pol, ok in (('gstar', 1.0), ('rally', 0.5), ('c_10_0', 0.5), ('c_10_-5', 0.0), ('c_6_5', 0.0), ('b_10', 0.0), ('pure', 0.0)):
+        d = tmp_path / 'S' / pol; d.mkdir(parents=True)
+        for i, op in enumerate(range(294400, 294408)):
+            tier = (1, 1, 2, 3)[op % 4]
+            win = ok == 1.0 or (pol == 'rally' and i % 4 == 0) or (pol == 'c_10_0' and i % 4 == 1) or tier == 3
+            (d / f'{pol}_{op}.json').write_text(json.dumps(ep(op, tier, 'success' if win else 'timeout', 50.0 if win else -130.0)))
+    s = gr.screen(tmp_path)
+    assert s['gates']['F'] and s['gates']['D1'] and s['gates']['D2'] and s['verdict'] == 'pass'
+    # step A: a lost capture rejects the governor
+    rep = {'status': 'replace', 'act': True, 't': 16.0, 'alt_t': 20.0, 'wall_s': 0.1}
+    for mdl in ('EACH_C_s10', 'EACH_C_s11', 'SAC_C_s10', 'SAC_C_s11'):
+        for mode in ('monitor', 'gov', 'cert'):
+            d = tmp_path / 'C' / f'{mdl}_{mode}'; d.mkdir(parents=True)
+            for op in range(294500, 294504):
+                tier = (1, 1, 2, 3)[op % 4]
+                win = (mode == 'gov' and op == 294500) or op == 294503 or (mode != 'gov' and mdl == 'SAC_C_s11' and op == 294501)
+                (d / f'x_{op}.json').write_text(json.dumps(ep(op, tier, 'success' if win else 'timeout', 50.0 if win else -130.0,
+                                                               [dict(rep, act=mode == 'gov')] if (tier == 1 and mode != 'cert') else [])))
+    ra = gr.readout_a(tmp_path)
+    assert not ra['criteria']['M2'] and ra['governor_rejected'] and ra['b_coordination'] == 'cert'
+    assert ra['tiers'][1]['destroy_rate'] == 1.0 and ra['tiers'][1]['realization'] == 0.0
