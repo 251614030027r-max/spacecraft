@@ -2230,3 +2230,27 @@ def test_ecc_final_round_registry_entry_and_readouts(tmp_path):
     ra = gr.readout_a(tmp_path)
     assert not ra['criteria']['M2'] and ra['governor_rejected'] and ra['b_coordination'] == 'cert'
     assert ra['tiers'][1]['destroy_rate'] == 1.0 and ra['tiers'][1]['realization'] == 0.0
+
+
+def test_ecc_final_round_selection_order(tmp_path):
+    """Step B (ECC_FINAL_SPEC section 7): the in-loop method is selected when it passes G1-G5 on the N1 tier against SAC_C
+    and is not inferior on the natural distribution; otherwise the deployment coordination; otherwise ECC_deploy."""
+    import json
+    from experiments import gov_readout as gr
+
+    def write(name, wins, natural=False):
+        d = tmp_path / 'C' / (name + ('_natural' if natural else '')); d.mkdir(parents=True, exist_ok=True)
+        for op in range(294600, 294696):
+            tier = (1, 1, 2, 3)[op % 4]
+            ok = wins(op, tier)
+            (d / f'x_{op}.json').write_text(json.dumps({'opening': op, 'event': 'success' if ok else 'timeout', 'return': 50.0 if ok else -130.0,
+                                                        'time_s': 100.0, 'delta_v': 1.0, 'mission': {'tier': tier, 'urgent': tier < 3}, 'decisions': []}))
+    base = lambda op, tier: tier > 1 or op % 8 == 0
+    better = lambda op, tier: tier > 1 or op % 8 in (0, 1, 4)
+    for s in (10, 11):
+        for nat in (False, True):
+            write(f'SAC_C_s{s}', base, nat); write(f'EACH_C_s{s}_monitor', base, nat); write(f'EACH_C_s{s}_cert', base, nat)
+            write(f'EACH_C_s{s}_gov', better, nat); write(f'ECC_GOV_s{s}_monitor', base, nat)
+            write(f'ECC_GOV_s{s}', base if not nat else (lambda op, tier: False), nat)    # in-loop: no gain, natural inferior
+    r = gr.readout_b(tmp_path, 'gov')
+    assert r['complete'] and not r['rung1_in_loop']['pass'] and r['rung2_deploy']['pass'] and r['final_method'] == 'deploy'
