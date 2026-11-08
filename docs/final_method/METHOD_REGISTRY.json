@@ -230,7 +230,7 @@
     "seeds": [],
     "checkpoints": [],
     "eval_openings": "294400-294447",
-    "mission": "scarcity:inside",
+    "mission": "urgent",
     "trained": [],
     "smoke_only": [],
     "fixed": [
@@ -244,7 +244,7 @@
     ],
     "window_pairs": [],
     "rigid_pair_trained": [],
-    "note": "ECC final round step 0: one non-learning screen of the opportunity-scarcity condition (gates in ECC_FINAL_SPEC.md section 6; alternatives scarcity:strict / scarcity:inside used at most once)",
+    "note": "ECC final round step 0: non-learning screens of the condition (ECC_FINAL_SPEC.md section 6); scarcity / scarcity:inside rejected; final condition: natural urgent deadlines U(140, 200)",
     "screen_history": [
      {
       "definition": "scarcity",
@@ -253,6 +253,10 @@
      {
       "definition": "scarcity:inside",
       "result": "L1 fail (N1: gstar 11/24; the 8 shortest deadlines 74-125 s all no_plan)"
+     },
+     {
+      "definition": "urgent (third and final: the natural urgent-deadline distribution, user 2026-11-08)",
+      "result": "pending"
      }
     ]
    },
@@ -264,7 +268,7 @@
     ],
     "checkpoints": [],
     "eval_openings": "294500-294595",
-    "mission": "scarcity",
+    "mission": "urgent",
     "trained": [],
     "smoke_only": [],
     "fixed": [],
@@ -283,9 +287,47 @@
      "SAC_C_s10_cert",
      "SAC_C_s11_monitor",
      "SAC_C_s11_gov",
-     "SAC_C_s11_cert"
+     "SAC_C_s11_cert",
+     "EACH_C_s10_monitor_economy",
+     "EACH_C_s10_gov_economy",
+     "EACH_C_s10_cert_economy",
+     "EACH_C_s11_monitor_economy",
+     "EACH_C_s11_gov_economy",
+     "EACH_C_s11_cert_economy",
+     "SAC_C_s10_monitor_economy",
+     "SAC_C_s10_gov_economy",
+     "SAC_C_s10_cert_economy",
+     "SAC_C_s11_monitor_economy",
+     "SAC_C_s11_gov_economy",
+     "SAC_C_s11_cert_economy",
+     "EACH_C_s10_monitor_natural",
+     "EACH_C_s10_gov_natural",
+     "EACH_C_s10_cert_natural",
+     "EACH_C_s11_monitor_natural",
+     "EACH_C_s11_gov_natural",
+     "EACH_C_s11_cert_natural",
+     "SAC_C_s10_monitor_natural",
+     "SAC_C_s10_gov_natural",
+     "SAC_C_s10_cert_natural",
+     "SAC_C_s11_monitor_natural",
+     "SAC_C_s11_gov_natural",
+     "SAC_C_s11_cert_natural"
     ],
-    "note": "ECC final round step A (no training): RUN_ECC EACH_C / SAC_C models under the scarcity condition, monitor (= uncoordinated) / governor / old certification; criteria M1-M5 (experiments/gov_readout.py a)"
+    "note": "ECC final round step A (no training): RUN_ECC EACH_C / SAC_C models, monitor (= uncoordinated) / governor / old certification, on urgent 96, economy 48, natural (1:1) 48; criteria M1-M5 (experiments/gov_readout.py a)",
+    "conditions": {
+     "urgent": {
+      "openings": "294500-294595",
+      "mission": "urgent"
+     },
+     "economy": {
+      "openings": "294600-294647",
+      "mission": "economy"
+     },
+     "natural": {
+      "openings": "294700-294747",
+      "mission": "natural"
+     }
+    }
    },
    "gov_b": {
     "steps": 3000,
@@ -297,8 +339,8 @@
      1000,
      2000
     ],
-    "eval_openings": "294600-294695",
-    "mission": "scarcity",
+    "eval_openings": "294800-294895",
+    "mission": "urgent_mix:0.75",
     "trained": [
      "SAC_C",
      "EACH_C",
@@ -321,6 +363,18 @@
      "EACH_C_s11_cert",
      "ECC_GOV_s11",
      "ECC_GOV_s11_monitor",
+     "SAC_C_s10_economy",
+     "EACH_C_s10_monitor_economy",
+     "EACH_C_s10_gov_economy",
+     "EACH_C_s10_cert_economy",
+     "ECC_GOV_s10_economy",
+     "ECC_GOV_s10_monitor_economy",
+     "SAC_C_s11_economy",
+     "EACH_C_s11_monitor_economy",
+     "EACH_C_s11_gov_economy",
+     "EACH_C_s11_cert_economy",
+     "ECC_GOV_s11_economy",
+     "ECC_GOV_s11_monitor_economy",
      "SAC_C_s10_natural",
      "EACH_C_s10_monitor_natural",
      "EACH_C_s10_gov_natural",
@@ -334,7 +388,21 @@
      "ECC_GOV_s11_natural",
      "ECC_GOV_s11_monitor_natural"
     ],
-    "note": "ECC final round step B: SAC_C, EACH_C and the in-loop method (ECC_GOV; ECC_CERT_LOOP if step A rejects the governor) x seeds 10/11 x 3000 decisions from zero on the scarcity condition; selection order in experiments/gov_readout.py b"
+    "note": "ECC final round step B: SAC_C, EACH_C and the in-loop method (ECC_GOV; ECC_CERT_LOOP if step A rejects the governor) x seeds 10/11 x 3000 decisions from zero, training missions urgent 3/4 / economy 1/4; evaluation urgent 96, economy 48, natural (1:1) 48; selection order in experiments/gov_readout.py b",
+    "conditions": {
+     "urgent": {
+      "openings": "294800-294895",
+      "mission": "urgent"
+     },
+     "economy": {
+      "openings": "294900-294947",
+      "mission": "economy"
+     },
+     "natural": {
+      "openings": "295000-295047",
+      "mission": "natural"
+     }
+    }
    }
   },
   "figure_openings": "294200-294211",

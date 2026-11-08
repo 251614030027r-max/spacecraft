@@ -86,12 +86,19 @@ def mission_profile(urgent):
     """T2Mission with the urgent deadline range ``urgent`` = (lo, hi) s, or the standard one (None).
     env 0.17.0: ``urgent`` = 'scarcity' / 'scarcity:strict' / 'scarcity:inside' -- the opportunity-scarcity condition
     (``ScarcityMission``, ECC final round)."""
-    from env.t2_stage import ScarcityMission, T2Mission
-    if isinstance(urgent, str):
-        name, _, definition = urgent.partition(':')
-        if name != 'scarcity':
-            raise ValueError(urgent)
-        return ScarcityMission(definition=definition or 'base')
+    from env.t2_stage import MixMission, ScarcityMission, T2Mission
+    if isinstance(urgent, str):          # env 0.17.0 condition names (deadline ranges: urgent U(140, 200), economy U(280, 340))
+        name, _, arg = urgent.partition(':')
+        rng = dict(urgent_deadline_s=(140.0, 200.0))
+        if name == 'scarcity':
+            return ScarcityMission(definition=arg or 'base', **rng)
+        if name == 'urgent_mix':
+            return MixMission(urgent_share=float(arg), **rng)
+        if name in ('urgent', 'economy'):
+            return MixMission(force=name, **rng)
+        if name == 'natural':
+            return T2Mission(**rng)
+        raise ValueError(urgent)
     return T2Mission() if urgent is None else T2Mission(urgent_deadline_s=(float(urgent[0]), float(urgent[1])))
 
 

@@ -48,12 +48,21 @@ def stage_of(name: str) -> dict:
     return s[name]
 
 
-def stage_mission(st: dict, natural: bool = False):
-    """env 0.17.0: a stage's mission -- 'scarcity[:definition]' (the opportunity-scarcity condition, ECC final round) or
-    the natural urgent-deadline range of the protocol (also with ``natural``)."""
+def stage_mission(st: dict, natural: bool = False, condition: str | None = None):
+    """env 0.17.0: the mission of a stage -- training: ``st['mission']`` (e.g. 'urgent_mix:0.75'); evaluation: the mission of
+    ``condition`` in ``st['conditions']`` ('urgent' / 'economy' / 'natural'); ``natural`` or no entry: the natural urgent-deadline
+    range of the protocol."""
+    if condition is not None and st.get('conditions'):
+        return st['conditions'][condition]['mission']
     if st.get('mission') and not natural:
         return st['mission']
     return tuple(registry()['protocol']['urgent_deadline_s'])
+
+
+def condition_openings(st: dict, condition: str | None) -> str:
+    if condition is not None and st.get('conditions'):
+        return st['conditions'][condition]['openings']
+    return st['eval_openings']
 
 
 def training_openings(seed: int) -> range:
@@ -68,6 +77,8 @@ def _forbidden_eval(stage: str) -> set:
     for k, v in p['stages'].items():
         if k != stage:
             bad |= set(block(v['eval_openings']))
+            for c in (v.get('conditions') or {}).values():
+                bad |= set(block(c['openings']))
     return bad
 
 
@@ -125,14 +136,17 @@ def cmd_eval(a):
     run = Path(a.run); m = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
     if m.get('final_config') not in reg['trained']:
         raise SystemExit(f'{run} was not trained through experiments.final')
-    ops = block(a.openings or st['eval_openings'])
+    cond = getattr(a, 'condition', None) or ('urgent' if st.get('conditions') else None)
+    if getattr(a, 'natural', False) and st.get('conditions'):
+        cond = 'natural'
+    ops = block(a.openings or condition_openings(st, cond))
     clash = set(ops) & _forbidden_eval(a.stage)
     if clash:
         raise SystemExit(f'evaluation openings overlap a reserved block: {sorted(clash)[:5]} ...')
     steps = int(m['steps'])
     ckpt = budget_checkpoint(run, steps)
     from experiments.t2 import evaluate
-    mission = stage_mission(st, natural=bool(getattr(a, 'natural', False)))
+    mission = stage_mission(st, natural=bool(getattr(a, 'natural', False)), condition=cond)
     evaluate(Path(a.output), str(ckpt), a.label, ops, int(a.workers), False if a.rigid else None, mission,
              certify=True if getattr(a, 'certify', False) else (False if getattr(a, 'no_certify', False) else None),
              govern=getattr(a, 'govern', None))
@@ -386,7 +400,9 @@ def check(stage: str, root: Path) -> dict:
     for name in st.get('evaluations', []):     # env 0.17.0 stages: every evaluation directory is listed in the registry
         e = root / 'C' / name
         files = [f for f in e.glob('*.json')] if e.exists() else []
-        rep['evaluations'][name] = {'files': len(files), 'expected': n}
+        cond = next((c for c in (st.get('conditions') or {}) if name.endswith('_' + c)), 'urgent')
+        expected = len(block(condition_openings(st, cond))) if st.get('conditions') else n
+        rep['evaluations'][name] = {'files': len(files), 'expected': expected}
         rep['errors'] += [str(f) for f in files if f.name.startswith('ERROR_')]
     for pol in st['fixed']:
         for tag in ('', '_rigid') if pol in st['window_pairs'] else ('',):
@@ -417,6 +433,7 @@ def main():
     e.add_argument('--no-certify', action='store_true', help='env 0.16.0: certification off for a run trained with it (paired ablation)')
     e.add_argument('--govern', choices=('act', 'monitor', 'off'), help='env 0.17.0: the execution-opportunity governor (default: as trained)')
     e.add_argument('--natural', action='store_true', help='env 0.17.0: the natural mission distribution instead of the stage mission')
+    e.add_argument('--condition', choices=('urgent', 'economy', 'natural'), help='env 0.17.0: evaluation condition of the stage (default urgent)')
     c = s.add_parser('screen'); c.add_argument('--stage', required=True); c.add_argument('--policy', required=True); c.add_argument('--output', required=True)
     c.add_argument('--rigid', action='store_true'); c.add_argument('--workers', type=int, default=4); c.add_argument('--openings')
     c.add_argument('--natural', action='store_true')

@@ -2188,69 +2188,90 @@ def test_governor_monitor_leaves_the_trajectory_unchanged():
     assert runs[0] == runs[1]
 
 
+def test_mix_mission_keeps_the_natural_deadlines():
+    """The chosen condition (ECC_FINAL_SPEC section 6): forced urgent / economy openings carry the deadline the natural mission
+    gives them; the training mix has the registered urgent share 3/4."""
+    from env.t2_stage import T2Mission
+    from experiments.t2 import mission_profile
+    nat = T2Mission(urgent_deadline_s=(140.0, 200.0))
+    for op in range(294100, 294130):
+        n = nat.sample(op)
+        assert mission_profile('natural').sample(op) == n
+        assert (mission_profile('urgent' if n['urgent'] else 'economy').sample(op) == n)
+        assert mission_profile('urgent').sample(op)['urgent'] and not mission_profile('economy').sample(op)['urgent']
+        assert 140.0 <= mission_profile('urgent').sample(op)['deadline_s'] <= 200.0
+    share = np.mean([mission_profile('urgent_mix:0.75').sample(o)['urgent'] for o in range(1_000_000, 1_002_000)])
+    assert abs(share - 0.75) < 0.03
+
+
 def test_ecc_final_round_registry_entry_and_readouts(tmp_path):
-    """Registry: ECC_GOV = EACH_C + governor in the loop; stages gov_screen / gov_a / gov_b with the scarcity mission;
-    readouts: screen gates, step A criteria (lost capture rejects the governor), step B selection order."""
+    """Registry: ECC_GOV = EACH_C + governor in the loop; stages with disjoint condition blocks; readouts: screen gates L1-L3,
+    step A criteria (a lost capture rejects the governor)."""
     import json
+    import pytest
     from experiments import final, gov_readout as gr
     reg = final.registry()
     g, c = reg['trained']['ECC_GOV'], reg['trained']['EACH_C']
     assert g['govern'] == 'act' and all(g[k] == c[k] for k in ('arm', 'obs', 'window', 'geometry', 'actor_view', 'critic_view'))
     st = reg['protocol']['stages']
-    assert st['gov_b']['steps'] == 3000 and st['gov_b']['mission'] == 'scarcity' and final.stage_mission(st['gov_b']) == 'scarcity'
-    assert final.stage_mission(st['gov_b'], natural=True) == tuple(reg['protocol']['urgent_deadline_s'])
+    assert st['gov_b']['steps'] == 3000 and final.stage_mission(st['gov_b']) == 'urgent_mix:0.75'
+    blocks = [st['gov_screen']['eval_openings']] + [v['openings'] for k in ('gov_a', 'gov_b') for v in st[k]['conditions'].values()]
+    sets = [set(final.block(b)) for b in blocks]
+    assert all(not (x & y) for i, x in enumerate(sets) for y in sets[i + 1:])
+    assert [len(final.block(st['gov_b']['conditions'][k]['openings'])) for k in ('urgent', 'economy', 'natural')] == [96, 48, 48]
     m = {'arm': 'e_priv', 'obs_profile': 'cut_priv', 'window': True, 'geometry': True, 'actor_view': 24, 'critic_view': 48, 'govern': 'act'}
     final.verify_manifest(m, 'ECC_GOV')
-    import pytest
     with pytest.raises(SystemExit):
         final.verify_manifest(dict(m, govern=None), 'ECC_GOV')
 
-    def ep(op, tier, event, ret, gov=()):
+    def ep(op, event, ret, urgent=True, gov=()):
         return {'opening': op, 'event': event, 'return': ret, 'time_s': 100.0, 'delta_v': 1.0,
-                'mission': {'tier': tier, 'urgent': tier < 3, 'deadline_s': 150.0 + op % 7}, 'decisions': [{'t': 16.0 * (i + 1), 'mode': 'stage', 'gov': x} for i, x in enumerate(gov)]}
-    # screen
-    for pol, ok in (('gstar', 1.0), ('rally', 0.5), ('c_10_0', 0.5), ('c_10_-5', 0.0), ('c_6_5', 0.0), ('b_10', 0.0), ('pure', 0.0)):
+                'mission': {'urgent': urgent, 'deadline_s': 150.0 + op % 50 if urgent else 300.0},
+                'decisions': [{'t': 16.0 * (i + 1), 'mode': 'stage', 'gov': x} for i, x in enumerate(gov)]}
+    for pol in ('gstar', 'rally', 'c_10_0', 'c_10_-5', 'c_6_5', 'b_10'):
         d = tmp_path / 'S' / pol; d.mkdir(parents=True)
         for i, op in enumerate(range(294400, 294408)):
-            tier = (1, 1, 2, 3)[op % 4]
-            win = ok == 1.0 or (pol == 'rally' and i % 4 == 0) or (pol == 'c_10_0' and i % 4 == 1) or tier == 3
-            (d / f'{pol}_{op}.json').write_text(json.dumps(ep(op, tier, 'success' if win else 'timeout', 50.0 if win else -130.0)))
-    s = gr.screen(tmp_path)
-    assert s['gates'] == {'L1': True, 'L2': True, 'L3': True} and s['verdict'] == 'pass' and len(s['shortest_n1_gstar']) == 4
-    # step A: a lost capture rejects the governor
-    rep = {'status': 'replace', 'act': True, 't': 16.0, 'alt_t': 20.0, 'wall_s': 0.1}
+            win = pol == 'gstar' or (pol == 'rally' and i % 2 == 0) or (pol == 'c_10_0' and i % 2 == 1)
+            (d / f'{pol}_{op}.json').write_text(json.dumps(ep(op, 'success' if win else 'timeout', 50.0 if win else -130.0)))
+    sc = gr.screen(tmp_path)
+    assert sc['gates'] == {'L1': True, 'L2': True, 'L3': True} and sc['verdict'] == 'pass' and len(sc['shortest_gstar']) == 6
+    rep = {'status': 'replace', 'critical': True, 'act': True, 't': 16.0, 'alt_t': 20.0, 'wall_s': 0.1}
     for mdl in ('EACH_C_s10', 'EACH_C_s11', 'SAC_C_s10', 'SAC_C_s11'):
         for mode in ('monitor', 'gov', 'cert'):
-            d = tmp_path / 'C' / f'{mdl}_{mode}'; d.mkdir(parents=True)
-            for op in range(294500, 294504):
-                tier = (1, 1, 2, 3)[op % 4]
-                win = (mode == 'gov' and op == 294500) or op == 294503 or (mode != 'gov' and mdl == 'SAC_C_s11' and op == 294501)
-                (d / f'x_{op}.json').write_text(json.dumps(ep(op, tier, 'success' if win else 'timeout', 50.0 if win else -130.0,
-                                                               [dict(rep, act=mode == 'gov')] if (tier == 1 and mode != 'cert') else [])))
+            for cond, sfx in (('urgent', ''), ('economy', '_economy'), ('natural', '_natural')):
+                d = tmp_path / 'C' / f'{mdl}_{mode}{sfx}'; d.mkdir(parents=True)
+                for op in range(294500, 294504):
+                    urg = cond != 'economy'
+                    win = (mode == 'gov' and op == 294500) or op == 294503 or (mode != 'gov' and mdl == 'SAC_C_s11' and op == 294501 and urg)
+                    (d / f'x_{op}.json').write_text(json.dumps(ep(op, 'success' if win else 'timeout', 50.0 if win else -130.0, urg,
+                                                                   [dict(rep, act=mode == 'gov')] if (urg and mode != 'cert') else [])))
     ra = gr.readout_a(tmp_path)
     assert not ra['criteria']['M2'] and ra['governor_rejected'] and ra['b_coordination'] == 'cert'
-    assert ra['tiers'][1]['destroy_rate'] == 1.0 and ra['tiers'][1]['realization'] == 0.0
+    assert ra['conditions']['urgent']['destroy_rate'] == 1.0 and ra['conditions']['urgent']['realization'] == 0.0
+    assert ra['conditions']['economy']['critical_gov']['replace_non_critical'] == 0
 
 
 def test_ecc_final_round_selection_order(tmp_path):
-    """Step B (ECC_FINAL_SPEC section 7): the in-loop method is selected when it passes G1-G5 on the N1 tier against SAC_C
-    and is not inferior on the natural distribution; otherwise the deployment coordination; otherwise ECC_deploy."""
+    """Step B (ECC_FINAL_SPEC section 7): the in-loop method is selected when it passes G1-G5 on the urgent pairs against SAC_C
+    and is not inferior on the natural 1:1 distribution; otherwise the deployment coordination; otherwise ECC_deploy."""
     import json
     from experiments import gov_readout as gr
 
-    def write(name, wins, natural=False):
-        d = tmp_path / 'C' / (name + ('_natural' if natural else '')); d.mkdir(parents=True, exist_ok=True)
-        for op in (range(295000, 295048) if natural else range(294800, 294992)):
-            tier = (1, 1, 2, 3)[op % 4]
-            ok = wins(op, tier)
+    def write(name, wins, cond):
+        sfx = {'urgent': '', 'economy': '_economy', 'natural': '_natural'}[cond]
+        rng = {'urgent': range(294800, 294896), 'economy': range(294900, 294948), 'natural': range(295000, 295048)}[cond]
+        d = tmp_path / 'C' / (name + sfx); d.mkdir(parents=True, exist_ok=True)
+        for op in rng:
+            urg = cond == 'urgent' or (cond == 'natural' and op % 2 == 0)
+            ok = wins(op, urg)
             (d / f'x_{op}.json').write_text(json.dumps({'opening': op, 'event': 'success' if ok else 'timeout', 'return': 50.0 if ok else -130.0,
-                                                        'time_s': 100.0, 'delta_v': 1.0, 'mission': {'tier': tier, 'urgent': tier < 3}, 'decisions': []}))
-    base = lambda op, tier: tier > 1 or op % 8 == 0
-    better = lambda op, tier: tier > 1 or op % 8 in (0, 1, 4)
+                                                        'time_s': 100.0, 'delta_v': 1.0, 'mission': {'urgent': urg, 'deadline_s': 150.0 if urg else 300.0}, 'decisions': []}))
+    base = lambda op, urg: not urg or op % 4 == 0
+    better = lambda op, urg: not urg or op % 4 in (0, 1, 2)
     for s in (10, 11):
-        for nat in (False, True):
-            write(f'SAC_C_s{s}', base, nat); write(f'EACH_C_s{s}_monitor', base, nat); write(f'EACH_C_s{s}_cert', base, nat)
-            write(f'EACH_C_s{s}_gov', better, nat); write(f'ECC_GOV_s{s}_monitor', base, nat)
-            write(f'ECC_GOV_s{s}', base if not nat else (lambda op, tier: False), nat)    # in-loop: no gain, natural inferior
+        for cond in ('urgent', 'economy', 'natural'):
+            write(f'SAC_C_s{s}', base, cond); write(f'EACH_C_s{s}_monitor', base, cond); write(f'EACH_C_s{s}_cert', base, cond)
+            write(f'EACH_C_s{s}_gov', better, cond); write(f'ECC_GOV_s{s}_monitor', base, cond)
+            write(f'ECC_GOV_s{s}', base if cond != 'natural' else (lambda op, urg: False), cond)    # in-loop: no gain, natural inferior
     r = gr.readout_b(tmp_path, 'gov')
     assert r['complete'] and not r['rung1_in_loop']['pass'] and r['rung2_deploy']['pass'] and r['final_method'] == 'deploy'

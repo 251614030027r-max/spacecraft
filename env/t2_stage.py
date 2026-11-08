@@ -251,6 +251,31 @@ class ScarcityMission(T2Mission):
                 "t_arrival_s": float(win["t_arr"]), "catchable_windows_s": [float(x) for x in catch[:4]]}
 
 
+@dataclass(frozen=True)
+class MixMission(T2Mission):
+    """env 0.17.0 (ECC final round, the chosen condition -- ``ECC_FINAL_SPEC.md`` section 6): the natural mission
+    distribution with the urgent share ``urgent_share`` (training: 3/4), or a forced type ``force`` = 'urgent' / 'economy'
+    (evaluation blocks). Deadlines are drawn exactly as ``T2Mission.sample`` draws them for the same opening (same seed, the
+    type draw consumed first), so a forced urgent opening has the deadline the natural mission gives it when urgent."""
+
+    urgent_share: float = 0.5
+    force: str | None = None
+
+    def sample(self, opening: int) -> dict[str, Any]:
+        rng = np.random.default_rng(np.random.SeedSequence([int(opening), 290021]))
+        natural_urgent = bool(rng.integers(0, 2))
+        if self.force is not None:
+            urgent = self.force == "urgent"
+        elif self.urgent_share == 0.5:
+            urgent = natural_urgent
+        else:
+            urgent = bool(np.random.default_rng(np.random.SeedSequence([int(opening), 291109])).uniform() < self.urgent_share)
+        d = rng.uniform(*(self.urgent_deadline_s if urgent else self.economy_deadline_s))
+        return {"deadline_s": float(round(d, 1)), "urgent": urgent, "budget_m_s": self.budget_m_s,
+                "time_cost_per_s": self.urgent_time_cost_per_s if urgent else self.economy_time_cost_per_s,
+                "fuel_cost_per_m_s": self.urgent_fuel_cost_per_m_s if urgent else self.economy_fuel_cost_per_m_s}
+
+
 def t2_env_config(mission: T2Mission = T2Mission()) -> T1EnvConfig:
     base = T1EnvConfig()
     initial = replace(T1InitialDistribution(), range_m=(12.0, 16.0), inertial_speed_max_m_s=0.05)
