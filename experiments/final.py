@@ -163,7 +163,8 @@ def cmd_screen(a):
     if clash:
         raise SystemExit(f'screen openings overlap a reserved block: {sorted(clash)[:5]} ...')
     from experiments.t2 import screen
-    screen(Path(a.output), ops, [a.policy], int(a.workers), not a.rigid, stage_mission(st, natural=bool(getattr(a, 'natural', False))))
+    screen(Path(a.output), ops, [a.policy], int(a.workers), not a.rigid, stage_mission(st, natural=bool(getattr(a, 'natural', False))),
+           coord=getattr(a, 'coordination', None))
 
 
 # ---------------------------------------------------------------------- trajectories (figure B)
@@ -437,6 +438,7 @@ def main():
     c = s.add_parser('screen'); c.add_argument('--stage', required=True); c.add_argument('--policy', required=True); c.add_argument('--output', required=True)
     c.add_argument('--rigid', action='store_true'); c.add_argument('--workers', type=int, default=4); c.add_argument('--openings')
     c.add_argument('--natural', action='store_true')
+    c.add_argument('--coordination', choices=('cert', 'gov'), help='env 0.17.0 (section 6B): the old certification or the governor on a fixed stage policy')
     j = s.add_parser('traj'); j.add_argument('--entry', action='append', required=True); j.add_argument('--openings', required=True)
     j.add_argument('--output', required=True); j.add_argument('--rigid', action='store_true')
     g = s.add_parser('geoscan'); g.add_argument('--openings', required=True); g.add_argument('--output', required=True)

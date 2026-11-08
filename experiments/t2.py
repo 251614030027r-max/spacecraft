@@ -77,6 +77,8 @@ def guarded(fn):
         except Exception as error:  # noqa: BLE001 -- recorded, not swallowed
             import traceback
             opening, name, out = job[0], (job[1] if fn is screen_job else job[2]), (job[2] if fn is screen_job else job[3])
+            if fn is screen_job and len(job) > 5 and job[5]:
+                name = f'{name}_{job[5]}'
             res = {'opening': opening, 'policy_or_label': name, 'event': 'error', 'error': repr(error), 'traceback': traceback.format_exc()}
             dump(Path(out) / f'ERROR_{name}_{opening}.json', res); return res
     return run
@@ -103,12 +105,18 @@ def mission_profile(urgent):
 
 
 def screen_job(job):
-    opening, policy, out, window, urgent = job
+    opening, policy, out, window, urgent = job[:5]
+    coord = job[5] if len(job) > 5 else None      # env 0.17.0 (ECC final round 6B): None / 'cert' / 'gov' for a fixed stage policy
+    tag = f'{policy}_{coord}' if coord else policy
     import torch; torch.set_num_threads(1)
-    file = Path(out) / f'{policy}_{opening}.json'
+    file = Path(out) / f'{tag}_{opening}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
     from env.t2_stage import T2StageEnv
     env = T2StageEnv(openings=[opening], shaping=False, geometry=not policy.startswith('b_'), window=window, mission=mission_profile(urgent))
+    if coord is not None and policy in ('pure', 'gstar'):
+        raise ValueError('coordination applies to stage policies only')
+    env.certify = coord == 'cert'
+    env.govern = 'act' if coord == 'gov' else None
     if policy == 'pure':
         # paper baseline: the shared MPC alone (fixed terminal set-point, no stage layer, no G*), same
         # mission, deadline, weights, budget and truth judge
@@ -130,15 +138,18 @@ def screen_job(job):
                'stages': env.stats['stages'], 'holds': env.stats['holds'], 'rejected': env.stats['rejected'], 'mission': env.mission, 'wall_s': time.time() - t0}
     else:
         res = run_episode(env, opening, lambda e, o: policy_action(policy, e, o))
-    res['policy'] = policy; res['window'] = window; res['entries_lost'] = env.stats.get('entries_lost', 0) if env.stats else 0
+        if coord is not None:
+            res['coordination'] = coord; res['cert_interventions'] = env.stats.get('cert_interventions', 0)
+            res.update({k: env.stats.get(k, 0) for k in ('gov_replacements', 'gov_decisions', 'gov_wall_s')})
+    res['policy'] = tag; res['window'] = window; res['entries_lost'] = env.stats.get('entries_lost', 0) if env.stats else 0
     res['window_recoveries'] = env.generator.bridge.recovery_log if env.generator is not None else []
     dump(file, res); return res
 
 
-def screen(out, ops, policies, workers, window=True, urgent=None):
+def screen(out, ops, policies, workers, window=True, urgent=None, coord=None):
     out.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(workers) as pool:
-        for f in as_completed([pool.submit(guarded_screen, (o, p, str(out), window, urgent)) for p in policies for o in ops]):
+        for f in as_completed([pool.submit(guarded_screen, (o, p, str(out), window, urgent, coord)) for p in policies for o in ops]):
             r = f.result(); print(json.dumps({k: r.get(k) for k in STAGE_EVAL_KEYS}, default=str), flush=True)
 
 
