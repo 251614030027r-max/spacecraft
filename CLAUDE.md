@@ -78,6 +78,22 @@ experiments essentially converged; RUN_FORMAL (draft) not authorised; the paper'
 transferable execution-feedback mechanism (C1 the task contribution) -- a further design step on how feedback is
 built / filtered / used, avoiding long-term value ranking of unexecuted candidates, is for the research layer's new
 window (not in git until an authorised run order); upper and lower windows unchanged until the experiments end.
+**U2 -> U2C -> ECC (2026-11-06 to 11-08; env 0.16.0, learner 7.2, 106 tests, science `cc1a0954`, collab `7467923d`):**
+RUN_U2: the executor mode probe (`env/t2_probe.py`, 9 fixed intents x 48 s, the executor's own entry rule and G*) as a
+critic input -- offline A1-A5 pass (`evidence/U2_PROBE_PRECHECK`), training `no_gain` (PROBE - SAC +1.34; DEAD_ENDS
+D44). RUN_U2C: the same probe certifies the intent at decision time (binding pass, own intent misses, a probe catches ->
+nearest certified probe; `T2StageEnv._certify`), pretest models, no training: EACH+cert vs SAC +23.3 `pass`, same-model
+`no_effect` (+6.3 / +5.5). RUN_ECC (`docs/final_method/ECC_SPEC.md`): one opportunity evaluation per decision
+(`_opportunity_eval`) feeds the critic certificate (`opportunity_certificate`, profile `cut_ecc`) and the certification
+map (with a resource condition); interface `cut_priv` / `cut_ecc` drops planner answers and the executor's internal
+execution state (residuals, hold) from the decision layer for all configurations; registry SAC_C / EACH_C / ECC, stage
+`ecc`. Pre-registered order selected **`ECC_deploy`** (EACH_C trained, certification at deployment): vs SAC_C +12.2,
+84/78 captures, seeds +1.5 / +23.0, 0 unsafe, G1-G5 pass; full ECC (certification in training, action-level certificate
+in the critic) +5.7, 1 unsafe (a descent-kind certification at 294334), not passed; same-model certification on EACH_C
+'improved' (+8.5 / +4.0, +3 captures, 0 lost); EACH_C alone vs SAC_C +5.9 (seed 10 -7.1). Open: thin margin, descent-kind
+certification safety (DEAD_ENDS O7), full ECC curves vs final models (O6), P1 (train-deploy consistency) holds for the
+full ECC only. User 11-08: optimise one final version before the formal runs; the three windows restart for the wrap-up.
+Readouts: `experiments/u2_readout.py`, `experiments/cert_readout.py`, `experiments/ecc_readout.py`.
 
 ## Phase 2 ground rules (user 2026-11-03: consolidation and optimisation)
 
@@ -265,7 +281,7 @@ T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_2
 
 | Purpose | Entry |
 |---|---|
-| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (100 since the final entry; judge by the exit code) |
+| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (106 since ECC; judge by the exit code) |
 | Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
 | Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve,e_acc} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI] [--obs reduced_priv]` (EACC-A: `--arm e_acc --obs reduced_priv`; its SAC baseline: `--arm e_sac --obs reduced_priv`; T2.12 EACC `--arm e_rel --obs reduced_priv`, ablation `--arm e_priv --obs reduced_priv`; learner 5.0 `--arm e_term` / `e_term2 --obs reduced_priv`; learner 6.0 `--arm e_pi` / `e_pit --obs reduced_priv`) |
 | Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` (the interface is read from the run's manifest) |
