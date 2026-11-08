@@ -1,30 +1,30 @@
-# 项目当前状态（2026-11-06）
+# 项目当前状态（2026-11-08）
 
-*先读 [HANDOFF.md](HANDOFF.md)（第 0A 节是 11-06 速读）与 [研究演进](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md)（阶段 32–36）。本文件只记事实：正在运行什么、东西在哪里、哪些已完成、哪些未完成。由上层维护；下层现场状态见 `CURRENT.json`。*
+*先读 [HANDOFF.md](HANDOFF.md)（第 0B 节是 11-08 速读）与 [研究演进](RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md)（阶段 32–39）。本文件只记事实：正在运行什么、最近完成什么、东西在哪里、还有什么没做。*
 
 ## 1. 当前状态
 
 | 项 | 状态 |
 |---|---|
-| 运行中 | 下层：[RUN_ECC](upper/run_orders/RUN_ECC.md)（ECC 开发轮，3 组 × 2 种子 × 2000，统一信息边界、从零训练，约 15 小时；转发即下发）。RUN_U2C 已交付：EACH+认证 对 SAC `pass`（+23.3），同模型认证 `no_effect`（EACH +6.3、SAC +5.5），按登记触发保底（collab `a60b0d8c`，科学 `bcab9207`） |
-| 最终方法 | **EACH = U1 + C1**（代码 arm `e_priv`），研究层 11-05 定稿、用户批准冻结；与 T2.12 `e_priv`（`2e7d838`）逐位等价。材料：科学分支 `docs/final_method/`；唯一实验入口 `experiments/final.py`，注册表 `docs/final_method/METHOD_REGISTRY.json` |
-| 预实验结果（48 个新开局 × 2 种子 × 2000 决策） | 捕获：EACH 90/96、SAC 80/96、SAC + 规划特征 85/96、等宽 critic（无 U1）76/96、无 C1 几何 41/96；纯 MPC 29/48（unsafe 11）、直接 G★ 45/48。平均真实回报：EACH 45.7、SAC 27.5、SAC + 规划特征 35.7、等宽 critic 15.1、无几何 −54.2、G★ 50.1。窗口承诺：EACH 刚性 → 窗口，入口丢失 50 → 1、35 → 1。学习方法 unsafe 全为 0。证据 `evidence/final_pretest/TABLES.json` |
-| 预实验需正视的点 | 直接 G★ 与 EACH 打平略好（G★ 不是论文基线，但须在论文中定位）；EACH 对 SAC 的逐开局中位差约 0，均值优势来自 7 个只有 EACH 能捕获的开局；训练曲线 AUC 差距小于开发期（EACH 12.8 / 16.8，SAC −4.9 / 12.7）；只有 2 个种子 |
-| 正式实验 | [RUN_FORMAL](upper/run_orders/RUN_FORMAL.md) 草案，**未授权**：6 组 × 3 种子（20–22）× 5000 决策，评估开局 300000–300095；按实测约 87 h 训练 + 12 h 评估 |
-| 主机制拔高（11-06 定） | 研究层与用户批准 **U2 执行器模式探询**为唯一新增方向，只做一次完整验证：在真实决策状态，用 3 × 3 固定探测意图询问冻结执行器 3 段内是否切换到入口 / 下降模式、多久、多少 Δv（27 维），只作训练期 critic 输入；不估价值、不排序、不用本轮校准。实现：科学 `0c4b97ec`（`env/t2_probe.py`，env 0.14.0，learner 7.1），读出与判据 `e7acaa34`（104 项测试）；EACH、SAC 训练路径与 `fd789126` 逐位一致。阶段 A 全量（384 回合、2448 个决策）：规则一致 0 / 665,178 次检查不一致、确定性 666 / 666、有信息状态 55.6%、开销 6.4%、与真实执行平衡准确率 0.918；只报告：下一段模式切换预测 AUC 观测 + U2 0.98、观测 + U1 0.87 |
-| 汇报稿 | 用户按已落实的 EACH 讲；汇报图 `evidence/ppt_dev/`（开发期），出图计划 [PPT_FIGURES](upper/run_orders/PPT_FIGURES.md) |
-| 窗口分工 | 用户 11-06：上层与下层窗口不变，直到实验收尾；研究层另开新窗口讨论主机制拔高 |
-| 最新科学提交 | `e7acaa34`（U2 冻结，104 项测试）；预实验交付 `56841a04`；EACH 方法冻结 `fd789126` |
+| 运行中 | 无。RUN_ECC 已交付（科学 `cc1a0954`，collab `7467923d`），下层计划任务已停用 |
+| 现行方法 | **ECC（执行机会证书耦合）**，规格见科学 `docs/final_method/ECC_SPEC.md`。RUN_ECC 按事先登记的判定顺序选中 **`ECC_deploy`**：critic 读过顶层证书（原 U1），部署时执行器认证意图（原 U2 探询）；决策层统一去掉规划答案与执行内部状态 |
+| RUN_ECC 结果（新开局 294320–294367，2 种子 × 2000，96 对，对 SAC_C） | **EACH_C + 部署认证：+12.2，捕获 84 / 78，种子 +1.5 / +23.0，去掉每种子最大两个正差后 +3.8，0 unsafe，G1–G5 全过**。<br>完整 ECC（认证在环、动作层证书进 critic）：+5.7，81 / 78，1 次 unsafe，未过。<br>EACH_C（不认证）：+5.9，种子 −7.1 / +18.9。<br>同模型认证（EACH_C 开 / 关）：+6.3，两种子 +8.5 / +4.0，捕获 +3，0 丢失，"改善"档。<br>训练曲线 AUC：ECC 26.3 / 23.2，EACH_C 5.8 / 14.3，SAC_C 13.2 / −10.7 |
+| 需正视的点 | ① 通过幅度偏薄（种子 10 只有 +1.5，中位差约 0，靠 8 比 2 的捕获翻转）；<br>② 完整 ECC 的认证在 294334 引发 1 次 unsafe（"下降"类认证），而认证救回的捕获大多也来自"下降"类；<br>③ 训练与部署一致（ECC 规格性质 P1）只对完整 ECC 成立，选中的 `ECC_deploy` 训练时未开认证；<br>④ 动作层证书进 critic 的增益没有在最终评估中体现；<br>⑤ 只有 2 个种子 |
+| 下一阶段（用户 11-08） | 正式实验前再统筹优化一版最终方法；三窗口重开收尾：先完整阅读、统筹优化方法，再计划正式实验 |
+| 正式实验 | 未授权。[RUN_FORMAL](upper/run_orders/RUN_FORMAL.md) 与注册表 `formal` 阶段仍是 EACH 时期的 6 组，需按最终方法重写 |
+| 汇报稿 | 开发期汇报图 `evidence/ppt_dev/`（EACH 时期），出图计划 [PPT_FIGURES](upper/run_orders/PPT_FIGURES.md) |
+| 最新科学提交 | `f2fd0c8e`（文档）；ECC 冻结 `1cddbae2`（106 项测试）；RUN_ECC 交付 `cc1a0954` |
 
 ### 执行书记录（T2.12 起）
 
 | 状态 | 执行书 |
 |---|---|
-| 用户 11-07 批准（研究层"ECC 最终统筹意见"），最快推进；转发即下发 | [RUN_ECC](upper/run_orders/RUN_ECC.md)：ECC（执行机会证书耦合：一个执行机会评估同时给出 critic 证书与认证映射，训练与部署一致）。SAC_C、EACH_C、ECC × 种子 10、11 × 2000，决策层统一去掉规划答案与执行内部状态；评估新开局 294320–294367，另评 ECC 认证关闭与 EACH_C 部署认证；判定顺序 ECC → 部署认证 ECC → none（`experiments/ecc_readout.py`）；冻结科学 `1cddbae2`（106 项测试）；规格 `docs/final_method/ECC_SPEC.md` |
+| 已交付（collab `7467923d`，科学 `cc1a0954`） | [RUN_ECC](upper/run_orders/RUN_ECC.md)：`final_method = ECC_deploy`（见第 1 节） |
+| 已下发并交付（11-07 – 11-08） | [RUN_ECC](upper/run_orders/RUN_ECC.md)：ECC（执行机会证书耦合：一个执行机会评估同时给出 critic 证书与认证映射，训练与部署一致）。SAC_C、EACH_C、ECC × 种子 10、11 × 2000，决策层统一去掉规划答案与执行内部状态；评估新开局 294320–294367，另评 ECC 认证关闭与 EACH_C 部署认证；判定顺序 ECC → 部署认证 ECC → none（`experiments/ecc_readout.py`）；冻结科学 `1cddbae2`（106 项测试）；规格 `docs/final_method/ECC_SPEC.md` |
 | 已交付（collab `a60b0d8c`，科学 `bcab9207`） | [RUN_U2C](upper/run_orders/RUN_U2C.md)：主比较 `pass`，同模型认证 `no_effect` |
-| 用户 11-07 批准，最快推进；转发即下发 | [RUN_U2C](upper/run_orders/RUN_U2C.md)：U2 探询改为决策时认证（SAC 意图赶不上过顶、探测意图能赶上、且过顶约束成立时，改执行最近的认证意图）。预实验 EACH、SAC 模型在新开局 294220–294267 上认证开 / 关配对，不训练；主判据 EACH+认证 对 SAC（G1–G5），同模型分档 pass / improved / no_effect；冻结科学 `28a40799`。保底（两同模型比较都 no_effect）：统一信息边界后重训，已登记于 `docs/final_method/U2_CERT_SPEC.md` 第 4 节 |
+| 已交付（collab `a60b0d8c`） | [RUN_U2C](upper/run_orders/RUN_U2C.md)：U2 探询改为决策时认证（SAC 意图赶不上过顶、探测意图能赶上、且过顶约束成立时，改执行最近的认证意图）。预实验 EACH、SAC 模型在新开局 294220–294267 上认证开 / 关配对，不训练；主判据 EACH+认证 对 SAC（G1–G5），同模型分档 pass / improved / no_effect；冻结科学 `28a40799`。保底（两同模型比较都 no_effect）：统一信息边界后重训，已登记于 `docs/final_method/U2_CERT_SPEC.md` 第 4 节 |
 | 已交付（collab `93657249`，科学 `83bc7f6a`） | [RUN_U2](upper/run_orders/RUN_U2.md)：主判定 `no_gain`，次要 `kept`；U2 作为 critic 输入按规则结束 |
-| 用户 11-06 同意由下层执行；转发即下发 | [RUN_U2](upper/run_orders/RUN_U2.md)：`PROBE`（U2 替代 U1）与 `EACH_PROBE`（U1 + U2）各种子 10、11 × 2000；复用预实验 EACH、SAC 模型；评估新开局 294148–294195；主判据 PROBE 对 SAC（G1–G5，种子与开局配对）；冻结科学 `e7acaa34`；与阶段 A 并行，A 未过则作废 |
+| 已交付（collab `93657249`） | [RUN_U2](upper/run_orders/RUN_U2.md)：`PROBE`（U2 替代 U1）与 `EACH_PROBE`（U1 + U2）各种子 10、11 × 2000；复用预实验 EACH、SAC 模型；评估新开局 294148–294195；主判据 PROBE 对 SAC（G1–G5，种子与开局配对）；冻结科学 `e7acaa34`；与阶段 A 并行，A 未过则作废 |
 | 已下发（2026-11-03） | [ASSETS_20261103](upper/run_orders/ASSETS_20261103.md)：下层本机资产整理与核验（不训练、不改代码） |
 | 已下发（2026-11-03，重新启动） | [T2_12_EACC_20261104](upper/run_orders/T2_12_EACC_20261104.md)：EACC（执行锚定的相对反事实价值学习；候选按执行器阶段目标间隔、共同随机数；训练代码 `0de3dd4`）与消融组（特权 critic、无反事实反馈）各两种子 × 3000 步，用户给 12 小时；判定在 2000 步预算上与 T2.11 比较，3000 步 final 另报；SAC 与 EACC-A 复用 T2.11。第一次启动停在测试门槛（Windows 77 passed / 1 failed，科学 `0190faf`），上层复核为测试写法问题，冻结改为科学 `2e7d838`（只改该测试，78 项）。用户 11-03 已指示推进 |
 | 已批准（2026-11-04，用户） | [T2_12_STOP2000_20261104](upper/run_orders/T2_12_STOP2000_20261104.md)：T2.12 在四条都到 2000 步时检查，`e_rel` 的 1500–2000 步真实回报若未追到 `e_priv` − 8.3 以内就停训，评 2000 步、收尾交付，数据全留 |
@@ -40,6 +40,9 @@
 
 | 工作 | 结论 | 证据 |
 |---|---|---|
+| RUN_ECC（`1cddbae2` → `cc1a0954`；ECC 开发轮：SAC_C、EACH_C、ECC × 2 种子 × 2000，统一信息边界；评估 294320–294367，另评 ECC 认证关闭与 EACH_C 部署认证） | `final_method = ECC_deploy`（+12.2，G1–G5 全过）；完整 ECC 未过（+5.7，1 次 unsafe）；同模型认证"改善"档 | `evidence/ECC_DEV/`、`ECC_PRECHECK/` |
+| RUN_U2C（`28a40799` → `bcab9207`；U2 探询改为决策时认证；预实验 EACH、SAC 模型配对评估，不训练） | EACH + 认证 对 SAC `pass`（+23.3）；同模型 `no_effect`（EACH +6.3、SAC +5.5，种子 11 约为 0） | `evidence/U2C/`、`U2C_PRECHECK/` |
+| RUN_U2（`e7acaa34` → `83bc7f6a`；U2 执行器模式探询作训练期 critic 输入；离线 A1–A5 先过） | 主判定 `no_gain`（PROBE − SAC +1.34），次要 `kept`；同批 EACH − SAC +10.6 | `evidence/U2_PROBE_PRECHECK/`、`U2_TRAIN/` |
 | 预实验（下层，冻结 `fd789126`，5 组 × 种子 10、11 × 2000，评估 294100–294147） | 有效性六项全过；EACH 捕获 90/96 对 SAC 80/96，回报 45.7 对 27.5；等宽 critic 15.1，无几何 −54.2；窗口配对入口丢失 85 → 2；G★ 50.1 | 科学 `56841a04`，`evidence/final_pretest/`；collab `79497f85`，`lower/handoffs/final_pretest/RESULT.md` |
 | 方法冻结与收尾工具（上层，`d1523ce`、`fd789126`） | EACH = U1 + C1；与 `2e7d838` 环境层、训练层、新入口三处逐位等价；沙箱全流程 dryrun 完整 | `docs/final_method/`、`evidence/final_pretest/precheck/` |
 | T2.17 + T2.19 联合复核（下层） | 反事实 / 动作级 / 机会图路线全部未过 `e_priv`；按预登记规则回到 U1 + C1 | collab `lower/handoffs/review_t217_t219_20261105/` |
@@ -124,8 +127,9 @@
 
 | 项 | 前提 |
 |---|---|
-| 主机制（执行反馈）拔高 | 研究层新窗口讨论（用户 11-06）；方案经用户批准后，由上层设计、先做不训练的真值门槛，再短验证 |
-| 正式实验（`RUN_FORMAL`） | 用户单独授权；授权前定好直接 G★ 的论文定位与预算（5000 × 3，分批） |
+| 最终方法统筹优化一版（用户 11-08） | 三窗口重开后进行；需面对第 1 节"需正视的点"①–⑤；方案经用户批准后再落实 |
+| 方法文档更新 | 科学 `docs/final_method/` 中 EACH 时期的文件（METHOD_MINIMAL、METHOD_SPEC 的 U1 部分、ABLATION_MATRIX、FIGURE_SPEC、CONFIG_LOCK）按最终方法重写 |
+| 正式实验（`RUN_FORMAL`） | 按最终方法与新接口重写执行书和注册表 `formal` 阶段；用户单独授权；授权前定好直接 G★ 的论文定位与预算 |
 | 汇报稿 2.9 节奖励与实现的差异 | 写论文时按实现写（势函数为到 24 s 后口部位置的距离） |
 | `registry`、`GIT_ASSETS` 的 T2 段 | 上层补齐 |
 | 正式块 300000–999999 的评估 | 未授权 |
