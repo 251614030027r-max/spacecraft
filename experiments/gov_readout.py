@@ -156,6 +156,37 @@ def same_model(a: dict, b: dict) -> dict:
             'unsafe_introduced': [o for o in ops if a[o]['event'] == 'unsafe' and b[o]['event'] != 'unsafe']}
 
 
+def cert_mechanism(C: dict, M: dict, n_pairs: int) -> dict:
+    """Section 3A (report only): the old certification's same-model mechanism readings -- episodes with an intervention,
+    realization of the certified probe's predicted switch (an entry / descent mode entered in a macro step starting no later
+    than the predicted time + 16 s), the proposition-4 prediction share x realization x 200 against the observed gain."""
+    n_iv, real, eps_iv = 0, 0, 0
+    for o, r in C.items():
+        ds = r.get('decisions', []); starts = [0.0] + [float(x['t']) for x in ds[:-1]]
+        hit = False
+        for i, d in enumerate(ds):
+            c = d.get('cert') or {}
+            if not c.get('intervened'):
+                continue
+            hit = True; n_iv += 1
+            t_pred = starts[i] + float(c.get('alt_t', 0.0)) + 16.0
+            real += any(ds[j]['mode'] in ('bridge', 'descent') and starts[j] <= t_pred + 1e-6 for j in range(i, len(ds)))
+        eps_iv += hit
+    share = eps_iv / len(C) if C else None
+    rr = real / n_iv if n_iv else None
+    ops = sorted(set(C) & set(M))
+    obs = float(np.mean([C[o]['return'] - M[o]['return'] for o in ops])) if ops else None
+    pred = share * rr * STAGE_PAIRED_FLIP if (share is not None and rr is not None) else 0.0
+    band = STAGE_PAIRED_FLIP / max(n_pairs, 1)
+    sign = lambda x: 0 if x is None or abs(x) < band else (1 if x > 0 else -1)
+    return {'pairs': len(ops), 'interventions': n_iv, 'episodes_intervened_share': share, 'realization': rr, 'prediction': pred,
+            'observed_mean_gain': obs, 'direction_consistent': sign(pred) == sign(obs),
+            'captures': [sum(C[o]['event'] == 'success' for o in ops), sum(M[o]['event'] == 'success' for o in ops)],
+            'lost': [o for o in ops if M[o]['event'] == 'success' and C[o]['event'] != 'success'],
+            'rescued': [o for o in ops if C[o]['event'] == 'success' and M[o]['event'] != 'success'],
+            'unsafe_introduced': [o for o in ops if C[o]['event'] == 'unsafe' and M[o]['event'] != 'unsafe']}
+
+
 # ---------------------------------------------------------------------- step A
 def critical_stats(ev: dict) -> dict:
     """Per-decision criticality (proposition 4): share of governed decisions judged critical, and replacements on
@@ -195,7 +226,7 @@ def readout_a(root: Path) -> dict:
         Gall = {(m, o): r for m in models for o, r in ev[(m, 'gov', c)].items()}
         Mall = {(m, o): r for m in models for o, r in ev[(m, 'monitor', c)].items()}
         Call = {(m, o): r for m in models for o, r in ev[(m, 'cert', c)].items()}
-        conds[c] = {'models': per, **_cmp(Gall, Mall, len(set(Gall) & set(Mall))),
+        conds[c] = {'models': per, **_cmp(Gall, Mall, len(set(Gall) & set(Mall))), 'cert_mechanism': cert_mechanism(Call, Mall, len(set(Call) & set(Mall))),
                     'cert_mean_gain': same_model(Call, Mall)['mean'], 'cert_captures': same_model(Call, Mall)['capture']}
         if c in ('urgent', 'economy'):
             conds[c]['dose'] = {b: _cmp(by_bin(Gall, b), by_bin(Mall, b), len(by_bin(Gall, b))) for b in BINS if by_bin(Gall, b)}
@@ -252,6 +283,14 @@ def readout_b(root: Path, coordination: str = 'gov') -> dict:
             M = {(s, o): r for s in SEEDS for o, r in ev[c][f'{mon}_s{s}'].items()}
             mech[f'{k}_{c}'] = _cmp(G, M, len(set(G) & set(M)))
     out['mechanism'] = mech
+    cm = {}
+    for c in N_COND:                                # section 3A, report only: the certification's mechanism readings
+        M = {(s, o): r for s in SEEDS for o, r in ev[c][f'EACH_C_s{s}'].items()}
+        cm[f'EACH_C_cert_{c}'] = cert_mechanism({(s, o): r for s in SEEDS for o, r in ev[c][f'ECC_DEPLOY_OLD_s{s}'].items()}, M, len(M))
+        if coordination == 'cert':
+            LM = {(s, o): r for s in SEEDS for o, r in ev[c][f'LOOP_MONITOR_s{s}'].items()}
+            cm[f'LOOP_{c}'] = cert_mechanism({(s, o): r for s in SEEDS for o, r in ev[c][f'LOOP_s{s}'].items()}, LM, len(LM))
+    out['cert_mechanism'] = cm
     out['policy_behaviour'] = {c: {k: critical_stats({(s, o): r for s in SEEDS for o, r in ev[c][f'{k}_s{s}'].items()}) | {
         'destroy_rate': destroy_rate({(s, o): r for s in SEEDS for o, r in ev[c][f'{k}_s{s}'].items()})} for k in ('EACH_C', 'LOOP_MONITOR')} for c in N_COND}
     out['gov_wall'] = {k: gov_wall({(s, o): r for s in SEEDS for o, r in ev['urgent'][f'{k}_s{s}'].items()}) for k in ('DEPLOY', 'LOOP')}

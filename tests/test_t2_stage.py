@@ -2310,3 +2310,16 @@ def test_gov_b_accepts_the_registered_fallback_configuration(tmp_path):
     assert rep['evaluations']['ECC_CERT_LOOP_s10']['files'] == 1 and 'ECC_GOV_s10' not in rep['evaluations']
     (tmp_path / 'B' / 'TRAIN_ECC_CERT_LOOP_s10').mkdir(parents=True)
     assert 'TRAIN_ECC_CERT_LOOP_s10' in final.check('gov_b', tmp_path)['missing_runs']
+
+
+def test_certification_mechanism_readout():
+    """Section 3A (report only): interventions, realization and the proposition-4 prediction for the old certification."""
+    from experiments.gov_readout import cert_mechanism
+    iv = {'intervened': True, 'alt_t': 20.0}
+    C = {1: {'event': 'success', 'return': 50.0, 'decisions': [{'t': 16.0, 'mode': 'stage', 'cert': iv}, {'t': 40.0, 'mode': 'descent'}]},
+         2: {'event': 'timeout', 'return': -130.0, 'decisions': [{'t': 16.0, 'mode': 'stage', 'cert': iv}, {'t': 32.0, 'mode': 'stage'}]},
+         3: {'event': 'success', 'return': 40.0, 'decisions': [{'t': 16.0, 'mode': 'stage', 'cert': {'intervened': False}}]}}
+    M = {1: {'event': 'timeout', 'return': -130.0}, 2: {'event': 'timeout', 'return': -130.0}, 3: {'event': 'success', 'return': 40.0}}
+    r = cert_mechanism(C, M, 3)
+    assert r['interventions'] == 2 and r['realization'] == 0.5 and abs(r['episodes_intervened_share'] - 2 / 3) < 1e-9
+    assert r['rescued'] == [1] and r['lost'] == [] and abs(r['prediction'] - 2 / 3 * 0.5 * 200) < 1e-9
