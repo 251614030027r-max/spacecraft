@@ -96,50 +96,6 @@
     ],
     "note": "key ablations: U1 (SAC, DUP same-width control), C1 geometry (NO_GEOM); the window commitment is verified by paired evaluation (EACH models and fixed policies, rigid vs window) without training; RIGID training and the remaining fixed policies in the formal stage"
    },
-   "formal": {
-    "steps": 5000,
-    "seeds": [
-     20,
-     21,
-     22
-    ],
-    "checkpoints": [
-     1000,
-     2000,
-     3000,
-     4000
-    ],
-    "eval_openings": "300000-300095",
-    "trained": [
-     "EACH",
-     "SAC",
-     "SAC_ENG",
-     "DUP",
-     "NO_GEOM",
-     "RIGID"
-    ],
-    "smoke_only": [],
-    "fixed": [
-     "pure",
-     "gstar",
-     "rally",
-     "b_10",
-     "c_10_0",
-     "c_10_-5",
-     "c_6_5"
-    ],
-    "window_pairs": [
-     "gstar",
-     "rally",
-     "b_10",
-     "c_10_0",
-     "c_10_-5",
-     "c_6_5"
-    ],
-    "rigid_pair_trained": [
-     "EACH"
-    ]
-   },
    "u2": {
     "steps": 2000,
     "seeds": [
@@ -406,6 +362,254 @@
     "alternatives": {
      "ECC_GOV": "ECC_CERT_LOOP"
     }
+   },
+   "formal_each_obsolete": {
+    "steps": 5000,
+    "seeds": [
+     20,
+     21,
+     22
+    ],
+    "checkpoints": [
+     1000,
+     2000,
+     3000,
+     4000
+    ],
+    "eval_openings": "300000-300095",
+    "trained": [
+     "EACH",
+     "SAC",
+     "SAC_ENG",
+     "DUP",
+     "NO_GEOM",
+     "RIGID"
+    ],
+    "smoke_only": [],
+    "fixed": [
+     "pure",
+     "gstar",
+     "rally",
+     "b_10",
+     "c_10_0",
+     "c_10_-5",
+     "c_6_5"
+    ],
+    "window_pairs": [
+     "gstar",
+     "rally",
+     "b_10",
+     "c_10_0",
+     "c_10_-5",
+     "c_6_5"
+    ],
+    "rigid_pair_trained": [
+     "EACH"
+    ],
+    "note": "作废，见 docs/paper/EXPERIMENTS.md",
+    "obsolete": true
+   },
+   "formal": {
+    "steps": 5000,
+    "seeds": [
+     20,
+     21,
+     22
+    ],
+    "checkpoints": [
+     1000,
+     2000,
+     3000,
+     4000
+    ],
+    "eval_openings": "300000-300095",
+    "mission": "urgent_mix:0.75",
+    "trained": [
+     "ECC_CERT_LOOP",
+     "SAC_C",
+     "TD3_C",
+     "EACH_C",
+     "SAC_CERT_LOOP",
+     "ECC_CERT_LOOP_NOGEO"
+    ],
+    "smoke_only": [],
+    "fixed": [
+     "pure",
+     "gstar"
+    ],
+    "window_pairs": [],
+    "rigid_pair_trained": [],
+    "conditions": {
+     "urgent": {
+      "openings": "300000-300095",
+      "mission": "urgent"
+     },
+     "economy": {
+      "openings": "300100-300195",
+      "mission": "economy"
+     },
+     "natural": {
+      "openings": "300200-300295",
+      "mission": "natural"
+     },
+     "resource": {
+      "openings": "300100-300195",
+      "mission": "economy",
+      "budget_m_s": null
+     }
+    },
+    "validation": {
+     "openings": "295200-295223",
+     "mission": "urgent",
+     "trained": [
+      "ECC_CERT_LOOP",
+      "SAC_C",
+      "TD3_C"
+     ]
+    },
+    "eval_switches": {
+     "ECC_CERT_LOOP": {
+      "nocert": [
+       "urgent",
+       "economy"
+      ],
+      "rigid": [
+       "urgent"
+      ]
+     },
+     "EACH_C": {
+      "cert": [
+       "urgent",
+       "economy"
+      ]
+     },
+     "SAC_C": {
+      "cert": [
+       "urgent",
+       "economy"
+      ]
+     }
+    },
+    "evaluations": [
+     "ECC_CERT_LOOP_s20_urgent",
+     "ECC_CERT_LOOP_s20_economy",
+     "ECC_CERT_LOOP_s20_natural",
+     "ECC_CERT_LOOP_s20_resource",
+     "ECC_CERT_LOOP_s21_urgent",
+     "ECC_CERT_LOOP_s21_economy",
+     "ECC_CERT_LOOP_s21_natural",
+     "ECC_CERT_LOOP_s21_resource",
+     "ECC_CERT_LOOP_s22_urgent",
+     "ECC_CERT_LOOP_s22_economy",
+     "ECC_CERT_LOOP_s22_natural",
+     "ECC_CERT_LOOP_s22_resource",
+     "SAC_C_s20_urgent",
+     "SAC_C_s20_economy",
+     "SAC_C_s20_natural",
+     "SAC_C_s20_resource",
+     "SAC_C_s21_urgent",
+     "SAC_C_s21_economy",
+     "SAC_C_s21_natural",
+     "SAC_C_s21_resource",
+     "SAC_C_s22_urgent",
+     "SAC_C_s22_economy",
+     "SAC_C_s22_natural",
+     "SAC_C_s22_resource",
+     "TD3_C_s20_urgent",
+     "TD3_C_s20_economy",
+     "TD3_C_s20_natural",
+     "TD3_C_s20_resource",
+     "TD3_C_s21_urgent",
+     "TD3_C_s21_economy",
+     "TD3_C_s21_natural",
+     "TD3_C_s21_resource",
+     "TD3_C_s22_urgent",
+     "TD3_C_s22_economy",
+     "TD3_C_s22_natural",
+     "TD3_C_s22_resource",
+     "EACH_C_s20_urgent",
+     "EACH_C_s20_economy",
+     "EACH_C_s20_natural",
+     "EACH_C_s20_resource",
+     "EACH_C_s21_urgent",
+     "EACH_C_s21_economy",
+     "EACH_C_s21_natural",
+     "EACH_C_s21_resource",
+     "EACH_C_s22_urgent",
+     "EACH_C_s22_economy",
+     "EACH_C_s22_natural",
+     "EACH_C_s22_resource",
+     "SAC_CERT_LOOP_s20_urgent",
+     "SAC_CERT_LOOP_s20_economy",
+     "SAC_CERT_LOOP_s20_natural",
+     "SAC_CERT_LOOP_s20_resource",
+     "SAC_CERT_LOOP_s21_urgent",
+     "SAC_CERT_LOOP_s21_economy",
+     "SAC_CERT_LOOP_s21_natural",
+     "SAC_CERT_LOOP_s21_resource",
+     "SAC_CERT_LOOP_s22_urgent",
+     "SAC_CERT_LOOP_s22_economy",
+     "SAC_CERT_LOOP_s22_natural",
+     "SAC_CERT_LOOP_s22_resource",
+     "ECC_CERT_LOOP_NOGEO_s20_urgent",
+     "ECC_CERT_LOOP_NOGEO_s20_economy",
+     "ECC_CERT_LOOP_NOGEO_s20_natural",
+     "ECC_CERT_LOOP_NOGEO_s20_resource",
+     "ECC_CERT_LOOP_NOGEO_s21_urgent",
+     "ECC_CERT_LOOP_NOGEO_s21_economy",
+     "ECC_CERT_LOOP_NOGEO_s21_natural",
+     "ECC_CERT_LOOP_NOGEO_s21_resource",
+     "ECC_CERT_LOOP_NOGEO_s22_urgent",
+     "ECC_CERT_LOOP_NOGEO_s22_economy",
+     "ECC_CERT_LOOP_NOGEO_s22_natural",
+     "ECC_CERT_LOOP_NOGEO_s22_resource",
+     "ECC_CERT_LOOP_s20_urgent_nocert",
+     "ECC_CERT_LOOP_s20_economy_nocert",
+     "ECC_CERT_LOOP_s21_urgent_nocert",
+     "ECC_CERT_LOOP_s21_economy_nocert",
+     "ECC_CERT_LOOP_s22_urgent_nocert",
+     "ECC_CERT_LOOP_s22_economy_nocert",
+     "ECC_CERT_LOOP_s20_urgent_rigid",
+     "ECC_CERT_LOOP_s21_urgent_rigid",
+     "ECC_CERT_LOOP_s22_urgent_rigid",
+     "EACH_C_s20_urgent_cert",
+     "EACH_C_s20_economy_cert",
+     "EACH_C_s21_urgent_cert",
+     "EACH_C_s21_economy_cert",
+     "EACH_C_s22_urgent_cert",
+     "EACH_C_s22_economy_cert",
+     "SAC_C_s20_urgent_cert",
+     "SAC_C_s20_economy_cert",
+     "SAC_C_s21_urgent_cert",
+     "SAC_C_s21_economy_cert",
+     "SAC_C_s22_urgent_cert",
+     "SAC_C_s22_economy_cert"
+    ],
+    "note": "Pre-registered in docs/paper/EXPERIMENTS.md. R intentionally shares E openings for the paired budget contrast."
+   },
+   "formal_prescreen": {
+    "steps": 0,
+    "seeds": [],
+    "checkpoints": [],
+    "eval_openings": "295100-295147",
+    "mission": "economy",
+    "trained": [],
+    "smoke_only": [],
+    "fixed": [
+     "rally",
+     "c_10_0",
+     "c_10_-5",
+     "c_6_5",
+     "b_10",
+     "gstar"
+    ],
+    "window_pairs": [],
+    "rigid_pair_trained": [],
+    "budgets_m_s": [
+     2.0,
+     1.8,
+     1.6
+    ]
    }
   },
   "figure_openings": "294200-294211",
@@ -508,7 +712,7 @@
    "color": "#0b5d8c"
   },
   "SAC_C": {
-   "display": "SAC",
+   "display": "SAC–MPC",
    "arm": "e_sac",
    "obs": "cut_priv",
    "window": true,
@@ -519,7 +723,7 @@
    "color": "#eb6834"
   },
   "EACH_C": {
-   "display": "ECC w/o action-level certificate",
+   "display": "ECC w/o certification",
    "arm": "e_priv",
    "obs": "cut_priv",
    "window": true,
@@ -554,7 +758,7 @@
    "govern": "act"
   },
   "ECC_CERT_LOOP": {
-   "display": "ECC (old certification in the loop, cut_priv critic)",
+   "display": "ECC",
    "arm": "e_priv",
    "obs": "cut_priv",
    "window": true,
@@ -564,6 +768,42 @@
    "role": "ECC final round (ECC_CERT_LOOP), ECC_FINAL_SPEC.md",
    "color": "#8e44ad",
    "certify": true
+  },
+  "SAC_CERT_LOOP": {
+   "display": "ECC w/o execution feedback",
+   "arm": "e_sac",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 24,
+   "certify": true,
+   "role": "Formal 2 × 2 attribution: certification without execution feedback",
+   "color": "#009e73"
+  },
+  "ECC_CERT_LOOP_NOGEO": {
+   "display": "ECC w/o rotation guidance",
+   "arm": "e_priv",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": false,
+   "actor_view": 24,
+   "critic_view": 48,
+   "certify": true,
+   "role": "Formal rotation guidance ablation",
+   "color": "#cc79a7"
+  },
+  "TD3_C": {
+   "display": "TD3–MPC",
+   "arm": "e_td3",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 24,
+   "certify": false,
+   "role": "Matched deterministic actor–critic baseline",
+   "color": "#0072b2"
   }
  },
  "fixed": {

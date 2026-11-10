@@ -45,6 +45,8 @@ def stage_of(name: str) -> dict:
     s = registry()['protocol']['stages']
     if name not in s:
         raise SystemExit(f'unknown stage {name}: {sorted(s)}')
+    if s[name].get('obsolete'):
+        raise SystemExit(f'obsolete stage {name}; see docs/paper/EXPERIMENTS.md')
     return s[name]
 
 
@@ -75,7 +77,7 @@ def _forbidden_eval(stage: str) -> set:
     reg = registry(); p = reg['protocol']
     bad = set(block(p['used_before']['dev_eval']))
     for k, v in p['stages'].items():
-        if k != stage:
+        if k != stage and not v.get('obsolete'):
             bad |= set(block(v['eval_openings']))
             for c in (v.get('conditions') or {}).values():
                 bad |= set(block(c['openings']))
