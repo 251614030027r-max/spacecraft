@@ -190,6 +190,21 @@ SCARCITY_TIER_CYCLE = (1, 1, 2, 3)          # opening mod 4 -> N catchable windo
 SCARCITY_DEFINITIONS = ("base", "strict", "inside")   # base; the two pre-registered alternatives (used at most once)
 
 
+def window_half_width(lam: float, beta: float, theta_g: float) -> float | None:
+    """Return the exact feasible phase half-width in radians, or None for no window."""
+    offset = np.cos(lam) * np.cos(beta)
+    amplitude = np.sin(lam) * np.sin(beta)
+    target = np.cos(theta_g)
+    if abs(amplitude) <= 1e-15:
+        return float(np.pi) if offset >= target - 1e-15 else None
+    c_star = (target - offset) / amplitude
+    if c_star > 1.0 + 1e-15:
+        return None
+    if c_star <= -1.0:
+        return float(np.pi)
+    return float(np.arccos(np.clip(c_star, -1.0, 1.0)))
+
+
 def opportunity_windows(q: np.ndarray, v: np.ndarray, rotation: np.ndarray, omega_body: np.ndarray, approach_axis: np.ndarray,
                         horizon_s: float = 900.0) -> dict[str, Any]:
     """Geometric window timetable of an initial state under the executor's constant-rate model (no policy, no learning):
