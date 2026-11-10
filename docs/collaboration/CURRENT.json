@@ -34,13 +34,13 @@
     "collab_main_cleanup_commit": "69961fba64c9489902493d59f4b8f24045183893",
     "no_experiment_started": true
   },
-  "topic": "ecc",
-  "updated_at": "2026-11-08T11:04:09.9972155+09:00",
-  "scientific_commit": "1cddbae26233b167d8c418614c467d21bf51b833",
+  "topic": "gov_b",
+  "updated_at": "2026-11-10T10:39:25.7759590+09:00",
+  "scientific_commit": "e0a617532008dac02e2d50f7e859aca613e03e5e",
   "convergence_code_commit": "ec394efcaaeadbb5305f4f9e289addb58517dca7",
   "convergence_evidence_commit": "5e42c47032d4e6811451a6794f6254fe9fde2063",
-  "run_order": "docs/collaboration/upper/run_orders/RUN_ECC.md",
-  "order_collab_commit": "ca4980b4",
+  "run_order": "docs/collaboration/upper/run_orders/RUN_GOV_B.md",
+  "order_collab_commit": "618196da082fef64eece18684ad55463b5a6d0c0",
   "execution_state": "complete_delivered",
   "training_active": false,
   "evaluation_active": false,
@@ -51,26 +51,40 @@
     "archive/t2-11-eacca-evidence-20261103"
   ],
   "inventory_path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ASSETS_20261103\\INVENTORY.json",
-  "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ecc\\RUN_STATE.json",
-  "current_delivery_report": "docs/collaboration/lower/handoffs/ecc/RESULT.md",
+  "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\gov_b\\RUN_STATE.json",
+  "current_delivery_report": "docs/collaboration/lower/handoffs/gov_b/RESULT.md",
   "local_report": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\RESULT.md",
   "retained_T211_report": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\RESULT.md",
   "current_scope": {
+    "stage": "gov_b",
+    "status": "completed",
+    "b_coordination": "cert",
+    "loop": "ECC_CERT_LOOP",
+    "configs": [
+      "SAC_C",
+      "EACH_C",
+      "ECC_CERT_LOOP"
+    ],
     "seeds": [
       10,
       11
     ],
-    "steps": 2000,
-    "evaluation_workers": 10,
-    "openings": "294320-294367",
-    "evaluation_groups": 10,
     "training_runs": 6,
-    "training_workers": 2,
-    "desktop_logical_cpu": 11,
-    "stage": "ecc"
+    "steps_per_run": 3000,
+    "training_workers_per_run": 2,
+    "eval_workers_per_group": 10,
+    "shared_logical_cpus": "0-11",
+    "controller_pid": 22924,
+    "eval_cases": 1920,
+    "openings": {
+      "urgent": "294800-294895",
+      "economy": "294900-294947",
+      "natural": "295000-295047"
+    },
+    "formal_openings_authorized": false
   },
-  "next_action": "Wait for explicit authorization of formal experiments.",
-  "authority_type": "user_forwarded_approved_T216_A_then_conditional_B",
+  "next_action": "Await separately authorized formal experiment order",
+  "authority_type": "user_forwarded_RUN_GOV_B_automatic_after_verified_A",
   "preceding_run_order": "docs/collaboration/upper/run_orders/ASSETS_20261103.md",
   "cleanup_ledger": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\LOCAL_PRUNE_20261103\\DELETED_FILES.jsonl",
   "asset_resolution": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\LOCAL_PRUNE_20261103\\ASSET_RESOLUTION.json",
@@ -95,7 +109,7 @@
   "T214_launch_verification": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_14_TERM_20261104\\记录\\LAUNCH_INDEPENDENT_VERIFICATION.json",
   "joint_review_new_science_commit": "4410fe244a27df1566a9a034fc0918c4586d14c6",
   "joint_review_reuses_T212_commit": "80cde31d429b17e7a2236a17b4b437b03aff78f7",
-  "latest_user_authority_record": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ecc\\输入\\RUN_ECC.md",
+  "latest_user_authority_record": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\gov_b\\输入\\RUN_GOV_B.md",
   "previous_completed_delivery": {
     "topic": "T2_14_TERM_20261104",
     "science_commit": "c11356e372cf8efbeb6d2d4f0281b114ee3c0c0c",
@@ -104,9 +118,9 @@
   },
   "T216_A_launch_verification": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_16_PI_20261104\\记录\\LAUNCH_A_VERIFIED.json",
   "automation_id": null,
-  "automatic_followup_actual": "OS task",
+  "automatic_followup_actual": "none",
   "automatic_followup_legacy_field_note": "controller preloaded the old monitor label; actual active automation_id is t2-17",
-  "current_delivery_status": "ECC complete; final_method ECC_deploy; no formal run authorized",
+  "current_delivery_status": "RUN_GOV_B verified; combined A/B scientific evidence published",
   "user_stop2000_active": false,
   "previous_delivery": {
     "topic": "T217",
@@ -123,10 +137,42 @@
   "joint_review_report": "docs/collaboration/lower/handoffs/review_t217_t219_20261105/RESULT.md",
   "local_joint_review": "C:\\Users\\35884\\Documents\\Spacecraft\\上层交付\\最新\\JOINT_RESULT.md",
   "final_independent_verification": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\T2_19_CERT_20261104\\记录\\FINAL_INDEPENDENT_VERIFICATION.json",
-  "os_task": "Spacecraft-ECC-20261107",
+  "os_task": "Spacecraft-GOV-B-20261109",
   "science_sha": "1cddbae26233b167d8c418614c467d21bf51b833",
   "science_SHA": "1cddbae26233b167d8c418614c467d21bf51b833",
   "phase": "complete_delivered",
-  "science_delivery_commit": "cc1a09548bd81e13b8d78f4f26f1640d6640b5d5",
-  "os_task_state": "Disabled"
+  "science_delivery_commit": "d738839e172ba9e33dfc1fbe52127a2fa7e735eb",
+  "os_task_state": "Disabled",
+  "science_checkout_mode": "detached_clean",
+  "gov_a_decision": {
+    "criteria": {
+      "M1": true,
+      "M2": false,
+      "M3": false,
+      "M4": false,
+      "M5": false
+    },
+    "mechanism_pass": false,
+    "governor_rejected": true,
+    "b_coordination": "cert"
+  },
+  "gov_b_decision": {
+    "coordination": "cert",
+    "final_method": "in_loop",
+    "final_config": "ECC_CERT_LOOP"
+  },
+  "science_remote_verified": "d738839e172ba9e33dfc1fbe52127a2fa7e735eb",
+  "collab_remote_verified": "e6170b9351b568d0a41fb342b5200075c6af13b5",
+  "delivery_index": {
+    "gov_a": {
+      "science": "d738839e172ba9e33dfc1fbe52127a2fa7e735eb",
+      "report": "docs/collaboration/lower/handoffs/gov_a/RESULT.md",
+      "status": "combined_commit_delivered"
+    },
+    "gov_b": {
+      "science": "d738839e172ba9e33dfc1fbe52127a2fa7e735eb",
+      "report": "docs/collaboration/lower/handoffs/gov_b/RESULT.md",
+      "status": "combined_commit_delivered"
+    }
+  }
 }
