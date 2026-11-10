@@ -57,16 +57,29 @@ def policy_action(name, env, obs):
 
 def run_episode(env, opening, act, record=None):
     obs, info = env.reset(options={'opening': opening}); done = False; ret = 0.; t0 = time.time(); decisions = []
+    initial = {}
+    if getattr(env, 'audit_logging', False):
+        from env.t1_p_stage import relative_inertial
+        q, v = relative_inertial(env.env)
+        target = env.env.target_state
+        initial = {'q': q.tolist(), 'v': v.tolist(), 'rotation': target.rotation.tolist(),
+                   'omega': target.omega.tolist(), 'axis': list(env.env.config.task.approach_axis)}
     while not done:
         a = act(env, obs)
         obs, r, term, trunc, i = env.step(a); done = term or trunc; ret += i['true_reward']
         decisions.append({'a': np.asarray(a).tolist(), 't': i['time_s'], 'mode': i['mode'], 'held': i['held'], 'range_m': i['range_m'],
                           'planned_dv': i['planned_dv'], 'executed_dv': i['executed_dv'], 'model': (i.get('model') or {}).get('diag', {}).get('reason'), 'event': i['event'],
-                          **({'cert': i['cert']} if i.get('cert') is not None else {}), **({'gov': i['gov']} if i.get('gov') is not None else {})})
+                          **({'cert': i['cert']} if i.get('cert') is not None else {}), **({'gov': i['gov']} if i.get('gov') is not None else {}),
+                          **i.get('decision_audit', {})})
     s = env.stats
     return {'opening': opening, 'event': i['event'], 'return': ret, 'time_s': env.env.time_s, 'delta_v': env.env._delta_v,
             'stages': s['stages'], 'holds': s['holds'], 'rejected': s['rejected'], 'bridge_attempts': s['bridge_attempts'],
-            'macro': s['macro'], 'mission': env.mission, 'wall_s': time.time() - t0, 'decisions': decisions}
+            'macro': s['macro'], 'mission': env.mission, 'wall_s': time.time() - t0, 'decisions': decisions,
+            **({'initial': initial, **env.episode_audit()} if getattr(env, 'audit_logging', False) else {}),
+            **({
+                'cert_wall_s_total': sum(d['cert']['wall_s'] for d in decisions if 'cert' in d),
+                'cert_decisions': sum('cert' in d for d in decisions),
+            } if getattr(env, 'audit_logging', False) else {})}
 
 
 def guarded(fn):
@@ -200,6 +213,7 @@ def eval_job(job):
     window = cfg['window'] if window is None else bool(window)     # None: as trained; False: forced rigid (paired ablation)
     env = T2StageEnv(openings=[opening], shaping=False, window=window, geometry=cfg['geometry'], mission=mission_profile(urgent),
                      obs_profile=obs_profile_of(checkpoint))
+    env.audit_logging = bool(job[8]) if len(job) > 8 else False
     env.cert_live = False          # env 0.13.0: the certificate map is for the critic only; the actor reads OBS_DIM values
     env.probe_live = False         # env 0.14.0: so are the U2 executor probes
     certify = cfg['certify'] if certify is None else bool(certify)    # None: as trained (env 0.16.0 ECC); True / False: forced
@@ -209,6 +223,8 @@ def eval_job(job):
         raise ValueError('the governor and the old certification are exclusive')
     env.govern = govern            # env 0.17.0: the execution-opportunity governor ('act' / 'monitor')
     res = run_episode(env, opening, lambda e, o: model.predict(o, deterministic=True)[0])
+    if env.audit_logging:
+        res['condition'] = job[9] if len(job) > 9 and job[9] else ('urgent' if env.mission['urgent'] else 'economy')
     res['certify'] = certify; res['cert_interventions'] = env.stats.get('cert_interventions', 0)
     res['govern'] = govern
     res.update({k: env.stats.get(k, 0) for k in ('gov_replacements', 'gov_would_replace', 'gov_decisions', 'gov_wall_s')})
@@ -216,10 +232,11 @@ def eval_job(job):
                window_recoveries=env.generator.bridge.recovery_log); dump(file, res); return res
 
 
-def evaluate(out, checkpoint, label, ops, workers, window=True, urgent=None, certify=False, govern=None):
+def evaluate(out, checkpoint, label, ops, workers, window=True, urgent=None, certify=False, govern=None,
+             audit=False, condition=None):
     out.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(workers) as pool:
-        for f in as_completed([pool.submit(guarded_eval, (o, checkpoint, label, str(out), window, urgent, certify, govern)) for o in ops]):
+        for f in as_completed([pool.submit(guarded_eval, (o, checkpoint, label, str(out), window, urgent, certify, govern, audit, condition)) for o in ops]):
             r = f.result(); print(json.dumps({k: r.get(k) for k in STAGE_EVAL_KEYS}, default=str), flush=True)
 
 

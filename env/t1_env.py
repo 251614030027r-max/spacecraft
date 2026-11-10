@@ -158,6 +158,8 @@ class T1Env:
         self._track(metrics)
         return {"metrics": metrics, "features": self.features(metrics)}
 
+    audit_controls = False
+
     def metrics(self) -> T1Metrics:
         assert self.target_state is not None and self.chaser_state is not None
         return compute_t1_metrics(self.target_state, self.chaser_state, self.config.task)
@@ -292,6 +294,8 @@ class T1Env:
                 event = "numerical_failure"
                 info["numerical_error"] = repr(error)
                 break
+            if self.audit_controls:
+                audit_wrench = wrench
             self.target_state, self.chaser_state = target_next, chaser_next
             self._control_steps += 1
             self.time_s = round(self.time_s + c.dt_s, 10)
@@ -329,6 +333,11 @@ class T1Env:
             reward -= c.reward.timeout_penalty
         terminated = event in {"success", "unsafe"}
         truncated = event in {"timeout", "numerical_failure"}
+        if self.audit_controls and "audit_wrench" in locals():
+            info["control_audit"] = {
+                "force_n": audit_wrench[3:].tolist(), "torque_nm": audit_wrench[:3].tolist(),
+                **audit_metrics(m),
+            }
         info.update(event=event, latitude=latitude, sigma=sigma, delta_v_step_m_s=delta_v_step)
         return float(reward), terminated, truncated, info
 
@@ -344,6 +353,30 @@ class T1Env:
             "min_margins": dict(self._min_margins),
             "reference_jump_max_m": self._reference_jump_max,
         }
+
+
+def audit_metrics(m: T1Metrics) -> dict[str, Any]:
+    """Read an already computed truth metric without advancing the controller."""
+    return {
+        "terminal": {
+            "position_error_m": m.position_error_m,
+            "speed_m_s": m.target_frame_speed_m_s,
+            "attitude_error_rad": m.attitude_error_rad,
+            "angular_velocity_error_rad_s": m.angular_velocity_error_rad_s,
+            "in_cone": bool(m.in_cone),
+        },
+        "margins": {
+            name: float(value) if np.isfinite(value) else None for name, value in (
+                ("collision_clearance_m", m.collision_clearance_m),
+                ("union_margin_m", m.union_margin_m),
+                ("cone_margin_m", m.cone_margin_m),
+                ("fov_margin_deg", np.degrees(m.fov_margin_rad)),
+                ("radial_envelope_margin_m_s", m.radial_envelope_margin_m_s),
+                ("total_speed_margin_m_s", m.total_speed_margin_m_s),
+                ("axial_envelope_margin_m_s", m.axial_envelope_margin_m_s),
+            )
+        },
+    }
 
 
 __all__ = ["T1Env", "T1EnvConfig", "T1Reward", "t1_mpc_config"]

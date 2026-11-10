@@ -151,7 +151,7 @@ def cmd_eval(a):
     mission = stage_mission(st, natural=bool(getattr(a, 'natural', False)), condition=cond)
     evaluate(Path(a.output), str(ckpt), a.label, ops, int(a.workers), False if a.rigid else None, mission,
              certify=True if getattr(a, 'certify', False) else (False if getattr(a, 'no_certify', False) else None),
-             govern=getattr(a, 'govern', None))
+             govern=getattr(a, 'govern', None), audit=getattr(a, 'audit', False) or a.stage == 'formal', condition=cond)
 
 
 def cmd_screen(a):
@@ -192,19 +192,21 @@ def fly(opening: int, name: str, src: str, rigid: bool = False) -> dict:
     from env.t2_stage import angle_deg, frame_now
     from experiments.t2 import policy_action
     env, m = _executor_env(opening, src, rigid)
+    env.audit_logging = True
+    env.env.audit_controls = True
     obs, _ = env.reset(options={'opening': opening})
     axis = np.asarray(env.env.config.task.approach_axis); rows, decisions = [], []
 
-    def record():
+    def record(control=None):
         q, v = relative_inertial(env.env); t = env.env.target_state; f = frame_now(env.env, q)
         rows.append({'t': env.env.time_s, 'q': q.tolist(), 'v': v.tolist(), 'dv': env.env._delta_v, 'rot': t.rotation.tolist(),
                      'omega': t.omega.tolist(), 'range': float(np.linalg.norm(q)), 'port_los_deg': angle_deg(t.rotation @ axis, q),
                      'lat_err_deg': float(f['lat_err_deg']), 'phase_deg': float(np.degrees(f['phase_rad'])),
-                     'mode': env.generator.mode if env.generator is not None else 'pure'})
+                     'mode': env.generator.mode if env.generator is not None else 'pure', **(control or {})})
     record()
     step = env.env.step
     def logged(*x, **k):
-        out = step(*x, **k); record(); return out
+        out = step(*x, **k); record(out[-1].get('control_audit')); return out
     env.env.step = logged
     t0 = time.perf_counter(); ret, event = 0.0, None
     if src == 'pure':
@@ -224,6 +226,9 @@ def fly(opening: int, name: str, src: str, rigid: bool = False) -> dict:
             a = np.asarray(act(obs), float)
             decisions.append({'t': env.env.time_s, 'a': a.tolist(), 'mode': env.generator.mode})
             obs, r, term, trunc, i = env.step(a); done = term or trunc; ret += i['true_reward']; event = i['event']
+            decisions[-1].update(i.get('decision_audit', {}))
+            if i.get('cert') is not None:
+                decisions[-1]['cert'] = i['cert']
     return {'opening': opening, 'entry': name, 'source': src, 'rigid': rigid, 'event': event, 'return': ret, 'time_s': env.env.time_s,
             'delta_v': env.env._delta_v, 'mission': env.mission, 'entries_lost': env.stats.get('entries_lost', 0) if env.stats else 0,
             'window_recoveries': getattr(env.generator.bridge, 'recovery_log', []) if env.generator is not None else [],
@@ -441,6 +446,7 @@ def main():
     e.add_argument('--certify', action='store_true', help='env 0.15.0: U2 decision-time certification (the executor checks each intent)')
     e.add_argument('--no-certify', action='store_true', help='env 0.16.0: certification off for a run trained with it (paired ablation)')
     e.add_argument('--govern', choices=('act', 'monitor', 'off'), help='env 0.17.0: the execution-opportunity governor (default: as trained)')
+    e.add_argument('--audit', action='store_true', help='include read-only decision and terminal diagnostics')
     e.add_argument('--natural', action='store_true', help='env 0.17.0: the natural mission distribution instead of the stage mission')
     e.add_argument('--condition', choices=('urgent', 'economy', 'natural'), help='env 0.17.0: evaluation condition of the stage (default urgent)')
     c = s.add_parser('screen'); c.add_argument('--stage', required=True); c.add_argument('--policy', required=True); c.add_argument('--output', required=True)

@@ -1050,7 +1050,8 @@ def _slim(info: dict) -> dict:
     cands = [{**{k: c.get(k, 0) for k in ('a', 'reward', 'next_obs', 'done', 'kind')}, 's2': c.get('s2')} for c in model.get('cands') or []]
     diag = model.get('diag') or {}
     return {'model': {'fact': model.get('fact'), 'cands': cands, 'ref': model.get('ref'), 'diag': {k: diag.get(k) for k in ('reason', 'entry_bias', 'entry_records', 'resampled')}},
-            **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission', 'guided', 'pref', 'true_reward', 'exec_stats')}}
+            **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission', 'guided', 'pref', 'true_reward', 'exec_stats')},
+            **{k: info[k] for k in ('min_margins', 'terminal') if k in info}}
 
 
 class CalibrationPool:
@@ -1093,7 +1094,8 @@ def merge_calibration(env, rows) -> None:
 
 def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool, urgent_deadline=None,
            obs_profile: str = 'engineered', pref: bool = False, cand_min_sep: float = 0.0, label_deterministic: bool = False,
-           ref_labels: bool = False, geometry: bool = True, certify: bool = False, govern: str | None = None) -> None:
+           ref_labels: bool = False, geometry: bool = True, certify: bool = False, govern: str | None = None,
+           audit_logging: bool = False) -> None:
     """One environment: send (transition or None, observation to act on), receive the action; until 'stop'.
     ``geometry=False``: the C1 geometry ablation (rotation-unaware stage targets, ``target_velocity``)."""
     import os
@@ -1109,6 +1111,7 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
     env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, candidates=candidates, shaping=True, seed=seed * 100 + rank,
                      entry_stages=entry_stages, window=window, mission=mission, obs_profile=obs_profile, pref=pref, cand_min_sep=cand_min_sep,
                      geometry=geometry)
+    env.audit_logging = audit_logging
     env.ref_labels = bool(ref_labels)            # learner 6.0: the policy's own intent through the candidates' treatment
     env.certify = bool(certify)                  # learner 7.2 (ECC): the executor's certification acts during training as at deployment;
                                                  # the stored action is the policy's own proposal (the certified MDP)
@@ -1223,12 +1226,13 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'pref_margin_cap': PREF_MARGIN_CAP,
                                                    'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION, **({'certify': True} if certify else {}), **({'govern': govern} if govern else {}),
                                                    **td3_manifest, **(manifest_extra or {})}, indent=1), encoding='utf-8')
+    audit_logging = (manifest_extra or {}).get('final_stage') == 'formal'
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
     for rank in range(workers):
         a, b = ctx.Pipe()
         p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, obs_profile, pref, cand_min_sep, label_det,
-                                                       arm in FB_ARMS, bool(geometry), bool(certify), govern), daemon=True)
+                                                       arm in FB_ARMS, bool(geometry), bool(certify), govern, audit_logging), daemon=True)
         p.start(); pipes.append(a); procs.append(p)
     marks = sorted(set([m for m in marks if m <= steps] + [steps]))
     model.save(out / 'checkpoints' / 'step_0')
@@ -1272,7 +1276,8 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                     episodes.append({'steps': int(model.num_timesteps), 'worker': pipes.index(conn), **{k: info.get(k) for k in ('event', 'time_s', 'delta_v', 'mission')},
                                      'entry_bias': (info['model']['diag'] or {}).get('entry_bias'), 'guided': guided_by_worker.pop(pipes.index(conn), 0),
                                      'return_true': ret_true.pop(pipes.index(conn), 0.0), 'return_shaped': ret_shaped.pop(pipes.index(conn), 0.0),
-                                     **({'exec_stats': info['exec_stats']} if info.get('exec_stats') is not None else {})})
+                                     **({'exec_stats': info['exec_stats']} if info.get('exec_stats') is not None else {}),
+                                     **{k: info[k] for k in ('min_margins', 'terminal') if k in info}})
                 if model.num_timesteps >= model.learning_starts:
                     model.train(gradient_steps=model.gradient_steps, batch_size=model.batch_size)
                 while marks and model.num_timesteps >= marks[0]:

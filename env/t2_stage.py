@@ -1451,10 +1451,30 @@ class T2StageEnv(gym.Env):
         (ties: the earlier switch) is flown for this stage. Training and deployment use the same map (env 0.15.0's rule plus
         the resource condition of the certified set)."""
         from env.t2_probe import PROBE_GRID
+        if self.audit_logging:
+            from time import perf_counter
+
+            started = perf_counter()
         opp = self._opportunity_eval()
         own = self.cert_prober.probe_intent(a, *opp["args"])
         rec = {"a": [float(x) for x in a], "own_event": int(own["event"]), "own_t": float(own["t"]), "intervened": False}
+        if self.audit_logging:
+            rec.update(
+                own_kind=own["kind"], own_dv=float(own["dv"]),
+                cands=[
+                    {
+                        "b": [float(x) for x in b],
+                        "event": int(d["event"]), "kind": d["kind"], "t": float(d["t"]),
+                        "dv": float(d["dv"]), "dv_entry": float(d.get("dv_entry", 0.0)),
+                        "certified": bool(d["certified"]),
+                        "binding": bool(opp["t"] + d["t"] + opp["period"] > opp["latest"]),
+                    }
+                    for b, d in zip(PROBE_GRID, opp["rows"])
+                ],
+            )
         if own["event"]:
+            if self.audit_logging:
+                rec["wall_s"] = perf_counter() - started
             return a, rec
         best = None
         for b, d in zip(PROBE_GRID, opp["rows"]):
@@ -1463,6 +1483,8 @@ class T2StageEnv(gym.Env):
             key = (float(np.linalg.norm(np.asarray(b) - a)), float(d["t"]))
             if best is None or key < best[0]:
                 best = (key, b, d)
+        if self.audit_logging:
+            rec["wall_s"] = perf_counter() - started
         if best is None:
             return a, rec
         self.stats["cert_interventions"] = self.stats.get("cert_interventions", 0) + 1
@@ -1546,10 +1568,41 @@ class T2StageEnv(gym.Env):
         return a_exec, rec
 
     # ---------------------------------------------------------------- step
+    audit_logging = False
+
+    def decision_audit(self, t, dv, frame):
+        return {
+            "t_start": float(t),
+            "remaining_s": float(self.mission["deadline_s"] - t),
+            "remaining_dv": float(self.mission["budget_m_s"] - dv),
+            **{key: float(frame[key]) for key in ("phase_rad", "time_to_pass_s", "lat_err_deg")},
+        }
+
+    def episode_audit(self):
+        from env.t1_env import audit_metrics
+
+        return {
+            "budget_m_s": float(self.mission["budget_m_s"]),
+            "min_margins": dict(self.env._min_margins),
+            "terminal": audit_metrics(self.env.metrics())["terminal"],
+        }
+
     def step(self, action):
         e, g, mass = self.env, self.generator, self.env.chaser_parameters.mass
         if g.mode in ("bridge", "descent"):
-            return self._macro_to_end()
+            if not self.audit_logging:
+                return self._macro_to_end()
+            q, _ = relative_inertial(e)
+            audit = self.decision_audit(e.time_s, e._delta_v, frame_now(e, q))
+            mode = g.mode
+            result = self._macro_to_end()
+            result[-1]["decision_audit"] = {
+                **audit, "macro_end": "entry" if mode == "bridge" else "descent",
+                "true_mode_event_t": None,
+            }
+            if result[2] or result[3]:
+                result[-1].update(self.episode_audit())
+            return result
         a = np.clip(np.asarray(action, dtype=np.float64).reshape(-1)[:2], -1.0, 1.0)
         cert = None
         if self.certify and g.mode in ("stage", "hold"):    # env 0.15.0: the executor certifies the intent before it is flown
@@ -1591,8 +1644,11 @@ class T2StageEnv(gym.Env):
         self._stage_entry = None
         self._trace = [{"s": 0.0, "t_abs": t0, "q": q.copy(), "v": v.copy(), "dv": dv0, "rot": start["rotation"], "omega": start["omega"]}]
         reward, event, steps = 0.0, None, 0
+        first_mode, first_mode_t = None, None
         while True:
             r, event, info = self._advance(); reward += r; steps += 1
+            if self.audit_logging and first_mode is None and g.mode in ("bridge", "descent"):
+                first_mode, first_mode_t = g.mode, float(e.time_s)
             if event is not None:
                 break
             if g.mode in ("bridge", "descent"):
@@ -1645,6 +1701,19 @@ class T2StageEnv(gym.Env):
                 "plan_status": plan["status"], "rate_limited": goal["rate_limited"], "planned_dv": plan.get("delta_v_m_s"), "executed_dv": e._delta_v - dv0,
                 "model": model, "pref": pref, "cert": cert, **({"gov": gov} if gov is not None else {}), "time_s": e.time_s, "delta_v": e._delta_v,
                 "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission), "far_field_controls": self.far_field_controls}
+        if self.audit_logging:
+            macro_end = (
+                "entry" if first_mode == "bridge" else "descent" if first_mode == "descent"
+                else "terminal" if event is not None else
+                "deviation_hold" if held and (g.last_status or "").startswith("hold:stage_deviation")
+                else "stage_complete"
+            )
+            info["decision_audit"] = {
+                **self.decision_audit(t0, dv0, frame),
+                "macro_end": macro_end, "true_mode_event_t": first_mode_t,
+            }
+            if terminated or truncated:
+                info.update(self.episode_audit())
         return self.observation(), float(shaped), terminated, truncated, info
 
 
