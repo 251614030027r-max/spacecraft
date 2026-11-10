@@ -1,0 +1,146 @@
+{
+ "opening": 294528,
+ "event": "success",
+ "return": 77.61145630016279,
+ "time_s": 102.3,
+ "delta_v": 1.2158543699837217,
+ "stages": 3,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 20,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 146.3,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 102.4889965057373,
+ "decisions": [
+  {
+   "a": [
+    0.9999116659164429,
+    0.45240306854248047
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 11.424377436859018,
+   "planned_dv": 0.16880660393489003,
+   "executed_dv": 0.16920559425332324,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.9999116659164429,
+     0.45240306854248047
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 1,
+    "act": false,
+    "commit_before": null,
+    "tau_min": 46.0,
+    "own_event": 1,
+    "own_kind": "descent",
+    "own_t": 46.0,
+    "own_admissible": true,
+    "commit_after": 46.0,
+    "a_exec": [
+     0.9999116659164429,
+     0.45240306854248047
+    ],
+    "wall_s": 3.050984499990591
+   }
+  },
+  {
+   "a": [
+    0.9999191761016846,
+    0.39208984375
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 8.795261052671908,
+   "planned_dv": 0.040570911950101436,
+   "executed_dv": 0.040898726340122205,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 16.0,
+    "a": [
+     0.9999191761016846,
+     0.39208984375
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 3,
+    "act": false,
+    "commit_before": 46.0,
+    "tau_min": 30.0,
+    "own_event": 1,
+    "own_kind": "descent",
+    "own_t": 30.0,
+    "own_admissible": true,
+    "commit_after": 46.0,
+    "a_exec": [
+     0.9999191761016846,
+     0.39208984375
+    ],
+    "wall_s": 3.98778970001149
+   }
+  },
+  {
+   "a": [
+    0.999962329864502,
+    0.34892070293426514
+   ],
+   "t": 102.3,
+   "mode": "descent",
+   "held": false,
+   "range_m": 2.998602127765932,
+   "planned_dv": 0.062251479170660304,
+   "executed_dv": 1.0057500493902762,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 32.0,
+    "a": [
+     0.999962329864502,
+     0.34892070293426514
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 5,
+    "act": false,
+    "commit_before": 46.0,
+    "tau_min": 14.0,
+    "own_event": 1,
+    "own_kind": "descent",
+    "own_t": 14.0,
+    "own_admissible": true,
+    "commit_after": 46.0,
+    "a_exec": [
+     0.999962329864502,
+     0.34892070293426514
+    ],
+    "wall_s": 3.751503599996795
+   }
+  }
+ ],
+ "certify": false,
+ "cert_interventions": 0,
+ "govern": "monitor",
+ "gov_replacements": 0,
+ "gov_would_replace": 0,
+ "gov_decisions": 3,
+ "gov_wall_s": 10.790277799998876,
+ "policy": "EACH_C_s10_monitor",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\ecc\\B\\TRAIN_EACH_C_s10\\checkpoints\\step_2000.zip",
+ "window": true,
+ "geometry": true,
+ "entries_lost": 0,
+ "window_recoveries": []
+}

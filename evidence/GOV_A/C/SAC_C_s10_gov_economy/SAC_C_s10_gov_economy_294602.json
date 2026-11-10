@@ -1,0 +1,108 @@
+{
+ "opening": 294602,
+ "event": "success",
+ "return": 58.72484043671504,
+ "time_s": 117.6,
+ "delta_v": 0.9730789890821245,
+ "stages": 2,
+ "holds": 1,
+ "rejected": 0,
+ "bridge_attempts": 2,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 308.7,
+  "urgent": false,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.02,
+  "fuel_cost_per_m_s": 40.0
+ },
+ "wall_s": 157.2853922843933,
+ "decisions": [
+  {
+   "a": [
+    0.975257396697998,
+    0.17535090446472168
+   ],
+   "t": 60.0,
+   "mode": "hold",
+   "held": true,
+   "range_m": 7.021008775594528,
+   "planned_dv": 0.16880660418281074,
+   "executed_dv": 0.5140261852048499,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.975257396697998,
+     0.17535090446472168
+    ],
+    "status": "not_critical",
+    "critical": false,
+    "n_admissible": 6,
+    "act": true,
+    "commit_before": null,
+    "tau_min": 6.0,
+    "commit_after": null,
+    "a_exec": [
+     0.975257396697998,
+     0.17535090446472168
+    ],
+    "wall_s": 2.3553733000007924
+   }
+  },
+  {
+   "a": [
+    0.796554446220398,
+    0.8709242343902588
+   ],
+   "t": 117.6,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.0145902749370457,
+   "planned_dv": 0.20235667876317875,
+   "executed_dv": 0.45905280387727465,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 60.0,
+    "a": [
+     0.796554446220398,
+     0.8709242343902588
+    ],
+    "status": "not_critical",
+    "critical": false,
+    "n_admissible": 10,
+    "act": true,
+    "commit_before": null,
+    "tau_min": 2.0,
+    "commit_after": null,
+    "a_exec": [
+     0.796554446220398,
+     0.8709242343902588
+    ],
+    "wall_s": 0.43976939999265596
+   }
+  }
+ ],
+ "certify": false,
+ "cert_interventions": 0,
+ "govern": "act",
+ "gov_replacements": 0,
+ "gov_would_replace": 0,
+ "gov_decisions": 2,
+ "gov_wall_s": 2.7951426999934483,
+ "policy": "SAC_C_s10_gov_economy",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\ecc\\B\\TRAIN_SAC_C_s10\\checkpoints\\step_2000.zip",
+ "window": true,
+ "geometry": true,
+ "entries_lost": 1,
+ "window_recoveries": [
+  {
+   "t": 28.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.911426133603232
+  }
+ ]
+}

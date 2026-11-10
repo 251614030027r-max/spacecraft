@@ -1,0 +1,104 @@
+{
+ "opening": 295008,
+ "event": "success",
+ "return": 80.50001205367283,
+ "time_s": 99.7,
+ "delta_v": 0.952998794632718,
+ "stages": 2,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 12,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 190.1,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 102.52275013923645,
+ "decisions": [
+  {
+   "a": [
+    0.9994432926177979,
+    -0.7294161319732666
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 13.52484679981524,
+   "planned_dv": 0.16880660407551204,
+   "executed_dv": 0.16853493243253093,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.9994432926177979,
+     -0.7294161319732666
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": false,
+    "commit_before": null,
+    "commit_after": null,
+    "a_exec": [
+     0.9994432926177979,
+     -0.7294161319732666
+    ],
+    "wall_s": 3.080178900010651
+   }
+  },
+  {
+   "a": [
+    0.991142749786377,
+    -0.8848830461502075
+   ],
+   "t": 99.7,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.0066549490903913,
+   "planned_dv": 0.069001059137635,
+   "executed_dv": 0.784463862200187,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 16.0,
+    "a": [
+     0.991142749786377,
+     -0.8848830461502075
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 3,
+    "act": false,
+    "commit_before": null,
+    "tau_min": 12.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 24.0,
+    "own_admissible": true,
+    "commit_after": 40.0,
+    "a_exec": [
+     0.991142749786377,
+     -0.8848830461502075
+    ],
+    "wall_s": 3.427669099997729
+   }
+  }
+ ],
+ "certify": false,
+ "cert_interventions": 0,
+ "govern": "monitor",
+ "gov_replacements": 0,
+ "gov_would_replace": 0,
+ "gov_decisions": 2,
+ "gov_wall_s": 6.50784800000838,
+ "policy": "ECC_CERT_LOOP_s10_monitor_natural",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\gov_b\\B\\TRAIN_ECC_CERT_LOOP_s10\\checkpoints\\step_3000.zip",
+ "window": true,
+ "geometry": true,
+ "entries_lost": 0,
+ "window_recoveries": []
+}

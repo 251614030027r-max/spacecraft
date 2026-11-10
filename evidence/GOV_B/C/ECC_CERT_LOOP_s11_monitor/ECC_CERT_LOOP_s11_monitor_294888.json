@@ -1,0 +1,197 @@
+{
+ "opening": 294888,
+ "event": "success",
+ "return": 67.82476471725725,
+ "time_s": 164.8,
+ "delta_v": 1.5695235282742748,
+ "stages": 4,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 1,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 189.3,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 154.10852694511414,
+ "decisions": [
+  {
+   "a": [
+    0.7729692459106445,
+    0.9641009569168091
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 13.156715708381181,
+   "planned_dv": 0.16880660383686,
+   "executed_dv": 0.16894503264244676,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.7729692459106445,
+     0.9641009569168091
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": false,
+    "commit_before": null,
+    "commit_after": null,
+    "a_exec": [
+     0.7729692459106445,
+     0.9641009569168091
+    ],
+    "wall_s": 2.257421999995131
+   }
+  },
+  {
+   "a": [
+    0.9066357612609863,
+    0.8221056461334229
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 11.1152751065934,
+   "planned_dv": 0.10600585228464994,
+   "executed_dv": 0.10600581027318734,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 16.0,
+    "a": [
+     0.9066357612609863,
+     0.8221056461334229
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 2,
+    "act": false,
+    "commit_before": null,
+    "tau_min": 42.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 44.0,
+    "own_admissible": true,
+    "commit_after": 60.0,
+    "a_exec": [
+     0.9066357612609863,
+     0.8221056461334229
+    ],
+    "wall_s": 1.4510786999890115
+   }
+  },
+  {
+   "a": [
+    0.8181858062744141,
+    0.9794909954071045
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 9.117232152713125,
+   "planned_dv": 0.06441545945138197,
+   "executed_dv": 0.06434778381179207,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 32.0,
+    "a": [
+     0.8181858062744141,
+     0.9794909954071045
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 5,
+    "act": false,
+    "commit_before": 60.0,
+    "tau_min": 26.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 26.0,
+    "own_admissible": true,
+    "commit_after": 58.0,
+    "a_exec": [
+     0.8181858062744141,
+     0.9794909954071045
+    ],
+    "wall_s": 1.6826814000087325
+   }
+  },
+  {
+   "a": [
+    0.9252853393554688,
+    0.700814962387085
+   ],
+   "t": 164.8,
+   "mode": "descent",
+   "held": false,
+   "range_m": 2.9929273228781343,
+   "planned_dv": 0.15273173787992192,
+   "executed_dv": 1.2302249015468485,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 48.0,
+    "a": [
+     0.9252853393554688,
+     0.700814962387085
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 10,
+    "act": false,
+    "commit_before": 58.0,
+    "tau_min": 10.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 10.0,
+    "own_admissible": true,
+    "commit_after": 58.0,
+    "a_exec": [
+     0.9252853393554688,
+     0.700814962387085
+    ],
+    "wall_s": 1.276775300008012
+   }
+  }
+ ],
+ "certify": false,
+ "cert_interventions": 0,
+ "govern": "monitor",
+ "gov_replacements": 0,
+ "gov_would_replace": 0,
+ "gov_decisions": 4,
+ "gov_wall_s": 6.667957400000887,
+ "policy": "ECC_CERT_LOOP_s11_monitor",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\gov_b\\B\\TRAIN_ECC_CERT_LOOP_s11\\checkpoints\\step_3000.zip",
+ "window": true,
+ "geometry": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 76.0,
+   "slip_s": 2.0,
+   "reserve": false,
+   "phase_deg": 4.736341990254771
+  },
+  {
+   "t": 88.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.474500242561533
+  },
+  {
+   "t": 104.0,
+   "slip_s": 8.0,
+   "reserve": false,
+   "phase_deg": 18.952636946848223
+  }
+ ]
+}

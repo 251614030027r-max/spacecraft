@@ -1,0 +1,111 @@
+{
+ "stage": "gov_b",
+ "registry_sha256": "a0f09d7f0a2a91ef38ddb7413aac98e86ddb8dfc45882a1e9c85b089dc791ff4",
+ "science_sha": "e0a617532008dac02e2d50f7e859aca613e03e5e",
+ "steps": 3000,
+ "eval_openings": "294800-294895",
+ "runs": {
+  "TRAIN_EACH_C_s10": {
+   "config": "EACH_C",
+   "display": "ECC w/o action-level certificate",
+   "seed": 10,
+   "git_head": "e0a617532008dac02e2d50f7e859aca613e03e5e",
+   "steps": 3000,
+   "model": "B\\TRAIN_EACH_C_s10\\checkpoints\\step_3000.zip",
+   "model_sha256": "4e162cbc9c1df55dea811f6a63aeeb0443cae00c2fc60e75ac25c5acc5662083",
+   "finished": true,
+   "episodes": "B\\TRAIN_EACH_C_s10\\episodes.json"
+  },
+  "TRAIN_EACH_C_s11": {
+   "config": "EACH_C",
+   "display": "ECC w/o action-level certificate",
+   "seed": 11,
+   "git_head": "e0a617532008dac02e2d50f7e859aca613e03e5e",
+   "steps": 3000,
+   "model": "B\\TRAIN_EACH_C_s11\\checkpoints\\step_3000.zip",
+   "model_sha256": "df001c7616b081f6ad735de44b0ce90964414919bad04162e4296992274a5eda",
+   "finished": true,
+   "episodes": "B\\TRAIN_EACH_C_s11\\episodes.json"
+  },
+  "TRAIN_ECC_CERT_LOOP_s10": {
+   "config": "ECC_CERT_LOOP",
+   "display": "ECC (old certification in the loop, cut_priv critic)",
+   "seed": 10,
+   "git_head": "e0a617532008dac02e2d50f7e859aca613e03e5e",
+   "steps": 3000,
+   "model": "B\\TRAIN_ECC_CERT_LOOP_s10\\checkpoints\\step_3000.zip",
+   "model_sha256": "48befd1985e8ea5bebb7ccb657afd991bca0ff09c9207e717788ebe3efa81de8",
+   "finished": true,
+   "episodes": "B\\TRAIN_ECC_CERT_LOOP_s10\\episodes.json"
+  },
+  "TRAIN_ECC_CERT_LOOP_s11": {
+   "config": "ECC_CERT_LOOP",
+   "display": "ECC (old certification in the loop, cut_priv critic)",
+   "seed": 11,
+   "git_head": "e0a617532008dac02e2d50f7e859aca613e03e5e",
+   "steps": 3000,
+   "model": "B\\TRAIN_ECC_CERT_LOOP_s11\\checkpoints\\step_3000.zip",
+   "model_sha256": "70ad213239d5bdc249fd0214cb4516882ba04f01c9c3269698786bc643f33368",
+   "finished": true,
+   "episodes": "B\\TRAIN_ECC_CERT_LOOP_s11\\episodes.json"
+  },
+  "TRAIN_SAC_C_s10": {
+   "config": "SAC_C",
+   "display": "SAC",
+   "seed": 10,
+   "git_head": "e0a617532008dac02e2d50f7e859aca613e03e5e",
+   "steps": 3000,
+   "model": "B\\TRAIN_SAC_C_s10\\checkpoints\\step_3000.zip",
+   "model_sha256": "69e4703ebaebb3e6bb2f65eae3c1a7015c6fb4b6cb91fe84b415cb1151e2d192",
+   "finished": true,
+   "episodes": "B\\TRAIN_SAC_C_s10\\episodes.json"
+  },
+  "TRAIN_SAC_C_s11": {
+   "config": "SAC_C",
+   "display": "SAC",
+   "seed": 11,
+   "git_head": "e0a617532008dac02e2d50f7e859aca613e03e5e",
+   "steps": 3000,
+   "model": "B\\TRAIN_SAC_C_s11\\checkpoints\\step_3000.zip",
+   "model_sha256": "1be98a89d13e58f22796e70a9374b113848344993be3b50efb6ea513013f48a0",
+   "finished": true,
+   "episodes": "B\\TRAIN_SAC_C_s11\\episodes.json"
+  }
+ },
+ "configs": {
+  "EACH_C": {
+   "display": "ECC w/o action-level certificate",
+   "arm": "e_priv",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "pass-level opportunity in the critic only; no certification (ECC interface)",
+   "color": "#7fb3e6"
+  },
+  "ECC_CERT_LOOP": {
+   "display": "ECC (old certification in the loop, cut_priv critic)",
+   "arm": "e_priv",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "ECC final round (ECC_CERT_LOOP), ECC_FINAL_SPEC.md",
+   "color": "#8e44ad",
+   "certify": true
+  },
+  "SAC_C": {
+   "display": "SAC",
+   "arm": "e_sac",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "actor_view": 24,
+   "critic_view": 24,
+   "role": "no feedback (ECC interface: the decision layer sees no executor-internal state)",
+   "color": "#eb6834"
+  }
+ }
+}

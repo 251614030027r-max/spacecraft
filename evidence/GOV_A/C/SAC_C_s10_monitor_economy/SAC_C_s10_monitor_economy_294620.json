@@ -1,0 +1,100 @@
+{
+ "opening": 294620,
+ "event": "success",
+ "return": 63.29331044471726,
+ "time_s": 95.3,
+ "delta_v": 0.8700172388820693,
+ "stages": 2,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 4,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 300.0,
+  "urgent": false,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.02,
+  "fuel_cost_per_m_s": 40.0
+ },
+ "wall_s": 99.5360996723175,
+ "decisions": [
+  {
+   "a": [
+    0.9771908521652222,
+    -0.8730198740959167
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 14.40063166509188,
+   "planned_dv": 0.16880660377414844,
+   "executed_dv": 0.16872894539061975,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.9771908521652222,
+     -0.8730198740959167
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": false,
+    "commit_before": null,
+    "commit_after": null,
+    "a_exec": [
+     0.9771908521652222,
+     -0.8730198740959167
+    ],
+    "wall_s": 3.5748819000000367
+   }
+  },
+  {
+   "a": [
+    0.971752405166626,
+    -0.33453935384750366
+   ],
+   "t": 95.3,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.1178503238460626,
+   "planned_dv": 0.06632417588665936,
+   "executed_dv": 0.7012882934914495,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 16.0,
+    "a": [
+     0.971752405166626,
+     -0.33453935384750366
+    ],
+    "status": "not_critical",
+    "critical": false,
+    "n_admissible": 3,
+    "act": false,
+    "commit_before": null,
+    "tau_min": 16.0,
+    "commit_after": null,
+    "a_exec": [
+     0.971752405166626,
+     -0.33453935384750366
+    ],
+    "wall_s": 1.9120295999891823
+   }
+  }
+ ],
+ "certify": false,
+ "cert_interventions": 0,
+ "govern": "monitor",
+ "gov_replacements": 0,
+ "gov_would_replace": 0,
+ "gov_decisions": 2,
+ "gov_wall_s": 5.486911499989219,
+ "policy": "SAC_C_s10_monitor_economy",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\ecc\\B\\TRAIN_SAC_C_s10\\checkpoints\\step_2000.zip",
+ "window": true,
+ "geometry": true,
+ "entries_lost": 0,
+ "window_recoveries": []
+}

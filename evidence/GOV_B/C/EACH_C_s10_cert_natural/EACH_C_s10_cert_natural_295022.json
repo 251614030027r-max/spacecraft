@@ -1,0 +1,209 @@
+{
+ "opening": 295022,
+ "event": "timeout",
+ "return": -133.7073280349367,
+ "time_s": 170.8,
+ "delta_v": 1.6627328034936675,
+ "stages": 7,
+ "holds": 1,
+ "rejected": 0,
+ "bridge_attempts": 38,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 170.8,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 137.61614680290222,
+ "decisions": [
+  {
+   "a": [
+    0.9932464361190796,
+    0.6435954570770264
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 14.793569739837316,
+   "planned_dv": 0.16880660379907675,
+   "executed_dv": 0.16907870693601973,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     0.9932464361190796,
+     0.6435954570770264
+    ],
+    "own_event": 0,
+    "own_t": 48.0,
+    "intervened": false
+   }
+  },
+  {
+   "a": [
+    0.7244857549667358,
+    0.9996464252471924
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.707689140538987,
+   "planned_dv": 0.10134774406077263,
+   "executed_dv": 0.1012590608660246,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     0.7244857549667358,
+     0.9996464252471924
+    ],
+    "own_event": 0,
+    "own_t": 48.0,
+    "intervened": false
+   }
+  },
+  {
+   "a": [
+    0.7217140197753906,
+    0.9995510578155518
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 10.588113660489705,
+   "planned_dv": 0.1251189690110299,
+   "executed_dv": 0.12520948756166667,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     0.7217140197753906,
+     0.9995510578155518
+    ],
+    "own_event": 0,
+    "own_t": 48.0,
+    "intervened": true,
+    "a_exec": [
+     1.0,
+     1.0
+    ],
+    "alt_t": 42.0,
+    "alt_kind": "entry"
+   }
+  },
+  {
+   "a": [
+    0.9124261140823364,
+    0.9960863590240479
+   ],
+   "t": 64.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 8.401573519452247,
+   "planned_dv": 0.1308811522593529,
+   "executed_dv": 0.13076543072666186,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     0.9124261140823364,
+     0.9960863590240479
+    ],
+    "own_event": 1,
+    "own_t": 26.0,
+    "intervened": false
+   }
+  },
+  {
+   "a": [
+    0.9984908103942871,
+    0.999504566192627
+   ],
+   "t": 98.0,
+   "mode": "hold",
+   "held": true,
+   "range_m": 8.030747495545091,
+   "planned_dv": 0.05937763844973684,
+   "executed_dv": 0.4423124985152823,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     0.9984908103942871,
+     0.999504566192627
+    ],
+    "own_event": 1,
+    "own_t": 10.0,
+    "intervened": false
+   }
+  },
+  {
+   "a": [
+    0.9977867603302002,
+    -0.9981184601783752
+   ],
+   "t": 114.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.460958464125313,
+   "planned_dv": 0.16880660379246154,
+   "executed_dv": 0.17207803757381546,
+   "model": "off",
+   "event": null,
+   "cert": {
+    "a": [
+     0.9977867603302002,
+     -0.9981184601783752
+    ],
+    "own_event": 1,
+    "own_t": 22.0,
+    "intervened": false
+   }
+  },
+  {
+   "a": [
+    0.9996993541717529,
+    -0.9990291595458984
+   ],
+   "t": 170.8,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.009378265480206,
+   "planned_dv": 0.1941098134641981,
+   "executed_dv": 0.5220295813141969,
+   "model": "off",
+   "event": "timeout",
+   "cert": {
+    "a": [
+     0.9996993541717529,
+     -0.9990291595458984
+    ],
+    "own_event": 1,
+    "own_t": 6.0,
+    "intervened": false
+   }
+  }
+ ],
+ "certify": true,
+ "cert_interventions": 1,
+ "govern": null,
+ "gov_replacements": 0,
+ "gov_would_replace": 0,
+ "gov_decisions": 0,
+ "gov_wall_s": 0,
+ "policy": "EACH_C_s10_cert_natural",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\gov_b\\B\\TRAIN_EACH_C_s10\\checkpoints\\step_3000.zip",
+ "window": true,
+ "geometry": true,
+ "entries_lost": 1,
+ "window_recoveries": [
+  {
+   "t": 86.0,
+   "slip_s": 0.0,
+   "reserve": true,
+   "phase_deg": 0.0
+  }
+ ]
+}
