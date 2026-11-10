@@ -133,6 +133,88 @@ def budget_checkpoint(run: Path, steps: int) -> Path:
     raise SystemExit(f'no checkpoint at the budget {steps} in {run}')
 
 
+FORMAL_CONDITIONS = ('urgent', 'economy', 'natural', 'resource', 'validation')
+
+
+def registered_condition(st, name):
+    if name == 'validation':
+        return st.get('validation')
+    return st.get('conditions', {}).get(name)
+
+
+def checked_cases(a, st, condition, smoke):
+    from math import isfinite
+
+    registered = registered_condition(st, condition)
+    if condition in ('resource', 'validation') and (a.stage != 'formal' or registered is None):
+        raise SystemExit(f'{condition} is not registered for {a.stage}')
+    budget = getattr(a, 'budget', None)
+    if budget is not None:
+        if not isfinite(budget) or budget <= 0:
+            raise SystemExit('--budget must be finite and positive')
+        if a.stage == 'formal_prescreen':
+            if budget not in st['budgets_m_s']:
+                raise SystemExit('unregistered prescreen budget')
+        elif not smoke or not a.openings or condition == 'resource':
+            raise SystemExit('--budget requires formal_prescreen or a development smoke')
+    if a.stage == 'formal_prescreen' and budget is None:
+        raise SystemExit('prescreen requires a registered --budget')
+    if condition == 'resource':
+        budget = registered['budget_m_s']
+        if budget is None:
+            raise SystemExit('the resource budget has not been frozen')
+    if smoke and a.stage == 'formal' and not a.openings:
+        raise SystemExit('formal smoke requires explicit development openings')
+    default = registered['openings'] if registered else st['eval_openings']
+    ops = block(a.openings or default)
+    if not ops or len(set(ops)) != len(ops):
+        raise SystemExit('openings must be nonempty and unique')
+    if smoke and any(o >= 300000 for o in ops):
+        raise SystemExit('smoke must stay outside the formal evaluation block')
+    if smoke and a.stage == 'formal':
+        allowed = set(block('294300-294301')) | set(block(st['validation']['openings']))
+        if not set(ops) <= allowed:
+            raise SystemExit('openings not registered for the formal preparation smoke')
+    else:
+        if (a.stage in ('formal', 'formal_prescreen') and not set(ops) <= set(block(default))
+                or set(ops) & _forbidden_eval(a.stage)):
+            raise SystemExit('openings outside the registered evaluation block or overlapping a reserved block')
+    mission = registered['mission'] if registered else (
+        st['mission'] if a.stage == 'formal_prescreen' else stage_mission(
+            st, natural=bool(a.natural), condition=condition))
+    if budget is not None:
+        from dataclasses import replace
+        from experiments.t2 import mission_profile
+
+        mission = replace(mission_profile(mission), budget_m_s=budget)
+    return ops, mission
+
+
+def verify_existing(output, manifest, openings, label):
+    """Check all result files that the evaluator would otherwise silently skip."""
+    hashes = {}
+    for line in Path(manifest).read_text(encoding='utf-8-sig').splitlines():
+        digest, relative = line.split(maxsplit=1)
+        key = Path(relative).as_posix()
+        if key in hashes or len(digest) != 64:
+            raise SystemExit(f'invalid SHA256 row: {line}')
+        hashes[key] = digest.lower()
+    for opening in openings:
+        filename = f'{label}_{opening}.json'
+        path = output / filename
+        if not path.is_file():
+            continue
+        keys = (filename, f'{output.name}/{filename}', f'{output.parent.name}/{output.name}/{filename}')
+        matches = {hashes[k] for k in keys if k in hashes}
+        if matches != {hashlib.sha256(path.read_bytes()).hexdigest()}:
+            raise SystemExit(f'existing result SHA256 mismatch or missing: {path}')
+
+
+def result_directory(output, kind, label):
+    path = Path(output)
+    return path if path.name == label and path.parent.name == kind else path / kind / label
+
+
 def cmd_eval(a):
     reg = registry(); st = stage_of(a.stage)
     run = Path(a.run); m = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
@@ -141,15 +223,48 @@ def cmd_eval(a):
     cond = getattr(a, 'condition', None) or ('urgent' if st.get('conditions') else None)
     if getattr(a, 'natural', False) and st.get('conditions'):
         cond = 'natural'
-    ops = block(a.openings or condition_openings(st, cond))
-    clash = set(ops) & _forbidden_eval(a.stage)
-    if clash:
-        raise SystemExit(f'evaluation openings overlap a reserved block: {sorted(clash)[:5]} ...')
+    smoke = bool(m.get('smoke'))
+    if a.stage == 'formal_prescreen':
+        raise SystemExit('formal_prescreen admits fixed policies only')
+    ops, mission = checked_cases(a, st, cond, smoke)
     steps = int(m['steps'])
-    ckpt = budget_checkpoint(run, steps)
+    step = getattr(a, 'checkpoint_step', None)
+    if step is not None and cond != 'validation':
+        raise SystemExit('--checkpoint-step requires validation')
+    output, label = Path(a.output), a.label
+    if a.stage == 'formal':
+        config, seed = m['final_config'], m['seed']
+        if config not in st['trained'] or (not smoke and (steps != st['steps'] or seed not in st['seeds'])):
+            raise SystemExit('model is not registered for formal evaluation')
+        switches = [name for name, on in (('rigid', a.rigid), ('cert', a.certify), ('nocert', a.no_certify)) if on]
+        if len(switches) > 1 or getattr(a, 'govern', None) is not None:
+            raise SystemExit('unsupported formal execution switch combination')
+        switch = switches[0] if switches else None
+        if switch and cond not in st['eval_switches'].get(config, {}).get(switch, ()):
+            raise SystemExit('unregistered formal execution switch')
+        if cond == 'validation':
+            if switch or config not in st['validation']['trained']:
+                raise SystemExit('unregistered validation configuration')
+            allowed = [max(1, steps // 2), steps] if smoke else [*st['checkpoints'], steps]
+            step = steps if step is None else step
+            if step not in allowed:
+                raise SystemExit('unregistered validation checkpoint')
+            label = f'{config}_s{seed}_step{step}'
+            output = result_directory(output, 'V', label)
+        else:
+            label = f'{config}_s{seed}_{cond}' + (f'_{switch}' if switch else '')
+            output = result_directory(output, 'C', label)
+        if a.label and a.label != label:
+            raise SystemExit(f'formal result label must be {label}')
+    if not label:
+        raise SystemExit('--label is required outside formal evaluation')
+    ckpt = budget_checkpoint(run, steps) if step is None else run / 'checkpoints' / f'step_{step}.zip'
+    if not ckpt.is_file():
+        raise SystemExit(f'missing checkpoint: {ckpt}')
+    if getattr(a, 'verify_existing', None):
+        verify_existing(output, a.verify_existing, ops, label)
     from experiments.t2 import evaluate
-    mission = stage_mission(st, natural=bool(getattr(a, 'natural', False)), condition=cond)
-    evaluate(Path(a.output), str(ckpt), a.label, ops, int(a.workers), False if a.rigid else None, mission,
+    evaluate(output, str(ckpt), label, ops, int(a.workers), False if a.rigid else None, mission,
              certify=True if getattr(a, 'certify', False) else (False if getattr(a, 'no_certify', False) else None),
              govern=getattr(a, 'govern', None), audit=getattr(a, 'audit', False) or a.stage == 'formal', condition=cond)
 
@@ -160,38 +275,55 @@ def cmd_screen(a):
         raise SystemExit(f'{a.policy} is not a registered fixed policy: {sorted(reg["fixed"])}')
     if a.rigid and not reg['fixed'][a.policy]['window_pairable']:
         raise SystemExit(f'{a.policy} has no entry commitment to pair')
-    ops = block(a.openings or st['eval_openings'])
-    clash = set(ops) & _forbidden_eval(a.stage)
-    if clash:
-        raise SystemExit(f'screen openings overlap a reserved block: {sorted(clash)[:5]} ...')
+    condition = getattr(a, 'condition', None)
+    if condition is None and a.stage == 'formal':
+        condition = 'urgent'
+    if condition == 'validation' or (a.stage == 'formal_prescreen' and condition not in (None, 'economy')):
+        raise SystemExit('condition not available for fixed-policy screening')
+    if a.stage == 'formal' and a.policy == 'gstar' and condition not in ('urgent', 'economy'):
+        raise SystemExit('direct-entry reference is registered for urgent and economy')
+    ops, mission = checked_cases(a, st, condition, bool(getattr(a, 'smoke', False)))
+    output = Path(a.output)
+    label = a.policy + (f'_{a.coordination}' if getattr(a, 'coordination', None) else '')
+    if a.stage == 'formal':
+        if a.rigid or getattr(a, 'coordination', None):
+            raise SystemExit('unregistered fixed-policy switch')
+        output = result_directory(output, 'S', f'{a.policy}_{condition}')
+    if getattr(a, 'verify_existing', None):
+        verify_existing(output, a.verify_existing, ops, label)
     from experiments.t2 import screen
-    screen(Path(a.output), ops, [a.policy], int(a.workers), not a.rigid, stage_mission(st, natural=bool(getattr(a, 'natural', False))),
-           coord=getattr(a, 'coordination', None))
+    screen(output, ops, [a.policy], int(a.workers), not a.rigid, mission,
+           coord=getattr(a, 'coordination', None),
+           condition='prescreen' if a.stage == 'formal_prescreen' else condition,
+           audit=a.stage in ('formal', 'formal_prescreen'))
 
 
 # ---------------------------------------------------------------------- trajectories (figure B)
-def _executor_env(opening: int, src: str, rigid: bool):
+def _executor_env(opening: int, src: str, rigid: bool, condition=None):
     """Environment of an entry: a run directory (its manifest's interface, window and geometry) or a fixed policy."""
     from env.t2_stage import T2StageEnv
     from experiments.t2 import mission_profile
-    reg = registry(); urgent = tuple(reg['protocol']['urgent_deadline_s'])
+    reg = registry(); urgent = condition or tuple(reg['protocol']['urgent_deadline_s'])
     if Path(src).is_dir():
         m = json.loads((Path(src) / 'manifest.json').read_text(encoding='utf-8'))
         env = T2StageEnv(openings=[opening], shaping=False, window=bool(m.get('window', True)) and not rigid,
                          geometry=bool(m.get('geometry', True)), mission=mission_profile(urgent), obs_profile=m.get('obs_profile', 'engineered'))
         env.cert_live = False
         env.probe_live = False
+        if condition is not None:
+            env.certify = bool(m.get('certify', False))
+            env.govern = m.get('govern')
         return env, m
     return T2StageEnv(openings=[opening], shaping=False, geometry=not src.startswith('b_'), window=not rigid, mission=mission_profile(urgent)), None
 
 
-def fly(opening: int, name: str, src: str, rigid: bool = False) -> dict:
+def fly(opening: int, name: str, src: str, rigid: bool = False, condition=None) -> dict:
     import time
     import torch; torch.set_num_threads(1)
     from env.t1_p_stage import relative_inertial
     from env.t2_stage import angle_deg, frame_now
     from experiments.t2 import policy_action
-    env, m = _executor_env(opening, src, rigid)
+    env, m = _executor_env(opening, src, rigid, condition)
     env.audit_logging = True
     env.env.audit_controls = True
     obs, _ = env.reset(options={'opening': opening})
@@ -243,7 +375,7 @@ def cmd_traj(a):
             f = out / f'traj_{name}{"_rigid" if a.rigid else ""}_{o}.json'
             if f.exists():
                 continue
-            res = fly(o, name, src or name, a.rigid)
+            res = fly(o, name, src or name, a.rigid, getattr(a, 'condition', None))
             f.write_text(json.dumps(res), encoding='utf-8')
             print(json.dumps({k: res[k] for k in ('opening', 'entry', 'event', 'return', 'time_s', 'delta_v', 'entries_lost')}), flush=True)
 
@@ -382,9 +514,52 @@ def cmd_resolve(a):
     print(json.dumps({'science_sha': res['science_sha'], 'runs': len(res['runs'])}))
 
 
+def check_formal(root, st):
+    report = {'stage': 'formal', 'missing_runs': [], 'unfinished_runs': [],
+              'evaluations': {}, 'screens': {}, 'validation': {}, 'errors': []}
+    conditions = dict(st['conditions'])
+    if conditions.get('resource', {}).get('budget_m_s') is None:
+        conditions.pop('resource', None)
+
+    def check_group(folder, key, opens, result_name=None):
+        directory = root / folder / key
+        paths = sorted(directory.glob('*.json'))
+        expected = {f'{result_name or key}_{opening}.json' for opening in block(opens)}
+        actual = {p.name for p in paths}
+        report['errors'].extend(str(directory / p) for p in sorted(actual - expected))
+        section = {'C': 'evaluations', 'S': 'screens', 'V': 'validation'}[folder]
+        report[section][key] = {'files': len(actual & expected), 'expected': len(expected)}
+
+    for config in st['trained']:
+        for seed in st['seeds']:
+            run = root / 'B' / f'TRAIN_{config}_s{seed}'
+            if not (run / 'manifest.json').is_file():
+                report['missing_runs'].append(run.name)
+            elif not (run / 'finished.json').is_file() or json.loads(
+                    (run / 'finished.json').read_text(encoding='utf-8'))['steps'] != st['steps']:
+                report['unfinished_runs'].append(run.name)
+            if config in st['validation']['trained']:
+                for step in [*st['checkpoints'], st['steps']]:
+                    check_group('V', f'{config}_s{seed}_step{step}', st['validation']['openings'])
+    for label in st['evaluations']:
+        cond = next((c for c in st['conditions'] if f'_{c}' in label), None)
+        if cond in conditions:
+            check_group('C', label, conditions[cond]['openings'])
+    for policy in st['fixed']:
+        for cond, item in conditions.items():
+            if policy == 'gstar' and cond not in ('urgent', 'economy'):
+                continue
+            check_group('S', f'{policy}_{cond}', item['openings'], policy)
+    report['complete'] = not (report['missing_runs'] or report['unfinished_runs'] or report['errors']) and all(
+        v['files'] == v['expected'] for key in ('evaluations', 'screens', 'validation') for v in report[key].values())
+    return report
+
+
 def check(stage: str, root: Path) -> dict:
     """Completeness of a stage directory: every planned run finished, every evaluation / screen complete, no duplicates."""
     reg = registry(); st = stage_of(stage); n = len(block(st['eval_openings']))
+    if stage == 'formal':
+        return check_formal(root, st)
     rep = {'stage': stage, 'missing_runs': [], 'unfinished_runs': [], 'evaluations': {}, 'screens': {}, 'errors': []}
     for cfg0 in st['trained']:
         alt = (st.get('alternatives') or {}).get(cfg0)        # registered fallback (gov_b: ECC_CERT_LOOP for ECC_GOV)
@@ -441,20 +616,28 @@ def main():
     p = argparse.ArgumentParser(description=__doc__); s = p.add_subparsers(dest='cmd', required=True)
     t = s.add_parser('train'); t.add_argument('--stage', required=True); t.add_argument('--config', required=True); t.add_argument('--seed', type=int, required=True)
     t.add_argument('--output', required=True); t.add_argument('--workers', type=int); t.add_argument('--smoke-steps', type=int)
-    e = s.add_parser('eval'); e.add_argument('--stage', required=True); e.add_argument('--run', required=True); e.add_argument('--label', required=True)
+    e = s.add_parser('eval'); e.add_argument('--stage', required=True); e.add_argument('--run', required=True); e.add_argument('--label')
     e.add_argument('--output', required=True); e.add_argument('--rigid', action='store_true'); e.add_argument('--workers', type=int, default=4); e.add_argument('--openings')
     e.add_argument('--certify', action='store_true', help='env 0.15.0: U2 decision-time certification (the executor checks each intent)')
     e.add_argument('--no-certify', action='store_true', help='env 0.16.0: certification off for a run trained with it (paired ablation)')
     e.add_argument('--govern', choices=('act', 'monitor', 'off'), help='env 0.17.0: the execution-opportunity governor (default: as trained)')
     e.add_argument('--audit', action='store_true', help='include read-only decision and terminal diagnostics')
     e.add_argument('--natural', action='store_true', help='env 0.17.0: the natural mission distribution instead of the stage mission')
-    e.add_argument('--condition', choices=('urgent', 'economy', 'natural'), help='env 0.17.0: evaluation condition of the stage (default urgent)')
+    e.add_argument('--budget', type=float)
+    e.add_argument('--checkpoint-step', type=int)
+    e.add_argument('--verify-existing', type=Path)
+    e.add_argument('--condition', choices=FORMAL_CONDITIONS, help='env 0.17.0: evaluation condition of the stage (default urgent)')
     c = s.add_parser('screen'); c.add_argument('--stage', required=True); c.add_argument('--policy', required=True); c.add_argument('--output', required=True)
     c.add_argument('--rigid', action='store_true'); c.add_argument('--workers', type=int, default=4); c.add_argument('--openings')
     c.add_argument('--natural', action='store_true')
+    c.add_argument('--condition', choices=FORMAL_CONDITIONS)
+    c.add_argument('--budget', type=float)
+    c.add_argument('--verify-existing', type=Path)
+    c.add_argument('--smoke', action='store_true')
     c.add_argument('--coordination', choices=('cert', 'gov'), help='env 0.17.0 (section 6B): the old certification or the governor on a fixed stage policy')
     j = s.add_parser('traj'); j.add_argument('--entry', action='append', required=True); j.add_argument('--openings', required=True)
     j.add_argument('--output', required=True); j.add_argument('--rigid', action='store_true')
+    j.add_argument('--condition', choices=('urgent', 'economy', 'natural'))
     g = s.add_parser('geoscan'); g.add_argument('--openings', required=True); g.add_argument('--output', required=True)
     g.add_argument('--ranges', default='8,10,12'); g.add_argument('--workers', type=int, default=4)
     r = s.add_parser('resolve'); r.add_argument('--stage', required=True); r.add_argument('--root', required=True); r.add_argument('--output', required=True)

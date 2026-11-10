@@ -102,6 +102,8 @@ def mission_profile(urgent):
     env 0.17.0: ``urgent`` = 'scarcity' / 'scarcity:strict' / 'scarcity:inside' -- the opportunity-scarcity condition
     (``ScarcityMission``, ECC final round)."""
     from env.t2_stage import MixMission, ScarcityMission, T2Mission
+    if isinstance(urgent, T2Mission):
+        return urgent
     if isinstance(urgent, str):          # env 0.17.0 condition names (deadline ranges: urgent U(140, 200), economy U(280, 340))
         name, _, arg = urgent.partition(':')
         rng = dict(urgent_deadline_s=(140.0, 200.0))
@@ -119,6 +121,8 @@ def mission_profile(urgent):
 
 def screen_job(job):
     opening, policy, out, window, urgent = job[:5]
+    audit = bool(job[6]) if len(job) > 6 else False
+    condition = job[7] if len(job) > 7 else None
     coord = job[5] if len(job) > 5 else None      # env 0.17.0 (ECC final round 6B): None / 'cert' / 'gov' for a fixed stage policy
     tag = f'{policy}_{coord}' if coord else policy
     import torch; torch.set_num_threads(1)
@@ -128,6 +132,7 @@ def screen_job(job):
     env = T2StageEnv(openings=[opening], shaping=False, geometry=not policy.startswith('b_'), window=window, mission=mission_profile(urgent))
     if coord is not None and policy in ('pure', 'gstar'):
         raise ValueError('coordination applies to stage policies only')
+    env.audit_logging = audit
     env.certify = coord == 'cert'
     env.govern = 'act' if coord == 'gov' else None
     if policy == 'pure':
@@ -154,15 +159,17 @@ def screen_job(job):
         if coord is not None:
             res['coordination'] = coord; res['cert_interventions'] = env.stats.get('cert_interventions', 0)
             res.update({k: env.stats.get(k, 0) for k in ('gov_replacements', 'gov_decisions', 'gov_wall_s')})
+    if audit:
+        res.update(env.episode_audit(), condition=condition)
     res['policy'] = tag; res['window'] = window; res['entries_lost'] = env.stats.get('entries_lost', 0) if env.stats else 0
     res['window_recoveries'] = env.generator.bridge.recovery_log if env.generator is not None else []
     dump(file, res); return res
 
 
-def screen(out, ops, policies, workers, window=True, urgent=None, coord=None):
+def screen(out, ops, policies, workers, window=True, urgent=None, coord=None, audit=False, condition=None):
     out.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(workers) as pool:
-        for f in as_completed([pool.submit(guarded_screen, (o, p, str(out), window, urgent, coord)) for p in policies for o in ops]):
+        for f in as_completed([pool.submit(guarded_screen, (o, p, str(out), window, urgent, coord, audit, condition)) for p in policies for o in ops]):
             r = f.result(); print(json.dumps({k: r.get(k) for k in STAGE_EVAL_KEYS}, default=str), flush=True)
 
 
