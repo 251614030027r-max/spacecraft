@@ -1,5 +1,7 @@
 # EACH 方法规格：决策、信息、动作、执行器、真实 TD
 
+> **非最终论文算法（2026-11-10）：** 本文件是研发记录。论文方法以 `docs/paper/METHOD.md` 为唯一源，对照见 `docs/paper/FACT_MAP.md`。
+
 每个公式后给出源码位置（`env/t2_stage.py` 简写为 `env`，`train/t2_mve_sac.py` 简写为 `learner`）。所有数值都是冻结值，最终实验不改。
 
 ## 1. 执行诱导的宏观决策（理论 T1）

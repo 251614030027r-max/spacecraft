@@ -1,5 +1,7 @@
 # U2 决策时认证（Executor Mode Certification）——规格与预登记判据
 
+> **非最终论文算法（2026-11-10）：** 本文件是研发记录。论文方法以 `docs/paper/METHOD.md` 为唯一源，对照见 `docs/paper/FACT_MAP.md`。
+
 **状态：** 用户 2026-11-07 批准。U2 的执行器探询（`env/t2_probe.py`，与 RUN_U2 相同的网格、时域与执行器规则）从"训练期 critic 输入"改为在决策时认证 SAC 的意图。
 
 - 判据在评估数据产生之前登记于本文件与 `experiments/cert_readout.py`。

@@ -1,5 +1,7 @@
 # ECC：执行机会证书耦合（Execution-opportunity Certificate Coupling）——算法、性质与本轮判据
 
+> **非最终论文算法（2026-11-10）：** 本文件是研发记录。论文方法以 `docs/paper/METHOD.md` 为唯一源，对照见 `docs/paper/FACT_MAP.md`。
+
 **状态：** 用户 2026-11-07 批准，研究层"ECC 最终统筹意见"。本文件与 `experiments/ecc_readout.py` 在本轮任何数据产生之前登记。
 
 **代码：** env 0.16.0（`env/t2_stage.py`：`_opportunity`、`opportunity_certificate`、`_certify`；观测配置 `cut_priv` / `cut_ecc`；`env/t2_probe.py`），learner 7.2（训练中认证），注册表配置 `SAC_C` / `EACH_C` / `ECC` 与阶段 `ecc`。

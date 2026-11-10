@@ -1,5 +1,7 @@
 # 图表规格：每张图的数据来源、坐标、分组与统计口径
 
+> **非最终论文算法（2026-11-10）：** 本文件是研发记录。论文方法以 `docs/paper/METHOD.md` 为唯一源，对照见 `docs/paper/FACT_MAP.md`。
+
 所有图由 `python -B -m experiments.final_figures --stage S --root DIR --output DIR [--geoscan G] [--traj T]` 从原始日志一键重建。
 - 图例与颜色取自 `METHOD_REGISTRY.json`；
 - 脚本先运行 `experiments.final.resolve`：不同科学 SHA、不同预算、配置与注册表不符的输入，一律拒绝；

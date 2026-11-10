@@ -1,5 +1,7 @@
 # 配置冻结清单
 
+> **非最终论文算法（2026-11-10）：** 本文件是研发记录。论文方法以 `docs/paper/METHOD.md` 为唯一源，对照见 `docs/paper/FACT_MAP.md`。
+
 **冻结科学提交：** 执行书 `RUN_PRETEST`（collab `docs/collaboration/upper/run_orders/`）中写明的 SHA。本文件、`METHOD_REGISTRY.json` 与代码在同一次提交中冻结。
 
 ## 主方法与 T2.12 冻结版本的等价性

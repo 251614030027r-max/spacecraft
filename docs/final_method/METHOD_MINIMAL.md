@@ -1,5 +1,7 @@
 # EACH：最小闭环（定稿方法）
 
+> **非最终论文算法（2026-11-10）：** 本文件是研发记录。论文方法以 `docs/paper/METHOD.md` 为唯一源，对照见 `docs/paper/FACT_MAP.md`。
+
 **EACH = 执行感知的分层控制（Execution-Aware Hierarchical control）= C1 + U1。** 代码中的主方法是 `e_priv`（`obs_profile = reduced_priv`），与 T2.12 冻结版本 `2e7d838` 逐位一致（`evidence/final_pretest/precheck/`）。
 
 **两项创新：**

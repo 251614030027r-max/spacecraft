@@ -1,5 +1,7 @@
 # U2：执行器模式探询（Executor Mode Probing）——实现规格与预登记判据
 
+> **非最终论文算法（2026-11-10）：** 本文件是研发记录。论文方法以 `docs/paper/METHOD.md` 为唯一源，对照见 `docs/paper/FACT_MAP.md`。
+
 **状态：** 研究层与用户 2026-11-06 批准方向（唯一新增方向、一次完整验证）。本文件是实现规格，并在任何离线数据产生之前登记离线判据。训练阶段的判据见执行书 `RUN_U2`（collab）。正式实验配置与运行需另行授权。
 
 **代码：** `env/t2_probe.py`（`u2-probe-1.0`）、`env/t2_stage.py`（env 0.14.0，观测配置 `reduced_probe` / `reduced_priv_probe`）、`train/t2_mve_sac.py`（learner 7.1，只是视图维度与日志）、注册表配置 `PROBE` / `EACH_PROBE` 与阶段 `u2`。
