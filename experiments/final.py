@@ -214,8 +214,8 @@ def fly(opening: int, name: str, src: str, rigid: bool = False) -> dict:
                 event = 'resource_exhausted'; ret -= env.env.config.reward.timeout_penalty
     else:
         if m is not None:
-            from train.t2_mve_sac import T2SAC
-            model = T2SAC.load(str(budget_checkpoint(Path(src), int(m['steps']))), device='cpu')
+            from experiments.t2 import load_checkpoint
+            model = load_checkpoint(budget_checkpoint(Path(src), int(m['steps'])))
             act = lambda o: model.predict(o, deterministic=True)[0]
         else:
             act = lambda o: policy_action(src, env, o)

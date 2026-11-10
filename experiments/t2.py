@@ -175,6 +175,18 @@ def exec_config_of(checkpoint) -> dict:
     raise FileNotFoundError(f'no manifest.json beside {checkpoint}')
 
 
+def load_checkpoint(checkpoint):
+    """Load the training algorithm specified by the checkpoint's run manifest."""
+    from train.t2_mve_sac import T2SAC, T2TD3
+
+    c = Path(checkpoint)
+    for manifest in (c.parent.parent / 'manifest.json', c.parent / 'manifest.json'):
+        if manifest.exists():
+            arm = json.loads(manifest.read_text(encoding='utf-8')).get('arm')
+            return (T2TD3 if arm == 'e_td3' else T2SAC).load(checkpoint, device='cpu')
+    raise FileNotFoundError(f'no manifest.json beside {checkpoint}: the decision interface of the checkpoint is unknown')
+
+
 def eval_job(job):
     opening, checkpoint, label, out, window, urgent = job[:6]
     certify = job[6] if len(job) > 6 else False
@@ -183,8 +195,7 @@ def eval_job(job):
     file = Path(out) / f'{label}_{opening}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
     from env.t2_stage import T2StageEnv
-    from train.t2_mve_sac import T2SAC
-    model = T2SAC.load(checkpoint, device='cpu')
+    model = load_checkpoint(checkpoint)
     cfg = exec_config_of(checkpoint)
     window = cfg['window'] if window is None else bool(window)     # None: as trained; False: forced rigid (paired ablation)
     env = T2StageEnv(openings=[opening], shaping=False, window=window, geometry=cfg['geometry'], mission=mission_profile(urgent),

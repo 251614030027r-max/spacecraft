@@ -41,7 +41,7 @@ import gymnasium as gym
 import numpy as np
 import torch as th
 import torch.nn.functional as F
-from stable_baselines3 import SAC
+from stable_baselines3 import SAC, TD3
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.utils import polyak_update
@@ -922,9 +922,62 @@ TERM_ARMS = {'e_term': 1, 'e_term2': 2}
 FB_ARMS = {'e_pi': 'rel', 'e_pit': 'term', 'e_pull': 'pull', 'e_pull2': 'pull2', 'e_pull3': 'pull2', 'e_pullq': 'pull2', 'e_full': 'pull2'}
 
 
+class TD3Replay(ReplayBuffer):
+    """Real transitions and the read-only counters expected by the collector."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0}
+
+    def add(self, obs, next_obs, action, reward, done, infos):
+        super().add(obs, next_obs, action, reward, done, infos)
+        self.model_counts['transitions'] += len(infos)
+
+
+class T2TD3(TD3):
+    """SB3 TD3 with the stage collector feedback interfaces disabled."""
+
+    acc = False
+    feedback = None
+    model_beta = 0.0
+    model_start = 0
+    dec_cal = None
+    exploration_sigma = 0.1
+
+    def __init__(self, *args, **kwargs):
+        self.model_stats = []
+        super().__init__(*args, **kwargs)
+
+    def _excluded_save_params(self):
+        return [*super()._excluded_save_params(), 'model_stats']
+
+    def train(self, gradient_steps, batch_size=100):
+        super().train(gradient_steps, batch_size)
+        values = self.logger.name_to_value
+        self.model_stats.append({
+            'steps': self.num_timesteps, 'update': self._n_updates,
+            'real_td': float(values['train/critic_loss']),
+            'actor_loss': float(values['train/actor_loss']) if 'train/actor_loss' in values else None,
+        })
+
+
+def td3_exploration_action(model, obs, noise_rng):
+    intent = model.predict(obs, deterministic=True)[0]
+    noise = noise_rng.normal(0.0, model.exploration_sigma, size=intent.shape)
+    return np.clip(intent + noise, -1.0, 1.0).astype(np.float32)
+
+
 def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transition: float = UPDATES_PER_TRANSITION,
-               model_beta: float = MODEL_BETA) -> T2SAC:
+               model_beta: float = MODEL_BETA) -> T2SAC | T2TD3:
     obs_dim = int(env.observation_space.shape[0])
+    if arm == 'e_td3':
+        return T2TD3('MlpPolicy', env, seed=seed, device='cpu', verbose=0,
+                     policy_kwargs={'net_arch': [256, 256], 'features_extractor_class': SliceExtractor,
+                                    'features_extractor_kwargs': {'dim': OBS_DIM}},
+                     gamma=GAMMA_STAGE, tau=0.005, learning_rate=3e-4, buffer_size=100_000,
+                     batch_size=64 if smoke else 256, learning_starts=16 if smoke else 200,
+                     train_freq=(1, 'step'), gradient_steps=2, policy_delay=2,
+                     target_policy_noise=0.2, target_noise_clip=0.5, replay_buffer_class=TD3Replay)
     if obs_dim > OBS_DIM:      # T2.11: split views; only the privileged-critic arms read the executor's information (learner 7.1: U2 probes too)
         policy, kw = SplitViewPolicy, {'net_arch': [256, 256], 'actor_dim': OBS_DIM, 'critic_dim': obs_dim if arm in PRIV_CRITIC_ARMS else OBS_DIM}
     else:
@@ -1136,8 +1189,17 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     pref = arm in ('e_pref', 'e_acc')                        # T2.10 preference / T2.11 EACC-A opportunity judgements
     cand_min_sep = CANDIDATE_MIN_SEP_M_S if arm in ('e_rel', 'e_term', 'e_term2', 'e_pi', 'e_pit', 'e_pull', 'e_pull2', 'e_pull3', 'e_pullq', 'e_full') else 0.0     # candidates separated in the executor's terms
     label_det = arm in TERM_ARMS                                         # learner 5.0: stage 2 under the policy's mean intent
+    td3_manifest = {}
+    if arm == 'e_td3':
+        td3_manifest = {
+            'algorithm': 'TD3', 'net_arch': [256, 256], 'learning_rate': model.learning_rate,
+            'buffer_size': model.buffer_size, 'batch_size': model.batch_size,
+            'learning_starts': model.learning_starts, 'gamma': model.gamma, 'tau': model.tau,
+            'policy_delay': model.policy_delay, 'target_policy_noise': model.target_policy_noise,
+            'target_noise_clip': model.target_noise_clip, 'exploration_sigma': model.exploration_sigma,
+        }
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
-                                                   'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': ENT_COEF,
+                                                   'model_beta': model.model_beta, 'model_start': model.model_start, 'ent_coef': None if arm == 'e_td3' else ENT_COEF,
                                                    'k_candidates': candidates, 'collection': 'asynchronous', 'window': window, 'geometry': bool(geometry),
                                                    'gradient_steps_per_transition': model.gradient_steps, 'entry_stages': entry_stages, 'sync_updates': SYNC_UPDATES, 'age_cap': AGE_CAP,
                                                    'pooled_calibration': bool(POOL_CALIBRATION and (candidates > 0 or pref or obs_profile == 'reduced_priv_cert')),
@@ -1160,7 +1222,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                                    'pref_lambda': PREF_LAMBDA if pref else 0.0, 'pref_delta': PREF_DELTA, 'pref_kappa': PREF_KAPPA,
                                                    'pref_margin_cap': PREF_MARGIN_CAP,
                                                    'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION, **({'certify': True} if certify else {}), **({'govern': govern} if govern else {}),
-                                                   **(manifest_extra or {})}, indent=1), encoding='utf-8')
+                                                   **td3_manifest, **(manifest_extra or {})}, indent=1), encoding='utf-8')
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
     for rank in range(workers):
@@ -1174,6 +1236,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     bias_by_worker = {}
     synced = {}                                   # worker -> update count of its policy copy
     rng = np.random.default_rng(seed)
+    noise_rng = np.random.default_rng([seed, 3003]) if arm == 'e_td3' else None
     pool = CalibrationPool() if (POOL_CALIBRATION and (candidates > 0 or pref or obs_profile == 'reduced_priv_cert')) else None
     guided_by_worker = {}                         # T2.7: guided decisions of each worker's current episode
     cal_pending = {}                              # T2.11: each worker's executed-decision features of the current episode
@@ -1225,6 +1288,8 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                 conn.send('stop'); active.remove(conn); continue
             if model.num_timesteps < model.learning_starts:
                 action = rng.uniform(-1.0, 1.0, size=2).astype(np.float32)
+            elif noise_rng is not None:
+                action = td3_exploration_action(model, obs, noise_rng)
             else:
                 action = model.predict(obs, deterministic=False)[0]
             payload, w_ = None, pipes.index(conn)
