@@ -27,7 +27,9 @@ def opening_rows(paths):
     for path in paths:
         row = read_json(path)
         opening = row["opening"]
-        if opening in result or row["event"] in ("error", "numerical_failure"):
+        # A numerical failure is a truncation of the episode (a non-capture outcome, reported in ``events``);
+        # an ``error`` record means the episode did not run and blocks the readout.
+        if opening in result or row["event"] == "error":
             raise ValueError(f"Duplicate or invalid episode in {path}")
         result[opening] = row
     return result
@@ -194,8 +196,9 @@ def mechanism(rows):
             cert = decision.get("cert")
             if cert is None or not cert.get("cands"):
                 continue
+            # EXPERIMENTS.md 6B: delta-v already used + predicted stage and entry delta-v within the budget
             feasible = [c for c in cert["cands"] if c["event"] == 1
-                        and c["dv"] + c["dv_entry"] <= row["budget_m_s"]]
+                        and c["dv"] + c["dv_entry"] <= decision["remaining_dv"]]
             early = min(feasible, key=lambda c: c["t"]) if feasible else None
             eta = (decision["remaining_s"] - 45.0 - early["t"]) / period if early else None
             key = "uncovered" if eta is None else "<0" if eta < 0 else "[0,1)" if eta < 1 else ">=1"
@@ -315,16 +318,57 @@ def prescreen(rows, budget):
             "best_capture_rate": captures / len(openings), "gstar_reference": summary(rows["gstar"].values())}
 
 
+EPISODE_COLUMNS = ("kind", "group", "config", "seed", "condition", "switch", "opening", "event", "return",
+                   "time_s", "delta_v", "budget_m_s", "deadline_s", "urgent", "cert_interventions", "entries_lost")
+
+
+def episode_table(root):
+    """One compact row per evaluated episode (C, S, V): the git-sized record of the raw result files."""
+    rows = []
+    for kind in ("C", "S", "V"):
+        for folder in sorted((root / kind).iterdir()) if (root / kind).is_dir() else ():
+            config = seed = condition = switch = None
+            if kind == "C":
+                match = GROUP.fullmatch(folder.name)
+                if not match:
+                    continue
+                config, seed, condition, switch = match.groups()
+            elif kind == "S":
+                config, _, condition = folder.name.rpartition("_")
+            else:
+                name, _, step = folder.name.rpartition("_step")
+                config, _, seed = name.rpartition("_s")
+                condition, switch = "validation", f"step{step}"
+            for opening, row in sorted(opening_rows(sorted(folder.glob("*.json"))).items()):
+                mission = row.get("mission") or {}
+                rows.append({"kind": kind, "group": folder.name, "config": config, "seed": seed, "condition": condition,
+                             "switch": switch or "", "opening": opening, "event": row["event"], "return": row["return"],
+                             "time_s": row.get("time_s"), "delta_v": row.get("delta_v"),
+                             "budget_m_s": mission.get("budget_m_s"), "deadline_s": mission.get("deadline_s"),
+                             "urgent": mission.get("urgent"), "cert_interventions": row.get("cert_interventions", 0),
+                             "entries_lost": row.get("entries_lost", 0)})
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("formal", "prescreen"):
+    for name in ("formal", "prescreen", "episodes"):
         p = sub.add_parser(name)
         p.add_argument("--root", type=Path, required=True)
         p.add_argument("--output", type=Path, required=True)
         if name == "prescreen":
             p.add_argument("--budget", type=float, choices=PRESCREEN_BUDGETS, required=True)
     args = parser.parse_args()
+    if args.command == "episodes":
+        import csv
+        rows = episode_table(args.root)
+        with args.output.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=EPISODE_COLUMNS)
+            writer.writeheader()
+            writer.writerows(rows)
+        print(len(rows))
+        return
     if args.command == "formal":
         result = readout(args.root)
     else:
