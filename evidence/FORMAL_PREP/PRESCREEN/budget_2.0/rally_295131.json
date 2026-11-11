@@ -1,0 +1,185 @@
+{
+ "opening": 295131,
+ "event": "success",
+ "return": 33.89307399000211,
+ "time_s": 162.4,
+ "delta_v": 1.5714731502499446,
+ "stages": 4,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 3,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 298.7,
+  "urgent": false,
+  "budget_m_s": 2.0,
+  "time_cost_per_s": 0.02,
+  "fuel_cost_per_m_s": 40.0
+ },
+ "wall_s": 117.89540100097656,
+ "decisions": [
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 14.376814080762195,
+   "planned_dv": 0.16880660390342153,
+   "executed_dv": 0.16918801961278904,
+   "model": "off",
+   "event": null,
+   "t_start": 0.0,
+   "remaining_s": 298.7,
+   "remaining_dv": 2.0,
+   "phase_rad": 5.766302477328901,
+   "time_to_pass_s": 130.9030920312309,
+   "lat_err_deg": -17.819489034581963,
+   "macro_end": "stage_complete",
+   "true_mode_event_t": null
+  },
+  {
+   "a": [
+    0.9671504215365853,
+    0.0
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 11.827689682515736,
+   "planned_dv": 0.06731416691325316,
+   "executed_dv": 0.06766636736425394,
+   "model": "off",
+   "event": null,
+   "t_start": 16.0,
+   "remaining_s": 282.7,
+   "remaining_dv": 1.830811980387211,
+   "phase_rad": 5.092679648291366,
+   "time_to_pass_s": 115.70828113865537,
+   "lat_err_deg": -18.765116805106075,
+   "macro_end": "stage_complete",
+   "true_mode_event_t": null
+  },
+  {
+   "a": [
+    0.28738391533752955,
+    0.0
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 9.713239597493068,
+   "planned_dv": 0.10767083667175899,
+   "executed_dv": 0.10737450455224018,
+   "model": "off",
+   "event": null,
+   "t_start": 32.0,
+   "remaining_s": 266.7,
+   "remaining_dv": 1.763145613022957,
+   "phase_rad": 4.406328969678135,
+   "time_to_pass_s": 100.20417391296105,
+   "lat_err_deg": -13.51498523102201,
+   "macro_end": "stage_complete",
+   "true_mode_event_t": null
+  },
+  {
+   "a": [
+    -0.27646944066851525,
+    0.0
+   ],
+   "t": 162.4,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.118404994370429,
+   "planned_dv": 0.09740727537673274,
+   "executed_dv": 1.2272442587206616,
+   "model": "off",
+   "event": "success",
+   "t_start": 48.0,
+   "remaining_s": 250.7,
+   "remaining_dv": 1.655771108470717,
+   "phase_rad": 3.7250686669363,
+   "time_to_pass_s": 84.78256096500192,
+   "lat_err_deg": -2.1185535159237503,
+   "macro_end": "entry",
+   "true_mode_event_t": 64.0
+  }
+ ],
+ "initial": {
+  "q": [
+   -13.553146090358496,
+   -6.0655108026494675,
+   -3.7182297345487574
+  ],
+  "v": [
+   -0.012421278311596807,
+   -0.01774726014718908,
+   0.0014329391360661248
+  ],
+  "rotation": [
+   [
+    0.480776378515382,
+    -0.856485737735681,
+    -0.18784635987157344
+   ],
+   [
+    0.6558915034569606,
+    0.4934591570812992,
+    -0.571230597907344
+   ],
+   [
+    0.5819453664688825,
+    0.1514273467639855,
+    0.7990052246996997
+   ]
+  ],
+  "omega": [
+   0.012694962532936484,
+   0.0057443337151914355,
+   0.04178824444517357
+  ],
+  "axis": [
+   -1.0,
+   0.0,
+   0.0
+  ]
+ },
+ "budget_m_s": 2.0,
+ "min_margins": {
+  "collision_clearance_m": 0.6227737468604249,
+  "union_margin_m": 0.613685024814913,
+  "fov_margin_deg": 20.493341099288166,
+  "radial_envelope_margin_m_s": 0.009938833890070012,
+  "total_speed_margin_m_s": 0.24010216975276366,
+  "axial_envelope_margin_m_s": 0.01726798298140733
+ },
+ "terminal": {
+  "position_error_m": 0.20576578689054,
+  "speed_m_s": 0.04063880850292009,
+  "attitude_error_rad": 0.07080713521404673,
+  "angular_velocity_error_rad_s": 0.007354374845126294,
+  "in_cone": true
+ },
+ "cert_wall_s_total": 0,
+ "cert_decisions": 0,
+ "condition": "prescreen",
+ "policy": "rally",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 88.0,
+   "slip_s": 2.0,
+   "reserve": false,
+   "phase_deg": 5.029459249583779
+  },
+  {
+   "t": 102.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 10.063619872782255
+  }
+ ]
+}
