@@ -6,7 +6,7 @@
 
 | 项 | 状态 |
 |---|---|
-| 运行中 | **RUN_FORMAL_PREP 已下发（2026-11-10）**：正式实验前的全部准备交下层（注册表 formal 重写、TD3、只读日志、评估选项、正式读出与作图、回归与冒烟、资源条件 R 预筛），不训练、不碰 300000 以上。方法冻结 = `ECC_CERT_LOOP`（科学 `322f1cec` 起；论文方法唯一来源 `docs/paper/METHOD.md`，`fdc164ef`；正式实验设计事前登记 `docs/paper/EXPERIMENTS.md`，`6c76c2c9`）。B 步结果见第 2 节：紧急对 SAC_C +36.0，捕获 145 / 111，0 unsafe。下一步：上层复核交付 → 写 RUN_FORMAL → 用户单独授权 |
+| 运行中 | 无。**RUN_FORMAL_PREP 已交付并复核通过**（科学 `e47a1165`，collab `5496cb51`；逐位回归、冒烟、补跑、读出与作图全部通过；资源条件 R 冻结为 2.0 m/s）。上层复核修正读出两处并冻结科学 `fcd8d2ee`。**[RUN_FORMAL](upper/run_orders/RUN_FORMAL.md) 已写好，待用户单独授权**：6 组 × 种子 20–22 × 5000，U / E / N / R 四条件，约 4.5–5 天。方法 `ECC_CERT_LOOP`（`docs/paper/METHOD.md`），设计 `docs/paper/EXPERIMENTS.md` |
 | 现行方法 | **ECC（执行机会证书耦合）**，规格见科学 `docs/final_method/ECC_SPEC.md`。RUN_ECC 按事先登记的判定顺序选中 **`ECC_deploy`**：critic 读过顶层证书（原 U1），部署时执行器认证意图（原 U2 探询）；决策层统一去掉规划答案与执行内部状态 |
 | RUN_ECC 结果（新开局 294320–294367，2 种子 × 2000，96 对，对 SAC_C） | **EACH_C + 部署认证：+12.2，捕获 84 / 78，种子 +1.5 / +23.0，去掉每种子最大两个正差后 +3.8，0 unsafe，G1–G5 全过**。<br>完整 ECC（认证在环、动作层证书进 critic）：+5.7，81 / 78，1 次 unsafe，未过。<br>EACH_C（不认证）：+5.9，种子 −7.1 / +18.9。<br>同模型认证（EACH_C 开 / 关）：+6.3，两种子 +8.5 / +4.0，捕获 +3，0 丢失，"改善"档。<br>训练曲线 AUC：ECC 26.3 / 23.2，EACH_C 5.8 / 14.3，SAC_C 13.2 / −10.7 |
 | 需正视的点 | ① 通过幅度偏薄（种子 10 只有 +1.5，中位差约 0，靠 8 比 2 的捕获翻转）；<br>② 完整 ECC 的认证在 294334 引发 1 次 unsafe（"下降"类认证），而认证救回的捕获大多也来自"下降"类；<br>③ 训练与部署一致（ECC 规格性质 P1）只对完整 ECC 成立，选中的 `ECC_deploy` 训练时未开认证；<br>④ 动作层证书进 critic 的增益没有在最终评估中体现；<br>⑤ 只有 2 个种子 |
@@ -19,7 +19,8 @@
 
 | 状态 | 执行书 |
 |---|---|
-| 已下发（2026-11-10，用户：开始测试交付下层） | [RUN_FORMAL_PREP](upper/run_orders/RUN_FORMAL_PREP.md)：正式实验准备 WP1–WP8（注册表新配置 SAC_CERT_LOOP / ECC_CERT_LOOP_NOGEO / TD3_C 与新 formal 阶段、旧 formal 改名 `formal_each_obsolete`；TD3 学习器；只读决策 / 回合 / 轨迹日志；评估选项与命名；`experiments/formal_readout.py`、`experiments/formal_figures.py`；对 `e0a61753` 逐位回归与 6 配置冒烟；R 预筛 295100–295147）。冻结方法行为不变，每个工作包单独提交、pytest 退出码 0；交付 `evidence/FORMAL_PREP/` 与 `lower/handoffs/formal_prep/RESULT.md` |
+| 草案，待用户单独授权（2026-11-11） | [RUN_FORMAL](upper/run_orders/RUN_FORMAL.md)：ECC 正式实验，冻结科学 `fcd8d2ee`；三批训练（每批一个种子的 6 组）、U / E / N / R 主测试、只评估对照、固定策略、验证曲线、串行计时；验收 5 条；交付 `evidence/FORMAL/` 与 `lower/handoffs/formal/RESULT.md` |
+| 已交付（科学 `e47a1165`，collab `5496cb51`；上层复核通过，读出修正 `fcd8d2ee`） | [RUN_FORMAL_PREP](upper/run_orders/RUN_FORMAL_PREP.md)：正式实验准备 WP1–WP8（注册表新配置 SAC_CERT_LOOP / ECC_CERT_LOOP_NOGEO / TD3_C 与新 formal 阶段、旧 formal 改名 `formal_each_obsolete`；TD3 学习器；只读决策 / 回合 / 轨迹日志；评估选项与命名；`experiments/formal_readout.py`、`experiments/formal_figures.py`；对 `e0a61753` 逐位回归与 6 配置冒烟；R 预筛 295100–295147）。冻结方法行为不变，每个工作包单独提交、pytest 退出码 0；交付 `evidence/FORMAL_PREP/` 与 `lower/handoffs/formal_prep/RESULT.md` |
 | 已交付（collab `7467923d`，科学 `cc1a0954`） | [RUN_ECC](upper/run_orders/RUN_ECC.md)：`final_method = ECC_deploy`（见第 1 节） |
 | 已下发并交付（11-07 – 11-08） | [RUN_ECC](upper/run_orders/RUN_ECC.md)：ECC（执行机会证书耦合：一个执行机会评估同时给出 critic 证书与认证映射，训练与部署一致）。SAC_C、EACH_C、ECC × 种子 10、11 × 2000，决策层统一去掉规划答案与执行内部状态；评估新开局 294320–294367，另评 ECC 认证关闭与 EACH_C 部署认证；判定顺序 ECC → 部署认证 ECC → none（`experiments/ecc_readout.py`）；冻结科学 `1cddbae2`（106 项测试）；规格 `docs/final_method/ECC_SPEC.md` |
 | 已交付（collab `a60b0d8c`，科学 `bcab9207`） | [RUN_U2C](upper/run_orders/RUN_U2C.md)：主比较 `pass`，同模型认证 `no_effect` |
@@ -35,7 +36,7 @@
 | 未执行（1500 步条件未过：`e_pull` 臂均 31.53 < 38.9）；原条件：仅当 T2.17 的 `e_pull` 在 1000–1500 步臂均 ≥ 38.9 且两种子 ≥ 33.9 时执行，并停掉 T2.17；用户转发即同意 | [T2_18_PULL3_20261104](upper/run_orders/T2_18_PULL3_20261104.md)：学习器 6.5。`e_pull3`（远距降权 + 500 步后启用反馈）与 `e_pull2`（只远距降权）各两种子 × 2000 步，判据同前（对 `e_priv`，MARGIN 8.3）。冻结科学 `d091a10`（95 项测试） |
 | 上层起草（2026-11-04）；研究层意见支持方案甲；用户要求今夜开跑，转发即下发（T2.17 交付后） | [T2_19_CERT_20261104](upper/run_orders/T2_19_CERT_20261104.md)：最后一轮开发训练。环境 0.13.0 / 学习器 7.0：执行校准的反事实机会图（9 个参考意图 × 可行 / 校准成功率 / 价值 + 就绪标志）作 critic 输入，TD 只用真实转移。`e_cert`（U1 + U2）与 `e_full`（+ U3）各两种子 × 2000 步；对 `e_priv` 判定（MARGIN 8.3），另判 `e_full` 对 `e_cert`；最终方法选取规则事前登记。冻结科学 `0017f80`（97 项测试） |
 | 已批准（2026-11-05，用户：不限时、保留关键消融、下层立即开跑） | [RUN_PRETEST](upper/run_orders/RUN_PRETEST.md)：**最终方法 EACH = U1 + C1（`e_priv`）冻结**，与 `2e7d838` 逐位等价。唯一入口 `experiments/final.py`、注册表 `docs/final_method/METHOD_REGISTRY.json`。预实验（关键消融）：EACH、SAC、SAC + planner features、DUP（U1 等宽对照）、NO_GEOM（C1 几何）各 2 种子（10、11）× 2000，两批；窗口承诺用 EACH 模型与固定策略的窗口 / 刚性配对评估检验；固定策略 pure、gstar、rally、b_10、c_10_0；评估开局 294100–294147；只判实验有效性，不设性能门槛；预计约 23 小时。冻结科学 `fd78912`（代码同 `d1523ce`，100 项测试，沙箱全流程 dryrun 完整） |
-| 作废（EACH 时期草案；按 `docs/paper/EXPERIMENTS.md` 在 FORMAL_PREP 交付后重写） | [RUN_FORMAL](upper/run_orders/RUN_FORMAL.md)：旧草案 6 组 × 3 种子（20–22）× 5000，评估 300000–300095；约 87 小时训练 + 12 小时评估，分 4 批；须用户在预实验交付后单独授权 |
+| 作废（EACH 时期草案，已被 2026-11-11 的同名执行书替换，见 git 历史） | RUN_FORMAL 旧版：旧草案 6 组 × 3 种子（20–22）× 5000，评估 300000–300095；约 87 小时训练 + 12 小时评估，分 4 批；须用户在预实验交付后单独授权 |
 
 ## 2. 最近完成的工作（按时间倒序）
 
@@ -130,7 +131,8 @@
 |---|---|
 | ~~最终方法统筹优化一版~~ | 已完成：`ECC_CERT_LOOP` 冻结；论文层 `docs/paper/`（METHOD、FACT_MAP、AUDIT、BASELINE、EXPERIMENTS） |
 | ~~方法文档更新~~ | 已完成：`docs/final_method/` 旧规格标"非最终论文算法"，论文方法以 `docs/paper/METHOD.md` 为准 |
-| 正式实验（`RUN_FORMAL`） | RUN_FORMAL_PREP 交付并经上层复核（逐位回归、冒烟、R 预筛判定）后上层重写；用户单独授权 |
+| 正式实验（`RUN_FORMAL`） | 执行书已写好（冻结 `fcd8d2ee`）；待用户单独授权 |
 | 汇报稿 2.9 节奖励与实现的差异 | 写论文时按实现写（势函数为到 24 s 后口部位置的距离） |
 | `registry`、`GIT_ASSETS` 的 T2 段 | 上层补齐 |
-| 正式块 300000–999999 的评估 | 未授权 |
+| 作图补项 | F4 经济面板逐对分布、RWG 几何图离散可行点与意图箭头；只读已存数据，写论文时上层补 |
+| 正式块 300000–999999 的评估 | 未授权（随 RUN_FORMAL 一并授权） |
