@@ -1,5 +1,5 @@
 {
-  "status": "stopped_at_resolve",
+  "status": "passed",
   "completed_count": 29,
   "completed_entries": [
     "smoke_train_ECC_CERT_LOOP",
@@ -35,11 +35,30 @@
   "formal_completeness_expected": false,
   "formal_completeness_actual": false,
   "first_failed": "smoke_resolve",
-  "not_run": [
-    "formal_readout formal",
-    "formal_readout episodes",
-    "formal_figures --smoke"
-  ],
+  "not_run": [],
   "formal_evaluation_openings_accessed": false,
-  "formal_training_seeds_used": false
+  "formal_training_seeds_used": false,
+  "resolve_acceptance": {
+    "authority": "cf8edd57",
+    "reason": "nonregistered 40-step smoke budget",
+    "expected": true,
+    "exit_code": 1
+  },
+  "continuation": [
+    {
+      "step": "formal_readout",
+      "log_sha256": "5578481dd30649a0c2c15c35883a5ff3c665a7adf56d485e38a82a9b9cb8e475",
+      "exit_code": 0
+    },
+    {
+      "step": "episode_table",
+      "log_sha256": "29e17b428089c4ebf22da6a029ca3696aefeaeddd52f2ce0322768baa73d7f66",
+      "exit_code": 0
+    },
+    {
+      "step": "formal_figures",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exit_code": 0
+    }
+  ]
 }
