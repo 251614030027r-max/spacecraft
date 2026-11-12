@@ -105,3 +105,19 @@
 **转发给下层的一句话：**
 
 > 读 collab `docs/collaboration/upper/run_orders/RUN_CLEANUP.md`。按 A（归档标签）→ B（在 `D:\py\DRL2` 检出 `21730075`，全量 pytest 退出码 0，用 `evidence/CLEANUP_EQUIV/scripts/` 对 `fcd8d2ee` 做环境 / 训练 / 评估 / B 步模型四组逐位比较，入口冒烟）→ C（盘点后本机只保留 FORMAL_PREP、GOV_B、GOV_A、RUN_ECC 四轮，其余登记 SHA 后删除）顺序执行；任何不一致即停，不改代码；按"交付"推送。不训练正式模型，不碰 300000 以上。
+
+
+## 上层复核（2026-11-12，B 停止点）
+
+- **B2、B3 通过：**
+  - Windows 全量 pytest 158 passed、0 xfailed，退出码 0；
+  - 环境 7 / 7、训练 6 / 6、旧模型评估、GOV_B 模型评估在 Windows 同机上逐位一致；
+  - 证据在科学 `12e3e989` 的 `evidence/CLEANUP_EQUIV/windows/`，交付在 collab `0aeccee9`。
+- **B4 的 `resolve` 停止属于执行书口径错误，不是代码缺陷：**
+  - `resolve` 只为正式阶段的完整运行生成解析清单，拒绝预算不等于登记预算（5000）的运行，这正是它应有的保护；
+  - 上层沙箱冒烟中，它同样拒绝了混合代码版本的运行；
+  - B4 把它列为"跑通"是本执行书写错了。
+- **口径修正：** 冒烟中的 `resolve` 以"拒绝非登记预算并给出原因、退出码 1"为通过。下层的原生回执 `budgets [40] differ from the stage budget 5000` 符合。
+- **继续：**
+  - 在同一冒烟根目录补跑 `formal_readout formal`、`formal_readout episodes`、`formal_figures --smoke`，它们不依赖 `resolve`。三项退出码为 0 即 B 通过；
+  - 然后按 C 执行。

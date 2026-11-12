@@ -9,7 +9,7 @@
 | 方法 | 冻结：`ECC_CERT_LOOP`（ECC + RWG），行为基准科学 `e0a61753`；论文方法 `docs/paper/METHOD.md` |
 | 代码 | 工程收尾后的科学 `21730075`：只保留正式实验用到的代码；冻结路径对 `fcd8d2ee` 逐位等价（上层沙箱：环境 7 种情形、6 个配置单进程短训；`docs/paper/AUDIT.md` 第 4 节）；执行器与物理模块与 `e0a61753` 逐字节相同 |
 | 正式实验设计 | 事先登记：`docs/paper/EXPERIMENTS.md`；R 冻结为 2.0 m/s（`evidence/FORMAL_PREP/PRESCREEN/`）；不加第七组 |
-| 运行中 | [RUN_CLEANUP](upper/run_orders/RUN_CLEANUP.md)（下层）：打归档标签、Windows 上全量 pytest 与逐位回归、本机资产整理 |
+| 运行中 | [RUN_CLEANUP](upper/run_orders/RUN_CLEANUP.md)（下层）：A 标签已完成；B Windows pytest 158 passed、四组逐位比较全部一致（科学 `12e3e989`，collab `0aeccee9`）；`resolve` 拒绝冒烟预算为预期保护，上层已修正口径（执行书末节），下层补跑读出与作图后进入 C 本机整理 |
 | 待授权 | [RUN_FORMAL](upper/run_orders/RUN_FORMAL.md)：RUN_CLEANUP 交付并经上层复核后，由用户单独授权 |
 
 ## 2. 执行书（方法线，按时间倒序）
