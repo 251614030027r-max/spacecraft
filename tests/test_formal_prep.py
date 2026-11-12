@@ -33,13 +33,9 @@ def test_formal_openings_disjoint_except_paired_resource_condition():
     for lhs, rhs in itertools.combinations([*condition_blocks, validation, prescreen], 2):
         assert lhs.isdisjoint(rhs)
     protected = set().union(*condition_blocks, validation, prescreen)
-    for name, stage in stages.items():
-        if name in ("formal", "formal_prescreen", "formal_each_obsolete"):
-            continue
-        used = set(final.block(stage["eval_openings"]))
-        for condition in stage.get("conditions", {}).values():
-            used.update(final.block(condition["openings"]))
-        assert protected.isdisjoint(used), name
+    assert set(stages) == {"formal", "formal_prescreen"}
+    reserved = set(final.block(final.registry()["protocol"]["reserved"]["dev_eval"]))
+    assert protected.isdisjoint(reserved)
 
 
 def test_formal_registry_evaluation_matrix():
@@ -49,4 +45,12 @@ def test_formal_registry_evaluation_matrix():
     labels = set(stage["evaluations"])
     assert len(labels) == len(stage["evaluations"])
     assert len(labels) == 18 * len(stage["conditions"]) + 21
-    assert final.registry()["protocol"]["stages"]["formal_each_obsolete"]["obsolete"]
+    assert stage["conditions"]["resource"]["budget_m_s"] == 2.0
+    assert set(final.registry()["trained"]) == set(stage["trained"])
+
+
+def test_smoke_runs_may_not_use_formal_seeds(tmp_path):
+    from argparse import Namespace
+    with pytest.raises(SystemExit, match="formal seed"):
+        final.cmd_train(Namespace(stage="formal", config="ECC_CERT_LOOP", seed=20, output=str(tmp_path / "x"),
+                                  workers=1, smoke_steps=4))

@@ -5,9 +5,8 @@ from experiments.t2 import run_episode
 
 
 def test_audit_does_not_change_a_development_episode():
-    plain = T2StageEnv(openings=[294300], shaping=False, obs_profile="cut_priv")
-    audit = T2StageEnv(openings=[294300], shaping=False, obs_profile="cut_priv")
-    plain.certify = audit.certify = True
+    plain = T2StageEnv(openings=[294300], shaping=False, certify=True)
+    audit = T2StageEnv(openings=[294300], shaping=False, certify=True)
     audit.audit_logging = True
     observations = [[], []]
 
@@ -35,7 +34,7 @@ def test_audit_does_not_change_a_development_episode():
 
 
 def test_candidate_audit_reads_cached_rows(monkeypatch):
-    env = T2StageEnv(openings=[294300], shaping=False, obs_profile="cut_priv")
+    env = T2StageEnv(openings=[294300], shaping=False)
     env.audit_logging = True
     env.reset(options={"opening": 294300})
     cache = env._opportunity_eval()

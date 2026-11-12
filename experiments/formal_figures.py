@@ -12,7 +12,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from experiments.final import check, registry
+from experiments.final import check_formal, registry, stage_of
 from experiments.formal_readout import ECC, REFERENCE, opening_rows, read_json, success
 
 COLORS = ("#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9")
@@ -287,7 +287,7 @@ def main():
     p.add_argument("--output", required=True, type=Path)
     p.add_argument("--smoke", action="store_true")
     a = p.parse_args()
-    if not a.smoke and not check("formal", a.root)["complete"]:
+    if not a.smoke and not check_formal(a.root, stage_of("formal"))["complete"]:
         raise SystemExit("Formal figures require complete registered evidence")
     a.output.mkdir(parents=True, exist_ok=True)
     main_figures(a.root, a.output, read_json(a.readout), a.smoke)

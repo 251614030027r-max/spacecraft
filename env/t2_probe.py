@@ -1,16 +1,13 @@
-"""U2 -- executor mode probing (research layer + user 2026-11-06; spec ``docs/final_method/U2_PROBE_SPEC.md``).
+"""ECC mode prediction: the executor's own model of what it would do next under a stage intent (``docs/paper/METHOD.md``).
 
-At a real decision state the frozen executor is asked, for each of nine fixed probe intents (a uniform 3 x 3 grid of
-the stage action box), what it would do next: it flies the intent through its own stage layer for at most three
-16 s stages and checks, at its own 2 s cadence, whether it would leave the stage layer for the near-field modes --
-the window-committed conditional G* accepting an entry request, or the descent. Per probe it returns three values:
-whether that mode event occurs within the horizon, when (or where the prediction ends), and the planned stage
-delta-v up to then. The 27 values are a training-time input of the critic only (the actor keeps its 24); the
-critic is still trained on real macro transitions alone.
+For a probe intent the frozen executor's stage layer flies the intent for at most three 16 s stages (48 s) and checks,
+at its own 2 s cadence, whether it would leave the stage layer for the near-field modes -- the window-committed
+conditional G* accepting an entry, or the descent. The result is (event, time, delta-v) and the planned entry delta-v;
+``T2StageEnv._opportunity_eval`` evaluates the nine intents of PROBE_GRID and the certification map uses them.
 
-What the probe is not: no return, value or ranking of the probes is computed; no calibration from this run's
-history is used (planners and models are fixed; same state -> same answer); a predicted event is the executor
-model's mode switch, not a capture, and a non-event within the horizon is not infeasibility.
+What it is not: no return, value or ranking is computed; no calibration from the run's history is used (planners and
+models are fixed; same state -> same answer); a predicted event is the executor model's mode switch, not a capture, and
+a non-event within the horizon is not infeasibility.
 
 Executor model (the executor's own rules and inputs, fixed):
 * stage layer: ``stage_goal`` (sweep-cone target velocity, stage authority, safety projection) and the stage planner
@@ -21,12 +18,12 @@ Executor model (the executor's own rules and inputs, fixed):
   inside the operation sphere, or in the cone within the descent radius); otherwise range <= 12 m and radial
   envelope margin >= 0.02 m/s, then for each arrival time of the grid with a forecast port angle <= 35 deg and an
   arrival before the deadline less 45 s, the entry planner (same configuration, the executor's estimated isotropic
-  inertia) -- the first feasible plan is the entry event. No per-node solve limit;
+  inertia) -- the first feasible plan is the entry event;
 * the prediction ends at the horizon (3 stages), at the mission deadline, or when the planned delta-v reaches the
   remaining budget.
 
-The planners are separate instances of the executor's planners, so probing never touches the solver state of the
-executor that flies the episode (the executed trajectory is the same with or without probing).
+The planners are separate instances of the executor's planners, so the prediction never touches the solver state of
+the executor that flies the episode (the executed trajectory is the same with or without certification's evaluation).
 """
 
 from __future__ import annotations
@@ -39,10 +36,6 @@ from dynamics.lie import so3_exp
 
 PROBE_GRID = tuple((float(p), float(z)) for p in (-1.0, 0.0, 1.0) for z in (-1.0, 0.0, 1.0))
 PROBE_STAGES = 3
-PROBE_FIELDS = 3
-PROBE_DIM = PROBE_FIELDS * len(PROBE_GRID)
-PROBE_DV_SCALE_M_S = 0.5          # ~ three stages at the stage authority (2 d / h = 0.17 m/s each)
-PROBE_VERSION = "u2-probe-1.0"
 
 
 def executor_gate(q: np.ndarray, v: np.ndarray, rotation: np.ndarray, task, descent_radius_m: float) -> dict[str, Any]:
@@ -86,7 +79,7 @@ class ExecutorProbe:
                                   BRIDGE_TAUS_S, angle_deg)
         g = executor_gate(q, v, rotation, self.task, self.descent_radius_m)
         if g["descending"]:
-            return {"kind": "descent", "solves": 0, "margin": g["radial_margin_m_s"]}
+            return {"kind": "descent", "solves": 0}
         if g["range_m"] > BRIDGE_RANGE_M or g["radial_margin_m_s"] < BRIDGE_ENVELOPE_MARGIN_M_S:
             return None
         horizon = float(t_left_s) - BRIDGE_DEADLINE_MARGIN_S
@@ -104,12 +97,8 @@ class ExecutorProbe:
         return {"kind": None, "solves": solves} if solves else None
 
     # ------------------------------------------------------------------ one probe intent
-    def probe_intent(self, a, q0, v0, rot0, omega, t_abs0: float, dv0: float, mission: dict, geometry: bool, gate: bool = False) -> dict:
-        """``gate`` (env 0.17.0, the ECC governor): an event is also judged admissible -- the lower mode's own takeover
-        conditions: an entry passes the executor's entry rule (range, braking envelope, arrival <= deadline - 45 s); a
-        descent needs the braking envelope margin >= BRIDGE_ENVELOPE_MARGIN_M_S at the switch state (the mouth region counts
-        as met, as in the executor's gate) and a switch no later than deadline - 45 s; both need delta-v used + planned
-        (stage and entry) <= budget. ``x1`` holds the predicted state after the first stage when no event occurs in it."""
+    def probe_intent(self, a, q0, v0, rot0, omega, t_abs0: float, dv0: float, mission: dict, geometry: bool) -> dict:
+        """Mode prediction of intent ``a`` from the relative state (q0, v0) at absolute time t_abs0 with dv0 spent."""
         from env.t1_p_stage import plan_state
         from env.t2_stage import ENTRY_NODES_S, STAGE_S, spin_frame, stage_goal
         q, v = np.asarray(q0, float).copy(), np.asarray(v0, float).copy()
@@ -133,50 +122,22 @@ class ExecutorProbe:
                 else:
                     qs, vs = q, np.zeros(3)
                 if t_abs0 + t >= deadline - 1e-9:
-                    return {"event": 0, "kind": None, "t": max(deadline - t_abs0, 0.0), "dv": dv_used + cum, "end": "deadline", "solves": solves, "holds": holds,
-                            **({"admissible": False, **({"x1": x1} if k > 0 else {})} if gate else {})}
+                    return {"event": 0, "kind": None, "t": max(deadline - t_abs0, 0.0), "dv": dv_used + cum, "end": "deadline", "solves": solves, "holds": holds}
                 if dv0 + dv_used + cum >= budget:
-                    return {"event": 0, "kind": None, "t": t, "dv": dv_used + cum, "end": "budget", "solves": solves, "holds": holds,
-                            **({"admissible": False, **({"x1": x1} if k > 0 else {})} if gate else {})}
+                    return {"event": 0, "kind": None, "t": t, "dv": dv_used + cum, "end": "budget", "solves": solves, "holds": holds}
                 hit = self.entry_check(qs, vs, rot0 @ so3_exp(t * omega), omega, deadline - (t_abs0 + t))
                 if hit is not None:
                     solves += hit["solves"]
                     if hit["kind"] is not None:
                         out = {"event": 1, "kind": hit["kind"], "t": t, "dv": dv_used + cum, "tau": hit.get("tau"), "end": "event",
                                "dv_entry": float(hit.get("dv_plan", 0.0)), "solves": solves, "holds": holds}
-                        if gate:
-                            from env.t2_stage import BRIDGE_DEADLINE_MARGIN_S, BRIDGE_ENVELOPE_MARGIN_M_S
-                            ok = dv0 + out["dv"] + out["dv_entry"] <= budget
-                            if hit["kind"] == "descent":
-                                ok = ok and hit["margin"] >= BRIDGE_ENVELOPE_MARGIN_M_S and t_abs0 + t <= deadline - BRIDGE_DEADLINE_MARGIN_S + 1e-9
-                            out["admissible"] = bool(ok)
-                            if k > 0:
-                                out["x1"] = x1
                         return out
             if plan["feasible"]:
                 q, v = plan_state(plan, STAGE_S, self.mass)
                 dv_used += cum
             else:
                 v = np.zeros(3)
-            if k == 0 and gate:
-                x1 = (np.asarray(q, float).copy(), np.asarray(v, float).copy(), float(dv_used))
-        return {"event": 0, "kind": None, "t": PROBE_STAGES * STAGE_S, "dv": dv_used, "end": "horizon", "solves": solves, "holds": holds,
-                **({"admissible": False, "x1": x1} if gate else {})}
-
-    # ------------------------------------------------------------------ the decision's probe vector
-    def probe(self, env) -> tuple[np.ndarray, list[dict]]:
-        from env.t1_p_stage import relative_inertial
-        from env.t2_stage import STAGE_S
-        e = env.env
-        q, v = relative_inertial(e)
-        t = e.target_state
-        rot, omega = t.rotation.copy(), t.omega.copy()
-        out, rows = np.zeros(PROBE_DIM, np.float32), []
-        for i, a in enumerate(PROBE_GRID):
-            d = self.probe_intent(a, q, v, rot, omega, float(e.time_s), float(e._delta_v), env.mission, env.geometry)
-            out[3 * i:3 * i + 3] = (float(d["event"]), d["t"] / (PROBE_STAGES * STAGE_S), min(d["dv"] / PROBE_DV_SCALE_M_S, 3.0))
-            rows.append(d)
-        return out, rows
+        return {"event": 0, "kind": None, "t": PROBE_STAGES * STAGE_S, "dv": dv_used, "end": "horizon", "solves": solves, "holds": holds}
 
 
-__all__ = ["PROBE_GRID", "PROBE_DIM", "PROBE_STAGES", "PROBE_VERSION", "ExecutorProbe", "executor_gate"]
+__all__ = ["PROBE_GRID", "PROBE_STAGES", "ExecutorProbe", "executor_gate"]

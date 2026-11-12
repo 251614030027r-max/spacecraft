@@ -3,11 +3,11 @@ from hashlib import sha256
 
 import pytest
 
-from experiments.final import check, checked_cases, stage_of, verify_existing
+from experiments.final import check_formal, checked_cases, stage_of, verify_existing
 
 
 def test_formal_budget_and_smoke_boundaries():
-    args = Namespace(stage="formal", budget=0.3, openings="294300-294301", natural=False)
+    args = Namespace(stage="formal", budget=0.3, openings="294300-294301")
     with pytest.raises(SystemExit, match="development smoke"):
         checked_cases(args, stage_of("formal"), "urgent", False)
     ops, mission = checked_cases(args, stage_of("formal"), "urgent", True)
@@ -20,7 +20,7 @@ def test_formal_budget_and_smoke_boundaries():
 
 def test_prescreen_budget_and_validation_openings():
     stage = stage_of("formal_prescreen")
-    args = Namespace(stage="formal_prescreen", budget=1.8, openings=None, natural=False)
+    args = Namespace(stage="formal_prescreen", budget=1.8, openings=None)
     ops, mission = checked_cases(args, stage, None, False)
     assert ops == list(range(295100, 295148))
     assert not mission.sample(295100)["urgent"]
@@ -30,7 +30,7 @@ def test_prescreen_budget_and_validation_openings():
         checked_cases(args, stage, None, False)
     args.stage, args.budget = "formal", None
     ops, mission = checked_cases(args, stage_of("formal"), "validation", False)
-    assert ops == list(range(295200, 295224)) and mission == "urgent"
+    assert ops == list(range(295200, 295224)) and mission.sample(295200)["urgent"]
 
 
 def test_resume_verifies_existing_bytes_before_skip(tmp_path):
@@ -46,11 +46,11 @@ def test_resume_verifies_existing_bytes_before_skip(tmp_path):
         verify_existing(folder, manifest, [294300, 294301], "trial")
 
 
-def test_unfrozen_resource_not_required_for_completeness(tmp_path):
-    report = check("formal", tmp_path)
+def test_completeness_report_lists_every_registered_result(tmp_path):
+    report = check_formal(tmp_path, stage_of("formal"))
     assert len(report["missing_runs"]) == 18
     assert report["evaluations"]["ECC_CERT_LOOP_s20_economy_nocert"]["expected"] == 96
-    if stage_of("formal")["conditions"].get("resource", {}).get("budget_m_s") is None:
-        assert not any("_resource" in group for group in report["evaluations"])
+    assert report["evaluations"]["ECC_CERT_LOOP_s20_resource"]["expected"] == 96
+    assert report["screens"]["pure_resource"]["expected"] == 96 and "gstar_natural" not in report["screens"]
     assert report["validation"]["TD3_C_s21_step5000"]["expected"] == 24
     assert not report["complete"]

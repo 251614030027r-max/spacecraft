@@ -1,6 +1,6 @@
 """T1 task, interface G, shared-MPC rows and reward bookkeeping.
 
-Fast checks only; closed-loop behaviour is measured by experiments/t1_probe.py.
+Fast checks only; closed-loop behaviour is covered by tests/test_ecc.py and the formal pipeline.
 """
 
 from __future__ import annotations
