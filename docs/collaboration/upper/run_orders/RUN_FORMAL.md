@@ -2,18 +2,18 @@
 
 **状态：草案，待用户单独授权；授权前不得启动任何一步。** 授权时用户在本页写明"已批准"和日期；若要删减组别，必须在授权前写明删哪一组，不能训练后再选。
 
-设计依据：科学分支 `docs/paper/EXPERIMENTS.md`（事先登记，`6c76c2c9`）；方法 `docs/paper/METHOD.md`；准备工作 RUN_FORMAL_PREP 已交付（科学 `e47a1165`，collab `5496cb51`），上层复核见本页第 7 节。
+设计依据：科学分支 `docs/paper/EXPERIMENTS.md`（事先登记）；方法 `docs/paper/METHOD.md`；准备工作 RUN_FORMAL_PREP 已交付（科学 `e47a1165`，collab `5496cb51`），上层复核见本页第 7 节；工程收尾 RUN_CLEANUP 须先交付并复核通过（第 7 节）。
 
 ## 0. 冻结
 
 | 项 | 值 |
 |---|---|
-| 科学提交 | `fcd8d2ee`（`fcd8d2eec2d78faf43ae6522772589d6494cb7e2`；上层复核提交，见第 7 节；在 `e47a1165` 上只改读出与测试） |
+| 科学提交 | `21730075`（`21730075ecee9d9bbd06f34febf981121db87e68`；工程收尾后的正式实验代码，冻结路径对 `fcd8d2ee` / `e0a61753` 逐位等价，见第 7 节） |
 | 注册表 | `docs/final_method/METHOD_REGISTRY.json`，阶段 `formal`（资源预算已冻结为 2.0 m/s） |
 | 唯一入口 | `python -B -m experiments.final`（train / eval / screen / traj / geoscan / check / resolve），读出 `experiments.formal_readout`，作图 `experiments.formal_figures` |
 | 输出根目录 | `C:\Users\35884\Documents\Spacecraft\过程文件\FORMAL\`（下文记作 `$R`）；训练目录 `$R\B\TRAIN_<配置>_s<种子>` |
 
-**启动前（第 0 步）：** 在 `D:\py\DRL2` 检出 `fcd8d2ee`，工作区干净；全量 `python -B -m pytest -q` 退出码 0（预期失败 3 项为历史 F01 测试）；把退出码、开始 / 结束时刻和 `git rev-parse HEAD` 写入 `$R\PREFLIGHT.json`。之后到交付前不切换分支、不拉取、不改工作区。
+**启动前（第 0 步）：** 在 `D:\py\DRL2` 检出 `21730075`，工作区干净；全量 `python -B -m pytest -q` 退出码 0（158 项通过，无预期失败）；把退出码、开始 / 结束时刻和 `git rev-parse HEAD` 写入 `$R\PREFLIGHT.json`。之后到交付前不切换分支、不拉取、不改工作区。
 
 ## 1. 规模
 
@@ -23,7 +23,7 @@
 | 检查点 | 1000 / 2000 / 3000 / 4000 只用于学习曲线；**最终模型固定为 5000 步** |
 | 主测试 | 18 个最终模型 × 条件 urgent（300000–300095）、economy（300100–300195）、natural（300200–300295）、resource（300100–300195，预算 2.0 m/s） |
 | 只评估对照 | `ECC_CERT_LOOP` 认证关（urgent、economy）与重规划关（urgent）；`EACH_C`、`SAC_C` 执行时认证开（urgent、economy） |
-| 固定策略 | pure（urgent、economy、natural），gstar（urgent、economy） |
+| 固定策略 | pure（urgent、economy、natural、resource），gstar（urgent、economy） |
 | 验证曲线 | `ECC_CERT_LOOP`、`SAC_C`、`TD3_C` × 3 种子 × 检查点 1000–5000，开局 295200–295223 |
 
 机时（下层实测吞吐）：训练约 70–75 小时，评估合计约 40 小时，整体约 4.5–5 天。
@@ -50,7 +50,7 @@ python -B -m experiments.final eval --stage formal --run $R\B\TRAIN_ECC_CERT_LOO
 python -B -m experiments.final eval --stage formal --run $R\B\TRAIN_ECC_CERT_LOOP_s<种子> --condition urgent --rigid --output $R
 python -B -m experiments.final eval --stage formal --run $R\B\TRAIN_<EACH_C|SAC_C>_s<种子> --condition <urgent|economy> --certify --output $R
 python -B -m experiments.final eval --stage formal --run $R\B\TRAIN_<ECC_CERT_LOOP|SAC_C|TD3_C>_s<种子> --condition validation --checkpoint-step <1000..5000> --output $R
-python -B -m experiments.final screen --stage formal --policy pure --condition <urgent|economy|natural> --output $R
+python -B -m experiments.final screen --stage formal --policy pure --condition <urgent|economy|natural|resource> --output $R
 python -B -m experiments.final screen --stage formal --policy gstar --condition <urgent|economy> --output $R
 ```
 
@@ -77,7 +77,7 @@ python -B -m experiments.final screen --stage formal --policy gstar --condition 
 ```bash
 python -B -m experiments.final eval --stage formal --run $R\B\TRAIN_ECC_CERT_LOOP_s20 --condition urgent --openings 300000-300023 --workers 1 --output $R\TIMING
 ```
-结果只取认证耗时（`cert.wall_s`）与回合耗时；结局须与 `$R\C` 中对应回合逐项一致（确定性核对），不进入任何比较。
+结果只取认证耗时（`cert.wall_s`）与回合耗时；回合耗时除以 0.1 s 控制步数，作为 MPC 每步求解耗时的上界（`EXPERIMENTS.md` 第 5 节）。结局须与 `$R\C` 中对应回合逐项一致（确定性核对），不进入任何比较。
 
 ## 6. 完整性检查、读出与作图
 
@@ -91,7 +91,7 @@ python -B -m experiments.formal_figures --root $R --readout $R\FORMAL_READOUT.js
 
 **验收（全部满足才算交付）：**
 1. `check` 报告 complete；`resolve` 不报告混合的 SHA、预算或配置。
-2. 18 个训练 manifest：`steps = 5000`、种子 ∈ {20, 21, 22}、`git_head = FROZEN_SHA`、`final_stage = formal`。
+2. 18 个训练 manifest：`steps = 5000`、种子 ∈ {20, 21, 22}、`git_head = 21730075ecee9d9bbd06f34febf981121db87e68`、`final_stage = formal`。
 3. 每个结果目录的开局集合与注册块完全一致，无重复、无 `error`。
 4. 本轮访问过的开局只有：注册的正式条件块、验证块 295200–295223、几何扫描用的开发开局；训练开局只来自三个种子各自的训练流。
 5. 串行计时与案例重飞的确定性核对通过。
@@ -109,6 +109,21 @@ python -B -m experiments.formal_figures --root $R --readout $R\FORMAL_READOUT.js
   3. 新增 `episodes` 子命令，导出一回合一行的紧凑表，供入库。
 - **作图缺项（不影响运行）：** F4 经济面板尚未画逐对分布，RWG 几何图尚未叠画离散可行点与意图箭头。两者只读已保存数据，写论文时由上层补齐，不需要重跑。
 
+### 工程收尾（2026-11-12）
+
+- 上层把科学分支瘦身为正式实验实际运行的代码（`21730075`）。冻结路径在上层沙箱对 `fcd8d2ee` 逐位等价，覆盖：
+  - 环境 7 种情形；
+  - 6 个配置的单进程短训；
+  - 旧模型在新代码下的评估。
+
+  详见 `evidence/CLEANUP_EQUIV/`、`docs/paper/AUDIT.md` 第 4 节。下层在 Windows 上的复核见 RUN_CLEANUP。
+- 收尾中修正的缺陷：
+  - `traj` 对认证模型只在给了 `--condition` 时才开认证，现在一律按 manifest；
+  - `resolve` 把训练任务名当作截止区间元组处理，现在按任务名核对；
+  - 冒烟训练可以误用正式种子，现在拒绝。
+- 文档更正：`FACT_MAP` 原写"采集进程每 100 次更新同步策略"。在冻结路径中，ECC / SAC / TD3 的每次动作都由学习进程用当前策略作答，原表述只适用于历史的反事实标签臂。
+- 可复现性：多进程训练的转移顺序取决于进程快慢（`worker_order`），种子相同的两次 2 进程训练不保证逐位相同；单进程训练与全部评估逐位可复现。
+
 ## 8. 交付
 
 - **科学分支 `evidence/FORMAL/`（逐个文件强制加入）：** `PREFLIGHT.json`、`CHECK.json`、`REGISTRY_RESOLVED.json`、`FORMAL_READOUT.json`、`EPISODES.csv`、18 个训练 manifest 与 `episodes.json`、`FIGURES/` 全部图表、`TIMING/` 汇总、`TRAJ/` 所选案例、全部原始结果的 `SHA256SUMS`。
@@ -117,4 +132,4 @@ python -B -m experiments.formal_figures --root $R --readout $R\FORMAL_READOUT.js
 
 **转发给下层的一句话（授权后）：**
 
-> 读 collab `docs/collaboration/upper/run_orders/RUN_FORMAL.md`（已批准）。在 `D:\py\DRL2` 检出 `fcd8d2ee`，全量 pytest 退出码 0 后，按第 2–6 步执行：三批训练（每批一个种子的 6 组）、全部登记评估、图用数据、串行计时、完整性检查与读出作图；按第 8 节交付。中途不看结果做选择，训练中断从零重跑。
+> 读 collab `docs/collaboration/upper/run_orders/RUN_FORMAL.md`（已批准）。在 `D:\py\DRL2` 检出 `21730075`，全量 pytest 退出码 0 后，按第 2–6 步执行：三批训练（每批一个种子的 6 组）、全部登记评估、图用数据、串行计时、完整性检查与读出作图；按第 8 节交付。中途不看结果做选择，训练中断从零重跑。
