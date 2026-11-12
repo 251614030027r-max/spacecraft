@@ -1,48 +1,42 @@
-# 快速翻滚非合作目标的六自由度预捕获：SAC–G★–MPC 训练内耦合
+# 快速翻滚非合作目标的六自由度预捕获：ECC 与旋转窗口引导
 
-高保真 SE(3) 六自由度预捕获控制。目标自由翻滚，真值用 RK45 传播（中心引力 + J2）；控制周期 0.1 s，推力每轴 2 N。
+高保真 SE(3) 六自由度预捕获。追踪器 106 kg（每轴 ±2 N、±0.6 N·m），目标 225 kg 箱体，自旋 2.1–2.7°/s，惯量未知；500 km / 45° 轨道，真值 RK45（中心引力 + J2），控制周期 0.1 s。安全只由真值几何判定。
 
-- **学习层：** SAC 在审议点（每 6 s，以及计划事件之后）选择任务意图：何时交会、下降节奏、入口速度。
-- **G★：** 把意图变成可执行的最小 Δv 轨迹，负责计划保持、恢复和期限保护。
-- **MPC：** 共享约束 MPC 闭环执行，并提供 2 s 影子预测，作为训练期反馈。
-
-**当前状态（2026-10-18）：** T1-L 与 T1-O V2 两次检验都没有找到可由观测兑现的状态相关决策余量（T1-O V2 停于 Gate C）。下一任务版本由研究层设计，尚未冻结。
+**两个问题，两个机制：**
+- **理论问题——长期决策与短期受约束执行的耦合：ECC**（Execution-opportunity Certificate Coupling）。
+  - 学习侧：评价器在训练时读执行器的 6 项执行反馈 z_E；策略只读 18 项有效观测。
+  - 决策侧：执行器的机会评估在训练与执行中以同一认证映射修正意图。
+- **场景问题——快速翻滚目标的动态捕获窗口：RWG**（旋转窗口引导）。
+  - SAC 每 16 s 在目标自旋坐标系给出二维阶段意图（接近速度、沿扫掠速度），纬向由固定几何律调到端口扫掠锥上。
+  - 入口由条件 G★ 按端口经过时机规划，失败时在同一次经过内重定时。
+  - 入口、下降与捕获由冻结 MPC 执行。
 
 ## 从这里开始
 
 | 文件 | 内容 |
 |---|---|
-| `docs/current/TASK.md` | T1 任务族：物理、安全与捕获、奖励、初值档案、G★、审议接口、开局号段 |
-| `docs/current/METHOD.md` | 方法构件：阶段感知 SAC、MPC 相对项、区间 Bellman、2×2 样本资格。尚无冻结的正式方法 |
-| `docs/current/EVALUATION.md` | 学习空间准入协议（物理筛选、Gate A–E）与已有结果 |
-| `docs/current/REPRODUCE.md` | 环境、测试与命令 |
-| `docs/HISTORY.md` | 一页研究时间线 |
-| `docs/DEAD_ENDS.md` | 已验证的负结果台账。**改方法前必读** |
-| `docs/archive/GIT_ASSETS_20261018.md` | 分支、标签、证据目录与本机产物总表 |
-| `CLAUDE.md` | 规则与陷阱（给 AI 协作窗口） |
+| `docs/paper/METHOD.md` | **论文方法的唯一来源**：记号、多速率执行链、RWG、ECC、命题、约束、奖励、参数、伪代码、不声称的内容 |
+| `docs/paper/EXPERIMENTS.md` | 正式实验设计（事先登记）：任务条件、训练组、终点与统计、图表 |
+| `docs/paper/FACT_MAP.md`、`AUDIT.md`、`BASELINE.md` | 论文对象 ↔ 源码对照、一致性审计、背景与命名 |
+| `docs/final_method/METHOD_REGISTRY.json` | 正式实验的唯一配置来源 |
+| `docs/REPRODUCE.md` | 环境、测试、命令、开局号段 |
+| `docs/HISTORY.md` | 研究时间线（问题 → 做法 → 结论 → 转向） |
+| `docs/DEAD_ENDS.md` | 已验证的负结果台账，**改方法前必读** |
+| `evidence/README.md` | 证据目录索引 |
+| `CLAUDE.md` | 协作规则与陷阱 |
 
-协作入口（执行单、交接、实验总账、项目状态）在 `collab/spacecraft` 分支的 `docs/collaboration/`。
+协作文档（执行书、交接、项目状态）在 `collab/spacecraft` 分支的 `docs/collaboration/`。
 
-## 目录
+## 代码
 
-| 目录 | 内容 |
+| 路径 | 内容 |
 |---|---|
-| `dynamics/` `env/` `controllers/` `estimation/` | 动力学、任务与环境（T1 在 `env/t1_*.py`）、约束 MPC、相对 EKF |
-| `train/` | 训练入口与学习器（T1 在 `train/t1_*.py`、`train/train_t1*.py`） |
-| `experiments/` | 评估、筛选、Gate 与读出工具（T1-O 在 `experiments/t1o_*.py`） |
-| `eval/` | 指标代码 |
-| `evidence/<实验ID>/` | 已发布的证据，附 SHA256SUMS |
-| `tests/` | 回归与契约测试 |
-| `docs/` | 当前文档；`docs/archive/` 为按阶段归档的历史文档 |
-| `References/` | 文献及用途说明 |
+| `env/t2_stage.py` | 阶段决策环境：RWG 几何与阶段目标、执行链（远场跟踪律、入口规则、窗口重定时、冻结 MPC）、观测视图、任务分布、ECC 机会评估与认证映射、只读审计 |
+| `env/t2_probe.py` | ECC 模式预测：执行器自身的阶段层与入口规则，48 s |
+| `env/t1_*.py`、`env/se3_rendezvous_env.py`、`env/task.py` 等 | 冻结执行器与任务：真值环境、约束与判据、阶段规划器、条件 G★、MPC 接口（文件名中的 `t1` / `t2` 是历史命名） |
+| `controllers/mpc/`、`dynamics/`、`estimation/` | 冻结 MPC、六自由度动力学与引力模型、相对 EKF |
+| `train/t2_mve_sac.py` | 学习器：SAC（`e_priv` 非对称评价器、`e_sac`）与 TD3（`e_td3`），异步采集 |
+| `experiments/final.py` | 正式实验唯一入口；`experiments/t2.py` 回合运行器；`formal_readout.py` / `formal_figures.py` 读出与作图 |
+| `tests/` | `python -B -m pytest -q`，以退出码判定 |
 
-## 分支与历史
-
-| 名称 | 说明 |
-|---|---|
-| `claude/sac-mpc-coupling-design-ns7g6i` | 科学代码与证据，唯一的科学分支 |
-| `collab/spacecraft` | 协作分支：只改 `docs/collaboration/` |
-| `main` | 实验全部结束后统一并入 |
-| `archive/*` 标签 | 已删除分支的冻结标签，以及整理前的完整仓库 `archive/pre-cleanup-20261010` |
-
-历史从未重写，所有引用过的 SHA 都可达。
+2026-11-12 工程收尾前的完整仓库（全部历史代码、测试、文档与证据）在科学提交 `fcd8d2ee`（标签 `archive/pre-cleanup-20261112`），对照表 `docs/archive/PATH_MAP_20261112.csv`。

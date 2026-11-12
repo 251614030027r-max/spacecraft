@@ -1,6 +1,6 @@
 # 论文方法（唯一源文档）：执行感知 SAC–MPC 分层协同控制
 
-**地位：** 论文方法章节的唯一依据。所有符号、命题、伪代码都能逐项对到冻结实现（科学 `e0a61753`，最终配置 `ECC_CERT_LOOP`），对照见 `FACT_MAP.md`。历史规格（`docs/final_method/` 下的 `METHOD_SPEC`、`ECC_SPEC`、`ECC_FINAL_SPEC`、`C1_THEORY`、`METHOD_MINIMAL` 等）只作研发记录，**不是最终论文算法**。
+**地位：** 论文方法章节的唯一依据。所有符号、命题、伪代码都能逐项对到冻结实现（科学 `e0a61753`，最终配置 `ECC_CERT_LOOP`），对照见 `FACT_MAP.md`。历史规格（`docs/archive/method_development/` 下的 `METHOD_SPEC`、`ECC_SPEC`、`ECC_FINAL_SPEC`、`C1_THEORY`、`METHOD_MINIMAL` 等）只作研发记录，**不是最终论文算法**。
 
 **边界：** 本文只做表达与证明层面的统一，不改变训练、控制行为、超参数或奖励。研究背景与问题见 `BASELINE.md` 第 0、1 节。
 

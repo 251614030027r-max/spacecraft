@@ -1,338 +1,96 @@
 # Working notes for this repository
 
-High-fidelity 6-DoF SE(3) **pre-capture** of a fast-tumbling non-cooperative
-target (chaser 106 kg, +-2 N / +-0.6 N*m per axis; target 225 kg box, spin
-2.1-2.7 deg/s, unknown inertia; 500 km / 45 deg orbit, RK45 truth with central
-gravity and J2, 0.1 s control). Current line: the **T2 staged approach**
-(`env/t2_stage.py`, `train/t2_mve_sac.py`, `experiments/t2*.py`). SAC gives a
-2-D stage intent every 16 s in the target's spin frame (closing speed, along-
-sweep speed; latitude regulated onto the port's sweep cone); a stage planner and
-a far-field tracking law fly it; when the port's pass is reachable a window-
-committed conditional G* plans the entry and the frozen MPC flies entry, descent
-and capture. **Current method (2026-11-08): ECC** (execution-opportunity certificate coupling,
-`docs/final_method/ECC_SPEC.md`): one executor opportunity evaluation per decision feeds the critic certificate and a
-decision-time certification map; the pre-registered RUN_ECC order selected `ECC_deploy` (see the last State paragraph).
-The EACC / EACC-A counterfactual line below is history (DEAD_ENDS D39-D44).
+High-fidelity 6-DoF SE(3) **pre-capture** of a fast-tumbling non-cooperative target (chaser 106 kg, +-2 N / +-0.6 N*m
+per axis; target 225 kg box, spin 2.1-2.7 deg/s, unknown inertia; 500 km / 45 deg orbit, RK45 truth with central
+gravity and J2, 0.1 s control).
 
-**State (2026-11-03):** env `t2-stage-0.9.0`, learner `t2-learner-3.0`, code `ec394ef`, 68 tests. T2.3-T2.8
-tied because the engineered observation already handed SAC the planner's answers (P4, `evidence/T2_8_P4_INFO_UPPER`).
-**T2.11 EACC-A** (`evidence/T2_11_EACCA`, upper review `evidence/T2_11_EACCA_UPPER`): interface `reduced_priv` (the
-policy loses pass time, window reachability, slack; the executor's state-wise judgements enter the critic and the
-counterfactual labels' bootstrap during training only), original EACC labels, decision-level execution calibration with
-a trusted advantage path. Native `t28` **pass**: AUC 25.79 vs SAC (reduced) -15.24, two seeds, development openings;
-EACC-A recovers the engineered-interface SAC level (25.78) without the planner features. User 2026-11-03: the paper
-compares three groups (pure MPC, SAC without feedback, EACC-A; TD3 possibly later); component ablations are internal
-mechanism analysis only; iterate and consolidate the method before the final formal runs.
-**T2.12 (implemented, run order awaiting approval):** EACC consolidated into one mechanism -- execution-anchored relative
-counterfactual labels (`_relative_loss`: the executed intent's reference is the model's same-treatment prediction for a
-candidate of the same outcome class, else the real value; arm `e_rel`; ablation `e_priv` = same critic view, no feedback); env
-`t2-stage-0.10.0`, learner `t2-learner-4.0`, 75 tests; T2.11 paths (`e_acc`) unchanged and `e_sac` bitwise identical
-(`evidence/T2_12_PRECHECK`). Training curves / final models / pre-registered `t212`: `experiments/t2_curves.py`.
-**EACC iteration (learner 4.1, env 0.11.0, 78 tests; supersedes a3f4c65 for the e_rel arm):** candidates separated in
-the executor's stage-goal terms (`cand_min_sep` 0.01 m/s, e_rel only) and common random numbers in one decision's
-bootstrap values; aliasing of intents by the executor's projection measured rare (`evidence/T2_13_PRECHECK`).
-**Learner 5.0 (80 tests; T2.12 midterm: the privileged-critic ablation `e_priv` beat the relative labels `e_rel` by ~20 on
-the 250-1000 curve and matched T2.11):** arms `e_term` / `e_term2` keep only executor-evaluable counterfactuals --
-candidates the model carries to a terminal event within one / two stages (stage 2 under the policy's mean intent);
-constant targets, corrected by the model's error on a same-kind executed terminal (`_terminal_loss`); no target reads
-the critic at a modelled state. Run order collab `T2_14_TERM_20261104` (awaiting approval; reuses T2.12's `e_priv`).
-**Learner 6.0 / env 0.12.0 (84 tests; T2.12 revert, T2.14 midterm below e_priv):** EACC as an execution-consistent policy
-improvement -- arms `e_pi` / `e_pit`: the critic is e_priv's (real transitions only); the executor predicts the candidates
-and the policy's own intent through one treatment (env `ref`), and the inverse-variance fusion of executor and critic
-advantages corrects only the actor's action gradient (least-squares slope near the policy's intent, clipped to the
-critic's gradient scale); with no evidence the update is e_priv's. The three planner answers withheld from the actor are
-exact functions of its observation (`evidence/T2_16_PRECHECK`): no hidden-information gap.
-**Learner 6.1 (86 tests, code `d9937bd`; run order collab `T2_16_PI_20261104`, research layer approved 11-04):** the
-slope is a centred weighted least-squares fit with an intercept (a common value offset gives no gradient; rows need an
-identifiable direction), feedback rows are drawn from the 256 most recent transitions (6.0's uniform batch held old
-references and the gate closed almost every row). Coverage: `e_pi` applies on 88 / 24 / 30 % of feedback rows over
-decisions 0-50 / 50-100 / 100-150, `e_pit` ~3 % (sparse). T2.14 delivered: `e_term` revert, `e_term2` unsafe (1).
-**T2.16 gate (user 11-04):** before training, a truth direction audit (`experiments/t2_direction.py`, 87 tests): on T2.12's
-`e_priv` checkpoints, truth branches compare an intent step along the critic gradient with one along the 6.1 corrected
-direction; training starts only if the corrected step wins (pre-registered in collab `T2_16_PI_20261104`, section A). A passed
-(14 / 20, `55a32e4`); B's first launch failed (the command line lacked `e_pi` / `e_pit`, fixed `42cf666`). **Learner
-6.2 (`c9d8371`, 90 tests):** A's data showed g mostly opposing gq, so 6.1's term shortened the step (median 0.61 of
-the critic's); 6.2 applies the audited step itself, the corrected direction at the critic's length (`rotated_correction`). **Learner 6.3 (93
-tests):** arm `e_pull` adds the non-local form -- the best candidate on the fused advantage, when beyond the TD noise,
-turns the actor's step towards it (`toward_correction`); run order collab `T2_17_PULL_20261104` (e_pi + e_pull, 2000 steps). **Env 0.13.0 / learner 7.0 (97 tests):** observation
-`reduced_priv_cert` adds the executor-calibrated counterfactual opportunity map (9 reference intents x [feasible,
-replay-calibrated success share, value] + ready flag) as critic input; arms `e_cert` (U1 + U2), `e_full` (+ U3),
-`e_pullq` (U3 only); run order collab `T2_19_CERT_20261104` (e_cert + e_full; method selection pre-registered).
-**FINAL (2026-11-05, research layer `final_review` + user): method frozen as EACH = U1 + C1 (`e_priv`).** T2.17
-`no_increment`, T2.19 `revert` (history-dependent calibration as critic input formed a self-confirming loop) -> the
-counterfactual / actor-feedback line is closed (history only). Final material: `docs/final_method/` (METHOD_MINIMAL,
-METHOD_SPEC, C1_THEORY, CONFIG_LOCK, ABLATION_MATRIX, FIGURE_SPEC, METHOD_REGISTRY.json); the only entry for final runs is
-`experiments/final.py` (+ `experiments/final_figures.py`), which launches registry configurations only (EACH, SAC, SAC_ENG,
-DUP, NO_GEOM, RIGID) for the stage's seeds and openings. Stages: dryrun (pipeline check), pretest (EACH, SAC, SAC_ENG, DUP, NO_GEOM x seeds 10/11 x 2000, no time limit,
-eval 294100-294147; window verified by paired rigid evaluation), formal (seeds 20-22 x 5000, eval 300000-300095; needs the user's separate authorization). The e_priv
-path is bitwise equivalent to 2e7d838 (`evidence/final_pretest/precheck/`). No more T2.x numbering.
-**Pretest delivered (2026-11-06; frozen `fd789126`, delivery `56841a04`, collab `79497f85`; 100 tests):** 48 new openings x
-seeds 10/11 x 2000, six validity checks passed (`evidence/final_pretest/`). EACH 90/96, 45.7; SAC 80/96, 27.5; SAC_ENG
-85/96, 35.7; DUP 76/96, 15.1 (gain is information, not width); NO_GEOM 41/96, -54.2; pure 29/48 (unsafe 11); gstar
-45/48, 50.1; paired window vs rigid on EACH: entry losses 85 -> 2. To face: gstar parity, EACH-SAC median per-opening
-difference ~0 (mean from capture/timeout flips), 2 seeds. Counterfactual routes are DEAD_ENDS D39-D43. User 11-06:
-experiments essentially converged; RUN_FORMAL (draft) not authorised; the paper's main contribution should be a
-transferable execution-feedback mechanism (C1 the task contribution) -- a further design step on how feedback is
-built / filtered / used, avoiding long-term value ranking of unexecuted candidates, is for the research layer's new
-window (not in git until an authorised run order); upper and lower windows unchanged until the experiments end.
-**U2 -> U2C -> ECC (2026-11-06 to 11-08; env 0.16.0, learner 7.2, 106 tests, science `cc1a0954`, collab `7467923d`):**
-RUN_U2: the executor mode probe (`env/t2_probe.py`, 9 fixed intents x 48 s, the executor's own entry rule and G*) as a
-critic input -- offline A1-A5 pass (`evidence/U2_PROBE_PRECHECK`), training `no_gain` (PROBE - SAC +1.34; DEAD_ENDS
-D44). RUN_U2C: the same probe certifies the intent at decision time (binding pass, own intent misses, a probe catches ->
-nearest certified probe; `T2StageEnv._certify`), pretest models, no training: EACH+cert vs SAC +23.3 `pass`, same-model
-`no_effect` (+6.3 / +5.5). RUN_ECC (`docs/final_method/ECC_SPEC.md`): one opportunity evaluation per decision
-(`_opportunity_eval`) feeds the critic certificate (`opportunity_certificate`, profile `cut_ecc`) and the certification
-map (with a resource condition); interface `cut_priv` / `cut_ecc` drops planner answers and the executor's internal
-execution state (residuals, hold) from the decision layer for all configurations; registry SAC_C / EACH_C / ECC, stage
-`ecc`. Pre-registered order selected **`ECC_deploy`** (EACH_C trained, certification at deployment): vs SAC_C +12.2,
-84/78 captures, seeds +1.5 / +23.0, 0 unsafe, G1-G5 pass; full ECC (certification in training, action-level certificate
-in the critic) +5.7, 1 unsafe (a descent-kind certification at 294334), not passed; same-model certification on EACH_C
-'improved' (+8.5 / +4.0, +3 captures, 0 lost); EACH_C alone vs SAC_C +5.9 (seed 10 -7.1). Open: thin margin, descent-kind
-certification safety (DEAD_ENDS O7), full ECC curves vs final models (O6), P1 (train-deploy consistency) holds for the
-full ECC only. User 11-08: optimise one final version before the formal runs; the three windows restart for the wrap-up.
-Readouts: `experiments/u2_readout.py`, `experiments/cert_readout.py`, `experiments/ecc_readout.py`.
+**Method (frozen): ECC with RWG** -- `docs/paper/METHOD.md` is the only method source. SAC gives a 2-D stage intent
+every 16 s in the target's spin frame (closing speed, along-sweep speed; latitude regulated onto the port's sweep cone);
+a stage planner and a far-field tracking law fly it; when the port's pass is reachable the window-committed conditional
+G* plans the entry and the frozen MPC flies entry, descent and capture (RWG). ECC: the critic reads the executor feedback
+z_E (6 items) during training; the executor's opportunity evaluation certifies the intent in training and execution
+alike (config `ECC_CERT_LOOP` = `e_priv` + `cut_priv` + `certify`; behaviour reference science `e0a61753`).
 
-## Phase 2 ground rules (user 2026-11-03: consolidation and optimisation)
-
-*(Historical: the EACC-A baseline lock and three-group comparison were superseded by EACH (11-05) and ECC (11-08);
-the current state and open points are in collab `PROJECT_STATE.md` and HANDOFF section 0B.)*
-
-- **Baseline lock.** The working foundation is T2.11 EACC-A (`ec394ef`, `evidence/T2_11_EACCA`): on the development
-  protocol (urgent U(140, 200) s, openings 294000-294047, two seeds x 2000, checkpoints 500-2000, `t28`) EACC-A AUC
-  25.79 (22.89 / 28.69), SAC on `reduced_priv` -15.24, engineered-interface SAC 25.78. Every later change must keep
-  the chain working (68 tests, sandbox self-check) and must not fall below this EACC-A reference on the same protocol;
-  a change that does is reverted, not patched forward.
-- **SAC arm reuse.** The `e_sac` / `reduced_priv` arm (critic view 24, no labels, no calibration) is bitwise on the same
-  code path when a change touches only `e_acc` (labels, calibration, advantage, critic view); such rounds may reuse
-  the T2.11 SAC runs and say so in the run order. Any change to the environment, interface, executor or reward
-  retrains both arms.
-- **Paper comparison:** pure MPC, SAC without feedback, EACC-A (TD3 possibly later); component ablations are internal.
-- **Formal runs** (>= 3 seeds, formal block 300000-999999, pure MPC re-run) only after the method is consolidated and
-  the user approves them.
+**State (2026-11-12):** engineering wrap-up done -- the code holds only what the formal experiment runs (bitwise equal to
+`fcd8d2ee` / `e0a61753` on the frozen paths), the formal design is pre-registered (`docs/paper/EXPERIMENTS.md`), the
+resource condition is frozen (R = 2.0 m/s), the formal run order `RUN_FORMAL` awaits the user's separate authorization.
+History: `docs/HISTORY.md`; refuted directions: `docs/DEAD_ENDS.md`; live state: collab `PROJECT_STATE.md` (wins over
+anything here).
 
 ## Start here
 
-**First read the shared three-window documents** on branch `collab/spacecraft`:
-`docs/collaboration/HANDOFF.md` (research question, scenario problem, user's
-requirements, assets, current state, each window's discipline) and
-`docs/collaboration/RESEARCH_EVOLUTION_AND_COUPLING_DESIGN_20261012.md` (how the
-thinking and experiments evolved, pitfalls). Then this file and the pages below.
-
-| What | Where |
-|---|---|
-| **T2 (current): environment, labels, learner, driver, readouts, decisions, audit, figures, tests** | `env/t2_stage.py`, `train/t2_mve_sac.py`, `experiments/t2.py`, `experiments/t2_readout.py`, `experiments/t2_decide.py`, `experiments/t2_audit.py`, `experiments/t2_figures.py`, `tests/test_t2_stage.py` (map in collab HANDOFF 6.2) |
-| T2 evidence | `evidence/T2_PRECHECK`, `T2_STAGE_A/B`, `T2_2_TEST`, `T2_3_TEST`, `T2_4_TEST`, `T2_5_VALIDATE`, `T2_5_1_VALIDATE`, `T2_6_PRESSURE`, `T2_6W_WIDE_140_200` (with the lower's diagnosis), `T2_6W1_CUTOFF`, `T2_7_PRECHECK`, `T2_7_GUIDE`, `T2_8_PRECHECK`, `T2_8_NIGHT`, `T2_8_P4_INFO`, `T2_8_P4_INFO_UPPER`, `T2_11_SELFCHECK`, **`T2_11_EACCA`**, `T2_11_EACCA_UPPER` |
-| User's slides (paper narrative) | collab `docs/collaboration/wang23.pdf`; mapping to the code in HANDOFF 2.8 (the reward slide differs from the code) |
-| T1 task family, physics, G*, review interface, opening blocks | `docs/current/TASK.md` |
-| Method components (nothing frozen) | `docs/current/METHOD.md` |
-| Learning-space admission protocol (screen, Gates A-E) and results | `docs/current/EVALUATION.md` |
-| Commands | `docs/current/REPRODUCE.md` |
-| Branches, tags, evidence directories, local artifacts | `docs/archive/GIT_ASSETS_20261018.md` |
-| One-page research timeline | `docs/HISTORY.md` |
-| **Every direction already tried and refuted** | `docs/DEAD_ENDS.md` -- read before proposing any method, interface, reward or task change |
-| Live project state, run orders, hand-offs, experiment registry | branch `collab/spacecraft`, `docs/collaboration/` (`PROJECT_STATE.md` wins over anything here) |
-| Pre-cleanup repository (all old paths and SHAs) | tag `archive/pre-cleanup-20261010`; map in `docs/archive/PATH_MAP.csv` |
+1. Collab branch `collab/spacecraft`: `docs/collaboration/PROJECT_STATE.md` and `HANDOFF.md`.
+2. `README.md`, `docs/paper/METHOD.md`, `docs/paper/EXPERIMENTS.md`, `docs/final_method/METHOD_REGISTRY.json`,
+   `docs/REPRODUCE.md`.
+3. `docs/DEAD_ENDS.md` before proposing any method, interface, reward or task change.
 
 ## Roles and branches
 
-- The research layer (user + discussion window) owns the paper question and
-  success criteria. The upper window reviews, writes run orders and code; it
-  may question but not redefine them. Claim-breaking issues are reported as:
-  what, which claim, why not a limitation, minimal check, method change needed.
-- The lower window runs long jobs on the user's machine in the single science
-  checkout `D:/py/DRL2` (the old `DRL2_T1*` clones are retired; local assets are
-  mapped in collab `lower/handoffs/cleanup_inventory_20261018/`), never
-  switches branches or pulls in a working tree while a job runs.
-- **Exactly three branches** (user, 2026-10-18):
-  `claude/sac-mpc-coupling-design-ns7g6i` holds all science code and evidence;
-  `collab/spacecraft` only `docs/collaboration/` (fetch first, never
-  force-push); `main` is merged only when the experiments are over. Do not
-  open new long-lived branches: frozen science states are commits (and, if
-  needed, `archive/*` tags made by the lower window). The retired experiment
-  branches were fast-forward ancestors and are merged. No PRs unless the user
-  asks.
-- This sandbox cannot push tags or delete remote branches (proxy 403); the
-  lower window does those from the user's machine.
-- **Git holds facts, not discussion.** Code, executed run orders, results,
-  evidence, registry, hand-offs and reviews of finished results go in git.
-  Direction ideas, proposals, brainstorming and window-to-window discussion
-  stay in the conversations; a proposal enters git only as an authorised
-  run order, and a conclusion only with the artifact behind it.
+- The research layer (user + discussion window) owns the paper question and success criteria. The upper window reviews,
+  writes run orders and code; it may question but not redefine them.
+- The lower window runs long jobs on the user's machine in the science checkout `D:/py/DRL2`; it never switches branches
+  or pulls in a working tree while a job runs.
+- **Exactly three branches:** `claude/sac-mpc-coupling-design-ns7g6i` (science code and evidence), `collab/spacecraft`
+  (only `docs/collaboration/`; fetch first, never force-push), `main` (merged only when the experiments are over).
+  Frozen states are commits and `archive/*` tags (made by the lower window; this sandbox cannot push tags). No PRs
+  unless the user asks.
+- **Git holds facts, not discussion.** Code, executed run orders, results, evidence, registry, hand-offs and reviews of
+  finished results go in git; proposals enter git only as authorised run orders.
 
 ## Non-negotiables
 
-- **Truth RK45 geometry is the only arbiter of safety**, never observation,
-  QP "solved" or predicted margins.
-- **Pure MPC is frozen** (no Q/R, horizon, corridor, terminal or tolerance
-  edits except a named code bug) and is re-run clean on every formal block.
-- **No manufactured gap**: no artificial obstacles, unmotivated noise,
-  shortened horizon, throttled thrust, wrong model, or a rule that only hurts
-  the baseline. Reward never encodes the answer.
-- **Every training run starts from zero** (no resume, no warm start); >= 3
-  seeds; report the distribution -- no swapping seeds, picking checkpoints or
-  dropping failed seeds.
-- One interpretable factor per experiment, in its own commit, with a manifest.
-- Evaluation is deterministic and serial; parallel timings are never a
-  real-time claim.
-- **Any number entering a decision or the paper points at an artifact**
-  (JSON/CSV/manifest/commit/script) or is marked exploratory.
-- Development validation != paper formal validation != flight certification.
-  Smoke tests check correctness, never direction; one seed or probe never
-  switches the research question.
+- **Truth RK45 geometry is the only arbiter of safety**, never observation, QP "solved" or predicted margins.
+- **The executor is frozen**: MPC, planners, entry rule, physics (`env/t1_*`, `env/se3_rendezvous_env.py`,
+  `controllers/`, `dynamics/`) are byte-identical to `e0a61753` (`t1_env.py` adds read-only audit only). Pure MPC is
+  re-run clean on every formal block.
+- **No manufactured gap**: no artificial obstacles, unmotivated noise, shortened horizon, throttled thrust, wrong model,
+  or a rule that only hurts the baseline. Reward never encodes the answer.
+- **Every training run starts from zero**; >= 3 seeds; report the distribution -- no swapping seeds, picking
+  checkpoints or dropping failed seeds.
+- **The formal block 300000-999999 and the formal seeds 20-22** are used only under an authorised formal run order.
+- Any change: spec and criteria in git first, then the implementation; frozen paths stay bitwise reproducible; judge
+  pytest by its exit code; one interpretable factor per commit; commits carry the collaboration trailer.
+- Any number entering a decision or the paper points at an artifact (JSON / CSV / manifest / commit / script) or is
+  marked exploratory. Development validation != paper formal validation != flight certification.
 
 ## Traps
 
-T2 line (current):
-
-- **Mechanism readings are not label correctness.** w2, pi_gap / sigma, grad_cos,
-  two_stage_share passed in T2.5.1 and T2.6W while returns tied or fell. Before
-  training on a changed task distribution or label branch, audit the labels against
-  truth branches on the critical cases (near the deadline, near-field direct
-  capture, lost entry); `experiments.t2_audit` and the T2.6 timeout diagnosis are
-  the tools.
-- **Terminal semantics.** A modelled stage that crosses the deadline or the budget
-  ends there (`_stage_cutoff`, kind 0; so does a predicted entry reached only after
-  the budget is spent); an entry is kind 1 (anchored) / 2 (outcome
-  model only). Stage-1 labels exist only after a completed factual stage, so the
-  deadline matters in stage 2 (decisions within 32 s of it).
-- **Paired means are flips.** One capture / timeout flip is about +-200, i.e. +-8 on
-  a 24-opening mean; report medians, without-top-2, urgent / economy and deadline
-  bins; both-captured openings only for fuel / time.
-- **The standard task has no headroom:** SAC reaches ~0.9 training capture by ~1000
-  decisions and ~54 / 23-of-24 by 3000-4000.
-- **SAC arm reuse:** the SAC arm generates no labels (candidates = 0); label or
-  learner-model changes leave it bitwise on the same code path, so it may be reused
-  across EACC-only rounds -- say so in the run order.
-- **All lower hand-offs live in collab `docs/collaboration/lower/handoffs/`.** The
-  T2.2-T2.6W directories sat at the collab repository root until the 10-29
-  cleanup moved them (old paths in executed run orders: see collab
-  `docs/collaboration/lower/README.md`). The collab tree holds only
-  `docs/collaboration/`; its pre-cleanup tree is tag `archive/collab-pre-cleanup-20261029`.
-- **Check pytest by its exit code**, not by piping to `tail`.
-- Do not fine-grid task parameters to find a profile where EACC wins (T2.6B was
-  withdrawn); widen the distribution and pre-register the bins instead.
-
-T1 line (historical):
-
-- **Solver-cache numerics.** A long-running MPC's CVXPY/CLARABEL cache carries
-  its own solve history; a shadow clone cannot be bitwise equal to it (~1e-8).
-  Branch from a snapshot with `CounterfactualPredictor.sync(fresh_solvers=True)`
-  for every branch and report the difference to the original continuation as
-  the numerical repeatability.
-- **`tau_min_feasible` is not observed** in the T1-L / T1-O interfaces (computed
-  inside `apply_intent`; rules and policies must not read it). T1-N observes a
-  read-only earliest-feasible summary instead, shared by every arm and rule.
-- **T1-N shadow = simulator cost.** The 2 s MPC shadow solves the MPC every
-  0.1 s; it costs as much as a truth branch and is nearly as accurate. Do not
-  claim it is cheaper or more informative than the simulator.
-- **T1-N ranking signal = G* plan + MPC 2 s correction.** Its long-horizon
-  content comes from the G* plan; report the plan-only and corrected signals
-  separately and never credit the plan's part to the MPC. Only its sign is
-  used (ranking loss); nothing is bootstrapped from a planned arrival state.
-- **T1-N 0k is a constant mid-range request.** The untrained deterministic actor
-  outputs a ~ 0: tau_req ~ 110 s at t = 0, i.e. the fixed:0 rule.
-- **Terminal semantics.** success / unsafe / timeout are terminal (no
-  bootstrap); only a numerical failure is a truncation.
-- **Fuel weight.** Re-score any weight exactly from `info["delta_v_step_m_s"]`;
-  never rerun physics per weight. The counterfactual gate `e_r = 0.06` was set
-  at weight 5 and is not valid at another weight.
-- **G* planned delta-v covers only the transfer**, not station-keeping or
-  descent; it is biased towards long waits as a cost proxy.
-- **Do not edit modules a running job imports**: evaluation pools spawn new
-  processes per stage and import the current working tree.
-- **Opening blocks** are listed in `docs/current/TASK.md`; formal block
-  300000-999999 never accessed; training openings >= 1,000,000.
-- Cross-machine numerics: the same commit can differ in the last bits between
-  the sandbox and the lower's machine; compare verdicts, not bits, across
-  machines. (T2.8 P4: identical at t = 0, max 0.043 / median 2e-6 drift after the first stage.)
-
-F01 line (historical, `train/stopping.py` and friends):
-
-1. The raw per-key margins in `info` are not gated; compare
-   `minimum_truth_normalized_margin` (from
-   `normalized_precapture_truth_margins`).
-2. `predicted_minimum_margin` is the optimiser's forecast, only exists under
-   `runtime_diagnostics=True`, and is not a truth margin.
-3. `maximum_slack` can be stale on a fallback step; read it only from solved
-   steps.
-4. The wrapper is transparent only when `horizon_steps ==
-   external_reference_hold_steps`.
-5. `target_entropy` is inert while `ent_coef` is fixed (0.005). Automatic
-   temperature drove critic overestimation (DEAD_ENDS D02).
-6. Loading a checkpoint against the wrong observation dimension is refused by
-   the evaluators; match the run's manifest, do not guess flags.
-7. The `max` of a compute measurement is step zero (cold start).
-8. h35 vs h50 is separated by steps over the control period (2/300 vs
-   269/300), not by p95.
-9. No `conftest.py`, not installed as a package: run
-   `python -B -m pytest -q` from the repository root.
-10. An **illegal entry-plane crossing is a diagnostic count**, not a safety
-    violation; it does not latch or end the episode.
-11. **Training-log completion is behaviour-policy statistics** (stochastic
-    actions plus handoffs sampled at random times); it is not deployment
-    performance and never a gate.
-12. The formal evaluator builds its hybrid config without
-    `decision_discount_factor`; trajectories agree bitwise with training, only
-    the shaped reward differs. Compare outcomes and states, not shaped reward.
+- **Old checkpoints load by class path**: SB3 zips name `train.t2_mve_sac.SplitViewPolicy`, `SliceExtractor`,
+  `StageReplay`, `T2SAC`, `T2TD3`, `TD3Replay`. Do not rename these modules or classes.
+- **Multi-worker training is not bitwise repeatable** (asynchronous arrival order, `worker_order`); equivalence checks
+  run one worker. Evaluation is deterministic and serial per episode; parallel timings are never a real-time claim.
+- **Solver-cache numerics**: CVXPY / CLARABEL caches carry their solve history; the certification uses its own planner
+  instances per episode so it never touches the executor's solver state. A fresh clone of a running solver differs
+  by ~1e-8.
+- **Terminal semantics**: success / unsafe / timeout / resource exhaustion are terminal (no bootstrap); only a numerical
+  failure is a truncation (a non-capture outcome in the readout). An `error` record means the episode did not run.
+- **Paired means are flips**: one capture / timeout flip is about +-200 on one episode; report captures, flips, medians,
+  per-seed rows and both-captured openings only for time / fuel.
+- **Mode prediction is not value**: a predicted event is the executor model's mode switch, not a capture; "descent"
+  certifications are reported per unsafe episode (DEAD_ENDS O7).
+- **Do not edit modules a running job imports**: evaluation pools spawn processes that import the current tree.
+- **Cross-machine numerics**: the same commit can differ in the last bits between the sandbox and the lower's machine;
+  compare verdicts, not bits, across machines.
+- **Shaped reward is training only**: evaluation reports the true return (`return_true`).
+- No `conftest.py`, not installed as a package: run `python -B -m pytest -q` from the repository root.
 
 ## Trusted entry points
 
-T2 line (current; exact commands in the collab run orders, e.g. `T2_6W1_CUTOFF_20261029.md`):
-
 | Purpose | Entry |
 |---|---|
-| Tests | `python -B -m pytest -q tests/test_t2_stage.py tests/test_integrator.py` (106 since ECC; judge by the exit code) |
-| Fixed policies / G* / pure MPC screen | `python -B -m experiments.t2 screen --openings A-B --policies rally,c_10_0,...,gstar,pure [--urgent-deadline LO,HI]` |
-| Train | `python -B -m experiments.t2 train --arm {e_sac,e_mve,e_acc} --seed S --steps N --workers W --checkpoints ... --output DIR [--urgent-deadline LO,HI] [--obs reduced_priv]` (EACC-A: `--arm e_acc --obs reduced_priv`; its SAC baseline: `--arm e_sac --obs reduced_priv`; T2.12 EACC `--arm e_rel --obs reduced_priv`, ablation `--arm e_priv --obs reduced_priv`; learner 5.0 `--arm e_term` / `e_term2 --obs reduced_priv`; learner 6.0 `--arm e_pi` / `e_pit --obs reduced_priv`) |
-| Evaluate a checkpoint | `python -B -m experiments.t2 eval --checkpoint ZIP --label L --openings A-B --workers W --output DIR [--urgent-deadline LO,HI]` (the interface is read from the run's manifest) |
-| Readouts | `python -B -m experiments.t2_readout {screen,curve,window,pressure}` |
-| Pre-registered decisions | `python -B -m experiments.t2_decide --criteria {t23,t24,v25,v251,t26,t26w,t27,t28} [--checkpoints ...] --readout R --train-root DIR` (t28: arm-level, method arm `e_mve` / `e_pref` / `e_acc`) |
-| Training curves, final models, T2.12 decision | `python -B -m experiments.t2_curves {curve,final,plot,decide}` (per-episode true return, 50-episode rolling mean on stored decisions; final model on 48 openings; `t212`) |
-| Key-state scoring (critic / actor on stored states) | `python -B -m experiments.t2_keyscore --states DIR --checkpoints LABEL=ZIP ... --output J`; P4 summaries `evidence/T2_8_PRECHECK/脚本/p4b.py` |
-| Label audit against truth | `python -B -m experiments.t2_audit {warmup,labels,summary}` |
-| Figures | `python -B -m experiments.t2_figures {traj,plot}` |
-
-T1 line (historical; commands in `docs/current/REPRODUCE.md`):
-
-| Purpose | Entry |
-|---|---|
-| Task profiles | `env/t1_env.py`, `env/t1_l_task.py`, `env/t1_o_task.py` (`p1` / `p2` / `o`), `env/t1_n_task.py` (T1-N) |
-| T1-N interface, shadow, learner | `env/t1_n_review.py`, `env/t1_n_cf.py`, `train/t1_n_sac.py`, `python -B -m train.train_t1_n`, checks `experiments.t1n_check`, evaluation `experiments.t1n_eval` |
-| G* and review interface | `env/t1_gstar.py`, `env/t1_task_review.py`, counterfactual `env/t1_option_cf.py` |
-| Learners and training | `train/t1_option_sac.py`, `train/t1_tcpf.py`, `python -B -m train.train_t1_option` |
-| Openings (geometry only) | `python -B -m experiments.t1o_openings`, `experiments.t1o_screen openings` |
-| Fixed candidates, tables | `python -B -m experiments.t1o_screen {run,verdict,table}` |
-| Gates A-E (pre-registered) | `experiments/t1o_v2.py`, `experiments/t1o_gates.py`, `experiments/t1o_cf_check.py`, chain `experiments/t1o_v2_chain.py` |
-| T1-L evaluation / readout | `python -B -m experiments.t1_l_eval`, `experiments.t1_l_readout` |
-| Pure MPC row | `python -B -m experiments.t1_gstar_probe run --row pure --task ...` |
-
-F01 line (historical):
-
-| Purpose | Entry |
-|---|---|
-| Mainline configuration | `train.mainline.mainline_v3e_configs()`, regimes in `train.regimes` |
-| Stopping method | `train/stopping.py` (`STOPPING`) |
-| Train | `python -B -m train.train_stopping --steps 60000 --seed S --run-name N --regime w2.36_r15` |
-| Evaluate rows / devcheck / readout | `python -B -m experiments.v3_stopping {evaluate,devcheck,readout,readout-value}` |
-| Nominal row, regime screen | `python -B -m experiments.regime_screen` |
-| 96-opening tables | `python -B -m experiments.final_tables` |
-| Replay + counterfactual (eps_H, eps_C) | `python -B -m experiments.stopping_replay` |
-| Training health (read-only, safe while training) | `python -B -m experiments.v3_stopping_training_health` |
-| Pure MPC / scripted / oracle | `experiments.evaluate_mpc`, `experiments.evaluate_hybrid_scripted`, `experiments.evaluate_precapture_oracle` |
-| Serial MPC cost | `python -B -m experiments.profile_precapture_mpc --no-diagnostics` |
+| Tests | `python -B -m pytest -q` (judge by the exit code) |
+| Train / evaluate / screen / trajectories / geometry scan / completeness / resolve | `python -B -m experiments.final {train,eval,screen,traj,geoscan,check,resolve}` (`docs/REPRODUCE.md`) |
+| Formal readout, episode table | `python -B -m experiments.formal_readout {formal,episodes,prescreen}` |
+| Figures and tables | `python -B -m experiments.formal_figures` |
 
 ## Artifacts
 
-Training artifacts (models, checkpoints, TensorBoard, per-episode JSON) are
-git-ignored and archived locally by experiment ID. Publish evidence only by
-force-adding individual files under `evidence/<experiment-id>/` and record the
-SHA-256 in the registry. Never commit an artifact directory (the pre-cleanup
-`logs/` held 1.6 GB of model ZIPs; it is out of the tree now, see
-`docs/archive/ARTIFACT_INDEX.csv`). Do not rewrite history: cited SHAs are the
-evidence chain.
+Training artifacts (models, checkpoints, per-episode JSON) are git-ignored and archived locally by experiment ID.
+Publish evidence only by force-adding individual files under `evidence/<experiment-id>/` with their SHA-256 (index:
+`evidence/README.md`). Never commit an artifact directory. Do not rewrite history: cited SHAs are the evidence chain.
+Everything removed from the working tree on 2026-11-12 is in commit `fcd8d2ee` (`docs/archive/PATH_MAP_20261112.csv`).
 
-The sandbox has no numeric stack by default; build a venv with
-`numpy scipy cvxpy gymnasium stable-baselines3 pytest` (PyPI torch works;
+The sandbox has no numeric stack by default; build a venv from `requirements-dev.txt` (PyPI torch works;
 download.pytorch.org is blocked).
 
 ## References

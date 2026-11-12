@@ -1,6 +1,6 @@
 # 研究时间线（一页版）
 
-每一阶段写四件事：问题、做了什么、结论、为什么转向。细节见 `docs/archive/<阶段>/`，被否定的方向集中列在 `docs/DEAD_ENDS.md`。
+每一阶段写四件事：问题、做了什么、结论、为什么转向。阶段 0–6 的细节文档在科学提交 `fcd8d2ee` 的 `docs/archive/<阶段>/`，被否定的方向集中列在 `docs/DEAD_ENDS.md`。
 
 整理前的仓库原样冻结在标签 `archive/pre-cleanup-20261010`。旧文档中引用的任何路径或 SHA，都在该标签下查找；旧路径与新路径的对照见 `docs/archive/PATH_MAP.csv`。
 
@@ -142,20 +142,36 @@
   - 判定顺序选中 `ECC_deploy`：EACH_C + 部署认证 对 SAC_C +12.2，捕获 84 / 78，两种子 +1.5 / +23.0，0 unsafe，G1–G5 全过。
   - 完整 ECC 对 SAC_C +5.7，1 次 unsafe，未过。
   - 同模型认证在 EACH_C 上达"改善"档（+8.5 / +4.0，捕获 +3，0 丢失）。
-  - 证据 `evidence/ECC_DEV/`（科学 `cc1a0954`），规格 `docs/final_method/ECC_SPEC.md`。
+  - 证据 `evidence/ECC_DEV/`（科学 `cc1a0954`），规格 `docs/archive/method_development/ECC_SPEC.md`。
 - **用户（11-08）：** 正式实验前再统筹优化一版最终方法，三窗口重开收尾。
+
+### 阶段 12 · ECC 最终轮与论文层（2026-11-08 – 11-11）
+
+- **问题：** 部署时认证（`ECC_deploy`）在训练与执行之间不一致，余量薄；能否设计闭环主机制。
+- **做了什么：**
+  - A 步：执行机会调节器（最小干预 + 机会时刻承诺），在学习模型上被事先登记的判据否决（DEAD_ENDS D45，`evidence/GOV_A/`）；
+  - B 步：旧认证在训练与执行中同用（在环 ECC = `ECC_CERT_LOOP`），紧急任务对 SAC_C +36.0，捕获 145 / 111，翻转 37 : 3，0 unsafe（`evidence/GOV_B/`、`evidence/GOV_B_UPPER/`）；
+  - 论文层：`docs/paper/`（METHOD、FACT_MAP、AUDIT、BASELINE、EXPERIMENTS），正式实验设计事先登记；
+  - 正式实验准备（RUN_FORMAL_PREP）：注册表 formal 阶段、TD3 基线、只读日志、读出与作图、逐位回归、资源条件预筛（R = 2.0 m/s，`evidence/FORMAL_PREP/`）。
+- **结论：** 方法冻结为 `ECC_CERT_LOOP`（行为基准科学 `e0a61753`）；学习侧执行反馈是主要来源，认证在环带来额外收益。
+
+### 2026-11-12 · 工程收尾整理
+
+- 代码只保留正式实验用到的 45 个模块；环境、学习器、驱动、入口删去历史分支（反事实标签、偏好、引导、校准、探询进 critic、证书图、调节器、稀缺任务等），对 `fcd8d2ee` 在 7 种环境情形与 6 个配置的单进程短训上逐位等价。执行器与物理模块（`t1_*`、`se3_rendezvous_env`、MPC、动力学）与 `e0a61753` 逐字节相同，`t1_env.py` 只多了 33 行只读审计。
+- 测试只保留覆盖现行代码的部分；历史测试、T1 / F01 / E 系列与早期 T2 证据、旧阶段文档移出工作树（`docs/archive/PATH_MAP_20261112.csv`，原样在 `fcd8d2ee`，标签 `archive/pre-cleanup-20261112`）。
+- 开发期方法规格移入 `docs/archive/method_development/`，开发期注册表移入 `docs/archive/registry/`。
 
 ### 2026-10-18 · 分支整理
 
 - 三条实验分支 `experiment/t1_l_option_relative_20261015`（`166244b`）、`experiment/t1_l_s_tcpf_20261016`（`672ba79`）、`experiment/t1_o_tcpf_20261017`（`d3902a9`）是一条直线，已快进并入 `claude/sac-mpc-coupling-design-ns7g6i`，之后删除。历史没有重写，所有引用过的 SHA 仍在科学分支上可达。
-- 只保留三条分支：`main`、`claude/sac-mpc-coupling-design-ns7g6i`、`collab/spacecraft`。资产总表见 `docs/archive/GIT_ASSETS_20261018.md`。
+- 只保留三条分支：`main`、`claude/sac-mpc-coupling-design-ns7g6i`、`collab/spacecraft`。资产总表见 `docs/archive/GIT_ASSETS_20261018.md`（2026-11-12 起只在 `fcd8d2ee` 中）。
 
 ---
 
 ### 2026-10-10 · 仓库整理
 
-- `logs/` 不再放在工作树中，取回方式见 `docs/archive/ARTIFACT_INDEX.csv`。
-- 文档按阶段归档；不在用的代码移出，取回方式见 `docs/archive/CODE_INDEX.csv`。
+- `logs/` 不再放在工作树中，取回方式见 `docs/archive/ARTIFACT_INDEX.csv`（2026-11-12 起只在 `fcd8d2ee` 中）。
+- 文档按阶段归档；不在用的代码移出，取回方式见 `docs/archive/CODE_INDEX.csv`（同上）。
 - 证据 JSON 移入 `evidence/`。
 - 在用代码逐字节不变。
 
