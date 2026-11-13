@@ -50,7 +50,8 @@ def test_completeness_report_lists_every_registered_result(tmp_path):
     report = check_formal(tmp_path, stage_of("formal"))
     assert len(report["missing_runs"]) == 18
     assert report["evaluations"]["ECC_CERT_LOOP_s20_economy_nocert"]["expected"] == 96
-    assert report["evaluations"]["ECC_CERT_LOOP_s20_resource"]["expected"] == 96
-    assert report["screens"]["pure_resource"]["expected"] == 96 and "gstar_natural" not in report["screens"]
+    assert report["evaluations"]["ECC_CERT_LOOP_s20_economy"]["expected"] == 96
+    assert not any("resource" in key for key in (*report["evaluations"], *report["screens"]))
+    assert report["screens"]["pure_natural"]["expected"] == 96 and "gstar_natural" not in report["screens"]
     assert report["validation"]["TD3_C_s21_step5000"]["expected"] == 24
     assert not report["complete"]

@@ -179,7 +179,7 @@ def test_observation_is_the_policy_view_followed_by_the_executor_feedback():
 
 # ---------------------------------------------------------------------- missions
 def test_missions_keep_the_natural_deadlines_and_trade_time_against_fuel():
-    nat = T2Mission(urgent_deadline_s=(140.0, 200.0))
+    nat = T2Mission(urgent_deadline_s=(140.0, 200.0), economy_budget_m_s=2.0)
     for op in range(294100, 294130):
         n = nat.sample(op)
         assert mission_from_name('natural').sample(op) == n
@@ -187,7 +187,10 @@ def test_missions_keep_the_natural_deadlines_and_trade_time_against_fuel():
         u, e = mission_from_name('urgent').sample(op), mission_from_name('economy').sample(op)
         assert u['urgent'] and not e['urgent'] and 140.0 <= u['deadline_s'] <= 200.0 and 280.0 <= e['deadline_s'] <= 340.0
         assert u['time_cost_per_s'] > 0.05 and u['fuel_cost_per_m_s'] < 20 and e['time_cost_per_s'] < 0.05 and e['fuel_cost_per_m_s'] > 20
-    share = np.mean([mission_from_name('urgent_mix:0.75').sample(o)['urgent'] for o in range(1_000_000, 1_002_000)])
+        assert u['budget_m_s'] == 3.0 and e['budget_m_s'] == 2.0 and n['budget_m_s'] == (3.0 if n['urgent'] else 2.0)
+    train = [mission_from_name('urgent_mix:0.75').sample(o) for o in range(1_000_000, 1_002_000)]
+    assert all(x['budget_m_s'] == (3.0 if x['urgent'] else 2.0) for x in train)
+    share = np.mean([x['urgent'] for x in train])
     assert abs(share - 0.75) < 0.03
     with pytest.raises(ValueError):
         mission_from_name('scarcity')

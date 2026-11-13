@@ -27,7 +27,8 @@ Certification (ECC). With ``certify`` the executor's opportunity evaluation (``_
 prediction of nine probe intents, ``env/t2_probe.py``) certifies the intent before it is flown (``_certify``).
 
 Mission: urgent (deadline U(140, 200) s, -0.10 per s, -10 per m/s) or economy (U(280, 340) s, -0.02 per s, -40 per m/s);
-the episode times out at the deadline (-100); delta-v budget 3.0 m/s (resource exhausted -100); capture +100, unsafe -150.
+the episode times out at the deadline (-100); delta-v budget 3.0 m/s urgent, 2.0 m/s economy (resource exhausted -100);
+capture +100, unsafe -150.
 """
 from __future__ import annotations
 
@@ -98,17 +99,22 @@ class T2Mission:
     urgent_deadline_s: tuple[float, float] = (170.0, 210.0)
     economy_deadline_s: tuple[float, float] = (280.0, 340.0)
     budget_m_s: float = 3.0
+    #: economy missions' own budget (None: ``budget_m_s`` for both types)
+    economy_budget_m_s: float | None = None
     #: mission preference (observed through the mission class): urgent values time, economy fuel
     urgent_time_cost_per_s: float = 0.10
     urgent_fuel_cost_per_m_s: float = 10.0
     economy_time_cost_per_s: float = 0.02
     economy_fuel_cost_per_m_s: float = 40.0
 
+    def budget(self, urgent: bool) -> float:
+        return self.budget_m_s if urgent or self.economy_budget_m_s is None else self.economy_budget_m_s
+
     def sample(self, opening: int) -> dict[str, Any]:
         rng = np.random.default_rng(np.random.SeedSequence([int(opening), 290021]))
         urgent = bool(rng.integers(0, 2))
         d = rng.uniform(*(self.urgent_deadline_s if urgent else self.economy_deadline_s))
-        return {"deadline_s": float(round(d, 1)), "urgent": urgent, "budget_m_s": self.budget_m_s,
+        return {"deadline_s": float(round(d, 1)), "urgent": urgent, "budget_m_s": self.budget(urgent),
                 "time_cost_per_s": self.urgent_time_cost_per_s if urgent else self.economy_time_cost_per_s,
                 "fuel_cost_per_m_s": self.urgent_fuel_cost_per_m_s if urgent else self.economy_fuel_cost_per_m_s}
 
@@ -171,7 +177,7 @@ class MixMission(T2Mission):
         else:
             urgent = bool(np.random.default_rng(np.random.SeedSequence([int(opening), 291109])).uniform() < self.urgent_share)
         d = rng.uniform(*(self.urgent_deadline_s if urgent else self.economy_deadline_s))
-        return {"deadline_s": float(round(d, 1)), "urgent": urgent, "budget_m_s": self.budget_m_s,
+        return {"deadline_s": float(round(d, 1)), "urgent": urgent, "budget_m_s": self.budget(urgent),
                 "time_cost_per_s": self.urgent_time_cost_per_s if urgent else self.economy_time_cost_per_s,
                 "fuel_cost_per_m_s": self.urgent_fuel_cost_per_m_s if urgent else self.economy_fuel_cost_per_m_s}
 
@@ -183,22 +189,25 @@ def t2_env_config(mission: T2Mission = T2Mission()) -> T1EnvConfig:
 
 
 
-#: urgent deadline range of every named mission (the paper's task distribution)
+#: the paper's task distribution (``docs/paper/EXPERIMENTS.md`` section 2): urgent deadlines U(140, 200) s with the
+#: 3.0 m/s budget; economy deadlines U(280, 340) s with the 2.0 m/s budget (user 2026-11-13, from the completed prescreen)
 URGENT_DEADLINE_S = (140.0, 200.0)
+ECONOMY_BUDGET_M_S = 2.0
+_NAMED = dict(urgent_deadline_s=URGENT_DEADLINE_S, economy_budget_m_s=ECONOMY_BUDGET_M_S)
 
 
 def mission_from_name(name: str) -> T2Mission:
     """'urgent_mix:<share>' (training: urgent with probability <share>), 'urgent' / 'economy' (forced type; evaluation
-    conditions U, E and R), 'natural' (the natural 1:1 draw; condition N)."""
+    conditions U and E), 'natural' (the natural 1:1 draw; condition N). Urgent missions carry 3.0 m/s, economy 2.0 m/s."""
     if isinstance(name, T2Mission):
         return name
     kind, _, arg = str(name).partition(':')
     if kind == 'urgent_mix':
-        return MixMission(urgent_share=float(arg), urgent_deadline_s=URGENT_DEADLINE_S)
+        return MixMission(urgent_share=float(arg), **_NAMED)
     if kind in ('urgent', 'economy'):
-        return MixMission(force=kind, urgent_deadline_s=URGENT_DEADLINE_S)
+        return MixMission(force=kind, **_NAMED)
     if kind == 'natural':
-        return T2Mission(urgent_deadline_s=URGENT_DEADLINE_S)
+        return T2Mission(**_NAMED)
     raise ValueError(f'unknown mission {name!r}')
 
 
@@ -831,7 +840,7 @@ class T2StageEnv(gym.Env):
         return self.observation(), float(shaped), terminated, truncated, info
 
 
-__all__ = ["T2Mission", "MixMission", "mission_from_name", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "OBS_DIM_PRIV",
+__all__ = ["T2Mission", "MixMission", "mission_from_name", "ECONOMY_BUDGET_M_S", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "OBS_DIM_PRIV",
            "OBS_PROFILE", "PLANNER_FEATURES", "EXEC_STATE_FEATURES", "GAMMA_STAGE", "InfoEnv", "stage_goal", "spin_frame",
            "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity", "d_authority", "observe",
            "t2_env_config", "window_half_width", "opportunity_windows"]

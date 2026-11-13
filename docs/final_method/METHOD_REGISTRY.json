@@ -163,20 +163,18 @@
     "conditions": {
      "urgent": {
       "openings": "300000-300095",
-      "mission": "urgent"
+      "mission": "urgent",
+      "budget_m_s": 3.0
      },
      "economy": {
       "openings": "300100-300195",
-      "mission": "economy"
+      "mission": "economy",
+      "budget_m_s": 2.0
      },
      "natural": {
       "openings": "300200-300295",
-      "mission": "natural"
-     },
-     "resource": {
-      "openings": "300100-300195",
-      "mission": "economy",
-      "budget_m_s": 2.0
+      "mission": "natural",
+      "budget_m_s": "urgent 3.0 / economy 2.0"
      }
     },
     "validation": {
@@ -215,75 +213,57 @@
      "ECC_CERT_LOOP_s20_urgent",
      "ECC_CERT_LOOP_s20_economy",
      "ECC_CERT_LOOP_s20_natural",
-     "ECC_CERT_LOOP_s20_resource",
      "ECC_CERT_LOOP_s21_urgent",
      "ECC_CERT_LOOP_s21_economy",
      "ECC_CERT_LOOP_s21_natural",
-     "ECC_CERT_LOOP_s21_resource",
      "ECC_CERT_LOOP_s22_urgent",
      "ECC_CERT_LOOP_s22_economy",
      "ECC_CERT_LOOP_s22_natural",
-     "ECC_CERT_LOOP_s22_resource",
      "SAC_C_s20_urgent",
      "SAC_C_s20_economy",
      "SAC_C_s20_natural",
-     "SAC_C_s20_resource",
      "SAC_C_s21_urgent",
      "SAC_C_s21_economy",
      "SAC_C_s21_natural",
-     "SAC_C_s21_resource",
      "SAC_C_s22_urgent",
      "SAC_C_s22_economy",
      "SAC_C_s22_natural",
-     "SAC_C_s22_resource",
      "TD3_C_s20_urgent",
      "TD3_C_s20_economy",
      "TD3_C_s20_natural",
-     "TD3_C_s20_resource",
      "TD3_C_s21_urgent",
      "TD3_C_s21_economy",
      "TD3_C_s21_natural",
-     "TD3_C_s21_resource",
      "TD3_C_s22_urgent",
      "TD3_C_s22_economy",
      "TD3_C_s22_natural",
-     "TD3_C_s22_resource",
      "EACH_C_s20_urgent",
      "EACH_C_s20_economy",
      "EACH_C_s20_natural",
-     "EACH_C_s20_resource",
      "EACH_C_s21_urgent",
      "EACH_C_s21_economy",
      "EACH_C_s21_natural",
-     "EACH_C_s21_resource",
      "EACH_C_s22_urgent",
      "EACH_C_s22_economy",
      "EACH_C_s22_natural",
-     "EACH_C_s22_resource",
      "SAC_CERT_LOOP_s20_urgent",
      "SAC_CERT_LOOP_s20_economy",
      "SAC_CERT_LOOP_s20_natural",
-     "SAC_CERT_LOOP_s20_resource",
      "SAC_CERT_LOOP_s21_urgent",
      "SAC_CERT_LOOP_s21_economy",
      "SAC_CERT_LOOP_s21_natural",
-     "SAC_CERT_LOOP_s21_resource",
      "SAC_CERT_LOOP_s22_urgent",
      "SAC_CERT_LOOP_s22_economy",
      "SAC_CERT_LOOP_s22_natural",
-     "SAC_CERT_LOOP_s22_resource",
      "ECC_CERT_LOOP_NOGEO_s20_urgent",
      "ECC_CERT_LOOP_NOGEO_s20_economy",
      "ECC_CERT_LOOP_NOGEO_s20_natural",
-     "ECC_CERT_LOOP_NOGEO_s20_resource",
      "ECC_CERT_LOOP_NOGEO_s21_urgent",
      "ECC_CERT_LOOP_NOGEO_s21_economy",
      "ECC_CERT_LOOP_NOGEO_s21_natural",
-     "ECC_CERT_LOOP_NOGEO_s21_resource",
      "ECC_CERT_LOOP_NOGEO_s22_urgent",
      "ECC_CERT_LOOP_NOGEO_s22_economy",
      "ECC_CERT_LOOP_NOGEO_s22_natural",
-     "ECC_CERT_LOOP_NOGEO_s22_resource",
      "ECC_CERT_LOOP_s20_urgent_nocert",
      "ECC_CERT_LOOP_s20_economy_nocert",
      "ECC_CERT_LOOP_s21_urgent_nocert",
@@ -306,7 +286,7 @@
      "SAC_C_s22_urgent_cert",
      "SAC_C_s22_economy_cert"
     ],
-    "note": "Pre-registered in docs/paper/EXPERIMENTS.md. R shares the E openings: the budget is the only difference."
+    "note": "Pre-registered in docs/paper/EXPERIMENTS.md. Budgets by mission type (user 2026-11-13): urgent 3.0 m/s, economy 2.0 m/s in training and evaluation (env.t2_stage.ECONOMY_BUDGET_M_S); the separate resource condition R is dropped."
    },
    "formal_prescreen": {
     "eval_openings": "295100-295147",
@@ -326,9 +306,14 @@
     ],
     "decision": {
      "budget_m_s": 2.0,
-     "evidence": "evidence/FORMAL_PREP/PRESCREEN/PRESCREEN_DECISION.json"
+     "evidence": "evidence/FORMAL_PREP/PRESCREEN/PRESCREEN_DECISION.json",
+     "use": "2026-11-13: the economy missions' own budget in training and evaluation (no separate R condition)"
     }
    }
+  },
+  "training_budgets_m_s": {
+   "urgent": 3.0,
+   "economy": 2.0
   }
  }
 }

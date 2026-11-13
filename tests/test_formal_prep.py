@@ -18,12 +18,10 @@ def test_formal_configuration_manifest(name, arm, geometry, certify, critic):
     }, name)
 
 
-def test_formal_openings_disjoint_except_paired_resource_condition():
+def test_formal_openings_disjoint():
     stages = final.registry()["protocol"]["stages"]
     formal = stages["formal"]
-    resource = formal["conditions"].get("resource")
-    if resource is not None:
-        assert resource["openings"] == formal["conditions"]["economy"]["openings"]
+    assert set(formal["conditions"]) == {"urgent", "economy", "natural"}
     condition_blocks = [set(final.block(formal["conditions"][key]["openings"]))
                         for key in ("urgent", "economy", "natural")]
     assert all(len(group) == 96 for group in condition_blocks)
@@ -45,7 +43,9 @@ def test_formal_registry_evaluation_matrix():
     labels = set(stage["evaluations"])
     assert len(labels) == len(stage["evaluations"])
     assert len(labels) == 18 * len(stage["conditions"]) + 21
-    assert stage["conditions"]["resource"]["budget_m_s"] == 2.0
+    assert not any(label.endswith("_resource") for label in labels)
+    from env.t2_stage import ECONOMY_BUDGET_M_S
+    assert stage["conditions"]["economy"]["budget_m_s"] == ECONOMY_BUDGET_M_S == 2.0
     assert set(final.registry()["trained"]) == set(stage["trained"])
 
 

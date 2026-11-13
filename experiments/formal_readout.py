@@ -14,8 +14,8 @@ REFERENCE = "SAC_C"
 ECC = "ECC_CERT_LOOP"
 PRESCREEN_POLICIES = ("rally", "c_10_0", "c_10_-5", "c_6_5", "b_10")
 PRESCREEN_BUDGETS = (2.0, 1.8, 1.6)
-CONDITIONS = ("urgent", "economy", "natural", "resource")
-GROUP = re.compile(r"(.+)_s(\d+)_(urgent|economy|natural|resource)(?:_(cert|nocert|rigid))?")
+CONDITIONS = ("urgent", "economy", "natural")
+GROUP = re.compile(r"(.+)_s(\d+)_(urgent|economy|natural)(?:_(cert|nocert|rigid))?")
 
 
 def read_json(path):

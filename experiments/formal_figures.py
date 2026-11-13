@@ -231,14 +231,11 @@ def main_figures(root, out, result, smoke=False):
     write_plot(out, "F6", fig, {"attribution": attributions, "switches": switches, "absolute": methods})
 
     fig, axes = plt.subplots(1, 2, figsize=(8, 3.4), layout="constrained")
-    resource = result["conditions"]["resource"]
-    for i, source in enumerate((economy, resource)):
-        for j, m in enumerate(order):
-            if m in source["learned"]:
-                v = source["learned"][m]["pooled"]
-                axes[0].scatter(j, v["capture_rate"], marker=("o", "s")[i], color=COLORS[j])
-                axes[0].scatter(j, v["events"].get("resource_exhausted", 0) / v["n"],
-                                marker=("x", "+")[i], color=COLORS[j])
+    for j, m in enumerate(order):                     # E (fuel-limited economy, 2.0 m/s): capture and exhaustion
+        if m in economy["learned"]:
+            v = economy["learned"][m]["pooled"]
+            axes[0].scatter(j, v["capture_rate"], marker="o", color=COLORS[j])
+            axes[0].scatter(j, v["events"].get("resource_exhausted", 0) / v["n"], marker="x", color=COLORS[j])
     axes[0].set_xticks(range(4), [names[m] for m in order], rotation=25, ha="right", fontsize=7)
     axes[0].set_ylabel("Capture / exhaustion fraction")
     spin = {}
@@ -253,7 +250,7 @@ def main_figures(root, out, result, smoke=False):
         axes[1].plot([2.2, 2.4, 2.6], [x["capture_rate"] for x in spin[name]], marker="o", label=names[name])
     axes[1].set(xlabel="Initial spin (deg/s)", ylabel="Capture fraction")
     axes[1].legend(fontsize=7)
-    write_plot(out, "F7", fig, {"economy": economy, "resource": resource, "spin_bins": spin})
+    write_plot(out, "F7", fig, {"economy": economy, "spin_bins": spin})
 
     lam = np.linspace(0, pi, 150)
     phase = np.linspace(-pi, pi, 160)

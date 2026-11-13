@@ -2,7 +2,7 @@
 list, budget and evaluation switch comes from ``docs/final_method/METHOD_REGISTRY.json``.
 
     python -B -m experiments.final train    --stage formal --config NAME --seed S --output DIR [--workers W] [--smoke-steps N]
-    python -B -m experiments.final eval     --stage formal --run DIR --condition {urgent,economy,natural,resource,validation}
+    python -B -m experiments.final eval     --stage formal --run DIR --condition {urgent,economy,natural,validation}
                                             --output ROOT [--rigid | --certify | --no-certify] [--checkpoint-step N]
                                             [--openings A-B] [--workers W] [--verify-existing SHA256SUMS]
     python -B -m experiments.final screen   --stage {formal,formal_prescreen} --policy NAME --output ROOT [--condition C]
@@ -29,7 +29,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / 'docs' / 'final_method' / 'METHOD_REGISTRY.json'
-FORMAL_CONDITIONS = ('urgent', 'economy', 'natural', 'resource', 'validation')
+FORMAL_CONDITIONS = ('urgent', 'economy', 'natural', 'validation')
 #: development openings the formal-preparation smoke may use (outside every formal block)
 SMOKE_OPENINGS = '294300-294301'
 
@@ -133,12 +133,10 @@ def checked_cases(a, st, condition, smoke):
         if a.stage == 'formal_prescreen':
             if budget not in st['budgets_m_s']:
                 raise SystemExit('unregistered prescreen budget')
-        elif not smoke or not a.openings or condition == 'resource':
+        elif not smoke or not a.openings:
             raise SystemExit('--budget requires formal_prescreen or a development smoke')
     if a.stage == 'formal_prescreen' and budget is None:
         raise SystemExit('prescreen requires a registered --budget')
-    if condition == 'resource':
-        budget = registered['budget_m_s']
     default = registered['openings'] if registered else st['eval_openings']
     ops = block(a.openings or default)
     if not ops or len(set(ops)) != len(ops):
@@ -155,7 +153,7 @@ def checked_cases(a, st, condition, smoke):
         raise SystemExit('openings outside the registered evaluation block or overlapping a reserved block')
     mission = mission_from_name(registered['mission'] if registered else st['mission'])
     if budget is not None:
-        mission = replace(mission, budget_m_s=budget)
+        mission = replace(mission, budget_m_s=budget, economy_budget_m_s=budget)     # one budget for both types
     return ops, mission
 
 
@@ -466,8 +464,6 @@ def check_formal(root, st):
     report = {'stage': 'formal', 'missing_runs': [], 'unfinished_runs': [],
               'evaluations': {}, 'screens': {}, 'validation': {}, 'errors': []}
     conditions = dict(st['conditions'])
-    if conditions.get('resource', {}).get('budget_m_s') is None:
-        conditions.pop('resource', None)
 
     def check_group(folder, key, opens, result_name=None):
         directory = root / folder / key
