@@ -11,6 +11,7 @@ from dynamics.disturbance import zero_disturbance
 from dynamics.gravity import GravityOptions
 from dynamics.integrator import RK45Settings, propagate_rk45
 from dynamics.lie import left_jacobian_so3, left_jacobian_so3_inv, se3_exp, se3_log
+from dynamics.fastmath import norm3
 from dynamics.relative import (
     RelativeState,
     reconstruct_chaser_state,
@@ -39,11 +40,11 @@ def nearest_equivalent_log(coordinates: ArrayLike, hint_phi: ArrayLike) -> Float
     xi = np.asarray(coordinates, dtype=np.float64).copy()
     phi = xi[:3]
     hint = np.asarray(hint_phi, dtype=np.float64)
-    theta = float(np.linalg.norm(phi))
+    theta = norm3(phi)
     if theta < 1.0e-9:
         return xi
     alternative = phi - 2.0 * np.pi * phi / theta
-    if np.linalg.norm(alternative - hint) >= np.linalg.norm(phi - hint):
+    if norm3(alternative - hint) >= norm3(phi - hint):
         return xi
     position = left_jacobian_so3(phi) @ xi[3:6]
     xi[:3] = alternative

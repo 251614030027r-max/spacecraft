@@ -38,6 +38,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from dynamics.lie import _SMALL_ANGLE, hat3, left_jacobian_so3, so3_exp
+from dynamics.fastmath import cross3, norm3
 from env.task import Phase2TaskConfig, PrecaptureTaskConfig
 
 
@@ -76,9 +77,9 @@ def _corridor_geometry(
     reference = np.array([1.0, 0.0, 0.0])
     if abs(float(axis @ reference)) > 0.9:
         reference = np.array([0.0, 1.0, 0.0])
-    first = np.cross(axis, reference)
+    first = cross3(axis, reference)
     first /= np.linalg.norm(first)
-    second = np.cross(axis, first)
+    second = cross3(axis, first)
     angles = 2.0 * np.pi * np.arange(corridor_facets) / corridor_facets
     directions = (
         np.cos(angles)[:, None] * first + np.sin(angles)[:, None] * second
@@ -127,7 +128,7 @@ def _fov_angle(
     unit = line_of_sight / norm
     boresight = task.camera_boresight
     cosine = float(np.clip(boresight @ unit, -1.0, 1.0))
-    sine = float(np.linalg.norm(np.cross(boresight, unit)))
+    sine = norm3(cross3(boresight, unit))
     return float(np.arctan2(sine, cosine)), line_of_sight, norm
 
 
@@ -292,7 +293,7 @@ def normalized_precapture_truth_margins(
     terminal = bool(terminal_latched)
     position_rate = rotation @ x[9:]
     target_frame_speed = float(np.linalg.norm(position_rate))
-    inertial_relative_velocity_target = position_rate + np.cross(target_omega, position)
+    inertial_relative_velocity_target = position_rate + cross3(target_omega, position)
     inertial_speed = float(np.linalg.norm(inertial_relative_velocity_target))
     angle, _, _ = _fov_angle(rotation, position, task)
     margins = np.full(7, _INACTIVE_MARGIN, dtype=np.float64)
@@ -383,7 +384,7 @@ def normalized_precapture_constraint_margins(
             - float(-geometry.axis @ position_rate)
         ) / task.closing_speed_max_m_s
     else:
-        inertial_velocity = position_rate + np.cross(target_omega, position)
+        inertial_velocity = position_rate + cross3(target_omega, position)
         margins[2] = (
             task.outer_inertial_speed_limit_m_s
             - float(np.linalg.norm(inertial_velocity))
@@ -407,9 +408,9 @@ def _position_rotation_gradient(phi: FloatArray, rho: FloatArray) -> FloatArray:
     series so the two agree where they meet.
     """
 
-    theta = float(np.linalg.norm(phi))
-    cross = np.cross(phi, rho)
-    double_cross = np.cross(phi, cross)
+    theta = norm3(phi)
+    cross = cross3(phi, rho)
+    double_cross = cross3(phi, cross)
     if theta < _SMALL_ANGLE:
         theta2 = theta * theta
         b = 0.5 - theta2 / 24.0 + theta2 * theta2 / 720.0
@@ -603,7 +604,7 @@ def linearize_precapture_constraint_margins(
                 / task.closing_speed_max_m_s
             ) * geometry.axis
     else:
-        inertial_velocity = position_rate + np.cross(target_omega, position)
+        inertial_velocity = position_rate + cross3(target_omega, position)
         inertial_speed = float(np.linalg.norm(inertial_velocity))
         if inertial_speed > _DEGENERATE:
             inertial_gradient = (
@@ -791,7 +792,7 @@ def linearize_t1_constraint_margins(
         radial_direction = position / range_m
         position_gradient[0] = radial_direction / sphere
         nominal[0] = (range_m - sphere) / sphere
-        inertial_velocity = position_rate + np.cross(target_omega, position)
+        inertial_velocity = position_rate + cross3(target_omega, position)
         limit = task.outer_radial_closing_speed_limit(range_m)
         projection = np.eye(3) - np.outer(radial_direction, radial_direction)
         derivative = task.braking_speed_slope(range_m - sphere)  # type: ignore[attr-defined]

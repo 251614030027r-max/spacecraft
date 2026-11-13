@@ -41,9 +41,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import cvxpy as cp
+
+import controllers.mpc.cvxpy_fastpath  # noqa: F401,E402 -- bitwise-neutral speed-up of CVXPY value assignment
 import numpy as np
 
 from dynamics.lie import so3_exp
+from dynamics.fastmath import cross3
 from env.t1_task import T1Metrics, _slerp_deterministic
 
 #: Version of the G* reference generator used by M0/M1 training (frozen):
@@ -167,7 +170,7 @@ def free_body_rotations(
     inverse = np.linalg.inv(inertia)
 
     def rate(w: np.ndarray) -> np.ndarray:
-        return inverse @ (-np.cross(w, inertia @ w))
+        return inverse @ (-cross3(w, inertia @ w))
 
     times, rotations, rates = [0.0], [rotation.copy()], [omega_body.copy()]
     r, w, t = rotation.copy(), omega_body.copy(), 0.0
@@ -269,7 +272,7 @@ class RendezvousPlanner:
         entry = rotation @ (self.entry_radius_m * self.task.approach_axis)
         # v0.6: the inward entry speed is an input of the plan (default: the planner's 0.06 m/s)
         inward = self.entry_inward_speed_m_s if entry_speed_m_s is None else float(entry_speed_m_s)
-        entry_velocity = np.cross(omega_inertial, entry) - inward * entry / np.linalg.norm(entry)
+        entry_velocity = cross3(omega_inertial, entry) - inward * entry / np.linalg.norm(entry)
         if guess is None:
             u0, ue = q0 / np.linalg.norm(q0), entry / np.linalg.norm(entry)
             r0 = float(np.linalg.norm(q0))

@@ -323,3 +323,33 @@ def test_sac_update_runs_on_stored_transitions():
     m.train(gradient_steps=2, batch_size=8)
     assert m._n_updates == 2 and m.replay_buffer.model_counts['transitions'] == 32 and len(m.model_stats) == 1
     assert any(not th.equal(p, q) for p, q in zip(before, m.critic.parameters()))
+
+
+# ---------------------------------------------------------------------- bitwise-neutral speed-ups
+def test_fast_cross_and_norm_are_bitwise_numpy():
+    from dynamics.fastmath import cross3, norm3
+    rng = np.random.default_rng(7)
+    a = rng.normal(size=(5000, 3)) * rng.choice([1e-12, 1e-3, 1.0, 1e5, 1e9], size=(5000, 1))
+    b = rng.normal(size=(5000, 3)) * rng.choice([1e-9, 1.0, 1e6], size=(5000, 1))
+    for x, y in zip(a, b):
+        assert cross3(x, y).tobytes() == np.cross(x, y).tobytes()
+        assert np.float64(norm3(x)).tobytes() == np.float64(np.linalg.norm(x)).tobytes()
+    assert np.array_equal(cross3(np.eye(3), np.ones(3)), np.cross(np.eye(3), np.ones(3)))      # other shapes: numpy itself
+    assert np.array_equal(cross3([1, 0, 0], [0, 1, 0]), np.cross([1, 0, 0], [0, 1, 0]))
+
+
+def test_cvxpy_fast_path_stores_the_same_values_and_keeps_attribute_checks():
+    import cvxpy as cp
+    import controllers.mpc.cvxpy_fastpath as fast
+    rng = np.random.default_rng(3)
+    p, q = cp.Parameter((4, 3)), cp.Parameter((4, 3))
+    for _ in range(50):
+        v = rng.normal(size=(4, 3)) * 10.0 ** rng.integers(-8, 8)
+        p.value = v
+        q._value = fast._ORIGINAL(q, v)
+        assert p.value.tobytes() == q.value.tobytes()
+    with pytest.raises(ValueError):
+        p.value = np.zeros((3, 4))
+    nonneg = cp.Parameter(3, nonneg=True)
+    with pytest.raises(ValueError):
+        nonneg.value = np.array([1.0, -1.0, 0.0])                 # attributed leaves still go through CVXPY's check

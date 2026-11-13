@@ -35,6 +35,8 @@ from time import perf_counter
 from typing import Any
 
 import cvxpy as cp
+
+import controllers.mpc.cvxpy_fastpath  # noqa: F401,E402 -- bitwise-neutral speed-up of CVXPY value assignment
 import numpy as np
 
 from dynamics.lie import so3_exp

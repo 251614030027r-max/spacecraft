@@ -41,8 +41,10 @@ anything here).
 
 - **Truth RK45 geometry is the only arbiter of safety**, never observation, QP "solved" or predicted margins.
 - **The executor is frozen**: MPC, planners, entry rule, physics (`env/t1_*`, `env/se3_rendezvous_env.py`,
-  `controllers/`, `dynamics/`) are byte-identical to `e0a61753` (`t1_env.py` adds read-only audit only). Pure MPC is
-  re-run clean on every formal block.
+  `controllers/`, `dynamics/`) behave bitwise as at `e0a61753`. The only source changes are `t1_env.py`'s read-only
+  audit and the bitwise-neutral speed-ups of 2026-11-13 (`dynamics/fastmath.py`, `controllers/mpc/cvxpy_fastpath.py`
+  and their call sites; `docs/paper/AUDIT.md` section 5). Any further speed-up must be shown bitwise equal on the
+  `evidence/CLEANUP_EQUIV` harness. Pure MPC is re-run clean on every formal block.
 - **No manufactured gap**: no artificial obstacles, unmotivated noise, shortened horizon, throttled thrust, wrong model,
   or a rule that only hurts the baseline. Reward never encodes the answer.
 - **Every training run starts from zero**; >= 3 seeds; report the distribution -- no swapping seeds, picking

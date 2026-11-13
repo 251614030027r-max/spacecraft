@@ -35,7 +35,7 @@
 **改动：**
 - 代码只保留正式实验用到的 45 个模块；
 - `env/t2_stage.py`、`env/t2_probe.py`、`train/t2_mve_sac.py`、`experiments/t2.py`、`experiments/final.py` 删去全部历史分支；
-- 执行器与物理模块与 `e0a61753` 逐字节相同（`env/t1_env.py` 只多 33 行只读审计，来自正式准备 WP3）；
+- 执行器与物理模块与 `e0a61753` 逐字节相同（`env/t1_env.py` 只多 33 行只读审计，来自正式准备 WP3）。11-13 起又有不改结果的提速改动，见第 5 节；
 - 存档模型依赖的类名与模块路径不变。
 
 **核验（参照为收尾前的 `fcd8d2ee`；脚本与结果在 `evidence/CLEANUP_EQUIV/`）：**
@@ -52,3 +52,21 @@
 - **文档：** `FACT_MAP` 原写"采集进程每 100 次更新同步策略"。冻结路径中 ECC / SAC / TD3 的每次动作都由学习进程用当前策略作答，原表述只适用于历史的反事实标签臂。
 - **入口：** `traj` 只在给了 `--condition` 时才对认证模型开认证，现在一律按 manifest；`resolve` 把训练任务名当成截止区间元组，现在按任务名核对；冒烟训练可以误用正式种子，现在拒绝；旧 manifest 未写 `certify` 时按"关"处理。
 - **可复现性说明：** 多进程训练的转移顺序取决于进程快慢（`worker_order`），种子相同的两次 2 进程训练不保证逐位相同；单进程训练与全部评估逐位可复现。论文写"评估确定性、训练按种子报告分布"，不写"训练逐位可复现"。
+
+
+## 5. 不改结果的提速（2026-11-13，用户批准"只要不影响性能"）
+
+**改动：** 只去掉 Python 层的重复开销，浮点运算和运算顺序完全不变。
+
+| 位置 | 改动 | 为何结果不变 |
+|---|---|---|
+| `dynamics/fastmath.py`（新增） | `cross3` / `norm3`：3 维 float64 向量的叉积与范数 | 与 `np.cross`（a1 b2 − a2 b1 …）和 `np.linalg.norm`（sqrt(x·x)）逐运算相同；其他形状、类型回退到 numpy |
+| `controllers/mpc/constraints.py`、`env/t1_gstar.py`、`controllers/mpc/prediction.py` | 热点处的 `np.cross` / `np.linalg.norm` 改用上述函数 | 同上 |
+| `dynamics/lie.py` | `so3_exp` / 左雅可比及其逆用常量单位阵、不重复校验已校验的向量；`make_transform` 复制常量 4 × 4 单位阵 | 数值相同，只省分配与重复检查 |
+| `controllers/mpc/cvxpy_fastpath.py`（新增，`controllers.mpc`、`env/t1_gstar.py`、`env/t1_p_stage.py` 导入） | 给无属性的 CVXPY 参数 / 变量赋值时，跳过必然通过的投影检查 | 无属性实数叶子的投影就是自身，CVXPY 存储的值同为 `intf.convert(val)`；有属性的叶子仍走原检查 |
+
+**核验（上层沙箱）：**
+- 环境 7 种情形逐步记录与冻结代码一致；6 个配置单进程训练、旧模型评估、10 个固定策略回合在保留字段上逐位一致（`evidence/SPEEDUP_20261113/`）；
+- 全量 pytest 通过，`tests/test_ecc.py` 新增两项，锁定叉积、范数与赋值路径的逐位一致。
+
+**收益：** 7 种环境情形合计墙钟减少约 14%；进入近场的情形减少 10–17%。余下主要是 CLARABEL 求解与 CVXPY 的问题组装，没有再改。

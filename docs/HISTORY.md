@@ -161,6 +161,10 @@
 - 测试只保留覆盖现行代码的部分；历史测试、T1 / F01 / E 系列与早期 T2 证据、旧阶段文档移出工作树（`docs/archive/PATH_MAP_20261112.csv`，原样在 `fcd8d2ee`，标签 `archive/pre-cleanup-20261112`）。
 - 开发期方法规格移入 `docs/archive/method_development/`，开发期注册表移入 `docs/archive/registry/`。
 
+### 2026-11-13 · 不改结果的提速
+
+- 3 维叉积 / 范数改用逐运算相同的快速函数，李群工具去掉重复校验与单位阵分配，CVXPY 无属性叶子赋值跳过必然通过的投影检查。冻结路径逐位不变，环境墙钟减少约 14%（`docs/paper/AUDIT.md` 第 5 节）。
+
 ### 2026-10-18 · 分支整理
 
 - 三条实验分支 `experiment/t1_l_option_relative_20261015`（`166244b`）、`experiment/t1_l_s_tcpf_20261016`（`672ba79`）、`experiment/t1_o_tcpf_20261017`（`d3902a9`）是一条直线，已快进并入 `claude/sac-mpc-coupling-design-ns7g6i`，之后删除。历史没有重写，所有引用过的 SHA 仍在科学分支上可达。

@@ -1,5 +1,7 @@
 """MPC-only baseline for the SE(3) rendezvous task."""
 
+from . import cvxpy_fastpath  # noqa: F401 -- bitwise-neutral speed-up of CVXPY value assignment
+
 from .config import (
     MPCConfig,
     constrained_mpc_nominal_config,
