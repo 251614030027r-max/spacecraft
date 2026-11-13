@@ -9,4 +9,4 @@
 | `EVAL_COMPARISON.json` | 旧代码训练的 ECC 模型，2 / 2 回合逐决策一致 |
 | `SCREEN_COMPARISON.json` | 10 / 10 个固定策略回合一致 |
 | `pytest.log` | 160 passed，退出码 0（含锁定逐位一致的两项新测试） |
-| `TIMING.json` | 同一沙箱上 7 种情形合计墙钟：536 s → 461 s（−14%） |
+| `TIMING.json` | 同一沙箱上 7 种情形合计墙钟：538 s → 461 s（−14%） |
