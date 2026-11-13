@@ -8,12 +8,12 @@
 
 | 项 | 值 |
 |---|---|
-| 科学提交 | `ab8e3fb3`（标签 `archive/formal-code-20261113`，下层打；`ab8e3fb3ce6cd610670b964d99060f13bb5ccb38`；工程收尾后的正式实验代码，冻结路径对 `fcd8d2ee` / `e0a61753` 逐位等价，见第 7 节） |
-| 注册表 | `docs/final_method/METHOD_REGISTRY.json`，阶段 `formal`（资源预算已冻结为 2.0 m/s） |
+| 科学提交 | `e8474e21`（标签 `archive/formal-code-20261113`，下层打；`e8474e213c5cd98d01e413907c18ecf662a30648`；工程收尾后的正式实验代码，冻结路径对 `fcd8d2ee` / `e0a61753` 逐位等价，见第 7 节） |
+| 注册表 | `docs/final_method/METHOD_REGISTRY.json`，阶段 `formal`（条件 U / E / N；预算按任务类型：紧急 3.0、经济 2.0 m/s，训练与评估相同） |
 | 唯一入口 | `python -B -m experiments.final`（train / eval / screen / traj / geoscan / check / resolve），读出 `experiments.formal_readout`，作图 `experiments.formal_figures` |
 | 输出根目录 | `C:\Users\35884\Documents\Spacecraft\过程文件\FORMAL\`（下文记作 `$R`）；训练目录 `$R\B\TRAIN_<配置>_s<种子>` |
 
-**启动前（第 0 步）：** 在 `D:\py\DRL2` 检出 `ab8e3fb3`，工作区干净；全量 `python -B -m pytest -q` 退出码 0（160 项通过，无预期失败）；把退出码、开始 / 结束时刻和 `git rev-parse HEAD` 写入 `$R\PREFLIGHT.json`。之后到交付前不切换分支、不拉取、不改工作区。
+**启动前（第 0 步）：** 在 `D:\py\DRL2` 检出 `e8474e21`，工作区干净；全量 `python -B -m pytest -q` 退出码 0（160 项通过，无预期失败）；把退出码、开始 / 结束时刻和 `git rev-parse HEAD` 写入 `$R\PREFLIGHT.json`。之后到交付前不切换分支、不拉取、不改工作区。
 
 ## 0A. 本机设置（启动前，不影响结果）
 
@@ -27,12 +27,12 @@
 |---|---|
 | 训练 | 6 组 × 种子 20、21、22 × 5000 决策 = 18 条，全部从零开始：`ECC_CERT_LOOP`、`SAC_C`、`TD3_C`、`EACH_C`、`SAC_CERT_LOOP`、`ECC_CERT_LOOP_NOGEO` |
 | 检查点 | 1000 / 2000 / 3000 / 4000 只用于学习曲线；**最终模型固定为 5000 步** |
-| 主测试 | 18 个最终模型 × 条件 urgent（300000–300095）、economy（300100–300195）、natural（300200–300295）、resource（300100–300195，预算 2.0 m/s） |
+| 主测试 | 18 个最终模型 × 条件 urgent（300000–300095，预算 3.0 m/s）、economy（300100–300195，预算 2.0 m/s）、natural（300200–300295，按任务类型 3.0 / 2.0 m/s） |
 | 只评估对照 | `ECC_CERT_LOOP` 认证关（urgent、economy）与重规划关（urgent）；`EACH_C`、`SAC_C` 执行时认证开（urgent、economy） |
-| 固定策略 | pure（urgent、economy、natural、resource），gstar（urgent、economy） |
+| 固定策略 | pure（urgent、economy、natural），gstar（urgent、economy） |
 | 验证曲线 | `ECC_CERT_LOOP`、`SAC_C`、`TD3_C` × 3 种子 × 检查点 1000–5000，开局 295200–295223 |
 
-机时（下层实测吞吐，按原排程）：训练约 70–75 小时，评估约 40 小时，整体约 4.5–5 天。按第 2、3 步的队列排程，加上 2026-11-13 的不改结果提速（环境墙钟约 −14%），预计约 3.5–4 天。
+机时（下层实测吞吐，按原排程）：训练约 70–75 小时，评估约 40 小时（含已取消的 R 组约 1,800 回合），整体约 4.5–5 天。按第 2、3 步的队列排程，加上 2026-11-13 的不改结果提速（环境墙钟约 −14%），取消 R 组后评估少约 17%，预计约 3–3.5 天。
 
 ## 2. 训练（任务队列，始终 6 条并行）
 
@@ -56,12 +56,12 @@ python -B -m experiments.final train --stage formal --config <配置> --seed <�
 评估是确定的、逐回合串行的，何时运行不影响结果；耗时不作实时性结论（第 5 步单独串行计时）。
 
 ```bash
-python -B -m experiments.final eval --stage formal --run $R\B\TRAIN_<配置>_s<种子> --condition <urgent|economy|natural|resource> --output $R
+python -B -m experiments.final eval --stage formal --run $R\B\TRAIN_<配置>_s<种子> --condition <urgent|economy|natural> --output $R
 python -B -m experiments.final eval --stage formal --run $R\B\TRAIN_ECC_CERT_LOOP_s<种子> --condition <urgent|economy> --no-certify --output $R
 python -B -m experiments.final eval --stage formal --run $R\B\TRAIN_ECC_CERT_LOOP_s<种子> --condition urgent --rigid --output $R
 python -B -m experiments.final eval --stage formal --run $R\B\TRAIN_<EACH_C|SAC_C>_s<种子> --condition <urgent|economy> --certify --output $R
 python -B -m experiments.final eval --stage formal --run $R\B\TRAIN_<ECC_CERT_LOOP|SAC_C|TD3_C>_s<种子> --condition validation --checkpoint-step <1000..5000> --output $R
-python -B -m experiments.final screen --stage formal --policy pure --condition <urgent|economy|natural|resource> --output $R
+python -B -m experiments.final screen --stage formal --policy pure --condition <urgent|economy|natural> --output $R
 python -B -m experiments.final screen --stage formal --policy gstar --condition <urgent|economy> --output $R
 ```
 
@@ -102,7 +102,7 @@ python -B -m experiments.formal_figures --root $R --readout $R\FORMAL_READOUT.js
 
 **验收（全部满足才算交付）：**
 1. `check` 报告 complete；`resolve` 不报告混合的 SHA、预算或配置。
-2. 18 个训练 manifest：`steps = 5000`、种子 ∈ {20, 21, 22}、`git_head = ab8e3fb3ce6cd610670b964d99060f13bb5ccb38`、`final_stage = formal`。
+2. 18 个训练 manifest：`steps = 5000`、种子 ∈ {20, 21, 22}、`git_head = e8474e213c5cd98d01e413907c18ecf662a30648`、`final_stage = formal`。
 3. 每个结果目录的开局集合与注册块完全一致，无重复、无 `error`。
 4. 本轮访问过的开局只有：注册的正式条件块、验证块 295200–295223、几何扫描用的开发开局；训练开局只来自三个种子各自的训练流。
 5. 串行计时与案例重飞的确定性核对通过。
@@ -120,6 +120,11 @@ python -B -m experiments.formal_figures --root $R --readout $R\FORMAL_READOUT.js
   3. 新增 `episodes` 子命令，导出一回合一行的紧凑表，供入库。
 - **作图缺项（不影响运行）：** F4 经济面板尚未画逐对分布，RWG 几何图尚未叠画离散可行点与意图箭头。两者只读已保存数据，写论文时由上层补齐，不需要重跑。
 
+### 设计修订：经济任务预算 2.0 m/s，取消 R（2026-11-13，用户）
+
+- 经济任务在训练与评估中都用 2.0 m/s，紧急任务 3.0 m/s；不再单设 R 条件（`docs/paper/EXPERIMENTS.md` 第 2 节，规格先入库 `ff9f06e7`，实现 `e8474e21`）。
+- 核验（沙箱）：紧急路径与已用 2.0 预算的经济路径对冻结记录逐位不变；原 3.0 预算的经济路径按设计变化；pytest 160 passed。
+
 ### 不改结果的提速（2026-11-13）
 
 - 改动：3 维叉积 / 范数快速实现，李群工具去掉重复校验，CVXPY 无属性叶子赋值跳过必然通过的检查（`docs/paper/AUDIT.md` 第 5 节）。
@@ -127,7 +132,7 @@ python -B -m experiments.formal_figures --root $R --readout $R\FORMAL_READOUT.js
 
 ### 工程收尾（2026-11-12）
 
-- 上层把科学分支瘦身为正式实验实际运行的代码（`ab8e3fb3`）。冻结路径在上层沙箱对 `fcd8d2ee` 逐位等价，覆盖：
+- 上层把科学分支瘦身为正式实验实际运行的代码（`e8474e21`）。冻结路径在上层沙箱对 `fcd8d2ee` 逐位等价，覆盖：
   - 环境 7 种情形；
   - 6 个配置的单进程短训；
   - 旧模型在新代码下的评估。
@@ -148,4 +153,4 @@ python -B -m experiments.formal_figures --root $R --readout $R\FORMAL_READOUT.js
 
 **转发给下层的一句话（授权后）：**
 
-> 读 collab `docs/collaboration/upper/run_orders/RUN_FORMAL.md`（已批准）。在 `D:\py\DRL2` 检出 `ab8e3fb3`，全量 pytest 退出码 0 后，按第 2–6 步执行：三批训练（每批一个种子的 6 组）、全部登记评估、图用数据、串行计时、完整性检查与读出作图；按第 8 节交付。中途不看结果做选择，训练中断从零重跑。
+> 读 collab `docs/collaboration/upper/run_orders/RUN_FORMAL.md`（已批准）。在 `D:\py\DRL2` 检出 `e8474e21`，全量 pytest 退出码 0 后，按第 2–6 步执行：三批训练（每批一个种子的 6 组）、全部登记评估、图用数据、串行计时、完整性检查与读出作图；按第 8 节交付。中途不看结果做选择，训练中断从零重跑。
