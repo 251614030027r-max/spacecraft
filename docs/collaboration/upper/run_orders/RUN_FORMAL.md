@@ -1,6 +1,6 @@
 # 执行书：RUN_FORMAL（ECC 正式实验）
 
-**状态：草案，待用户单独授权；授权前不得启动任何一步。** 授权时用户在本页写明"已批准"和日期；若要删减组别，必须在授权前写明删哪一组，不能训练后再选。
+**状态：待用户单独授权；授权前不得启动任何一步。前提已满足（2026-11-13）：RUN_CLEANUP 已交付并复核通过（collab `fa7506d4`），代码在 Windows 上对冻结行为逐位等价，本机已就绪（`READY.json`）。** 授权时用户在本页写明"已批准"和日期；若要删减组别，必须在授权前写明删哪一组，不能训练后再选。
 
 设计依据：科学分支 `docs/paper/EXPERIMENTS.md`（事先登记）；方法 `docs/paper/METHOD.md`；准备工作 RUN_FORMAL_PREP 已交付（科学 `e47a1165`，collab `5496cb51`），上层复核见本页第 7 节；工程收尾 RUN_CLEANUP 须先交付并复核通过（第 7 节）。
 
@@ -8,7 +8,7 @@
 
 | 项 | 值 |
 |---|---|
-| 科学提交 | `21730075`（`21730075ecee9d9bbd06f34febf981121db87e68`；工程收尾后的正式实验代码，冻结路径对 `fcd8d2ee` / `e0a61753` 逐位等价，见第 7 节） |
+| 科学提交 | `21730075`（标签 `archive/formal-code-20261112`；`21730075ecee9d9bbd06f34febf981121db87e68`；工程收尾后的正式实验代码，冻结路径对 `fcd8d2ee` / `e0a61753` 逐位等价，见第 7 节） |
 | 注册表 | `docs/final_method/METHOD_REGISTRY.json`，阶段 `formal`（资源预算已冻结为 2.0 m/s） |
 | 唯一入口 | `python -B -m experiments.final`（train / eval / screen / traj / geoscan / check / resolve），读出 `experiments.formal_readout`，作图 `experiments.formal_figures` |
 | 输出根目录 | `C:\Users\35884\Documents\Spacecraft\过程文件\FORMAL\`（下文记作 `$R`）；训练目录 `$R\B\TRAIN_<配置>_s<种子>` |

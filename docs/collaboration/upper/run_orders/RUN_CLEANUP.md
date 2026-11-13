@@ -121,3 +121,21 @@
 - **继续：**
   - 在同一冒烟根目录补跑 `formal_readout formal`、`formal_readout episodes`、`formal_figures --smoke`，它们不依赖 `resolve`。三项退出码为 0 即 B 通过；
   - 然后按 C 执行。
+
+
+## 上层复核（2026-11-13，交付）
+
+**结论：通过。** 下层交付在 collab `fa7506d4`，科学证据在 `6d3d6baa`。
+
+- **A：** 5 个归档标签已在远端核对，指向正确：`pre-cleanup` → `fcd8d2ee`，`collab-pre-cleanup` → `d6df275b`，`each-pretest` → `fd789126`，`ecc-method` → `e0a61753`，`formal-code` → `21730075`。
+- **B：**
+  - Windows 全量 pytest 158 passed、0 xfailed；
+  - 环境、训练、旧模型评估、GOV_B 模型评估四组逐位一致；
+  - 入口冒烟全部完成：`resolve` 按修正口径拒绝，读出、回合表、作图退出码 0。
+  - 科学分支在 `21730075` 之后只新增了 `evidence/CLEANUP_EQUIV/windows/` 下的证据。
+- **C：**
+  - 删除 200 个目标、63105 个文件，计 5.84 GiB。`DELETE_PLAN.json` 逐项附 Git 证据指针，没有待定项；逐文件 SHA-256 见 `DELETED_FILES_20261112_SHA256.json`。
+  - 保留 FORMAL_PREP、GOV_B、GOV_A、RUN_ECC 四轮，以及 239 个模型 ZIP 的哈希。
+  - 注销 67 个退役计划任务。
+  - `READY.json`：检出干净并停在 `21730075`，正式目录不存在，C 盘剩余 41 GiB、D 盘剩余 60 GiB，没有残留进程。
+- **小瑕疵：** `RESULT.md` 中两处路径首字母被转义吞掉（`cd8d2ee` 应为 `fcd8d2ee`，`vidence/` 应为 `evidence/`），不影响事实，不另行修改。
