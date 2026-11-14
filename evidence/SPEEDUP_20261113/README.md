@@ -1,6 +1,6 @@
 # SPEEDUP_20261113：不改结果的提速核验
 
-**对象：** 科学 `52d673b5`（`dynamics/fastmath.py`、`controllers/mpc/cvxpy_fastpath.py` 及其调用点、`dynamics/lie.py`）。参照为冻结记录，即 `evidence/CLEANUP_EQUIV/` 中 `fcd8d2ee` 的输出。脚本同 `evidence/CLEANUP_EQUIV/scripts/`。改动说明见 `docs/paper/AUDIT.md` 第 5 节。
+**对象：** 科学 `52d673b5`（`dynamics/fastmath.py`、`controllers/mpc/cvxpy_fastpath.py` 及其调用点、`dynamics/lie.py`）。参照为冻结记录，即 `evidence/CLEANUP_EQUIV/` 中 `fcd8d2ee` 的输出。脚本同 `evidence/CLEANUP_EQUIV/scripts/`。改动说明见 `docs/engineering/AUDIT.md` 第 5 节。
 
 | 文件 | 结果 |
 |---|---|

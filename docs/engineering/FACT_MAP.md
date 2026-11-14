@@ -1,10 +1,10 @@
 # 事实映射：论文对象 ↔ 源码
 
-**基准：** 方法行为冻结于科学 `e0a61753`，配置 `ECC_CERT_LOOP`（`docs/final_method/METHOD_REGISTRY.json`：`e_priv` + `cut_priv` + `certify`）。2026-11-12 收尾瘦身后的代码（删去历史分支，正式实验即用此代码）与之逐位等价（环境 7 种情形、6 个配置的单进程短训，见 `docs/paper/AUDIT.md`）；下表的源码入口指瘦身后的代码。
+**基准：** 方法行为冻结于科学 `e0a61753`，配置 `ECC_CERT_LOOP`（`docs/final_method/METHOD_REGISTRY.json`：`e_priv` + `cut_priv` + `certify`）。2026-11-12 收尾瘦身后的代码（删去历史分支，正式实验即用此代码）与之逐位等价（环境 7 种情形、6 个配置的单进程短训，见 `docs/engineering/AUDIT.md`）；下表的源码入口指瘦身后的代码。
 
 **核对方式：** 上层沙箱逐项阅读源码，并做数值检查（2026-11-10）。若论文表述与源码不一致，只改文档，不改实现。
 
-| 论文对象（`METHOD.md`） | 源码入口 | 调用路径 | 训练中 | 执行中 | 备注 |
+| 论文对象（原 `METHOD.md`，现 `docs/paper/facts/`） | 源码入口 | 调用路径 | 训练中 | 执行中 | 备注 |
 |---|---|---|---|---|---|
 | 真值动力学（SE(3)、中心引力、J2、二阶质量矩、重力梯度） | `dynamics/gravity.py`、`dynamics/integrator.py` | `T1Env.step` | ✓ | ✓ | 0.1 s 控制、RK45 |
 | 结局与约束判定 | `env/t1_task.py: compute_t1_metrics`；`env/t1_env.py: step` | 每 0.1 s | ✓ | ✓ | 硬违背：碰撞、操作球 / 锥、视场、径向包络、总速度、轴向包络；最大距离 30 m |

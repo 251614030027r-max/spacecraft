@@ -4,7 +4,7 @@ High-fidelity 6-DoF SE(3) **pre-capture** of a fast-tumbling non-cooperative tar
 per axis; target 225 kg box, spin 2.1-2.7 deg/s, unknown inertia; 500 km / 45 deg orbit, RK45 truth with central
 gravity and J2, 0.1 s control).
 
-**Method (frozen): ECC with RWG** -- `docs/paper/METHOD.md` is the only method source. SAC gives a 2-D stage intent
+**Method (frozen): ECC with RWG** -- `docs/paper/facts/` (Chinese method fact sheets; `docs/paper/METHOD.md` is now their index) is the only method source. SAC gives a 2-D stage intent
 every 16 s in the target's spin frame (closing speed, along-sweep speed; latitude regulated onto the port's sweep cone);
 a stage planner and a far-field tracking law fly it; when the port's pass is reachable the window-committed conditional
 G* plans the entry and the frozen MPC flies entry, descent and capture (RWG). ECC: the critic reads the executor feedback
@@ -21,8 +21,8 @@ anything here).
 ## Start here
 
 1. Collab branch `collab/spacecraft`: `docs/collaboration/PROJECT_STATE.md` and `HANDOFF.md`.
-2. `README.md`, `docs/paper/METHOD.md`, `docs/paper/EXPERIMENTS.md`, `docs/final_method/METHOD_REGISTRY.json`,
-   `docs/REPRODUCE.md`.
+2. `README.md`, `docs/paper/facts/`, `docs/paper/EXPERIMENTS.md`, `docs/final_method/METHOD_REGISTRY.json`,
+   `docs/engineering/REPRODUCE.md`.
 3. `docs/DEAD_ENDS.md` before proposing any method, interface, reward or task change.
 
 ## Roles and branches
@@ -44,7 +44,7 @@ anything here).
 - **The executor is frozen**: MPC, planners, entry rule, physics (`env/t1_*`, `env/se3_rendezvous_env.py`,
   `controllers/`, `dynamics/`) behave bitwise as at `e0a61753`. The only source changes are `t1_env.py`'s read-only
   audit and the bitwise-neutral speed-ups of 2026-11-13 (`dynamics/fastmath.py`, `controllers/mpc/cvxpy_fastpath.py`
-  and their call sites; `docs/paper/AUDIT.md` section 5). Any further speed-up must be shown bitwise equal on the
+  and their call sites; `docs/engineering/AUDIT.md` section 5). Any further speed-up must be shown bitwise equal on the
   `evidence/CLEANUP_EQUIV` harness. Pure MPC is re-run clean on every formal block.
 - **No manufactured gap**: no artificial obstacles, unmotivated noise, shortened horizon, throttled thrust, wrong model,
   or a rule that only hurts the baseline. Reward never encodes the answer.
@@ -82,7 +82,7 @@ anything here).
 | Purpose | Entry |
 |---|---|
 | Tests | `python -B -m pytest -q` (judge by the exit code) |
-| Train / evaluate / screen / trajectories / geometry scan / completeness / resolve | `python -B -m experiments.final {train,eval,screen,traj,geoscan,check,resolve}` (`docs/REPRODUCE.md`) |
+| Train / evaluate / screen / trajectories / geometry scan / completeness / resolve | `python -B -m experiments.final {train,eval,screen,traj,geoscan,check,resolve}` (`docs/engineering/REPRODUCE.md`) |
 | Formal readout, episode table | `python -B -m experiments.formal_readout {formal,episodes,prescreen}` |
 | Figures and tables | `python -B -m experiments.formal_figures` |
 

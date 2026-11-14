@@ -1,6 +1,6 @@
 # CLEANUP_EQUIV：工程收尾的逐位等价核验（2026-11-12）
 
-**对象：** 收尾瘦身后的科学代码，对照收尾前的 `fcd8d2ee`（其冻结路径与 `e0a61753` 逐位等价，`evidence/FORMAL_PREP/`）。结论与改动说明见 `docs/paper/AUDIT.md` 第 4 节。
+**对象：** 收尾瘦身后的科学代码，对照收尾前的 `fcd8d2ee`（其冻结路径与 `e0a61753` 逐位等价，`evidence/FORMAL_PREP/`）。结论与改动说明见 `docs/engineering/AUDIT.md` 第 4 节。
 
 ## 脚本（`scripts/`；每个脚本在两份检出中各运行一次，再比较）
 
