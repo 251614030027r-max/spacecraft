@@ -8,7 +8,7 @@
 
 | 项 | 值 |
 |---|---|
-| 科学提交 | `e8474e21`（标签 `archive/formal-code-20261113`，下层打；`e8474e213c5cd98d01e413907c18ecf662a30648`；工程收尾后的正式实验代码，冻结路径对 `fcd8d2ee` / `e0a61753` 逐位等价，见第 7 节） |
+| 科学提交 | `e8474e21`（标签 `archive/formal-code-20261114`，下层已打并回读；`e8474e213c5cd98d01e413907c18ecf662a30648`；工程收尾后的正式实验代码，冻结路径对 `fcd8d2ee` / `e0a61753` 逐位等价，见第 7 节） |
 | 注册表 | `docs/final_method/METHOD_REGISTRY.json`，阶段 `formal`（条件 U / E / N；预算按任务类型：紧急 3.0、经济 2.0 m/s，训练与评估相同） |
 | 唯一入口 | `python -B -m experiments.final`（train / eval / screen / traj / geoscan / check / resolve），读出 `experiments.formal_readout`，作图 `experiments.formal_figures` |
 | 输出根目录 | `C:\Users\35884\Documents\Spacecraft\过程文件\FORMAL\`（下文记作 `$R`）；训练目录 `$R\B\TRAIN_<配置>_s<种子>` |
@@ -45,6 +45,20 @@ python -B -m experiments.final train --stage formal --config <配置> --seed <�
 - 每条结束后 `final.py` 自动核对 manifest；另记 `final.zip` 与各检查点的 SHA-256。
 - **训练中断：** 不续训、不热启动。删除该条目录前先把它整体改名为 `...__aborted_<n>` 保留，再用同一配置、同一种子从零重跑，并在 RESULT.md 写明原因。
 - 每条结束只核对 manifest 与检查点，**不看评估结果、不做任何选择**。
+
+## 2B. 夜间分段运行（用户 2026-11-14：每晚约 10 小时，白天不占用机器）
+
+单条 5000 步训练在 6 条并行时需 15–24 小时，跨不止一个晚上；而训练中断只能从零重跑。因此白天用**挂起**，不用停止：
+
+- **早上：** 对每条训练的整棵进程树（学习进程与 2 个采集进程）和评估进程执行挂起（Python `psutil.Process(pid).suspend()`，或 Sysinternals `pssuspend`）。**晚上：** 原样恢复。
+- 挂起只暂停 CPU，进程内存状态（回放、网络、优化器、随机数、求解器缓存）完整保留，所以不是续训，也不改变结果：训练本来就是多进程异步，评估是确定的。
+- 白天机器保持开机，不睡眠、不重启、不注销。挂起期间内存照常占用；若白天内存不够用，把同时训练的条数减到 4（第 2 步的队列照常）。
+- 每次挂起 / 恢复的时刻写入 `$R\SCHEDULE.log`。`manifest` / `finished.json` 的 `wall_s` 因而包含挂起时长，不用作任何结论。第 5 步的串行计时必须在一个晚上内不间断完成。
+- **意外重启或断电：** 进行中的训练按第 2 步"训练中断"规则处理（目录改名保留，同配置同种子从零重跑）；评估只补缺失文件（`--verify-existing`）。
+- **本机前提：**
+  - Windows Update 在运行期间设为仅通知或暂停更新；
+  - Defender 路径排除由管理员落实（预检时尚未完成，见 collab `lower/handoffs/formal_preflight_20261114/`）。
+- **预计：** 计算量约 72–84 小时，即 7–9 个晚上。
 
 ## 3. 评估（训练完即评估）
 
@@ -153,4 +167,4 @@ python -B -m experiments.formal_figures --root $R --readout $R\FORMAL_READOUT.js
 
 **转发给下层的一句话（授权后）：**
 
-> 读 collab `docs/collaboration/upper/run_orders/RUN_FORMAL.md`（已批准）。在 `D:\py\DRL2` 检出 `e8474e21`，全量 pytest 退出码 0 后，按第 2–6 步执行：三批训练（每批一个种子的 6 组）、全部登记评估、图用数据、串行计时、完整性检查与读出作图；按第 8 节交付。中途不看结果做选择，训练中断从零重跑。
+> 读 collab `docs/collaboration/upper/run_orders/RUN_FORMAL.md`（已批准）。按第 2B 节夜间分段运行（每晚约 10 小时，白天挂起不停止）。在 `D:\py\DRL2` 检出 `e8474e21`，全量 pytest 退出码 0 后，按第 2–6 步执行：三批训练（每批一个种子的 6 组）、全部登记评估、图用数据、串行计时、完整性检查与读出作图；按第 8 节交付。中途不看结果做选择，训练中断从零重跑。
