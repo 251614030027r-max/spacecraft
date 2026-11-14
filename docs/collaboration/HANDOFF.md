@@ -20,13 +20,13 @@
 
 | 内容 | 路径 |
 |---|---|
-| 方法（记号、命题、伪代码、不声称的内容） | `docs/paper/METHOD.md` |
-| 论文对象 ↔ 源码 | `docs/paper/FACT_MAP.md` |
-| 一致性审计（含收尾等价性） | `docs/paper/AUDIT.md` |
-| 背景、命名、贡献 | `docs/paper/BASELINE.md` |
+| 方法事实稿（中文，按论文方法部分顺序：术语符号、建模、框架、RWG、执行层、ECC、学习、对比方法） | `docs/paper/facts/`（`docs/paper/METHOD.md` 是索引） |
+| 论文对象 ↔ 源码 | `docs/engineering/FACT_MAP.md` |
+| 一致性审计（含收尾等价性、提速核验） | `docs/engineering/AUDIT.md` |
+| 背景、问题、贡献（引言素材） | `docs/paper/BACKGROUND.md` |
 | 正式实验设计（事先登记） | `docs/paper/EXPERIMENTS.md` |
 | 配置 | `docs/final_method/METHOD_REGISTRY.json` |
-| 命令与开局号段 | `docs/REPRODUCE.md` |
+| 命令与开局号段 | `docs/engineering/REPRODUCE.md` |
 | 时间线、负结果 | `docs/HISTORY.md`、`docs/DEAD_ENDS.md` |
 
 ## 2. 现状
@@ -98,5 +98,5 @@
 ## 5. 新窗口第一步
 
 1. 读本文件、[PROJECT_STATE](PROJECT_STATE.md)、科学分支 `README.md` 与 `CLAUDE.md`。
-2. 读 `docs/paper/METHOD.md`、`EXPERIMENTS.md`。
+2. 读 `docs/paper/facts/README.md`（方法事实稿）、`docs/paper/EXPERIMENTS.md`。
 3. 需要开发期细节（为何选这个方法、为何否定其他路线）时，看 `docs/HISTORY.md`、`docs/DEAD_ENDS.md` 与 [archive/](archive/README.md) 里的研究演进和旧交接。

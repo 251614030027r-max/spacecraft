@@ -2,7 +2,7 @@
 
 **状态：待用户单独授权；授权前不得启动任何一步。前提已满足（2026-11-13）：RUN_CLEANUP 已交付并复核通过（collab `fa7506d4`），代码在 Windows 上对冻结行为逐位等价，本机已就绪（`READY.json`）。** 授权时用户在本页写明"已批准"和日期；若要删减组别，必须在授权前写明删哪一组，不能训练后再选。
 
-设计依据：科学分支 `docs/paper/EXPERIMENTS.md`（事先登记）；方法 `docs/paper/METHOD.md`；准备工作 RUN_FORMAL_PREP 已交付（科学 `e47a1165`，collab `5496cb51`），上层复核见本页第 7 节；工程收尾 RUN_CLEANUP 须先交付并复核通过（第 7 节）。
+设计依据：科学分支 `docs/paper/EXPERIMENTS.md`（事先登记）；方法 `docs/paper/facts/`（原 `METHOD.md`）；准备工作 RUN_FORMAL_PREP 已交付（科学 `e47a1165`，collab `5496cb51`），上层复核见本页第 7 节；工程收尾 RUN_CLEANUP 须先交付并复核通过（第 7 节）。
 
 ## 0. 冻结
 
@@ -145,7 +145,7 @@ python -B -m experiments.formal_figures --root $R --readout $R\FORMAL_READOUT.js
 
 ### 不改结果的提速（2026-11-13）
 
-- 改动：3 维叉积 / 范数快速实现，李群工具去掉重复校验，CVXPY 无属性叶子赋值跳过必然通过的检查（`docs/paper/AUDIT.md` 第 5 节）。
+- 改动：3 维叉积 / 范数快速实现，李群工具去掉重复校验，CVXPY 无属性叶子赋值跳过必然通过的检查（`docs/engineering/AUDIT.md` 第 5 节）。
 - 沙箱核验：环境 7 / 7、训练 6 / 6、评估 2 / 2、固定策略 10 / 10 与冻结记录逐位一致，pytest 160 passed；环境墙钟约 −14%（`evidence/SPEEDUP_20261113/`）。
 
 ### 工程收尾（2026-11-12）
@@ -155,7 +155,7 @@ python -B -m experiments.formal_figures --root $R --readout $R\FORMAL_READOUT.js
   - 6 个配置的单进程短训；
   - 旧模型在新代码下的评估。
 
-  详见 `evidence/CLEANUP_EQUIV/`、`docs/paper/AUDIT.md` 第 4 节。下层在 Windows 上的复核见 RUN_CLEANUP。
+  详见 `evidence/CLEANUP_EQUIV/`、`docs/engineering/AUDIT.md` 第 4 节。下层在 Windows 上的复核见 RUN_CLEANUP。
 - 收尾中修正的缺陷：
   - `traj` 对认证模型只在给了 `--condition` 时才开认证，现在一律按 manifest；
   - `resolve` 把训练任务名当作截止区间元组处理，现在按任务名核对；

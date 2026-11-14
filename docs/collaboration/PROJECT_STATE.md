@@ -6,7 +6,7 @@
 
 | 项 | 状态 |
 |---|---|
-| 方法 | 冻结：`ECC_CERT_LOOP`（ECC + RWG），行为基准科学 `e0a61753`；论文方法 `docs/paper/METHOD.md` |
+| 方法 | 冻结：`ECC_CERT_LOOP`（ECC + RWG），行为基准科学 `e0a61753`；论文方法事实稿 `docs/paper/facts/`（11-14 起，中文，按方法部分顺序；只改文档） |
 | 代码 | 正式代码科学 `e8474e21`（11-13：不改结果的提速，环境墙钟约 −14%，沙箱逐位核验 `evidence/SPEEDUP_20261113/`）；工程收尾后的科学 `21730075`：只保留正式实验用到的代码；冻结路径对 `fcd8d2ee` 逐位等价（上层沙箱：环境 7 种情形、6 个配置单进程短训；`docs/paper/AUDIT.md` 第 4 节）；执行器与物理模块与 `e0a61753` 逐字节相同 |
 | 正式实验设计 | 事先登记：`docs/paper/EXPERIMENTS.md`；条件 U / E / N；经济任务预算 2.0 m/s（训练与评估，来自预筛），紧急 3.0 m/s，取消 R（用户 11-13）；不加第七组 |
 | 运行中 | 无。下层预检已完成（collab `6403b21b`：检出 `e8474e21`，pytest 160 passed，标签 `archive/formal-code-20261114`；Defender 排除与 Windows Update 策略待管理员落实） |
