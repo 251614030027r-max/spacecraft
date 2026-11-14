@@ -1,0 +1,109 @@
+{
+ "verdict": "pass",
+ "criteria": {
+  "D_data": true,
+  "P1_wins": true,
+  "P2_mean": true,
+  "S_safety": true
+ },
+ "constants": {
+  "delta": 0.25,
+  "disagree_cos": 0.9,
+  "tie": 1.0,
+  "min_informative": 20,
+  "win_share": 0.6
+ },
+ "episodes": 32,
+ "decisions": 149,
+ "branched": 137,
+ "branched_share": 0.9194630872483222,
+ "turned": 80,
+ "informative": 20,
+ "wins": 14,
+ "win_share": 0.7,
+ "mean_M_minus_Q_turned": 2.6422718198506785,
+ "mean_M_minus_Q_turned_90ci": [
+  -0.11326149060568413,
+  7.6840193759128255
+ ],
+ "unsafe_M": 0,
+ "unsafe_Q": 0,
+ "reported": {
+  "M_vs_Q_all_branched": {
+   "n": 137,
+   "informative": 25,
+   "win_share": 0.64,
+   "mean": 0.08013694783406944,
+   "median": 0.0
+  },
+  "E_vs_Q_turned": {
+   "n": 80,
+   "informative": 34,
+   "win_share": 0.6470588235294118,
+   "mean": -2.5742039011699,
+   "median": 0.1921765797263717
+  },
+  "M_vs_pi_turned": {
+   "n": 80,
+   "informative": 16,
+   "win_share": 0.5,
+   "mean": 2.3382613925240365,
+   "median": -0.006591159791803136
+  },
+  "Q_vs_pi_turned": {
+   "n": 80,
+   "informative": 12,
+   "win_share": 0.25,
+   "mean": -0.30401042732664274,
+   "median": -0.02927562022520469
+  },
+  "cos_g_gq_median": -0.8415816873113007,
+  "g_over_gq_median": 0.9762694295114528
+ },
+ "by_label": {
+  "e_priv_s0_1000": {
+   "decisions": 31,
+   "branched": 28,
+   "M_vs_Q_turned": {
+    "n": 12,
+    "informative": 1,
+    "win_share": 1.0,
+    "mean": 0.09175876101105611,
+    "median": 0.025262411823653963
+   }
+  },
+  "e_priv_s0_500": {
+   "decisions": 45,
+   "branched": 41,
+   "M_vs_Q_turned": {
+    "n": 24,
+    "informative": 8,
+    "win_share": 0.625,
+    "mean": 0.12764887617724593,
+    "median": 0.05668298679493233
+   }
+  },
+  "e_priv_s1_1000": {
+   "decisions": 39,
+   "branched": 37,
+   "M_vs_Q_turned": {
+    "n": 24,
+    "informative": 9,
+    "win_share": 0.7777777777777778,
+    "mean": 8.795587113600241,
+    "median": 0.1884305083398914
+   }
+  },
+  "e_priv_s1_500": {
+   "decisions": 34,
+   "branched": 31,
+   "M_vs_Q_turned": {
+    "n": 20,
+    "informative": 2,
+    "win_share": 0.5,
+    "mean": -0.1938511649369019,
+    "median": -0.0007340008175873436
+   }
+  }
+ }
+}

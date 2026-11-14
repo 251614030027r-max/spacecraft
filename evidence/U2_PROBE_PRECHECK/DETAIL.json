@@ -1,0 +1,211 @@
+{
+ "episodes": 384,
+ "decisions": 2448,
+ "policies": [
+  "c_10_-5",
+  "c_10_0",
+  "c_6_5",
+  "rand"
+ ],
+ "A1": {
+  "rechecked": 666,
+  "same_identical": 666,
+  "fresh_identical": 666,
+  "max_diff": 0.0,
+  "pass": true
+ },
+ "A2": {
+  "checks": {
+   "entry": 11526,
+   "gate": 17998,
+   "descent": 635654
+  },
+  "mismatches": {
+   "entry": 0,
+   "gate": 0,
+   "descent": 0
+  },
+  "examples": {
+   "entry": [],
+   "gate": [],
+   "descent": []
+  },
+  "entry_agreement": 1.0,
+  "pass": true
+ },
+ "A3": {
+  "states": 2448,
+  "informative_share": 0.5563725490196079,
+  "all_no_event_share": 0.41748366013071897,
+  "all_event_share": 0.06944444444444445,
+  "by_range": {
+   "gt12": {
+    "n": 1019,
+    "informative_share": 0.5260058881256133
+   },
+   "10_12": {
+    "n": 335,
+    "informative_share": 0.6746268656716418
+   },
+   "8_10": {
+    "n": 258,
+    "informative_share": 0.5813953488372093
+   },
+   "lt8": {
+    "n": 836,
+    "informative_share": 0.5382775119617225
+   }
+  },
+  "pass": true
+ },
+ "A4": {
+  "env_s": 17808.769828466997,
+  "probe_s": 1140.6538930909956,
+  "ratio": 0.06405012272479825,
+  "probe_median_s": 0.4448139030000675,
+  "probe_p95_s": 1.2450806161498464,
+  "solves_per_decision_median": 2.0,
+  "pass": true
+ },
+ "A5": {
+  "n": 1627,
+  "real_positive": 596,
+  "predicted_positive": 726,
+  "tpr": 0.9765100671140939,
+  "tnr": 0.8603297769156159,
+  "balanced_accuracy": 0.9184199220148549,
+  "accuracy": 0.9028887523048555,
+  "time_error_s": {
+   "n": 582,
+   "median": 0.0,
+   "mean_abs": 2.4536082474226806
+  },
+  "by_range": {
+   "gt12": {
+    "n": 495,
+    "real_positive": 232,
+    "predicted_positive": 237,
+    "tpr": 0.9525862068965517,
+    "tnr": 0.9391634980988594,
+    "balanced_accuracy": 0.9458748524977055,
+    "accuracy": 0.9454545454545454
+   },
+   "10_12": {
+    "n": 199,
+    "real_positive": 95,
+    "predicted_positive": 106,
+    "tpr": 1.0,
+    "tnr": 0.8942307692307693,
+    "balanced_accuracy": 0.9471153846153846,
+    "accuracy": 0.9447236180904522
+   },
+   "8_10": {
+    "n": 171,
+    "real_positive": 76,
+    "predicted_positive": 86,
+    "tpr": 0.9868421052631579,
+    "tnr": 0.8842105263157894,
+    "balanced_accuracy": 0.9355263157894737,
+    "accuracy": 0.9298245614035088
+   },
+   "lt8": {
+    "n": 762,
+    "real_positive": 193,
+    "predicted_positive": 297,
+    "tpr": 0.9896373056994818,
+    "tnr": 0.8137082601054482,
+    "balanced_accuracy": 0.901672782902465,
+    "accuracy": 0.8582677165354331
+   }
+  },
+  "pass": true
+ },
+ "report_16s_all_policies": {
+  "n": 2448,
+  "real_positive": 294,
+  "predicted_positive": 346,
+  "tpr": 0.9523809523809523,
+  "tnr": 0.9693593314763231,
+  "balanced_accuracy": 0.9608701419286377,
+  "accuracy": 0.9673202614379085,
+  "time_error_median_s": 0.0
+ },
+ "report_event_prediction": {
+  "n": 2341,
+  "positive": 294,
+  "obs": {
+   "250": {
+    "logloss": 0.3473206631762744,
+    "auc": 0.7729032712737025
+   },
+   "500": {
+    "logloss": 0.31443710527167745,
+    "auc": 0.7958329813154966
+   },
+   "1000": {
+    "logloss": 0.29668305782870363,
+    "auc": 0.8268727715172695
+   },
+   "all": {
+    "logloss": 0.2936862030152664,
+    "auc": 0.8337052285985994
+   }
+  },
+  "obs+U1": {
+   "250": {
+    "logloss": 0.32239237460844866,
+    "auc": 0.8107384185240365
+   },
+   "500": {
+    "logloss": 0.291424223998564,
+    "auc": 0.8336504662213976
+   },
+   "1000": {
+    "logloss": 0.27283152173544833,
+    "auc": 0.8617645069183746
+   },
+   "all": {
+    "logloss": 0.2680192832931736,
+    "auc": 0.8699438649558523
+   }
+  },
+  "obs+U2": {
+   "250": {
+    "logloss": 0.15130557223182722,
+    "auc": 0.9684960727665379
+   },
+   "500": {
+    "logloss": 0.14717929616063322,
+    "auc": 0.9715951239077316
+   },
+   "1000": {
+    "logloss": 0.11733005610106487,
+    "auc": 0.9790131676821486
+   },
+   "all": {
+    "logloss": 0.11147160827978402,
+    "auc": 0.9809963427334745
+   }
+  },
+  "obs+U1+U2": {
+   "250": {
+    "logloss": 0.15120849440570908,
+    "auc": 0.9690339662436676
+   },
+   "500": {
+    "logloss": 0.14998882757622717,
+    "auc": 0.9706792888470028
+   },
+   "1000": {
+    "logloss": 0.12108236518708534,
+    "auc": 0.9780220225029644
+   },
+   "all": {
+    "logloss": 0.11266274386121586,
+    "auc": 0.9807276627807099
+   }
+  }
+ },
+ "stop": false,
+ "defects": false
+}

@@ -1,0 +1,311 @@
+{
+ "margin": 8.3,
+ "capture_margin": 4,
+ "evaluations": {
+  "PROBE_s10": 48,
+  "PROBE_s11": 48,
+  "EACH_PROBE_s10": 48,
+  "EACH_PROBE_s11": 48,
+  "EACH_s10": 48,
+  "EACH_s11": 48,
+  "SAC_s10": 48,
+  "SAC_s11": 48
+ },
+ "complete": true,
+ "arms": {
+  "PROBE_s10": {
+   "n": 48,
+   "capture": 34,
+   "unsafe": 0,
+   "timeout": 14,
+   "urgent_n": 27,
+   "urgent_capture": 13,
+   "mean_return": -0.23975231783776016,
+   "median_return": 35.1405424999171,
+   "entries_lost": 0
+  },
+  "PROBE_s11": {
+   "n": 48,
+   "capture": 34,
+   "unsafe": 0,
+   "timeout": 14,
+   "urgent_n": 27,
+   "urgent_capture": 13,
+   "mean_return": -0.9523544776956291,
+   "median_return": 34.73751083325226,
+   "entries_lost": 0
+  },
+  "EACH_PROBE_s10": {
+   "n": 48,
+   "capture": 35,
+   "unsafe": 0,
+   "timeout": 13,
+   "urgent_n": 27,
+   "urgent_capture": 14,
+   "mean_return": 3.355361382344961,
+   "median_return": 37.01928807557853,
+   "entries_lost": 0
+  },
+  "EACH_PROBE_s11": {
+   "n": 48,
+   "capture": 36,
+   "unsafe": 0,
+   "timeout": 12,
+   "urgent_n": 27,
+   "urgent_capture": 15,
+   "mean_return": 5.542591518715716,
+   "median_return": 31.223838241561243,
+   "entries_lost": 1
+  },
+  "EACH_s10": {
+   "n": 48,
+   "capture": 34,
+   "unsafe": 0,
+   "timeout": 14,
+   "urgent_n": 27,
+   "urgent_capture": 13,
+   "mean_return": -2.7927847808613464,
+   "median_return": 32.5702885580328,
+   "entries_lost": 1
+  },
+  "EACH_s11": {
+   "n": 48,
+   "capture": 39,
+   "unsafe": 0,
+   "timeout": 9,
+   "urgent_n": 27,
+   "urgent_capture": 18,
+   "mean_return": 20.138091952023267,
+   "median_return": 42.90530083589434,
+   "entries_lost": 0
+  },
+  "SAC_s10": {
+   "n": 48,
+   "capture": 32,
+   "unsafe": 0,
+   "timeout": 16,
+   "urgent_n": 27,
+   "urgent_capture": 11,
+   "mean_return": -7.908314236505455,
+   "median_return": 34.24935374018772,
+   "entries_lost": 1
+  },
+  "SAC_s11": {
+   "n": 48,
+   "capture": 35,
+   "unsafe": 0,
+   "timeout": 13,
+   "urgent_n": 27,
+   "urgent_capture": 14,
+   "mean_return": 4.0381138372419265,
+   "median_return": 38.42201849864267,
+   "entries_lost": 1
+  }
+ },
+ "main": {
+  "comparison": "PROBE - SAC",
+  "pairs": 96,
+  "mean": 1.3390468018650694,
+  "median": -0.7414474114047849,
+  "without_top2_per_seed": -5.414588393898968,
+  "per_seed": {
+   "10": {
+    "n": 48,
+    "mean": 7.668561918667694,
+    "median": -0.4929714837347774,
+    "without_top2": -0.8256418369499059
+   },
+   "11": {
+    "n": 48,
+    "mean": -4.990468314937557,
+    "median": -0.7933258550318598,
+    "without_top2": -10.003534950848028
+   }
+  },
+  "capture": [
+   68,
+   67
+  ],
+  "unsafe_first": 0,
+  "flips": {
+   "only_first_captures": 3,
+   "only_second_captures": 2
+  },
+  "both_captured": {
+   "n": 65,
+   "time_s": [
+    139.9830769230769,
+    142.92000000000002
+   ],
+   "delta_v": [
+    1.3510382517563146,
+    1.3432395890335818
+   ]
+  },
+  "gates": {
+   "G1": false,
+   "G2": false,
+   "G3": false,
+   "G4": true,
+   "G5": true
+  },
+  "verdict": "no_gain"
+ },
+ "secondary": {
+  "comparison": "EACH_PROBE - EACH",
+  "pairs": 96,
+  "mean": -4.223677135050621,
+  "median": -0.639600936223367,
+  "without_top2_per_seed": -7.644721607918908,
+  "per_seed": {
+   "10": {
+    "n": 48,
+    "mean": 6.148146163206309,
+    "median": -0.028458100165821065,
+    "without_top2": 0.46573553225218944
+   },
+   "11": {
+    "n": 48,
+    "mean": -14.59550043330755,
+    "median": -1.129726192603643,
+    "without_top2": -15.755178748090005
+   }
+  },
+  "capture": [
+   71,
+   73
+  ],
+  "unsafe_first": 0,
+  "flips": {
+   "only_first_captures": 1,
+   "only_second_captures": 3
+  },
+  "both_captured": {
+   "n": 70,
+   "time_s": [
+    147.08,
+    142.31285714285715
+   ],
+   "delta_v": [
+    1.4099553601064831,
+    1.3932737707272185
+   ]
+  },
+  "gates": {
+   "G1": false,
+   "G2": false,
+   "G3": false,
+   "G4": false,
+   "G5": true
+  },
+  "verdict": "kept"
+ },
+ "report_probe_vs_each": {
+  "pairs": 96,
+  "mean": -9.268706983347656,
+  "median": 0.3074682724022253,
+  "without_top2_per_seed": -10.799599238115267,
+  "per_seed": {
+   "10": {
+    "n": 48,
+    "mean": 2.5530324630235848,
+    "median": 0.7031762228452365,
+    "without_top2": 1.0695227651921115
+   },
+   "11": {
+    "n": 48,
+    "mean": -21.0904464297189,
+    "median": -0.04282968436073986,
+    "without_top2": -22.668721241422645
+   }
+  },
+  "capture": [
+   68,
+   73
+  ],
+  "unsafe_first": 0,
+  "flips": {
+   "only_first_captures": 0,
+   "only_second_captures": 5
+  },
+  "both_captured": {
+   "n": 68,
+   "time_s": [
+    140.37058823529415,
+    142.5058823529412
+   ],
+   "delta_v": [
+    1.3552912689117707,
+    1.3899532991166632
+   ]
+  }
+ },
+ "curves": {
+  "PROBE_s10": {
+   "curve_auc": 11.546709233402254,
+   "late_return": 29.78501994689865,
+   "late_urgent_capture": 0.7017543859649122,
+   "episodes": 419
+  },
+  "PROBE_s11": {
+   "curve_auc": 5.007348567550729,
+   "late_return": 19.997044782132168,
+   "late_urgent_capture": 0.6607142857142857,
+   "episodes": 376
+  },
+  "EACH_PROBE_s10": {
+   "curve_auc": 15.723758916993782,
+   "late_return": 26.05469759722098,
+   "late_urgent_capture": 0.7045454545454546,
+   "episodes": 402
+  },
+  "EACH_PROBE_s11": {
+   "curve_auc": 16.31473630694173,
+   "late_return": 27.442212724461317,
+   "late_urgent_capture": 0.7288135593220338,
+   "episodes": 403
+  },
+  "EACH_s10": {
+   "curve_auc": 12.793802371231141,
+   "late_return": 19.492628544263145,
+   "late_urgent_capture": 0.631578947368421,
+   "episodes": 419
+  },
+  "EACH_s11": {
+   "curve_auc": 16.834202367143288,
+   "late_return": 31.424654126923222,
+   "late_urgent_capture": 0.7538461538461538,
+   "episodes": 412
+  },
+  "SAC_s10": {
+   "curve_auc": -4.930051774880031,
+   "late_return": 11.282652362146155,
+   "late_urgent_capture": 0.5121951219512195,
+   "episodes": 337
+  },
+  "SAC_s11": {
+   "curve_auc": 12.656787493705309,
+   "late_return": 26.01275451589326,
+   "late_urgent_capture": 0.7076923076923077,
+   "episodes": 397
+  }
+ },
+ "probe_cost": {
+  "PROBE_s10": {
+   "probes": 2416,
+   "probe_wall_s": 3488.28507349997
+  },
+  "PROBE_s11": {
+   "probes": 2365,
+   "probe_wall_s": 3236.6639233999304
+  },
+  "EACH_PROBE_s10": {
+   "probes": 2398,
+   "probe_wall_s": 3739.3591142000732
+  },
+  "EACH_PROBE_s11": {
+   "probes": 2400,
+   "probe_wall_s": 3464.8060734001265
+  }
+ }
+}

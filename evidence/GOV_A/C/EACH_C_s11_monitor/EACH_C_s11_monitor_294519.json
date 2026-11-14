@@ -1,0 +1,197 @@
+{
+ "opening": 294519,
+ "event": "success",
+ "return": 68.5140531347672,
+ "time_s": 152.7,
+ "delta_v": 1.6215946865232787,
+ "stages": 4,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 1,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 193.9,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 163.90213298797607,
+ "decisions": [
+  {
+   "a": [
+    0.9841799736022949,
+    0.7450459003448486
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 11.404477150938497,
+   "planned_dv": 0.16880660386783547,
+   "executed_dv": 0.1692310871938279,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.9841799736022949,
+     0.7450459003448486
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": false,
+    "commit_before": null,
+    "commit_after": null,
+    "a_exec": [
+     0.9841799736022949,
+     0.7450459003448486
+    ],
+    "wall_s": 2.460130299994489
+   }
+  },
+  {
+   "a": [
+    0.9777896404266357,
+    0.8788989782333374
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 9.161362390802717,
+   "planned_dv": 0.08028900682426755,
+   "executed_dv": 0.0805833936546815,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 16.0,
+    "a": [
+     0.9777896404266357,
+     0.8788989782333374
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 3,
+    "act": false,
+    "commit_before": null,
+    "tau_min": 38.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 38.0,
+    "own_admissible": true,
+    "commit_after": 54.0,
+    "a_exec": [
+     0.9777896404266357,
+     0.8788989782333374
+    ],
+    "wall_s": 1.7073614000109956
+   }
+  },
+  {
+   "a": [
+    0.9758434295654297,
+    0.8335014581680298
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.216880684064256,
+   "planned_dv": 0.09195969362474632,
+   "executed_dv": 0.10708564403522533,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 32.0,
+    "a": [
+     0.9758434295654297,
+     0.8335014581680298
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 8,
+    "act": false,
+    "commit_before": 54.0,
+    "tau_min": 22.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 22.0,
+    "own_admissible": true,
+    "commit_after": 54.0,
+    "a_exec": [
+     0.9758434295654297,
+     0.8335014581680298
+    ],
+    "wall_s": 3.203184900004999
+   }
+  },
+  {
+   "a": [
+    0.9747962951660156,
+    -0.031701505184173584
+   ],
+   "t": 152.7,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.048438341370801,
+   "planned_dv": 0.09593009523021982,
+   "executed_dv": 1.264694561639544,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 48.0,
+    "a": [
+     0.9747962951660156,
+     -0.031701505184173584
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 10,
+    "act": false,
+    "commit_before": 54.0,
+    "tau_min": 6.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 6.0,
+    "own_admissible": true,
+    "commit_after": 54.0,
+    "a_exec": [
+     0.9747962951660156,
+     -0.031701505184173584
+    ],
+    "wall_s": 1.3010502999968594
+   }
+  }
+ ],
+ "certify": false,
+ "cert_interventions": 0,
+ "govern": "monitor",
+ "gov_replacements": 0,
+ "gov_would_replace": 0,
+ "gov_decisions": 4,
+ "gov_wall_s": 8.671726900007343,
+ "policy": "EACH_C_s11_monitor",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\ecc\\B\\TRAIN_EACH_C_s11\\checkpoints\\step_2000.zip",
+ "window": true,
+ "geometry": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 68.0,
+   "slip_s": 2.0,
+   "reserve": false,
+   "phase_deg": 4.457417353032903
+  },
+  {
+   "t": 82.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 8.912185584968565
+  },
+  {
+   "t": 98.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 8.910032090403893
+  }
+ ]
+}

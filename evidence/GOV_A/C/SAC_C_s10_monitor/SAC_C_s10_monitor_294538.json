@@ -1,0 +1,218 @@
+{
+ "opening": 294538,
+ "event": "success",
+ "return": 65.5827327852926,
+ "time_s": 166.0,
+ "delta_v": 1.7817267214707386,
+ "stages": 4,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 1,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 199.9,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 171.19734263420105,
+ "decisions": [
+  {
+   "a": [
+    0.17475998401641846,
+    0.4226391315460205
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.715658371706837,
+   "planned_dv": 0.14181901179531464,
+   "executed_dv": 0.14165165090492932,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.17475998401641846,
+     0.4226391315460205
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": false,
+    "commit_before": null,
+    "commit_after": null,
+    "a_exec": [
+     0.17475998401641846,
+     0.4226391315460205
+    ],
+    "wall_s": 2.3772602999961236
+   }
+  },
+  {
+   "a": [
+    -0.2846904397010803,
+    0.9640247821807861
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.348202301240836,
+   "planned_dv": 0.11168202608303726,
+   "executed_dv": 0.11174297465239896,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 16.0,
+    "a": [
+     -0.2846904397010803,
+     0.9640247821807861
+    ],
+    "status": "successor",
+    "critical": true,
+    "n_admissible": 3,
+    "act": false,
+    "commit_before": null,
+    "tau_min": 38.0,
+    "own_event": 0,
+    "own_kind": null,
+    "own_t": 48.0,
+    "own_admissible": false,
+    "successor_by": [
+     1.0,
+     1.0
+    ],
+    "successor_t": 56.0,
+    "commit_after": 56.0,
+    "a_exec": [
+     -0.2846904397010803,
+     0.9640247821807861
+    ],
+    "wall_s": 4.217053699991084
+   }
+  },
+  {
+   "a": [
+    0.18532967567443848,
+    0.9910503625869751
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.158404629512352,
+   "planned_dv": 0.12006819412106358,
+   "executed_dv": 0.12007846734022598,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 32.0,
+    "a": [
+     0.18532967567443848,
+     0.9910503625869751
+    ],
+    "status": "replace",
+    "critical": true,
+    "n_admissible": 4,
+    "act": false,
+    "commit_before": 56.0,
+    "tau_min": 24.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 26.0,
+    "own_admissible": true,
+    "recommitted": false,
+    "alt": [
+     1.0,
+     1.0
+    ],
+    "alt_t": 24.0,
+    "alt_kind": "entry",
+    "alt_incumbent": false,
+    "commit_after": 56.0,
+    "a_exec": [
+     0.18532967567443848,
+     0.9910503625869751
+    ],
+    "wall_s": 4.059204100005445
+   }
+  },
+  {
+   "a": [
+    0.6079845428466797,
+    0.8872153759002686
+   ],
+   "t": 166.0,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.1172185525211673,
+   "planned_dv": 0.11218025666743185,
+   "executed_dv": 1.4082536285731844,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 48.0,
+    "a": [
+     0.6079845428466797,
+     0.8872153759002686
+    ],
+    "status": "replace",
+    "critical": true,
+    "n_admissible": 7,
+    "act": false,
+    "commit_before": 56.0,
+    "tau_min": 10.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 10.0,
+    "own_admissible": true,
+    "recommitted": true,
+    "alt": [
+     1.0,
+     1.0
+    ],
+    "alt_t": 10.0,
+    "alt_kind": "entry",
+    "alt_incumbent": false,
+    "commit_after": 56.0,
+    "a_exec": [
+     0.6079845428466797,
+     0.8872153759002686
+    ],
+    "wall_s": 1.5805996999988565
+   }
+  }
+ ],
+ "certify": false,
+ "cert_interventions": 0,
+ "govern": "monitor",
+ "gov_replacements": 0,
+ "gov_would_replace": 2,
+ "gov_decisions": 4,
+ "gov_wall_s": 12.234117799991509,
+ "policy": "SAC_C_s10_monitor",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\ecc\\B\\TRAIN_SAC_C_s10\\checkpoints\\step_2000.zip",
+ "window": true,
+ "geometry": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 74.0,
+   "slip_s": 2.0,
+   "reserve": false,
+   "phase_deg": 5.167986897742403
+  },
+  {
+   "t": 86.0,
+   "slip_s": 8.0,
+   "reserve": false,
+   "phase_deg": 20.6692443837292
+  },
+  {
+   "t": 106.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 10.331150163739276
+  }
+ ]
+}

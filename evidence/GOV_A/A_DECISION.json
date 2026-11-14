@@ -1,0 +1,955 @@
+{
+ "evaluations": {
+  "EACH_C_s10_monitor": 96,
+  "EACH_C_s10_monitor_economy": 48,
+  "EACH_C_s10_monitor_natural": 48,
+  "EACH_C_s10_gov": 96,
+  "EACH_C_s10_gov_economy": 48,
+  "EACH_C_s10_gov_natural": 48,
+  "EACH_C_s10_cert": 96,
+  "EACH_C_s10_cert_economy": 48,
+  "EACH_C_s10_cert_natural": 48,
+  "EACH_C_s11_monitor": 96,
+  "EACH_C_s11_monitor_economy": 48,
+  "EACH_C_s11_monitor_natural": 48,
+  "EACH_C_s11_gov": 96,
+  "EACH_C_s11_gov_economy": 48,
+  "EACH_C_s11_gov_natural": 48,
+  "EACH_C_s11_cert": 96,
+  "EACH_C_s11_cert_economy": 48,
+  "EACH_C_s11_cert_natural": 48,
+  "SAC_C_s10_monitor": 96,
+  "SAC_C_s10_monitor_economy": 48,
+  "SAC_C_s10_monitor_natural": 48,
+  "SAC_C_s10_gov": 96,
+  "SAC_C_s10_gov_economy": 48,
+  "SAC_C_s10_gov_natural": 48,
+  "SAC_C_s10_cert": 96,
+  "SAC_C_s10_cert_economy": 48,
+  "SAC_C_s10_cert_natural": 48,
+  "SAC_C_s11_monitor": 96,
+  "SAC_C_s11_monitor_economy": 48,
+  "SAC_C_s11_monitor_natural": 48,
+  "SAC_C_s11_gov": 96,
+  "SAC_C_s11_gov_economy": 48,
+  "SAC_C_s11_gov_natural": 48,
+  "SAC_C_s11_cert": 96,
+  "SAC_C_s11_cert_economy": 48,
+  "SAC_C_s11_cert_natural": 48
+ },
+ "complete": true,
+ "conditions": {
+  "urgent": {
+   "models": {
+    "EACH_C_s10": {
+     "gov_vs_monitor": {
+      "n": 96,
+      "mean": 6.6551470731870035,
+      "capture": [
+       61,
+       58
+      ],
+      "lost": [
+       294508
+      ],
+      "rescued": [
+       294506,
+       294524,
+       294539,
+       294545
+      ],
+      "unsafe_introduced": []
+     },
+     "cert_vs_monitor": {
+      "n": 96,
+      "mean": 10.710791122891166,
+      "capture": [
+       63,
+       58
+      ],
+      "lost": [
+       294508
+      ],
+      "rescued": [
+       294506,
+       294507,
+       294524,
+       294534,
+       294545,
+       294554
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 96,
+      "mean": -4.0556440497041635,
+      "capture": [
+       61,
+       63
+      ],
+      "lost": [
+       294507,
+       294534,
+       294554
+      ],
+      "rescued": [
+       294539
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_wall": {
+      "decisions": 505,
+      "mean_s": 2.527911430098996,
+      "p95_s": 7.30679658000299,
+      "max_s": 17.02835719998984
+     }
+    },
+    "EACH_C_s11": {
+     "gov_vs_monitor": {
+      "n": 96,
+      "mean": 6.423681160716884,
+      "capture": [
+       74,
+       71
+      ],
+      "lost": [],
+      "rescued": [
+       294543,
+       294557,
+       294561
+      ],
+      "unsafe_introduced": []
+     },
+     "cert_vs_monitor": {
+      "n": 96,
+      "mean": 12.247894010585137,
+      "capture": [
+       77,
+       71
+      ],
+      "lost": [],
+      "rescued": [
+       294508,
+       294543,
+       294557,
+       294561,
+       294564,
+       294574
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 96,
+      "mean": -5.824212849868252,
+      "capture": [
+       74,
+       77
+      ],
+      "lost": [
+       294508,
+       294564,
+       294574
+      ],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "gov_wall": {
+      "decisions": 444,
+      "mean_s": 2.914185674774483,
+      "p95_s": 9.010029060002832,
+      "max_s": 23.808973799998057
+     }
+    },
+    "SAC_C_s10": {
+     "gov_vs_monitor": {
+      "n": 96,
+      "mean": 14.87065677038818,
+      "capture": [
+       67,
+       60
+      ],
+      "lost": [],
+      "rescued": [
+       294517,
+       294527,
+       294545,
+       294549,
+       294578,
+       294590,
+       294594
+      ],
+      "unsafe_introduced": []
+     },
+     "cert_vs_monitor": {
+      "n": 96,
+      "mean": 19.186541922526487,
+      "capture": [
+       69,
+       60
+      ],
+      "lost": [],
+      "rescued": [
+       294507,
+       294524,
+       294527,
+       294534,
+       294549,
+       294564,
+       294574,
+       294578,
+       294590
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 96,
+      "mean": -4.315885152138305,
+      "capture": [
+       67,
+       69
+      ],
+      "lost": [
+       294507,
+       294524,
+       294534,
+       294564,
+       294574
+      ],
+      "rescued": [
+       294517,
+       294545,
+       294594
+      ],
+      "unsafe_introduced": [
+       294592
+      ]
+     },
+     "gov_wall": {
+      "decisions": 497,
+      "mean_s": 2.421747457545331,
+      "p95_s": 6.967723720002686,
+      "max_s": 14.830487100000028
+     }
+    },
+    "SAC_C_s11": {
+     "gov_vs_monitor": {
+      "n": 96,
+      "mean": 0.2806708377618712,
+      "capture": [
+       53,
+       53
+      ],
+      "lost": [
+       294501,
+       294543,
+       294549,
+       294565,
+       294572
+      ],
+      "rescued": [
+       294506,
+       294524,
+       294533,
+       294539,
+       294578
+      ],
+      "unsafe_introduced": []
+     },
+     "cert_vs_monitor": {
+      "n": 96,
+      "mean": 19.118178684229253,
+      "capture": [
+       62,
+       53
+      ],
+      "lost": [
+       294594
+      ],
+      "rescued": [
+       294506,
+       294507,
+       294508,
+       294510,
+       294533,
+       294534,
+       294545,
+       294554,
+       294557,
+       294560
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 96,
+      "mean": -18.837507846467386,
+      "capture": [
+       53,
+       62
+      ],
+      "lost": [
+       294501,
+       294507,
+       294508,
+       294510,
+       294534,
+       294543,
+       294545,
+       294549,
+       294554,
+       294557,
+       294560,
+       294565,
+       294572
+      ],
+      "rescued": [
+       294524,
+       294539,
+       294578,
+       294594
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_wall": {
+      "decisions": 583,
+      "mean_s": 2.123107908061922,
+      "p95_s": 5.768458130001086,
+      "max_s": 15.874741099993116
+     }
+    }
+   },
+   "pairs": 384,
+   "observed_mean_gain": 7.057538960513484,
+   "prediction": 42.28786892361111,
+   "destroy_rate": 0.3098958333333333,
+   "replacements": 192,
+   "realization": 0.6822916666666666,
+   "persistence": 0.9895833333333334,
+   "zero_band": 0.5208333333333334,
+   "direction_consistent": true,
+   "captures": [
+    255,
+    242
+   ],
+   "replace_per_episode": 0.5,
+   "critical_monitor": {
+    "decisions": 2134,
+    "critical_share": 0.47282099343955014,
+    "replace_non_critical": 0,
+    "replace_critical_share": 0.2091179385530228
+   },
+   "critical_gov": {
+    "decisions": 2029,
+    "critical_share": 0.49531789058649583,
+    "replace_non_critical": 0,
+    "replace_critical_share": 0.191044776119403
+   },
+   "cert_mean_gain": 15.315851435058013,
+   "cert_captures": [
+    271,
+    242
+   ],
+   "dose": {
+    "<160": {
+     "pairs": 124,
+     "observed_mean_gain": 8.33191149139634,
+     "prediction": 32.903225806451616,
+     "destroy_rate": 0.2903225806451613,
+     "replacements": 60,
+     "realization": 0.5666666666666667,
+     "persistence": 0.9833333333333333,
+     "zero_band": 1.6129032258064515,
+     "direction_consistent": true,
+     "captures": [
+      67,
+      62
+     ],
+     "replace_per_episode": 0.4838709677419355,
+     "critical_monitor": {
+      "decisions": 714,
+      "critical_share": 0.42857142857142855,
+      "replace_non_critical": 0,
+      "replace_critical_share": 0.19281045751633988
+     },
+     "critical_gov": {
+      "decisions": 672,
+      "critical_share": 0.45089285714285715,
+      "replace_non_critical": 0,
+      "replace_critical_share": 0.19801980198019803
+     }
+    },
+    "160-180": {
+     "pairs": 124,
+     "observed_mean_gain": 6.692953685444466,
+     "prediction": 48.64311315924219,
+     "destroy_rate": 0.3064516129032258,
+     "replacements": 63,
+     "realization": 0.7936507936507936,
+     "persistence": 1.0,
+     "zero_band": 1.6129032258064515,
+     "direction_consistent": true,
+     "captures": [
+      72,
+      68
+     ],
+     "replace_per_episode": 0.5080645161290323,
+     "critical_monitor": {
+      "decisions": 804,
+      "critical_share": 0.373134328358209,
+      "replace_non_critical": 0,
+      "replace_critical_share": 0.22
+     },
+     "critical_gov": {
+      "decisions": 774,
+      "critical_share": 0.39276485788113696,
+      "replace_non_critical": 0,
+      "replace_critical_share": 0.20723684210526316
+     }
+    },
+    ">=180": {
+     "pairs": 136,
+     "observed_mean_gain": 6.228027050800872,
+     "prediction": 45.076726342711,
+     "destroy_rate": 0.33088235294117646,
+     "replacements": 69,
+     "realization": 0.6811594202898551,
+     "persistence": 0.9855072463768116,
+     "zero_band": 1.4705882352941178,
+     "direction_consistent": true,
+     "captures": [
+      116,
+      112
+     ],
+     "replace_per_episode": 0.5073529411764706,
+     "critical_monitor": {
+      "decisions": 616,
+      "critical_share": 0.6542207792207793,
+      "replace_non_critical": 0,
+      "replace_critical_share": 0.21339950372208435
+     },
+     "critical_gov": {
+      "decisions": 583,
+      "critical_share": 0.6826758147512865,
+      "replace_non_critical": 0,
+      "replace_critical_share": 0.17336683417085427
+     }
+    }
+   }
+  },
+  "economy": {
+   "models": {
+    "EACH_C_s10": {
+     "gov_vs_monitor": {
+      "n": 48,
+      "mean": -0.05433411054177081,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "cert_vs_monitor": {
+      "n": 48,
+      "mean": 0.04574407614968582,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 48,
+      "mean": -0.10007818669145663,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "gov_wall": {
+      "decisions": 204,
+      "mean_s": 2.166900181373029,
+      "p95_s": 4.152011159992252,
+      "max_s": 7.286361099992064
+     }
+    },
+    "EACH_C_s11": {
+     "gov_vs_monitor": {
+      "n": 48,
+      "mean": 0.08246767309000773,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "cert_vs_monitor": {
+      "n": 48,
+      "mean": 0.2660871975046592,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 48,
+      "mean": -0.18361952441465146,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "gov_wall": {
+      "decisions": 185,
+      "mean_s": 2.192275275675756,
+      "p95_s": 4.491765340004342,
+      "max_s": 9.776072499997099
+     }
+    },
+    "SAC_C_s10": {
+     "gov_vs_monitor": {
+      "n": 48,
+      "mean": -0.17822834884256178,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "cert_vs_monitor": {
+      "n": 48,
+      "mean": -0.29379411031839453,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 48,
+      "mean": 0.11556576147583275,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "gov_wall": {
+      "decisions": 198,
+      "mean_s": 2.0886002691915215,
+      "p95_s": 4.035653099998304,
+      "max_s": 7.218868299998576
+     }
+    },
+    "SAC_C_s11": {
+     "gov_vs_monitor": {
+      "n": 48,
+      "mean": -0.0039669039411007745,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "cert_vs_monitor": {
+      "n": 48,
+      "mean": -0.018991800902990796,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 48,
+      "mean": 0.015024896961890022,
+      "capture": [
+       48,
+       48
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "gov_wall": {
+      "decisions": 200,
+      "mean_s": 1.9479937695007539,
+      "p95_s": 3.608286395001047,
+      "max_s": 6.155946700004279
+     }
+    }
+   },
+   "pairs": 192,
+   "observed_mean_gain": -0.038515422558856406,
+   "prediction": 8.333333333333332,
+   "destroy_rate": 0.041666666666666664,
+   "replacements": 15,
+   "realization": 1.0,
+   "persistence": 1.0,
+   "zero_band": 1.0416666666666667,
+   "direction_consistent": false,
+   "captures": [
+    192,
+    192
+   ],
+   "replace_per_episode": 0.078125,
+   "critical_monitor": {
+    "decisions": 787,
+    "critical_share": 0.04701397712833545,
+    "replace_non_critical": 0,
+    "replace_critical_share": 0.4864864864864865
+   },
+   "critical_gov": {
+    "decisions": 787,
+    "critical_share": 0.04701397712833545,
+    "replace_non_critical": 0,
+    "replace_critical_share": 0.40540540540540543
+   },
+   "cert_mean_gain": -0.00023865939176008025,
+   "cert_captures": [
+    192,
+    192
+   ],
+   "dose": {
+    "economy": {
+     "pairs": 192,
+     "observed_mean_gain": -0.038515422558856406,
+     "prediction": 8.333333333333332,
+     "destroy_rate": 0.041666666666666664,
+     "replacements": 15,
+     "realization": 1.0,
+     "persistence": 1.0,
+     "zero_band": 1.0416666666666667,
+     "direction_consistent": false,
+     "captures": [
+      192,
+      192
+     ],
+     "replace_per_episode": 0.078125,
+     "critical_monitor": {
+      "decisions": 787,
+      "critical_share": 0.04701397712833545,
+      "replace_non_critical": 0,
+      "replace_critical_share": 0.4864864864864865
+     },
+     "critical_gov": {
+      "decisions": 787,
+      "critical_share": 0.04701397712833545,
+      "replace_non_critical": 0,
+      "replace_critical_share": 0.40540540540540543
+     }
+    }
+   }
+  },
+  "natural": {
+   "models": {
+    "EACH_C_s10": {
+     "gov_vs_monitor": {
+      "n": 48,
+      "mean": 8.174119863447146,
+      "capture": [
+       41,
+       39
+      ],
+      "lost": [],
+      "rescued": [
+       294742,
+       294747
+      ],
+      "unsafe_introduced": []
+     },
+     "cert_vs_monitor": {
+      "n": 48,
+      "mean": -4.1180558150207185,
+      "capture": [
+       38,
+       39
+      ],
+      "lost": [
+       294705,
+       294744
+      ],
+      "rescued": [
+       294726
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 48,
+      "mean": 12.292175678467864,
+      "capture": [
+       41,
+       38
+      ],
+      "lost": [
+       294726
+      ],
+      "rescued": [
+       294705,
+       294742,
+       294744,
+       294747
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_wall": {
+      "decisions": 226,
+      "mean_s": 2.453728394690526,
+      "p95_s": 7.078907649996836,
+      "max_s": 10.528001800004859
+     }
+    },
+    "EACH_C_s11": {
+     "gov_vs_monitor": {
+      "n": 48,
+      "mean": 0.04113562169226581,
+      "capture": [
+       43,
+       43
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "cert_vs_monitor": {
+      "n": 48,
+      "mean": 4.170900631184309,
+      "capture": [
+       44,
+       43
+      ],
+      "lost": [],
+      "rescued": [
+       294705
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 48,
+      "mean": -4.129765009492043,
+      "capture": [
+       43,
+       44
+      ],
+      "lost": [
+       294705
+      ],
+      "rescued": [],
+      "unsafe_introduced": []
+     },
+     "gov_wall": {
+      "decisions": 201,
+      "mean_s": 2.868120392537528,
+      "p95_s": 8.450799500002177,
+      "max_s": 20.629421200006618
+     }
+    },
+    "SAC_C_s10": {
+     "gov_vs_monitor": {
+      "n": 48,
+      "mean": -1.175917114047139,
+      "capture": [
+       41,
+       41
+      ],
+      "lost": [],
+      "rescued": [],
+      "unsafe_introduced": [
+       294715
+      ]
+     },
+     "cert_vs_monitor": {
+      "n": 48,
+      "mean": 3.8540577676694863,
+      "capture": [
+       42,
+       41
+      ],
+      "lost": [],
+      "rescued": [
+       294705
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 48,
+      "mean": -5.029974881716625,
+      "capture": [
+       41,
+       42
+      ],
+      "lost": [
+       294705
+      ],
+      "rescued": [],
+      "unsafe_introduced": [
+       294715
+      ]
+     },
+     "gov_wall": {
+      "decisions": 218,
+      "mean_s": 2.303473091743424,
+      "p95_s": 5.990835275006243,
+      "max_s": 11.46015470000566
+     }
+    },
+    "SAC_C_s11": {
+     "gov_vs_monitor": {
+      "n": 48,
+      "mean": 4.629394143007963,
+      "capture": [
+       39,
+       38
+      ],
+      "lost": [],
+      "rescued": [
+       294747
+      ],
+      "unsafe_introduced": []
+     },
+     "cert_vs_monitor": {
+      "n": 48,
+      "mean": 12.788005912891519,
+      "capture": [
+       41,
+       38
+      ],
+      "lost": [],
+      "rescued": [
+       294717,
+       294726,
+       294740
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_vs_cert": {
+      "n": 48,
+      "mean": -8.158611769883555,
+      "capture": [
+       39,
+       41
+      ],
+      "lost": [
+       294717,
+       294726,
+       294740
+      ],
+      "rescued": [
+       294747
+      ],
+      "unsafe_introduced": []
+     },
+     "gov_wall": {
+      "decisions": 235,
+      "mean_s": 2.1618222863829515,
+      "p95_s": 4.6216810100013355,
+      "max_s": 10.307586299997638
+     }
+    }
+   },
+   "pairs": 192,
+   "observed_mean_gain": 2.9171831285250587,
+   "prediction": 30.806010928961747,
+   "destroy_rate": 0.21354166666666666,
+   "replacements": 61,
+   "realization": 0.7213114754098361,
+   "persistence": 0.9672131147540983,
+   "zero_band": 1.0416666666666667,
+   "direction_consistent": true,
+   "captures": [
+    164,
+    161
+   ],
+   "replace_per_episode": 0.3177083333333333,
+   "critical_monitor": {
+    "decisions": 911,
+    "critical_share": 0.3172338090010977,
+    "replace_non_critical": 0,
+    "replace_critical_share": 0.2491349480968858
+   },
+   "critical_gov": {
+    "decisions": 880,
+    "critical_share": 0.32045454545454544,
+    "replace_non_critical": 0,
+    "replace_critical_share": 0.21631205673758866
+   },
+   "cert_mean_gain": 4.173727124181148,
+   "cert_captures": [
+    165,
+    161
+   ]
+  }
+ },
+ "criteria": {
+  "M1": true,
+  "M2": false,
+  "M3": false,
+  "M4": false,
+  "M5": false
+ },
+ "lost": [
+  [
+   "EACH_C_s10",
+   "urgent",
+   294508
+  ],
+  [
+   "SAC_C_s11",
+   "urgent",
+   294501
+  ],
+  [
+   "SAC_C_s11",
+   "urgent",
+   294543
+  ],
+  [
+   "SAC_C_s11",
+   "urgent",
+   294549
+  ],
+  [
+   "SAC_C_s11",
+   "urgent",
+   294565
+  ],
+  [
+   "SAC_C_s11",
+   "urgent",
+   294572
+  ]
+ ],
+ "unsafe_introduced": [
+  [
+   "SAC_C_s10",
+   "natural",
+   294715
+  ]
+ ],
+ "mechanism_pass": false,
+ "governor_rejected": true,
+ "b_coordination": "cert"
+}

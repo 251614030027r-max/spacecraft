@@ -1,0 +1,573 @@
+diff --git a/env/t2_stage.py b/env/t2_stage.py
+index 8e4fce0..2cb6be6 100644
+--- a/env/t2_stage.py
++++ b/env/t2_stage.py
+@@ -66,7 +66,7 @@ from env.t1_n_task import ConditionalGStar, make_conditional_gstar
+ from env.t1_p_stage import LocalStagePlanner, T1PGenerator, plan_state, relative_inertial
+ from env.t1_task import T1InitialDistribution
+ 
+-T2_VERSION = "t2-stage-0.4.3"
++T2_VERSION = "t2-stage-0.5.0"
+ STAGE_S = 16.0
+ STAGE_NODES = 16
+ PLAN_FORCE_N = 1.6
+@@ -386,6 +386,15 @@ ENTRY_CAL_MIN = 20               # executed entries before entry labels are issu
+ #: environment (calibrated model): the learner forms the two-stage soft Retrace target with c = min(1, pi/mu). 1 = the
+ #: T2.4 one-stage label. T2.3's repeat-the-intent second stage (not a Bellman target) no longer exists.
+ ENTRY_STAGES = 2
++#: T2.7 executor opportunity supervision (``opportunity=True``; off: T2.6.1 bitwise). The executor's conditional G* asks,
++#: from a candidate's predicted stage end, for the earliest feasible entry before deadline - margin on the direct
++#: grid (start_direct_gstar's), valued by the entry-outcome replay: a one-sided lower bound on the candidate's value.
++#: Its plan, projected onto the stage action space (the intent whose stage goal is nearest the plan 16 s ahead), is
++#: the executor's own candidate (it replaces the global random one). Sandbox (exploratory, rule-free): tracking that
++#: plan inside the action space captured 19/19 urgent audit missions (the rally rule 9/19, direct G* 18/19).
++OPPORTUNITY_TAUS_S = (20., 30., 40., 50., 60., 70., 80., 90., 100., 110., 120., 140., 160., 180., 200., 220.)
++TRACK_GRID = tuple((float(p), float(z)) for p in np.linspace(-1.0, 1.0, 9) for z in np.linspace(-1.0, 1.0, 9))
++TRACK_VELOCITY_WEIGHT = 10.0      # s: velocity mismatch of the stage goal weighed against position (m) in the projection
+ 
+ 
+ @dataclass
+@@ -448,8 +457,10 @@ class T2StageEnv(gym.Env):
+ 
+     def __init__(self, openings: list[int] | None = None, seed_base: int = 1_000_000, candidates: int = 0,
+                  mission: T2Mission = T2Mission(), shaping: bool = True, seed: int = 0, geometry: bool = True,
+-                 entry_stages: int = ENTRY_STAGES, window: bool = True) -> None:
++                 entry_stages: int = ENTRY_STAGES, window: bool = True, opportunity: bool = False) -> None:
+         self.geometry = bool(geometry)
++        self.opportunity = bool(opportunity)    # T2.7 executor opportunity supervision (labels only; never acts)
++        self._track = None
+         self.window = bool(window)
+         self.diagnostics = False            # also predict the executed intent with its own realized residual (tests)
+         self.entry_stages = int(entry_stages)
+@@ -639,6 +650,42 @@ class T2StageEnv(gym.Env):
+                     return {"s": s, "tau": float(res["tau_s"]), "dv_plan": float(res["delta_v_m_s"]), "brake_dv": brake}
+         return None
+ 
++    def _opportunity(self, q, v, t_abs: float, rot, omega) -> dict | None:
++        """T2.7: the executor's earliest feasible entry from a (predicted) relative state at absolute time ``t_abs``:
++        its conditional G* on the direct grid, arrivals up to deadline - margin, the constant-rate attitude model from
++        ``rot`` / ``omega`` and the estimated (not the true) inertia -- the executor's own inputs, as start_direct_gstar
++        but on a model state. Returns {tau, dv_plan, plan} or None (no capture opportunity left)."""
++        from env.t1_gstar import free_body_rotations
++        g = self.generator.bridge
++        horizon = float(self.mission["deadline_s"]) - BRIDGE_DEADLINE_MARGIN_S - float(t_abs)
++        taus = [t for t in OPPORTUNITY_TAUS_S if t <= horizon]
++        if not taus:
++            return None
++        history = free_body_rotations(rot, omega, np.asarray(self.info_env.target_parameters.inertia), max(taus) + 1.0)
++        for tau in taus:
++            res = g.planner.solve(np.asarray(q, float), np.asarray(v, float), tau, history, None, entry_speed_m_s=g.entry_speed_m_s)
++            if res["feasible"]:
++                return {"tau": float(res["tau_s"]), "dv_plan": float(res["delta_v_m_s"]), "plan": res}
++        return None
++
++    def _track_intent(self, start: dict) -> np.ndarray | None:
++        """T2.7: the executor's own candidate -- its opportunity plan from the decision state ``start`` (labels are
++        computed after the factual stage, so the decision time and attitude come from ``start``, not the env) projected
++        onto the stage action space: the intent (TRACK_GRID) whose stage goal lies nearest the plan's state 16 s ahead."""
++        q, v, frame = start["q"], start["v"], start["frame"]
++        opp = self._opportunity(q, v, start["t"], start["rotation"], start["omega"])
++        if opp is None:
++            return None
++        mass = self.env.chaser_parameters.mass
++        q16, v16 = plan_state(opp["plan"], STAGE_S, mass)
++        best, cost = None, np.inf
++        for a in TRACK_GRID:
++            goal = stage_goal(q, v, frame, np.asarray(a), mass, geometry=self.geometry)
++            c = float(np.linalg.norm(goal["q_goal"] - q16) + TRACK_VELOCITY_WEIGHT * np.linalg.norm(goal["v_goal"] - v16))
++            if c < cost:
++                best, cost = np.asarray(a, dtype=np.float64), c
++        return best
++
+     def _stage_cutoff(self, t_start: float, dv_start: float, dv_stage: float, span: float = STAGE_S):
+         """T2.6 (label termination): a modelled stage without an entry ends where the truth would end it -- at the
+         mission deadline (timeout) or when the delta-v budget is spent (resource exhausted), whichever comes first.
+@@ -807,13 +854,15 @@ class T2StageEnv(gym.Env):
+         res = self.entry_residuals[-ENTRY_CAL_MIN:]
+         entry_bias = float(np.mean(res)) if len(res) >= 5 else None
+         cands = []
+-        for c in self._plan_candidates(start["q"], start["v"], start["frame"], a):
++        for c in self._plan_candidates(start["q"], start["v"], start["frame"], a, start):
+             p = self.predict_intent(c["plan"], c["a"], start, cal, ecal, anchored, attitude, entry_offset=offset)
+             if p["done"]:                     # an entry (outcome model: kind 1 anchored / 2 not) or a deadline / budget end (kind 0)
+                 cand = {"a": c["a"], "reward": p["reward"], "next_obs": np.zeros(OBS_DIM, np.float32), "done": True,
+                         "kind": (1 if anchored_outcome else 2) if p.get("entry") is not None else 0}
+             elif c["plan"].get("terminal_position_error_m", 1.0) <= 0.3 and 6.5 <= p["r_end"] <= 25.0:   # model domain
+                 cand = {"a": c["a"], "reward": p["reward"], "next_obs": p["obs"], "done": False, "kind": 0, "s2": None}
++                if self.opportunity:            # T2.7: the executor's capture opportunity from the predicted stage end
++                    cand["bound"] = self._opportunity_bound(p["q"], p["v"], start["t"] + STAGE_S, p["rot"], p["omega"], p["true"], start, ecal)
+                 if self.entry_stages >= 2 and self.label_policy is not None:
+                     a2, logp = self.label_policy(p["obs"])
+                     p2 = self.predict_second_stage(p, np.asarray(a2, dtype=np.float64), start, cal, ecal, attitude)
+@@ -827,14 +876,34 @@ class T2StageEnv(gym.Env):
+             if self.diagnostics:      # label audit against truth branches: the raw (calibration-only) prediction beside it
+                 cand["anchored"] = p; cand["raw"] = self.predict_intent(c["plan"], c["a"], start, cal, ecal, raw, attitude)
+             cands.append(cand)
++        fact_bound = None
++        if self.opportunity and entered is None and event is None:   # T2.7: the executed intent's bound from its realized stage end
++            from env.t1_p_stage import relative_inertial as _ri
++            q1, v1 = _ri(e); t1 = self.env.time_s; w = e.config.reward
++            r_true = -w.time_cost_per_s * (t1 - start["t"]) - w.delta_v_cost_per_m_s * (trace[-1]["dv"] - start["dv"])
++            fact_bound = self._opportunity_bound(q1, v1, t1, self.env.target_state.rotation, self.env.target_state.omega, r_true, start, ecal)
+         diag = {"fact_entry": fact.get("entry") is not None, "fact_cutoff": bool(fact["done"]) and fact.get("entry") is None, "entered": entered is not None, "entry_offset": offset, "candidates": len(cands),
+                 "entry_bias": entry_bias, "entry_records": len(ecal.rows)}
+         if self.diagnostics:
+             diag["anchored_fact"] = self.predict_intent(plan, a, start, cal, ecal, anchored, attitude, entry_offset=offset, brake_model=False)
+             diag["raw_fact"] = fact
+-        return {"fact": {"reward": fact["reward"], "next_obs": fact.get("obs", np.zeros(OBS_DIM, np.float32)), "done": bool(fact["done"])},
++        if self.opportunity:
++            diag["bounds"] = sum(c.get("bound") is not None for c in cands); diag["track"] = self._track is not None
++            diag["fact_bound"] = fact_bound is not None
++        return {"fact": {"reward": fact["reward"], "next_obs": fact.get("obs", np.zeros(OBS_DIM, np.float32)), "done": bool(fact["done"]),
++                         "bound": fact_bound},
+                 "cands": cands, "diag": diag}
+ 
++    def _opportunity_bound(self, q, v, t_abs, rot, omega, stage_true: float, start: dict, ecal) -> float | None:
++        """T2.7 one-sided target of an intent whose stage ends at (q, v, t_abs): its stage reward plus the discounted value
++        of the executor's earliest feasible entry from there (entry-outcome replay with the time left), in the critic's
++        shaped units: r1 + gamma G - Phi(s) (PBRS: Phi of the stage end cancels, the terminal's is 0). None: no plan."""
++        opp = self._opportunity(q, v, t_abs, rot, omega)
++        if opp is None:
++            return None
++        g = ecal.predict(opp["tau"], opp["dv_plan"], self.env.config.reward, float(self.mission["deadline_s"]) - float(t_abs))["reward"]
++        return float(stage_true + GAMMA_STAGE * g - (start["phi"] if self.shaping else 0.0))
++
+     def step_pure(self):
+         """Paper baseline: one T1Env step of the shared MPC alone (fixed terminal set-point); the stage
+         layer and its far-field execution law are switched off for the whole episode."""
+@@ -912,26 +981,31 @@ class T2StageEnv(gym.Env):
+                     self._try_bridge(m)
+         return float(r), event, info
+ 
+-    def candidate_actions(self, action) -> list[np.ndarray]:
++    def candidate_actions(self, action, track=None) -> list[np.ndarray]:
+         """K counterfactual intents: the decisive alternatives of the scenario (no along-sweep motion, the
+         opposite along-sweep sense, a slower close), one anywhere in the box, the rest local (radius 0.5).
+-        A structured alternative within 0.15 of the executed intent is replaced by a global one."""
++        A structured alternative within 0.15 of the executed intent is replaced by a global one. T2.7: ``track``,
++        the executor's projected opportunity plan, takes the global one's place (the global draw is still made, so the
++        local candidates and the random stream are those of T2.6.1)."""
+         a = np.clip(np.asarray(action, dtype=np.float64).reshape(-1)[:2], -1.0, 1.0)
+         out = []
+         for alt in ([a[0], 0.0], [a[0], -a[1] if abs(a[1]) > 0.25 else -0.5], [a[0] - 0.6, a[1]]):
+             alt = np.clip(np.asarray(alt, dtype=np.float64), -1.0, 1.0)
+             out.append(alt if np.linalg.norm(alt - a) > 0.15 else self.rng.uniform(-1.0, 1.0, size=2))
+-        out.append(self.rng.uniform(-1.0, 1.0, size=2))
++        glob = self.rng.uniform(-1.0, 1.0, size=2)
++        out.append(glob if track is None else np.asarray(track, dtype=np.float64))
+         while len(out) < self.candidates:
+             step = self.rng.normal(size=2); step = CANDIDATE_RADIUS * step / max(np.linalg.norm(step), 1e-9) * self.rng.uniform(0.3, 1.0)
+             out.append(np.clip(a + step, -1.0, 1.0))
+         return out[:self.candidates]
+ 
+-    def _plan_candidates(self, q, v, frame, action) -> list[dict]:
++    def _plan_candidates(self, q, v, frame, action, start: dict | None = None) -> list[dict]:
+         if self.candidates <= 0:
+             return []
+         out, mass = [], self.env.chaser_parameters.mass
+-        for ac in self.candidate_actions(action):
++        track = self._track_intent(start) if (self.opportunity and start is not None) else None
++        self._track = track
++        for ac in self.candidate_actions(action, track):
+             goal = stage_goal(q, v, frame, ac, mass, geometry=self.geometry)
+             plan = self.generator.planner.solve(q, v, goal["q_goal"], goal["v_goal"])
+             if not plan["feasible"]:
+diff --git a/experiments/t2.py b/experiments/t2.py
+index 703c2d3..a06725a 100644
+--- a/experiments/t2.py
++++ b/experiments/t2.py
+@@ -166,6 +166,7 @@ def main():
+     p.add_argument('--entry-stages', type=int, default=None); p.add_argument('--updates-per-transition', type=float, default=2.0)
+     p.add_argument('--model-beta', type=float, default=0.5)
+     p.add_argument('--urgent-deadline', default=None, help='LO,HI s: urgent missions\' deadline range (default 170,210)')
++    p.add_argument('--opportunity', action='store_true', help='T2.7 (e_mve): executor opportunity bounds and candidate; replaces stage-2 rows')
+     a = p.parse_args(); out = Path(a.output)
+     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'): os.environ.setdefault(k, '1')
+     window = not a.no_window
+@@ -176,7 +177,7 @@ def main():
+         from train.t2_mve_sac import train
+         train(out, a.arm, a.seed, a.steps, a.workers, [int(x) for x in a.checkpoints.split(',')], a.smoke,
+               updates_per_transition=a.updates_per_transition, entry_stages=a.entry_stages, window=window, model_beta=a.model_beta,
+-              urgent_deadline=urgent)
++              urgent_deadline=urgent, opportunity=a.opportunity)
+ 
+ 
+ if __name__ == '__main__':
+diff --git a/experiments/t2_decide.py b/experiments/t2_decide.py
+index f5110a4..f60be88 100644
+--- a/experiments/t2_decide.py
++++ b/experiments/t2_decide.py
+@@ -306,6 +306,39 @@ def decide_t26w(r: dict, mech: dict | None = None, checkpoints=T26_CHECKPOINTS)
+     return out
+ 
+ 
++def decide_t27(r: dict, mech: dict | None = None, checkpoints=(1000, 2000, 3000, 4000)) -> dict:
++    """T2.7 executor opportunity supervision (pre-registered with its run order): EACC with the opportunity bounds (seeds 0
++    and 1 from zero, 4000 decisions) against the T2.6W SAC (reused: the task is T2.6W's and the SAC arm never computes a
++    label), checkpoints 1000..4000 on the 48 development openings, urgent deadlines U(140, 200) s.
++
++      C0, E1, U, E2, S   as t26w over the checkpoints (unchanged thresholds)
++      M  mechanism       both EACC runs, probes from 1000 on: bound_share >= 0.05 (bounds exist), bound_active_share > 0
++                         (they move the critic somewhere), w_mean >= 0.5 (not weighted away)
++    Reported as t26w."""
++    stub = {k: {'two_stage_share': 1.0, 'decisive_share': 1.0, 'w2_mean': 1.0, 'pi_gap_sigma_median': 0.0, 'grad_cos': 1.0}
++            for k in (mech or {'none': None})}
++    out = decide_t26w(r, stub if mech else {}, checkpoints)
++    if out['verdict'] == 'incomplete':
++        return out
++    c, v = out['criteria'], out['values']
++    mech = mech or {}
++    v['mechanism'] = mech
++    c['M_mechanism'] = bool(mech) and all((x.get('bound_share') or 0) >= 0.05 and (x.get('bound_active_share') or 0) > 0
++                                          and (x.get('w_mean') or 0) >= 0.5 for x in mech.values())
++    pos = [v['paired_auc'][s] > 0 for s in ('0', '1')]
++    if not c['M_mechanism']:
++        out['verdict'] = 'mechanism_failure'
++    elif not (c['E2_final'] and c['S_safety']):
++        out['verdict'] = 'harmful'
++    elif c['E1_efficiency'] and c['U_urgent']:
++        out['verdict'] = 'pass'
++    elif all(pos) or (c['U_urgent'] and any(pos)):
++        out['verdict'] = 'partial'
++    else:
++        out['verdict'] = 'no_gain'
++    return out
++
++
+ def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), start=1000) -> dict:
+     """Mean of the T2.5 mechanism probes of each EACC run from ``start`` decisions on (model_stats.json)."""
+     out = {}
+@@ -316,7 +349,8 @@ def mechanism_readings(train_root, arms=('TRAIN_e_mve_s0', 'TRAIN_e_mve_s1'), st
+         ms = [m for m in json.loads(f.read_text(encoding='utf-8')) if m['steps'] >= start]
+         out[arm] = {k: (float(np.mean([m[k] for m in ms if m.get(k) is not None])) if any(m.get(k) is not None for m in ms) else None)
+                     for k in ('two_stage_share', 'decisive_share', 'c_mean', 'grad_cos', 'loss_share', 'increment_abs_mean', 'w_mean',
+-                              'w2_mean', 'pi_gap_sigma_median', 'stage2_rows', 'stage2_entry_share', 'stage1_cutoff_share', 'stage2_cutoff_share')}
++                              'w2_mean', 'pi_gap_sigma_median', 'stage2_rows', 'stage2_entry_share', 'stage1_cutoff_share', 'stage2_cutoff_share',
++                              'bound_share', 'bound_active_share', 'bound_gap_mean', 'fact_bound_share')}
+     return out
+ 
+ 
+@@ -377,18 +411,20 @@ def decide_t25(r: dict, checkpoints=T25_CHECKPOINTS, min_seeds: int = 3, require
+ def main():
+     p = argparse.ArgumentParser(description=__doc__)
+     p.add_argument('--readout', required=True); p.add_argument('--output', required=True); p.add_argument('--final', type=int, default=None)
+-    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251', 't26', 't26w'], default='t22')
++    p.add_argument('--criteria', choices=['t22', 't23', 't24', 't25', 'v25', 'v251', 't26', 't26w', 't27'], default='t22')
+     p.add_argument('--train-root', default=None, help='v25 / v251: the directory holding TRAIN_e_mve_s0 / _s1 (mechanism readings)')
+     p.add_argument('--checkpoints', default=None, help='t25 / t26 / t26w: comparison checkpoints, e.g. 1000,2000,3000,4000')
+     p.add_argument('--min-seeds', type=int, default=3); p.add_argument('--no-converged', action='store_true')
+     a = p.parse_args()
+     r = json.loads(Path(a.readout).read_text(encoding='utf-8'))
+     ck = tuple(int(x) for x in a.checkpoints.split(',')) if a.checkpoints else T25_CHECKPOINTS
+-    if a.criteria in ('v25', 'v251', 't26', 't26w'):
++    if a.criteria in ('v25', 'v251', 't26', 't26w', 't27'):
+         if not a.train_root:
+             p.error('--criteria v25 / v251 / t26 / t26w needs --train-root (the mechanism readings)')
+         mech = mechanism_readings(a.train_root)
+-        if a.criteria in ('t26', 't26w'):
++        if a.criteria == 't27':
++            res = decide_t27(r, mech, ck if a.checkpoints else (1000, 2000, 3000, 4000))
++        elif a.criteria in ('t26', 't26w'):
+             res = (decide_t26 if a.criteria == 't26' else decide_t26w)(r, mech, ck if a.checkpoints else T26_CHECKPOINTS)
+         else:
+             res = {'v25': decide_v25, 'v251': decide_v251}[a.criteria](r, mech)
+diff --git a/experiments/t2_readout.py b/experiments/t2_readout.py
+index 677d374..a1863ca 100644
+--- a/experiments/t2_readout.py
++++ b/experiments/t2_readout.py
+@@ -178,7 +178,8 @@ def curve(eval_root, train_root, screen_dir, out, expected=24):
+                                           for k in ('loss_share', 'grad_cos', 'two_stage_share', 'decisive_share', 'c_mean', 'c_low_share',
+                                                     'increment_abs_mean', 'age_capped_share', 'label_age_mean', 'entry_bias_now', 'entry_share',
+                                                     'stage2_rows', 'w2_mean', 'pi_gap_sigma_median', 'stage2_entry_share',
+-                                                    'stage1_cutoff_share', 'stage2_cutoff_share')}}
++                                                    'stage1_cutoff_share', 'stage2_cutoff_share',
++                                                    'bound_share', 'bound_active_share', 'bound_gap_mean', 'fact_bound_share')}}
+     Path(out).write_text(json.dumps(res, indent=1), encoding='utf-8'); print(json.dumps(res, indent=1)[:4000])
+ 
+ 
+diff --git a/tests/test_t2_stage.py b/tests/test_t2_stage.py
+index 78c6779..2d7b8b9 100644
+--- a/tests/test_t2_stage.py
++++ b/tests/test_t2_stage.py
+@@ -615,7 +615,7 @@ def test_model_loss_averages_over_stage1_and_stage2_rows():
+     import inspect, train.t2_mve_sac as t
+     src = inspect.getsource(t.T2SAC._model_loss)
+     assert 'self.critic(o1, a2)' in src and 'n_rows += int(o1.shape[0])' in src and 'loss = 0.5 * total / max(n_rows, 1)' in src
+-    assert t.LEARNER_VERSION == 't2-learner-2.6.1'
++    assert t.LEARNER_VERSION == 't2-learner-2.7'
+ 
+ 
+ def test_v251_validation_decision_and_cli(tmp_path):
+@@ -721,7 +721,9 @@ def test_training_passes_the_mission_profile_to_every_worker():
+     import inspect, train.t2_mve_sac as t
+     assert 'urgent_deadline_s=tuple(float(x) for x in urgent_deadline)' in inspect.getsource(t.worker)
+     src = inspect.getsource(t.train)
+-    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline)' in src and "'urgent_deadline_s'" in src
++    assert 'args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, opportunity)' in src and "'urgent_deadline_s'" in src
++    assert "'opportunity': opportunity" in src and 'entry_stages = 1' in src        # T2.7 replaces the stage-2 rows
++    assert "opportunity = bool(opportunity) and arm == 'e_mve'" in src              # never in the SAC arm
+ 
+ 
+ def test_t26w_readout_bins_late_window_and_both_success(tmp_path):
+@@ -924,3 +926,94 @@ def test_rank_audit_counts_decisive_pairs_per_scorer():
+     assert s['label1_abs_error']['event']['n'] == 2 and s['label1_abs_error']['bootstrap']['n'] == 2
+     assert s['diff_abs_error']['bootstrap'] == {'n': 2, 'median': 55.5}           # |0.5 + 100| and |0.5 + 10|
+     assert s['critic']['kendall_tau_mean'] is not None
++
++
++def test_opportunity_off_keeps_the_t261_candidates_and_labels():
++    """T2.7 off (the default, and the SAC arm): the candidate draw and its random stream are T2.6.1's; no bounds."""
++    from env.t2_stage import T2StageEnv
++    a, b = T2StageEnv(candidates=8, seed=3), T2StageEnv(candidates=8, seed=3)
++    x = a.candidate_actions(np.array([0.3, 0.4]))
++    y = b.candidate_actions(np.array([0.3, 0.4]), None)
++    assert all(np.array_equal(u, v) for u, v in zip(x, y)) and len(x) == 8 and not a.opportunity
++    track = np.array([0.75, -0.5])
++    z = T2StageEnv(candidates=8, seed=3).candidate_actions(np.array([0.3, 0.4]), track)
++    assert np.array_equal(z[3], track)                                              # the executor's candidate takes the global slot
++    assert all(np.array_equal(u, v) for k, (u, v) in enumerate(zip(x, z)) if k != 3)  # the local candidates are unchanged
++
++
++def test_opportunity_finds_the_executors_earliest_entry_and_respects_the_deadline():
++    """T2.7: the executor's conditional G* from a state (estimated inertia, constant-rate attitude) on the direct grid,
++    arrivals before deadline - margin; none when the deadline leaves no arrival; the projection is an action of the grid."""
++    from env.t1_p_stage import relative_inertial
++    from env.t2_stage import BRIDGE_DEADLINE_MARGIN_S, OPPORTUNITY_TAUS_S, T2StageEnv, TRACK_GRID, frame_now
++    env = T2StageEnv(openings=[2910001], seed_base=2_910_000, opportunity=True)
++    env.reset(options={'opening': 2910001}); e = env.env
++    q, v = relative_inertial(e)
++    rot, om = e.target_state.rotation, e.target_state.omega
++    opp = env._opportunity(q, v, e.time_s, rot, om)
++    assert opp is not None and opp['tau'] in OPPORTUNITY_TAUS_S and opp['tau'] <= env.mission['deadline_s'] - BRIDGE_DEADLINE_MARGIN_S
++    assert env._opportunity(q, v, env.mission['deadline_s'] - BRIDGE_DEADLINE_MARGIN_S - 10.0, rot, om) is None
++    start = {'q': q, 'v': v, 'frame': frame_now(e, q), 't': e.time_s, 'rotation': rot, 'omega': om}
++    a = env._track_intent(start)
++    assert a is not None and tuple(float(x) for x in a) in TRACK_GRID
++
++
++def test_opportunity_bound_is_the_stage_reward_plus_the_discounted_entry_value():
++    """T2.7: L = r1 + gamma G - Phi(s) (PBRS cancels Phi of the stage end), G = the entry-outcome replay of the
++    executor's plan with the time left; no plan, no bound."""
++    from env.t2_stage import ENTRY_CAL_MIN, EntryCalibration, GAMMA_STAGE, T2StageEnv
++    env = T2StageEnv(shaping=True, opportunity=True); env.reset()
++    ecal = EntryCalibration()
++    for k in range(ENTRY_CAL_MIN):
++        ecal.add(30.0, 0.3, 80.0, 0.35, True, 0.0, 150.0)
++    env._opportunity = lambda q, v, t, rot, om: {'tau': 30.0, 'dv_plan': 0.3, 'plan': None}
++    start = {'phi': -7.0}
++    g = ecal.predict(30.0, 0.3, env.env.config.reward, env.mission['deadline_s'] - 40.0)['reward']
++    assert abs(env._opportunity_bound(0, 0, 40.0, 0, 0, -2.5, start, ecal) - (-2.5 + GAMMA_STAGE * g + 7.0)) < 1e-9
++    env._opportunity = lambda *args: None
++    assert env._opportunity_bound(0, 0, 40.0, 0, 0, -2.5, start, ecal) is None
++
++
++def test_bound_rows_are_one_sided_and_enter_the_model_loss():
++    """T2.7 learner: a bound row adds w max(0, L - Q)^2 only where the critic values the intent below L; the executed
++    intent's bound (realized stage end) too; readings report the share of bounded and active rows."""
++    import torch as th
++    from env.t2_stage import OBS_DIM
++    m = _sac()
++    for k in range(16):
++        fact = {'reward': -1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': False, 'bound': 500.0 if k % 2 else None}
++        cands = [{'a': np.full(2, .1, np.float32), 'reward': -1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': False, 'bound': 1e4},
++                 {'a': np.full(2, -.1, np.float32), 'reward': -1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': False, 'bound': -1e4},
++                 {'a': np.full(2, .3, np.float32), 'reward': -1.0, 'next_obs': np.zeros(OBS_DIM, np.float32), 'done': False}]
++        m.replay_buffer.add(np.zeros((1, OBS_DIM)), np.zeros((1, OBS_DIM)), np.zeros((1, 2)), np.array([-1.0]), np.array([False]),
++                            [{'model': {'fact': fact, 'cands': cands, 'diag': {'reason': 'stage'}}}])
++    rb = m.replay_buffer
++    assert rb.model_counts['bounds'] == 32 and rb.model_counts['fact_bounds'] == 8
++    data = rb.sample(16)
++    m.td_ms = 1.0
++    mb = rb.model_batch(); k = mb['cand_valid'].shape[1]
++    rows = mb['fact_valid'] > 0; mask = (mb['cand_valid'] > 0) & rows.reshape(-1, 1)
++    out = m._bound_rows(data, mb, mask, rows, th.zeros(16))
++    assert abs(out['bound_share'] - 2 / 3) < 1e-6 and out['rows'] == int(((mb['cand_bound_valid'] > 0) & mask).sum() + (mb['fact_bound_valid'] > 0).sum())
++    assert abs(out['bound_active_share'] - 0.5) < 1e-6          # L = 1e4 binds, L = -1e4 never does
++    assert float(out['loss_sum']) > 0 and 0 < out['fact_bound_share'] < 1
++    m.train(gradient_steps=5, batch_size=8)
++    s = [x for x in m.model_stats if x.get('bound_share') is not None]
++    assert s and all(np.isfinite(x['model_td']) for x in s if x.get('model_td') is not None)
++
++
++def test_t27_verdict_keeps_the_t26w_criteria_and_reads_the_bound_mechanism():
++    """t27: efficiency, urgent captures, final and safety exactly as t26w over 1000..4000 (on the T2.6W1 readout it
++    reproduces the native no_gain); the mechanism criterion reads the T2.7 bound probes instead of the stage-2 ones."""
++    import json
++    from pathlib import Path
++    from experiments.t2_decide import decide_t26w, decide_t27
++    r = json.loads(Path('evidence/T2_6W1_CUTOFF/C_READOUT.json').read_text(encoding='utf-8'))
++    good = {'TRAIN_e_mve_s0': {'bound_share': 0.4, 'bound_active_share': 0.2, 'w_mean': 0.9},
++            'TRAIN_e_mve_s1': {'bound_share': 0.3, 'bound_active_share': 0.1, 'w_mean': 0.8}}
++    v = decide_t27(r, good)
++    ref = decide_t26w(r, {'x': {'two_stage_share': 1, 'decisive_share': 1, 'w2_mean': 1, 'pi_gap_sigma_median': 0, 'grad_cos': 1}},
++                      (1000, 2000, 3000, 4000))
++    assert v['verdict'] == ref['verdict'] == 'no_gain' and v['values']['paired_auc'] == ref['values']['paired_auc']
++    assert decide_t27(r, {k: dict(x, bound_active_share=0.0) for k, x in good.items()})['verdict'] == 'mechanism_failure'
++    assert decide_t27(r, {})['verdict'] == 'mechanism_failure'
+diff --git a/train/t2_mve_sac.py b/train/t2_mve_sac.py
+index ec9c570..e39c346 100644
+--- a/train/t2_mve_sac.py
++++ b/train/t2_mve_sac.py
+@@ -53,8 +53,9 @@ UPDATES_PER_TRANSITION = 2
+ SYNC_UPDATES = 100
+ AGE_CAP = 2000
+ #: learner version recorded in the manifest (T2.5.1: one-step stage-2 rows; T2.6: calibration shared by the workers;
+-#: T2.6.1: labels end at the deadline / budget, env t2-stage-0.4.2; env 0.4.3 adds the budget before a predicted entry)
+-LEARNER_VERSION = "t2-learner-2.6.1"
++#: T2.6.1: labels end at the deadline / budget, env t2-stage-0.4.2; env 0.4.3 adds the budget before a predicted entry;
++#: T2.7: executor opportunity bounds (``_bound_rows``; env 0.5.0 ``opportunity=True``), the stage-2 policy-copy rows replaced)
++LEARNER_VERSION = "t2-learner-2.7"
+ #: T2.6: every worker's executed stages and entries feed one stage / entry calibration (one executor, one model of it).
+ #: Per-worker calibrations were an artifact of the parallel collector: each worker waited for its own 20 entries, so the
+ #: labels started only after ~workers x 20 entries (T2.5.1: first model rows at 512 / 537 decisions with 3 workers).
+@@ -79,6 +80,9 @@ class StageReplay(ReplayBuffer):
+         self.c2_logp = np.zeros((*shape, k), np.float32); self.c2_r = np.zeros((*shape, k), np.float32)
+         self.c2_obs = np.zeros((*shape, k, d), np.float32); self.c2_done = np.zeros((*shape, k), np.float32)
+         self.c2_kind = np.zeros((*shape, k), np.float32)
++        #: T2.7 executor opportunity bounds (one-sided targets): per candidate, and for the executed intent (realized stage end)
++        self.cand_bound = np.zeros((*shape, k), np.float32); self.cand_bound_valid = np.zeros((*shape, k), np.float32)
++        self.fact_bound = np.zeros(shape, np.float32); self.fact_bound_valid = np.zeros(shape, np.float32)
+         self.created = np.zeros(shape, np.float32)             # stored transitions at label time (label age diagnostic)
+         self.stored = 0
+         self.model_counts = {'transitions': 0, 'with_candidates': 0, 'candidates': 0, 'entry_candidates': 0, 'reason': {}}
+@@ -88,6 +92,7 @@ class StageReplay(ReplayBuffer):
+         i = self.pos
+         self.fact_valid[i] = 0.0; self.cand_valid[i] = 0.0; self.cand_done[i] = 0.0; self.cand_kind[i] = 0.0
+         self.c2_valid[i] = 0.0; self.c2_done[i] = 0.0; self.c2_kind[i] = 0.0
++        self.cand_bound_valid[i] = 0.0; self.fact_bound_valid[i] = 0.0
+         self.created[i] = self.stored; self.stored += 1
+         for e, info in enumerate(infos):
+             model = info.get('model') or {}
+@@ -98,12 +103,16 @@ class StageReplay(ReplayBuffer):
+                 continue
+             self.fact_r[i, e] = fact['reward']; self.fact_obs[i, e] = fact['next_obs']; self.fact_done[i, e] = float(fact['done'])
+             self.fact_valid[i, e] = 1.0
++            if fact.get('bound') is not None:
++                self.fact_bound[i, e] = fact['bound']; self.fact_bound_valid[i, e] = 1.0; c['fact_bounds'] = c.get('fact_bounds', 0) + 1
+             c['with_candidates'] += 1; c['candidates'] += len(cands)
+             for j, x in enumerate(cands):
+                 self.cand_a[i, e, j] = x['a']; self.cand_r[i, e, j] = x['reward']; self.cand_obs[i, e, j] = x['next_obs']
+                 self.cand_done[i, e, j] = float(x['done']); self.cand_valid[i, e, j] = 1.0; self.cand_kind[i, e, j] = float(x.get('kind', 0))
+                 c['entry_candidates'] += int(x['done'] and x.get('kind', 0) > 0)
+                 c['cutoff_candidates'] = c.get('cutoff_candidates', 0) + int(x['done'] and x.get('kind', 0) == 0)   # T2.6: deadline / budget
++                if x.get('bound') is not None and not x['done']:
++                    self.cand_bound[i, e, j] = x['bound']; self.cand_bound_valid[i, e, j] = 1.0; c['bounds'] = c.get('bounds', 0) + 1
+                 y2 = x.get('s2')
+                 if y2 is not None and not x['done']:
+                     self.c2_valid[i, e, j] = 1.0; self.c2_a[i, e, j] = y2['a']; self.c2_logp[i, e, j] = y2['logp']
+@@ -127,7 +136,7 @@ class StageReplay(ReplayBuffer):
+         i, e = self._last
+         return {k: self.to_torch(getattr(self, k)[i, e]) for k in
+                 ('fact_r', 'fact_obs', 'fact_done', 'fact_valid', 'cand_a', 'cand_r', 'cand_obs', 'cand_done', 'cand_valid', 'cand_kind', 'created',
+-                 'c2_valid', 'c2_a', 'c2_logp', 'c2_r', 'c2_obs', 'c2_done', 'c2_kind')}
++                 'c2_valid', 'c2_a', 'c2_logp', 'c2_r', 'c2_obs', 'c2_done', 'c2_kind', 'cand_bound', 'cand_bound_valid', 'fact_bound', 'fact_bound_valid')}
+ 
+ 
+ class T2SAC(SAC):
+@@ -239,6 +248,9 @@ class T2SAC(SAC):
+             o1, a2, y2, w2, gap, d2, _ = rows2
+             total = total + sum((w2 * (q - y2) ** 2).sum() for q in self.critic(o1, a2))
+             n_rows += int(o1.shape[0])
++        bnd = self._bound_rows(data, m, mask, rows, err)         # T2.7 executor opportunity bounds (one-sided)
++        if bnd is not None:
++            total = total + bnd['loss_sum']; n_rows += bnd['rows']
+         loss = 0.5 * total / max(n_rows, 1)
+         e = err[rows]
+         n2 = int(idx.sum())
+@@ -256,7 +268,45 @@ class T2SAC(SAC):
+                       'pi_gap_sigma_median': float(rows2[4].median()) if rows2 is not None else None,
+                       'stage2_entry_share': float((rows2[6] == 2).float().mean()) if rows2 is not None else None,
+                       'stage2_cutoff_share': float(((m['c2_done'][mask] > 0) & (m['c2_kind'][mask] == 0) & (m['c2_valid'][mask] > 0)).float().mean()),
+-                      'stage1_cutoff_share': float(((m['cand_done'][mask] > 0) & (m['cand_kind'][mask] == 0)).float().mean())}
++                      'stage1_cutoff_share': float(((m['cand_done'][mask] > 0) & (m['cand_kind'][mask] == 0)).float().mean()),
++                      **({k: v for k, v in bnd.items() if k not in ('loss_sum', 'rows')} if bnd is not None else {})}
++
++    def _bound_rows(self, data, m, mask, rows, err):
++        """T2.7 executor opportunity bounds: Q(s, a) >= L(s, a) = r1 + gamma G - Phi(s), G the value of the executor's
++        earliest feasible entry from the intent's stage end (``T2StageEnv._opportunity_bound``), for the candidates
++        (predicted stage end) and the executed intent (realized stage end). One-sided: a row adds
++        w max(0, L - Q)^2 to the model loss and nothing where the critic already values the intent at least as high.
++        Validity: L <= Q*(s, a) when the plan is realizable by stage intents (sandbox: tracking it captured 19/19 urgent
++        audit missions) and the outcome model is unbiased; the soft Bellman operator followed by max(., L) is still a
++        gamma-contraction with Q* a fixed point (optimality tightening, He et al. 2017). Weight as every model row:
++        eps = |e_a| + b for a candidate (model state + outcome model), eps = b for the executed intent; b the current
++        entry outcome-model bias (one sigma while unknown)."""
++        cb = (m['cand_bound_valid'] > 0) & mask
++        fb = (m['fact_bound_valid'] > 0) & rows
++        if not bool(cb.any()) and not bool(fb.any()):
++            return None
++        b_now = float(np.sqrt(self.td_ms)) if self.entry_bias_now is None else abs(float(self.entry_bias_now))
++        k = mask.shape[1]
++        total, n, gap, act = 0.0, 0, [], []
++        if bool(cb.any()):
++            s = data.observations[:, None, :].expand(-1, k, -1)[cb]
++            lb = m['cand_bound'][cb].reshape(-1, 1)
++            ea = err.abs().reshape(-1, 1).expand(-1, k)[cb].reshape(-1, 1)
++            wb = 1.0 / (1.0 + (ea + b_now) ** 2 / self.td_ms)
++            for q in self.critic(s, m['cand_a'][cb]):
++                h = th.relu(lb - q); total = total + (wb * h ** 2).sum(); gap.append(h.detach()); act.append((h > 0).float().detach())
++            n += int(cb.sum())
++        if bool(fb.any()):
++            lf = m['fact_bound'][fb].reshape(-1, 1)
++            wf = th.full_like(lf, 1.0 / (1.0 + b_now ** 2 / self.td_ms))
++            for q in self.critic(data.observations[fb], data.actions[fb]):
++                h = th.relu(lf - q); total = total + (wf * h ** 2).sum()
++            n += int(fb.sum())
++        cand_rows = max(int(mask.sum()), 1)
++        return {'loss_sum': total, 'rows': n, 'bound_share': float(cb.sum()) / cand_rows,
++                'fact_bound_share': float(fb.sum()) / max(int(rows.sum()), 1),
++                'bound_active_share': float(th.cat(act).mean()) if act else None,
++                'bound_gap_mean': float(th.cat(gap).mean()) if gap else None}
+ 
+     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
+         self.policy.set_training_mode(True)
+@@ -368,7 +418,7 @@ def merge_calibration(env, rows) -> None:
+             obj.rows = (obj.rows + list(rows[kind]))[-CALIBRATION_WINDOW:]
+ 
+ 
+-def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool, urgent_deadline=None) -> None:
++def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, window: bool, urgent_deadline=None, opportunity: bool = False) -> None:
+     """One environment: send (transition or None, observation to act on), receive the action; until 'stop'."""
+     import os
+     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
+@@ -377,7 +427,7 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
+     from env.t2_stage import T2Mission, T2StageEnv
+     mission = T2Mission() if urgent_deadline is None else T2Mission(urgent_deadline_s=tuple(float(x) for x in urgent_deadline))
+     env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, candidates=candidates, shaping=True, seed=seed * 100 + rank,
+-                     entry_stages=entry_stages, window=window, mission=mission)
++                     entry_stages=entry_stages, window=window, mission=mission, opportunity=opportunity)
+     obs, _ = env.reset(); transition = None
+     actor = None
+     outbox = share_calibration(env) if (POOL_CALIBRATION and candidates > 0) else None
+@@ -409,12 +459,15 @@ def worker(conn, rank: int, seed: int, candidates: int, entry_stages: int, windo
+ 
+ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[int], smoke: bool = False,
+           updates_per_transition: float = UPDATES_PER_TRANSITION, entry_stages: int | None = None, window: bool = True,
+-          model_beta: float = MODEL_BETA, urgent_deadline=None) -> None:
++          model_beta: float = MODEL_BETA, urgent_deadline=None, opportunity: bool = False) -> None:
+     import multiprocessing as mp
+     from multiprocessing.connection import wait
+     from stable_baselines3.common.logger import configure
+     from env.t2_stage import ENTRY_STAGES, T2_VERSION
+     entry_stages = ENTRY_STAGES if entry_stages is None else int(entry_stages)
++    opportunity = bool(opportunity) and arm == 'e_mve'
++    if opportunity:
++        entry_stages = 1      # T2.7: the executor's opportunity bound replaces the stage-2 policy-copy rows (not added to them)
+     out.mkdir(parents=True, exist_ok=False); (out / 'checkpoints').mkdir()
+     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+     th.set_num_threads(1)
+@@ -427,12 +480,13 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
+                                                    'gradient_steps_per_transition': model.gradient_steps, 'entry_stages': entry_stages, 'sync_updates': SYNC_UPDATES, 'age_cap': AGE_CAP,
+                                                    'pooled_calibration': bool(POOL_CALIBRATION and candidates > 0),
+                                                    'urgent_deadline_s': list(urgent_deadline) if urgent_deadline is not None else [170.0, 210.0],
++                                                   'opportunity': opportunity,
+                                                    'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION}, indent=1), encoding='utf-8')
+     ctx = mp.get_context('spawn')
+     pipes, procs = [], []
+     for rank in range(workers):
+         a, b = ctx.Pipe()
+-        p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline), daemon=True)
++        p = ctx.Process(target=worker, args=(b, rank, seed, candidates, entry_stages, window, urgent_deadline, opportunity), daemon=True)
+         p.start(); pipes.append(a); procs.append(p)
+     marks = sorted(set([m for m in marks if m <= steps] + [steps]))
+     model.save(out / 'checkpoints' / 'step_0')

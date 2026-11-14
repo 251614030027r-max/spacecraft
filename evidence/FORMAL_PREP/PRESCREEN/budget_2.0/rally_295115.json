@@ -1,0 +1,185 @@
+{
+ "opening": 295115,
+ "event": "success",
+ "return": 41.698441462330315,
+ "time_s": 151.1,
+ "delta_v": 1.381988963441744,
+ "stages": 4,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 1,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 331.3,
+  "urgent": false,
+  "budget_m_s": 2.0,
+  "time_cost_per_s": 0.02,
+  "fuel_cost_per_m_s": 40.0
+ },
+ "wall_s": 114.49009943008423,
+ "decisions": [
+  {
+   "a": [
+    0.7137521666311495,
+    0.0
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.13812948816691,
+   "planned_dv": 0.16596713804761928,
+   "executed_dv": 0.16624676106060038,
+   "model": "off",
+   "event": null,
+   "t_start": 0.0,
+   "remaining_s": 331.3,
+   "remaining_dv": 2.0,
+   "phase_rad": 5.067302259173915,
+   "time_to_pass_s": 127.01914242370235,
+   "lat_err_deg": -61.49453637542865,
+   "macro_end": "stage_complete",
+   "true_mode_event_t": null
+  },
+  {
+   "a": [
+    0.37016786351117614,
+    0.0
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 10.349684861345732,
+   "planned_dv": 0.04215733264558597,
+   "executed_dv": 0.042029018770045806,
+   "model": "off",
+   "event": null,
+   "t_start": 16.0,
+   "remaining_s": 315.3,
+   "remaining_dv": 1.8337532389393996,
+   "phase_rad": 4.360314922057783,
+   "time_to_pass_s": 109.23718136271158,
+   "lat_err_deg": -50.98034322738364,
+   "macro_end": "stage_complete",
+   "true_mode_event_t": null
+  },
+  {
+   "a": [
+    -0.10675070364113803,
+    0.0
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 9.661781687059,
+   "planned_dv": 0.04937822250057351,
+   "executed_dv": 0.04931425671350667,
+   "model": "off",
+   "event": null,
+   "t_start": 32.0,
+   "remaining_s": 299.3,
+   "remaining_dv": 1.7917242201693537,
+   "phase_rad": 3.746089008688548,
+   "time_to_pass_s": 93.80131253825799,
+   "lat_err_deg": -34.33743840781911,
+   "macro_end": "stage_complete",
+   "true_mode_event_t": null
+  },
+  {
+   "a": [
+    -0.2901915501176002,
+    0.0
+   ],
+   "t": 151.1,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.0708572293495258,
+   "planned_dv": 0.06267023012160891,
+   "executed_dv": 1.1243989268975911,
+   "model": "off",
+   "event": "success",
+   "t_start": 48.0,
+   "remaining_s": 283.3,
+   "remaining_dv": 1.7424099634558472,
+   "phase_rad": 3.1461603040656048,
+   "time_to_pass_s": 78.74991165396388,
+   "lat_err_deg": -18.354193805697776,
+   "macro_end": "entry",
+   "true_mode_event_t": 54.0
+  }
+ ],
+ "initial": {
+  "q": [
+   -9.951472323387861,
+   -8.337978186009815,
+   -3.423319603981815
+  ],
+  "v": [
+   0.029645597024759596,
+   -0.02211908296067122,
+   0.015895517871285847
+  ],
+  "rotation": [
+   [
+    0.4026552078958576,
+    0.12754654610084026,
+    -0.906421900735022
+   ],
+   [
+    0.25790598346569665,
+    -0.9659340427341944,
+    -0.021352488842456024
+   ],
+   [
+    -0.8782672072023046,
+    -0.22517394090995874,
+    -0.42183339020061306
+   ]
+  ],
+  "omega": [
+   -0.004537732658610429,
+   0.009732370223621604,
+   0.038421628799324085
+  ],
+  "axis": [
+   -1.0,
+   0.0,
+   0.0
+  ]
+ },
+ "budget_m_s": 2.0,
+ "min_margins": {
+  "collision_clearance_m": 0.5783835763883798,
+  "union_margin_m": 0.5629564695991576,
+  "fov_margin_deg": 25.165070950626784,
+  "radial_envelope_margin_m_s": 0.009928996823228162,
+  "total_speed_margin_m_s": 0.22678550366653674,
+  "axial_envelope_margin_m_s": 0.016824778140890922
+ },
+ "terminal": {
+  "position_error_m": 0.2289657297830816,
+  "speed_m_s": 0.030291304137246785,
+  "attitude_error_rad": 0.09893461413749617,
+  "angular_velocity_error_rad_s": 0.010305472001179055,
+  "in_cone": true
+ },
+ "cert_wall_s_total": 0,
+ "cert_decisions": 0,
+ "condition": "prescreen",
+ "policy": "rally",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 76.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.15799472237189
+  },
+  {
+   "t": 92.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.156496929887016
+  }
+ ]
+}

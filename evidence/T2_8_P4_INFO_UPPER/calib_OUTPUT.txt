@@ -1,0 +1,33 @@
+selection: capture-prediction accuracy 0.939 (majority 0.770); raw opp2 feasible accuracy 0.870
+heldout: capture-prediction accuracy 0.929 (majority 0.583); raw opp2 feasible accuracy 0.702
+calibrated P(capture) gap >= 0.2 selection: fix 0.03  break 0.008  net 43
+calibrated P(capture) gap >= 0.2 heldout  : fix 0.06  break 0.006  net 61
+calibrated P(capture) gap >= 0.4 selection: fix 0.03  break 0.000  net 51
+calibrated P(capture) gap >= 0.4 heldout  : fix 0.05  break 0.006  net 42
+weights [ 0.18 -0.05  0.54  1.08  1.1   0.46 -0.65]
+
+regret (points, lower better): actor vs actor redirected to a candidate with calibrated capture prob +0.4 (best by critic)
+  held mve early    actor   2.1 ->   2.1  switched 0.00  n=138
+  held mve economy  actor   2.7 ->   2.7  switched 0.01  n=156
+  held mve window   actor  12.9 ->  12.9  switched 0.00  n=216
+  held sac early    actor   3.7 ->   3.7  switched 0.00  n=138
+  held sac economy  actor   4.1 ->   4.1  switched 0.00  n=156
+  held sac window   actor   8.9 ->   8.9  switched 0.00  n=216
+  sel  mve early    actor  32.8 ->  32.8  switched 0.00  n=66
+  sel  mve economy  actor   4.3 ->   4.3  switched 0.00  n=252
+  sel  mve window   actor  14.8 ->  14.8  switched 0.00  n=96
+  sel  sac early    actor  29.8 ->  29.8  switched 0.00  n=66
+  sel  sac economy  actor   5.4 ->   5.4  switched 0.00  n=252
+  sel  sac window   actor  15.0 ->  12.8  switched 0.01  n=96
+critic errors on capture-vs-timeout pairs (gap>=50): calibrated signal tie / fixes / wrong
+   ('held', 'mve') [241, 30, 0]
+   ('held', 'sac') [301, 22, 0]
+   ('sel', 'mve') [227, 12, 0]
+   ('sel', 'sac') [290, 23, 0]
+
+('mve', 'early') mean regret by cause: {'lost capture': np.float64(11.1), 'cost only': np.float64(0.7), 'both fail': np.float64(0.3)} share of decisions: {'lost capture': 0.05, 'cost only': 0.92, 'both fail': 0.03}
+('mve', 'economy') mean regret by cause: {'lost capture': 0.0, 'cost only': np.float64(3.7), 'both fail': 0.0} share of decisions: {'lost capture': 0.0, 'cost only': 1.0, 'both fail': 0.0}
+('mve', 'window') mean regret by cause: {'lost capture': np.float64(10.4), 'cost only': np.float64(0.0), 'both fail': np.float64(3.0)} share of decisions: {'lost capture': 0.05, 'cost only': 0.2, 'both fail': 0.75}
+('sac', 'early') mean regret by cause: {'lost capture': np.float64(11.2), 'cost only': np.float64(0.7), 'both fail': np.float64(0.3)} share of decisions: {'lost capture': 0.05, 'cost only': 0.92, 'both fail': 0.03}
+('sac', 'economy') mean regret by cause: {'lost capture': 0.0, 'cost only': np.float64(4.9), 'both fail': 0.0} share of decisions: {'lost capture': 0.0, 'cost only': 1.0, 'both fail': 0.0}
+('sac', 'window') mean regret by cause: {'lost capture': np.float64(7.1), 'cost only': np.float64(0.1), 'both fail': np.float64(3.5)} share of decisions: {'lost capture': 0.04, 'cost only': 0.21, 'both fail': 0.75}

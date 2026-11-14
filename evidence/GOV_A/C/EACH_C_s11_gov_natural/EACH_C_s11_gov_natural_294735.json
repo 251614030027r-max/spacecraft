@@ -1,0 +1,199 @@
+{
+ "opening": 294735,
+ "event": "success",
+ "return": 67.30151448284954,
+ "time_s": 154.8,
+ "delta_v": 1.721848551715046,
+ "stages": 4,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 1,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 175.8,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 165.16603994369507,
+ "decisions": [
+  {
+   "a": [
+    0.6258103847503662,
+    0.5915050506591797
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 11.588332866531758,
+   "planned_dv": 0.16880660436815328,
+   "executed_dv": 0.16863261707947289,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.6258103847503662,
+     0.5915050506591797
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": true,
+    "commit_before": null,
+    "commit_after": null,
+    "a_exec": [
+     0.6258103847503662,
+     0.5915050506591797
+    ],
+    "wall_s": 2.4354495000006864
+   }
+  },
+  {
+   "a": [
+    0.8120853900909424,
+    0.83211350440979
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 9.386910162926617,
+   "planned_dv": 0.05975171428383702,
+   "executed_dv": 0.059520552559273576,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 16.0,
+    "a": [
+     0.8120853900909424,
+     0.83211350440979
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 3,
+    "act": true,
+    "commit_before": null,
+    "tau_min": 36.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 38.0,
+    "own_admissible": true,
+    "commit_after": 54.0,
+    "a_exec": [
+     0.8120853900909424,
+     0.83211350440979
+    ],
+    "wall_s": 1.728086600007373
+   }
+  },
+  {
+   "a": [
+    0.9706907272338867,
+    0.7443907260894775
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.22409747391116,
+   "planned_dv": 0.08180160470856061,
+   "executed_dv": 0.0926844645674684,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 32.0,
+    "a": [
+     0.9706907272338867,
+     0.7443907260894775
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 7,
+    "act": true,
+    "commit_before": 54.0,
+    "tau_min": 22.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 22.0,
+    "own_admissible": true,
+    "commit_after": 54.0,
+    "a_exec": [
+     0.9706907272338867,
+     0.7443907260894775
+    ],
+    "wall_s": 2.6659535999933723
+   }
+  },
+  {
+   "a": [
+    0.9833054542541504,
+    -0.07556378841400146
+   ],
+   "t": 154.8,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.114967993382645,
+   "planned_dv": 0.1378939954320585,
+   "executed_dv": 1.401010917508831,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 48.0,
+    "a": [
+     0.9833054542541504,
+     -0.07556378841400146
+    ],
+    "status": "replace",
+    "critical": true,
+    "n_admissible": 10,
+    "act": true,
+    "commit_before": 54.0,
+    "tau_min": 6.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 8.0,
+    "own_admissible": true,
+    "recommitted": false,
+    "alt": [
+     0.9706907272338867,
+     0.7443907260894775
+    ],
+    "alt_t": 6.0,
+    "alt_kind": "entry",
+    "alt_incumbent": true,
+    "commit_after": 54.0,
+    "a_exec": [
+     0.9706907272338867,
+     0.7443907260894775
+    ],
+    "wall_s": 1.4019704999955138
+   }
+  }
+ ],
+ "certify": false,
+ "cert_interventions": 0,
+ "govern": "act",
+ "gov_replacements": 1,
+ "gov_would_replace": 0,
+ "gov_decisions": 4,
+ "gov_wall_s": 8.231460199996945,
+ "policy": "EACH_C_s11_gov_natural",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\ecc\\B\\TRAIN_EACH_C_s11\\checkpoints\\step_2000.zip",
+ "window": true,
+ "geometry": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 80.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.582611025219428
+  },
+  {
+   "t": 98.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.588543487337652
+  }
+ ]
+}

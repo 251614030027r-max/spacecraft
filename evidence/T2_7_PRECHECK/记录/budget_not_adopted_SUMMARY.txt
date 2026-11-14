@@ -1,0 +1,40 @@
+openings 32 urgent 32 urgent outcomes (rule behaviour) {'success': 29, 'timeout': 1, 'resource_exhausted': 2}
+critical decisions 6 candidates 48
+
+truth within 4 decisions (holding the intent): {'resource_exhausted': 33, 'alive': 5, 'capture_direct': 8, 'timeout': 2}
+
+H=1 (16 s) model view of each truth class:
+   capture_direct {'alive': 2, 'blind': 6}
+   timeout {'blind': 2}
+   alive {'alive': 3, 'blind': 2}
+
+H=2 (32 s) model view of each truth class:
+   capture_direct {'blind': 8}
+   timeout {'blind': 2}
+   alive {'blind': 4, 'alive': 1}
+
+H=3 (48 s) model view of each truth class:
+   capture_direct {'blind': 8}
+   timeout {'blind': 2}
+   alive {'blind': 4, 'alive': 1}
+
+H=4 (64 s) model view of each truth class:
+   capture_direct {'blind': 8}
+   timeout {'blind': 2}
+   alive {'blind': 4, 'alive': 1}
+
+H=1: decisions truth separates 3/6, model separates by entry 0/6; decisive pairs right 0 wrong 0 undecided 42
+H=2: decisions truth separates 3/6, model separates by entry 0/6; decisive pairs right 0 wrong 0 undecided 42
+H=3: decisions truth separates 3/6, model separates by entry 0/6; decisive pairs right 0 wrong 0 undecided 42
+H=4: decisions truth separates 3/6, model separates by entry 0/6; decisive pairs right 0 wrong 0 undecided 42
+
+stage 1: position error n=5 median 0.087 m p90 0.172 m
+stage 2: position error n=1 median 0.475 m p90 0.475 m
+stage 3: position error n=1 median 0.969 m p90 0.969 m
+stage 4: position error n=1 median 1.485 m p90 1.485 m
+
+undecided decisive pairs at H=2 by (good truth, good model | bad truth, bad model):
+   23 ('capture_direct', 'blind', 'resource_exhausted', 'blind') openings [2910001]
+   11 ('capture_direct', 'blind', 'alive', 'blind') openings [2910001]
+   5 ('capture_direct', 'blind', 'timeout', 'blind') openings [2910001]
+   3 ('capture_direct', 'blind', 'alive', 'alive') openings [2910001]

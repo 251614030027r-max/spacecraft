@@ -1,0 +1,194 @@
+{
+ "opening": 294824,
+ "event": "success",
+ "return": 73.02964255827364,
+ "time_s": 133.8,
+ "delta_v": 1.359035744172635,
+ "stages": 4,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 12,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 152.1,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 132.20348858833313,
+ "decisions": [
+  {
+   "a": [
+    0.7329549789428711,
+    0.7461367845535278
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 14.322154872396187,
+   "planned_dv": 0.16880660377441695,
+   "executed_dv": 0.16910192242733646,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.7329549789428711,
+     0.7461367845535278
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": false,
+    "commit_before": null,
+    "commit_after": null,
+    "a_exec": [
+     0.7329549789428711,
+     0.7461367845535278
+    ],
+    "wall_s": 1.9680053999763913
+   }
+  },
+  {
+   "a": [
+    0.9905318021774292,
+    0.6181073188781738
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 11.99559891483741,
+   "planned_dv": 0.07643186177265159,
+   "executed_dv": 0.07652870632329933,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 16.0,
+    "a": [
+     0.9905318021774292,
+     0.6181073188781738
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 3,
+    "act": false,
+    "commit_before": null,
+    "tau_min": 30.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 32.0,
+    "own_admissible": true,
+    "commit_after": 48.0,
+    "a_exec": [
+     0.9905318021774292,
+     0.6181073188781738
+    ],
+    "wall_s": 2.521345499990275
+   }
+  },
+  {
+   "a": [
+    0.997098445892334,
+    -0.3779979944229126
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 9.361144365594084,
+   "planned_dv": 0.16583061286846124,
+   "executed_dv": 0.16555402556228282,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 32.0,
+    "a": [
+     0.997098445892334,
+     -0.3779979944229126
+    ],
+    "status": "replace",
+    "critical": true,
+    "n_admissible": 5,
+    "act": false,
+    "commit_before": 48.0,
+    "tau_min": 16.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 28.0,
+    "own_admissible": true,
+    "recommitted": false,
+    "alt": [
+     1.0,
+     1.0
+    ],
+    "alt_t": 16.0,
+    "alt_kind": "entry",
+    "alt_incumbent": false,
+    "commit_after": 48.0,
+    "a_exec": [
+     0.997098445892334,
+     -0.3779979944229126
+    ],
+    "wall_s": 13.04653110000072
+   }
+  },
+  {
+   "a": [
+    0.990358829498291,
+    -0.49182140827178955
+   ],
+   "t": 133.8,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.0572614701080654,
+   "planned_dv": 0.048868571202101696,
+   "executed_dv": 0.9478510898597164,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 48.0,
+    "a": [
+     0.990358829498291,
+     -0.49182140827178955
+    ],
+    "status": "replace",
+    "critical": true,
+    "n_admissible": 9,
+    "act": false,
+    "commit_before": 48.0,
+    "tau_min": 8.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 14.0,
+    "own_admissible": true,
+    "recommitted": true,
+    "alt": [
+     0.997098445892334,
+     -0.3779979944229126
+    ],
+    "alt_t": 12.0,
+    "alt_kind": "entry",
+    "alt_incumbent": true,
+    "commit_after": 48.0,
+    "a_exec": [
+     0.990358829498291,
+     -0.49182140827178955
+    ],
+    "wall_s": 5.923879199981457
+   }
+  }
+ ],
+ "certify": false,
+ "cert_interventions": 0,
+ "govern": "monitor",
+ "gov_replacements": 0,
+ "gov_would_replace": 2,
+ "gov_decisions": 4,
+ "gov_wall_s": 23.459761199948844,
+ "policy": "ECC_CERT_LOOP_s11_monitor",
+ "checkpoint": "C:\\Users\\35884\\Documents\\Spacecraft\\\u8fc7\u7a0b\u6587\u4ef6\\gov_b\\B\\TRAIN_ECC_CERT_LOOP_s11\\checkpoints\\step_3000.zip",
+ "window": true,
+ "geometry": true,
+ "entries_lost": 0,
+ "window_recoveries": []
+}
