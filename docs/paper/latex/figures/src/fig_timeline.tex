@@ -1,0 +1,27 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Opportunity structure (Section II-C): periodic passes, latest entry time, deadline, margin eta.
+\begin{tikzpicture}[>=Stealth,font=\footnotesize,x=0.95cm,y=1cm]
+  % passes
+  \fill[green!14] (1.2,0) rectangle (2.4,1.0);
+  \fill[green!14] (5.2,0) rectangle (6.4,1.0);
+  \node[green!35!black,anchor=south,inner sep=1pt] at (1.8,1.0) {next pass};
+  \node[green!35!black,anchor=south,inner sep=1pt] at (5.8,1.0) {following pass};
+  \draw[green!35!black,densely dotted] (1.8,0) -- (1.8,1.0) (5.8,0) -- (5.8,1.0);
+  % axis
+  \draw[->,thick] (-0.2,0) -- (7.6,0);
+  \draw (0,-0.08) -- (0,0.08);
+  \node[anchor=north,inner sep=2pt] at (0,-0.08) {$t$};
+  % latest entry time and deadline
+  \fill[pattern=north east lines,pattern color=gray!55] (4.6,0) rectangle (6.9,0.5);
+  \draw[thick,densely dashed] (4.6,0) -- (4.6,1.85) node[anchor=south,inner sep=1pt] {$\te$};
+  \draw[thick] (6.9,0) -- (6.9,1.85) node[anchor=south,inner sep=1pt] {$\Td$};
+  \draw[<->] (4.6,1.5) -- node[above,inner sep=1pt] {$\Tr$} (6.9,1.5);
+  % dimensions below the axis
+  \draw[<->] (0,-0.55) -- node[below,inner sep=2pt] {$\taup$} (1.8,-0.55);
+  \draw[<->] (1.8,-0.55) -- node[below,inner sep=2pt] {$\eta\,\Ts$} (4.6,-0.55);
+  \draw[<->] (1.8,-1.15) -- node[below,inner sep=2pt] {$\Ts$} (5.8,-1.15);
+  \draw[gray,densely dotted] (1.8,0) -- (1.8,-1.15) (5.8,0) -- (5.8,-1.15) (4.6,0) -- (4.6,-0.55);
+\end{tikzpicture}
+\end{document}

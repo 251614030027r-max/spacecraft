@@ -1,3 +1,71 @@
 \section{NUMERICAL SIMULATIONS}\label{sec:experiments}
 
-\todo{Section V is written after the formal experiments are delivered. Planned subsections (EXPERIMENTS.md, Sections 1--3 and 5--7): A) setup, compared methods, and training (Table of settings, F1); B) representative case (F2--F3); C) main results on urgent and economy missions (F4, T2); D) attribution and ablations (F6); E) mechanism and operating boundary (F5, F7, computational cost).}
+\subsection{Simulation Setup}\label{sec:setup}
+
+The scenario, constraint, and mission parameters are listed in Table~\ref{tab:scenario}. The target flies on a $500$-km circular orbit with an inclination of $45^{\circ}$, and both spacecraft are propagated with \eqref{eq:kin}--\eqref{eq:fg} by an adaptive Runge--Kutta integrator; no other disturbance is applied. The target is a homogeneous box with a grapple rod leading to the port, tumbling freely at a spin rate between $2.1$ and $2.7^{\circ}$/s about an axis that deviates by $10$--$20^{\circ}$ from its body $z$-axis, so that $\Ts\in[133,171]$~s. Its initial attitude is uniformly distributed on $\SO$. The chaser starts in a uniformly random direction at a range of $12$--$16$~m, with a relative speed of at most $0.05$~m/s, a boresight within $15^{\circ}$ of the port, and per-axis angular rates of at most $0.005$~rad/s.
+
+Two mission types are considered. Urgent missions have short deadlines and price time; economy missions have longer deadlines and a tighter budget and price propellant. The economy budget was selected by a prescreening with non-learning stage policies: at this budget, the propellant constraint binds in a substantial share of tasks, while every prescreened task is still captured by at least one of these policies. Fig.~\ref{fig:timescales} compares the latest admissible entry times with the spin period: for urgent missions, $\te$ is comparable to one spin period, and for economy missions to two. Training draws urgent missions with probability $3/4$.
+
+The execution-layer and learning parameters are listed in Table~\ref{tab:params}. They are the same for all learning-based methods compared below.
+
+\begin{table}
+\caption{Scenario, Constraint, and Mission Parameters}
+\label{tab:scenario}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{6.8pc}>{\raggedright\arraybackslash}p{12.0pc}@{}}
+\hline
+Parameter & Value\\
+\hline
+Target mass, inertia & $225$ kg, $\diag(30,39,48)$ kg$\cdot$m$^{2}$\\
+Target half-dimensions, rod radius & $0.62\times0.51\times0.37$ m, $0.05$ m\\
+Chaser mass $\mC$, inertia & $106$ kg, $\approx\diag(20.3,19.9,23.7)$ kg$\cdot$m$^{2}$\\
+Chaser envelope radius & $0.95$ m\\
+Bounds $\fmax$, $\Gmax$; period $\Delta t$ & $2$ N, $0.6$ N$\cdot$m; $0.1$ s\\
+$\bpport$, $\bpcap$, $\bnp$ (in $\FT$) & $[-1.5,0,0]^{\T}$ m, $[-3,0,0]^{\T}$ m, $[-1,0,0]^{\T}$\\
+$\vartheta_{\mathrm{c}}$, $\ell_{\min}$, $\rhos$, $\ell_{\mathrm{m}}$ & $35^{\circ}$, $1$ m, $6$ m, $0.5$ m\\
+$\vartheta_{\mathrm{fov}}$, $\bar v_{\mathrm{m}}$, $\bar\rho$, $v_{\mathrm{f}}$ & $50^{\circ}$, $0.35$ m/s, $30$ m, $0.05$ m/s\\
+Capture tolerances; $T_{\mathrm{c}}$ & $0.25$ m, $10^{\circ}$, $0.05$ m/s, $0.02$ rad/s; $1$ s\\
+Urgent: $\Td$, $\Bmax$, $c_{\mathrm{t}}$, $c_{\mathrm{f}}$ & $\mathcal{U}(140,200)$ s, $3.0$ m/s, $0.10$ s$^{-1}$, $10$ s/m\\
+Economy: $\Td$, $\Bmax$, $c_{\mathrm{t}}$, $c_{\mathrm{f}}$ & $\mathcal{U}(280,340)$ s, $2.0$ m/s, $0.02$ s$^{-1}$, $40$ s/m\\
+\hline
+\end{tabular*}
+\end{table}
+
+\begin{table}
+\caption{Execution-Layer and Learning Parameters}
+\label{tab:params}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{9.4pc}>{\raggedright\arraybackslash}p{9.4pc}@{}}
+\hline
+Parameter & Value\\
+\hline
+$h$, $\Tp$, $\Tm$ & $16$ s, $48$ s, $2$ s\\
+$v_{0}$, $v_{\mathrm{a}}$; $k_{\lambda}$, $\bar v_{\mathrm{lat}}$ & $0.05$, $0.15$ m/s; $0.02$ s$^{-1}$, $0.12$ m/s\\
+$\bar v_{\mathrm{st}}$; $\rho_{\min}$, $m_{\mathrm{b},\min}$ & $0.17$ m/s ($70\%$ of $\bar f_{\mathrm{pl}}$); $6.8$ m, $0.02$ m/s\\
+Planning bound $\bar f_{\mathrm{pl}}$: stage; entry $\bar f_{0}$, $\bar f_{1}$ & $1.6$ N; $1.6$ N, $1.9$ N\\
+Intervals $N$: stage, entry & $16$, $30$\\
+$w_{\rho}$, $w_{\mathrm{g}}$, $w_{\mathrm{v}}$ (stage) & $10$, $200$, $0.1$\\
+$\rhom$, $v_{\mathrm{in}}$, $\bar\rho_{\mathrm{pl}}$ & $6.3$ m, $0.02$ m/s, $28$ m\\
+$\rho_{\mathrm{E}}$, $\psig$, $\Tr$ & $12$ m, $35^{\circ}$, $45$ s\\
+$\Tset$ & $\{15,20,25,30,40,50,60\}$ s\\
+$\Sigma_{0}$; $\bar d_{\mathrm{h}}$, $\bar d_{\mathrm{e}}$ & $\{2,4,8\}$ s; $3$ m, $1$ m\\
+$\rho_{\mathrm{f}}$, $\rho_{\mathrm{D}}$; MPC horizon & $7.5$ m, $7$ m; $3.5$ s ($N_{\mathrm{mpc}}=35$)\\
+$T_{\mathrm{o}}$; $\bar\ell_{\Phi}$, $\tau_{\Phi}$ & $60$ s; $25$ m, $24$ s\\
+$\gamma$, $\alpha$ & $0.999^{8}\approx0.992$, $0.05$\\
+Hidden layers (actor, critics) & $[256,256]$\\
+Learning rate, batch, buffer & $3\times10^{-4}$, $256$, $10^{5}$\\
+Warm-up; updates per transition & $200$ random decisions; $2$\\
+Target-critic update rate & $0.005$\\
+Training budget & $5000$ decisions, $2$ asynchronous collectors\\
+\hline
+\end{tabular*}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics{figures/fig_timescales.pdf}
+\caption{Latest admissible entry time $\te=\Td-\Tr$ of the two mission types compared with one and two spin periods.}
+\label{fig:timescales}
+\end{figure}
+
+\todo{Sections~V-B onward are written after the formal experiments are delivered: compared methods and training, representative case, main results on urgent and economy missions, attribution and ablations, mechanism and operating boundary, computational cost.}

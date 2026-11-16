@@ -1,0 +1,29 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Correction on the action box: grid candidates, proposal, and corrected intent (Property 1).
+\begin{tikzpicture}[>=Stealth,font=\footnotesize,scale=1.3]
+  \fill[gray!5] (-1.15,-1.15) rectangle (1.15,1.15);
+  \draw[gray!60] (-1.15,-1.15) rectangle (1.15,1.15);
+  \draw[gray!30] (-1.15,0) -- (1.15,0) (0,-1.15) -- (0,1.15);
+  \foreach \v in {-1,0,1}{
+    \draw[gray!60] (\v,-1.15) -- (\v,-1.21);
+    \draw[gray!60] (-1.15,\v) -- (-1.21,\v);
+    \node[font=\scriptsize,anchor=north,inner sep=1pt] at (\v,-1.21) {$\v$};
+    \node[font=\scriptsize,anchor=east,inner sep=1pt] at (-1.21,\v) {$\v$};}
+  \node[anchor=north,inner sep=1pt] at (0,-1.42) {$a_{\mathrm{p}}$};
+  \node[anchor=east,inner sep=1pt] at (-1.45,0) {$a_{\mathrm{z}}$};
+  \coordinate (a) at (-0.3,0.25);
+  \draw[densely dotted,gray!70!black] (a) circle ({sqrt(0.09+0.5625)});
+  \foreach \x/\y in {-1/-1,0/-1,1/-1,-1/0,0/0,1/0}{\filldraw[fill=white,draw=black,thick] (\x,\y) circle (2.3pt);}
+  \foreach \x/\y in {-1/1,0/1,1/1}{\filldraw[fill=actcol,draw=black] (\x,\y) circle (2.3pt);}
+  \draw[->,thick,actcol,shorten >=3pt] (a) -- (0,1);
+  \node[star,star points=5,star point ratio=2.2,fill=black,inner sep=1.4pt] at (a) {};
+  \node[anchor=east,inner sep=4pt] at (a) {$\ba$};
+  \node[actcol,anchor=north west,inner sep=3pt] at (0,1) {$\atil$};
+  \begin{scope}[shift={(-1.35,-1.88)},font=\scriptsize]
+    \filldraw[fill=actcol,draw=black] (0,0) circle (2.3pt) node[right=2pt] {$\bb\in\Ga(x)$};
+    \filldraw[fill=white,draw=black,thick] (1.3,0) circle (2.3pt) node[right=2pt] {$\bb\in\Gset\setminus\Ga(x)$};
+  \end{scope}
+\end{tikzpicture}
+\end{document}

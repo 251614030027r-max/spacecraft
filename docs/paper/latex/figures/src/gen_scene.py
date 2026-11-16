@@ -1,9 +1,9 @@
-"""Generate figures/scene.tex: oblique 3-D schematic of the pre-capture scene.
+"""Generate scene_body.tex (included by fig_scene.tex): oblique 3-D schematic of the pre-capture scene.
 All geometry follows docs/paper/facts/01 (port, capture point, cone, sphere,
 target box); the chaser position is illustrative. Output: 2-D TikZ coordinates."""
 import numpy as np, sys
 
-S = 0.40                       # cm per meter
+S = 0.41                       # cm per meter
 v = np.array([-0.40, -0.84, 0.38]); v /= np.linalg.norm(v)          # toward viewer
 right = np.cross([0, 0, 1], v); right /= np.linalg.norm(right)
 up = np.cross(v, right)
@@ -58,7 +58,7 @@ w(r"\draw[blue!55] " + " -- ".join(f(P(p)) for p in cpts) + " -- cycle;")
 for s in csil:
     w(r"\draw[blue!55] " + f(P(port)) + " -- " + f(P(s)) + ";")
 # port axis and points
-w(r"\draw[->,thick,blue!70!black] " + f(P(port)) + " -- " + f(P(port + np.array([-3.9, 0, 0]))) + r" node[anchor=south east,inner sep=1pt] {$n_{p}$};")
+w(r"\draw[->,thick,blue!70!black] " + f(P(port)) + " -- " + f(P(port + np.array([-3.9, 0, 0]))) + r" node[anchor=south east,inner sep=1pt] {$\bnp$};")
 # target box
 for n, quad in faces:
     if np.dot(n, v) > 0:
@@ -69,10 +69,10 @@ w(r"\fill " + f(P(port)) + " circle (1.5pt);")
 w(r"\fill[red!75!black] " + f(P(cap)) + " circle (1.7pt);")
 # target body axes and spin axis
 O = np.zeros(3)
-w(r"\draw[->,thick] " + f(P(np.array([hx, 0, 0]))) + " -- " + f(P(np.array([2.3, 0, 0]))) + r" node[anchor=west,inner sep=1pt] {$x_{T}$};")
-w(r"\draw[->,thick] " + f(P(np.array([0, 0, hz]))) + " -- " + f(P(np.array([0, 0, 2.2]))) + r" node[anchor=east,inner sep=1pt] {$z_{T}$};")
+w(r"\draw[->,thick] " + f(P(np.array([hx, 0, 0]))) + " -- " + f(P(np.array([2.3, 0, 0]))) + r" node[anchor=west,inner sep=1pt] {$x_{\mathrm{T}}$};")
+w(r"\draw[->,thick] " + f(P(np.array([0, 0, hz]))) + " -- " + f(P(np.array([0, 0, 2.2]))) + r" node[anchor=east,inner sep=1pt] {$z_{\mathrm{T}}$};")
 sh = np.array([np.sin(np.radians(20))*np.cos(np.radians(-25)), np.sin(np.radians(20))*np.sin(np.radians(-25)), np.cos(np.radians(20))])
-w(r"\draw[->,thick,orange!85!black] " + f(P(sh*hz/sh[2])) + " -- " + f(P(3.4*sh)) + r" node[anchor=south west,inner sep=1pt] {$\hat{s}$};")
+w(r"\draw[->,thick,orange!85!black] " + f(P(sh*hz/sh[2])) + " -- " + f(P(3.4*sh)) + r" node[anchor=south west,inner sep=1pt] {$\bs$};")
 ring, _, _ = circle3(2.4*sh, sh, 0.45, 60)
 w(r"\draw[->,orange!85!black] " + " -- ".join(f(P(p)) for p in ring[5:52]) + ";")
 # chaser with boresight and field-of-view cone
@@ -81,26 +81,26 @@ bs = port - ch; bs /= np.linalg.norm(bs)
 cx, cy = P(ch); bx, by = np.array(P(ch + bs)) - np.array(P(ch)); ang = np.degrees(np.arctan2(by, bx))
 w(rf"\fill[green!12] ({cx:.3f},{cy:.3f}) -- ++({ang-38:.1f}:1.35) arc[start angle={ang-38:.1f},end angle={ang+38:.1f},radius=1.35] -- cycle;")
 w(rf"\draw[green!45!black] ({cx:.3f},{cy:.3f}) -- ++({ang-38:.1f}:1.35) ({cx:.3f},{cy:.3f}) -- ++({ang+38:.1f}:1.35);")
-w(r"\draw[densely dotted] " + f(P(O)) + " -- " + f(P(ch)) + ";")
-w(r"\draw[->,thick] " + f(P(ch)) + " -- " + f(P(ch + 2.2*bs)) + r" node[anchor=south east,inner sep=1pt] {$x_{C}$};")
+w(r"\draw[->,densely dotted,shorten >=4pt] " + f(P(O)) + " -- " + f(P(ch)) + ";")
+w(r"\draw[->,thick] " + f(P(ch)) + " -- " + f(P(ch + 2.2*bs)) + r" node[anchor=south east,inner sep=1pt] {$\vect{e}_{\mathrm{C}}$};")
 w(rf"\filldraw[fill=gray!25,draw=black,rotate around={{{ang:.1f}:({cx:.3f},{cy:.3f})}}] ({cx-0.17:.3f},{cy-0.13:.3f}) rectangle ({cx+0.17:.3f},{cy+0.13:.3f});")
 # labels (screen coordinates relative to projected anchors)
 def lab(p, txt, anchor, dx=0, dy=0, style=""):
     x, y = P(p); w(rf"\node[{style}anchor={anchor},inner sep=1pt,align=center] at ({x+dx:.3f},{y+dy:.3f}) {{{txt}}};")
-lab(port, "port", "north", 0.12, -0.20)
-lab(cap, r"$p_{\mathrm{cap}}$", "south", 0.0, 0.10, "red!75!black,")
-lab(cbase + np.array([0, 0, 4.9]), r"approach cone\\($35^{\circ}$ half-angle)", "south", 0.0, 0.0, "blue!70!black,")
-lab(np.array([0, 0, 0]), r"operation sphere ($6$ m)", "south west", 1.55, 2.05, "gray!80!black,")
-lab(O, r"$\mathcal{F}_{T}$", "north west", 0.55, -0.42)
-lab(ch, r"chaser, $\mathcal{F}_{C}$", "north", 0.0, -0.16)
+lab(port, r"$\bpport$", "north", 0.12, -0.20)
+lab(cap, r"$\bpcap$", "south", 0.0, 0.10, "red!75!black,")
+lab(cbase + np.array([0, 0, 4.9]), r"approach cone $\Kset$\\(half-angle $\vartheta_{\mathrm{c}}$)", "south", 0.0, 0.0, "blue!70!black,")
+lab(np.array([0, 0, 0]), r"operation sphere\\(radius $\rhos$)", "south west", 1.45, 1.95, "gray!80!black,")
+lab(O, r"$\FT$", "north west", 0.55, -0.42)
+lab(ch, r"chaser, $\FC$", "north", 0.0, -0.14)
 w(rf"\node[green!40!black,anchor=east,inner sep=1pt] at ({cx-1.15:.3f},{cy+0.15:.3f}) {{FOV}};")
-lab((O + ch)/2, r"$q$", "north east", -0.02, 0.0)
+lab((O + ch)/2, r"$\brho$", "north east", -0.02, 0.0)
 # inertial frame (screen corner)
 x0, y0 = P(np.array([-7.6, 3.0, -7.0]))
 w(rf"\begin{{scope}}[shift={{({x0:.3f},{y0:.3f})}}]")
-for e, name, anc in ((np.array([1, 0, 0]), "X_{I}", "west"), (np.array([0, 1, 0]), "Y_{I}", "east"), (np.array([0, 0, 1]), "Z_{I}", "south")):
+for e, name, anc in ((np.array([1, 0, 0]), r"X_{\mathrm{I}}", "west"), (np.array([0, 1, 0]), r"Y_{\mathrm{I}}", "east"), (np.array([0, 0, 1]), r"Z_{\mathrm{I}}", "south")):
     w(r"\draw[->] (0,0) -- " + f(P(2.0*e)) + rf" node[anchor={anc},inner sep=1pt] {{${name}$}};")
-w(r"\node[anchor=north,inner sep=2pt] at (0,0) {$\mathcal{F}_{I}$};")
+w(r"\node[anchor=north,inner sep=2pt] at (0,0) {$\FI$};")
 w(r"\end{scope}")
 w(r"\end{tikzpicture}")
 open(sys.argv[1], "w").write("\n".join(out) + "\n")

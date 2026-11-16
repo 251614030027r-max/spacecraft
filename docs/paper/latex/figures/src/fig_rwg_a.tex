@@ -1,6 +1,9 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
 % Sweep-cone geometry (single column), oblique projection
 \begin{tikzpicture}[>=Stealth,font=\footnotesize,
-  x={(1cm,0cm)},y={(-0.42cm,-0.30cm)},z={(0cm,1cm)},scale=0.95]
+  x={(1cm,0cm)},y={(-0.42cm,-0.30cm)},z={(0cm,1cm)},scale=0.80]
   \def\L{2.3}          % length of unit directions
   \def\bet{62}         % cone half-angle beta
   \def\lam{74}         % line-of-sight polar angle lambda
@@ -10,14 +13,14 @@
   \pgfmathsetmacro{\R}{\L*sin(\bet)}
   \pgfmathsetmacro{\H}{\L*cos(\bet)}
   % spin axis
-  \draw[->,thick,orange!80!black] (0,0,0) -- (0,0,3.0) node[anchor=south] {$\shat$};
+  \draw[->,thick,orange!80!black] (0,0,0) -- (0,0,3.0) node[anchor=south] {$\bs$};
   % sweep cone: base circle and two generators
   \draw[blue!60,thin] plot[domain=0:360,samples=90,smooth] ({\R*cos(\x)},{\R*sin(\x)},{\H});
   \node[blue!70!black,anchor=west] at ({1.02*\R*cos(5)},{1.02*\R*sin(5)},{\H}) {sweep cone};
   % rotation direction of the port
   \draw[->,blue!70!black] plot[domain=228:262,samples=20] ({1.08*\R*cos(\x)},{1.08*\R*sin(\x)},{\H});
   % port direction
-  \draw[->,very thick,blue!70!black] (0,0,0) -- ({\R*cos(\psip)},{\R*sin(\psip)},{\H}) node[anchor=east] {port};
+  \draw[->,very thick,blue!70!black] (0,0,0) -- ({\R*cos(\psip)},{\R*sin(\psip)},{\H}) node[anchor=east] {$\bn$};
   % beta arc
   \draw[blue!70!black] plot[domain=0:\bet,samples=20] ({0.75*sin(\x)*cos(\psip)},{0.75*sin(\x)*sin(\psip)},{0.75*cos(\x)});
   \node[blue!70!black] at ({0.95*sin(\bet/2)*cos(\psip)},{0.95*sin(\bet/2)*sin(\psip)},{0.95*cos(\bet/2)}) {$\beta$};
@@ -46,3 +49,4 @@
   \filldraw[fill=gray!40] (0,0,0) circle (2.5pt);
   \node[anchor=north east] at (0,0,0) {target};
 \end{tikzpicture}
+\end{document}

@@ -1,22 +1,26 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
 % Latest admissible entry time of the two missions versus multiples of the spin period.
 \begin{tikzpicture}[font=\footnotesize,x=0.0185cm,y=0.42cm]
   \foreach \x in {0,50,...,350}{
     \draw[gray!20] (\x,-0.6) -- (\x,4.4);
     \node[anchor=north,font=\scriptsize,inner sep=2pt] at (\x,-0.6) {$\x$};}
-  \node[anchor=north,inner sep=1pt] at (175,-1.35) {Time from episode start (s)};
+  \node[anchor=north,inner sep=1pt] at (175,-1.35) {Time from task start (s)};
   \draw (0,-0.6) -- (350,-0.6);
   % bars
   \fill[red!55] (95,3.5) rectangle (155,4.1);
   \fill[blue!50] (235,2.5) rectangle (295,3.1);
   \fill[gray!55] (133,1.2) rectangle (171,1.8);
   \fill[gray!35] (266,0.2) rectangle (342,0.8);
-  \node[anchor=east,inner sep=3pt] at (0,3.8) {Urgent $\Lt$};
-  \node[anchor=east,inner sep=3pt] at (0,2.8) {Economy $\Lt$};
-  \node[anchor=east,inner sep=3pt] at (0,1.5) {$P$};
-  \node[anchor=east,inner sep=3pt] at (0,0.5) {$2P$};
+  \node[anchor=east,inner sep=3pt] at (0,3.8) {Urgent $\te$};
+  \node[anchor=east,inner sep=3pt] at (0,2.8) {Economy $\te$};
+  \node[anchor=east,inner sep=3pt] at (0,1.5) {$\Ts$};
+  \node[anchor=east,inner sep=3pt] at (0,0.5) {$2\Ts$};
   \node[font=\scriptsize,anchor=west,inner sep=2pt] at (155,3.8) {$95$--$155$};
   \node[font=\scriptsize,anchor=east,inner sep=2pt] at (235,2.8) {$235$--$295$};
   \node[font=\scriptsize,anchor=west,inner sep=2pt] at (171,1.5) {$133$--$171$};
   \node[font=\scriptsize,anchor=east,inner sep=2pt] at (266,0.5) {$266$--$342$};
   \draw[gray!60] (0,2.15) -- (350,2.15);
 \end{tikzpicture}
+\end{document}

@@ -1,0 +1,15 @@
+% Shared preamble of the standalone figure sources (compiled to ../fig_*.pdf by build.sh).
+\renewcommand{\rmdefault}{ptm}
+\usepackage{amsmath,amssymb}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc,shapes.geometric,patterns,decorations.pathreplacing,backgrounds}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\input{../../macros}
+% Channel colors used in all method figures
+\colorlet{actcol}{orange!85!black}   % action-level channel (screening)
+\colorlet{actfill}{orange!14}
+\colorlet{stcol}{blue!70!black}      % state-level channel (execution feedback)
+\colorlet{stfill}{blue!7}
+\colorlet{exefill}{green!8}
