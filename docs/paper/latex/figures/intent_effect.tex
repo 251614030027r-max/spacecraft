@@ -1,0 +1,26 @@
+% Port--line-of-sight angle under the three intent regimes (Lemmas 1-2;
+% lambda=90 deg, beta=85 deg, Omega=2.4 deg/s, initial phase 110 deg).
+\begin{tikzpicture}[font=\footnotesize]
+\begin{axis}[
+  width=5.9cm, height=4.8cm,
+  xmin=0, xmax=100, ymin=0, ymax=205,
+  xtick={0,20,40,60,80,100}, ytick={0,35,90,180},
+  xlabel={Time $\tau$ (s)}, ylabel={Port--line-of-sight angle $\theta$ ($^{\circ}$)},
+  xlabel style={yshift=2pt}, ylabel style={yshift=-3pt},
+  tick label style={font=\scriptsize},
+  legend style={font=\scriptsize,at={(0.02,0.98)},anchor=north west,draw=none,fill=none,row sep=-2pt,inner sep=1pt},
+  legend cell align=left,
+  grid=major, grid style={gray!15}]
+\fill[green!10] (axis cs:0,0) rectangle (axis cs:100,35);
+\addplot[gray!70!black,dashed,forget plot] coordinates {(0,35) (100,35)};
+\node[font=\scriptsize,anchor=south west,inner sep=1pt,text=green!35!black] at (axis cs:1,35) {gate $\theta_{g}$};
+\addplot[blue!75!black,thick,domain=0:100,samples=301] {acos(cos(90)*cos(85)+sin(90)*sin(85)*cos(110-2.4*1.35*x))};
+\addlegendentry{meet ($v_{z}>0$)}
+\addplot[black,thick,domain=0:100,samples=301] {acos(cos(90)*cos(85)+sin(90)*sin(85)*cos(110-2.4*x))};
+\addlegendentry{wait ($v_{z}=0$)}
+\addplot[orange!85!black,thick,domain=0:100,samples=301] {acos(cos(90)*cos(85)+sin(90)*sin(85)*cos(110-2.4*0.65*x))};
+\addlegendentry{accompany ($v_{z}<0$)}
+\addplot[gray,densely dotted,thick,domain=0:100,samples=301] {acos(cos(130)*cos(85)+sin(130)*sin(85)*cos(110-2.4*x))};
+\addlegendentry{off cone ($|\dlat|=45^{\circ}$)}
+\end{axis}
+\end{tikzpicture}

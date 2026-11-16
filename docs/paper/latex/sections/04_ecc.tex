@@ -50,6 +50,21 @@ Training uses the potential-based shaped reward
 \end{equation}
 with the potential $\Phi(x)=-\min(25~\text{m},\norm{q-m_{24}})$, where $m_{24}$ is the mouth point \eqref{eq:mouth} predicted $24$~s ahead and $\Phi(x')=0$ at termination. Potential-based shaping with the learning discount $\gd$ leaves the optimal policies unchanged \cite{ng1999shaping}; it serves only to densify the learning signal, and all evaluations report the true return \eqref{eq:return}.
 
+\begin{figure*}[t]
+\centering
+\begin{minipage}[b]{0.28\textwidth}\centering
+\input{figures/cert_action}\\[2pt]{\footnotesize (a)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.365\textwidth}\centering
+\input{figures/cert_time}\\[2pt]{\footnotesize (b)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.345\textwidth}\centering
+\input{figures/cert_consistency}\\[2pt]{\footnotesize (c)}
+\end{minipage}
+\caption{Execution-opportunity certification. (a) Substitution on the action box: the proposal $a$ triggers no mode event, and it is replaced by the nearest certifiable grid candidate; the dotted circle contains no other certifiable candidate. (b) Critical-window test: an event predicted at $t+\tauhat$ within $\Hp$ is critical if the next pass, one spin period later, falls after $\Lt$; no entry begins in the terminal reserve $\Dd$ (hatched). (c) Transition kernels learned and executed: ECC learns and runs $\PC$, whereas certification applied only at execution learns $\PE$ but runs $\PC$.}
+\label{fig:ecc}
+\end{figure*}
+
 \subsection{Execution Feedback for the Critic}\label{sec:feedback}
 
 The execution feedback $\zE$ (Table~\ref{tab:obs}) consists of three opportunity judgments formed by the execution layer, namely the time to the next pass, the reachability of an entry at the candidate arrival times, and the deadline margin that would remain after the pass once the time needed for the final phase is deducted, and of three execution-status quantities, namely the position and velocity residuals of the previous stage with respect to its plan and whether the chaser is holding. The actor and the critics are
@@ -83,7 +98,7 @@ At every decision, the mode prediction is evaluated for the proposed intent $a$ 
 & \dvused+\dvhat(x,b)\le\Bmax\bigr\}.
 \end{aligned}
 \end{equation}
-The three conditions require, in turn, that the candidate trigger an entry or a descent, that the triggered event belong to a critical window, i.e., one whose loss would leave no further pass before the latest admissible entry time $\Lt$, and that the candidate be affordable within the budget. The second condition is a time-based proxy for opportunity scarcity that costs no additional prediction. The certification map is
+The three conditions require, in turn, that the candidate trigger an entry or a descent, that the triggered event belong to a critical window (Fig.~\ref{fig:ecc}(b)), i.e., one whose loss would leave no further pass before the latest admissible entry time $\Lt$, and that the candidate be affordable within the budget. The second condition is a time-based proxy for opportunity scarcity that costs no additional prediction. The certification map is
 \begin{equation}\label{eq:certmap}
 \Cmap(x,a)=
 \begin{cases}
@@ -94,7 +109,7 @@ a^{\star}(x,a), & \text{otherwise},
 \begin{equation}\label{eq:astar}
 a^{\star}(x,a)=\lexmin_{b\in\Bc(x)}\bigl(\norm{b-a},\ \tauhat(x,b)\bigr),
 \end{equation}
-where $\lexmin$ selects the lexicographic minimizer, with remaining ties broken by a fixed order of the grid. Thus the proposal is executed whenever it triggers a mode event by itself or no candidate is certifiable; otherwise it is replaced by the nearest certifiable candidate, and among equally near candidates by the one with the earliest event. The executed intent is $a^{e}=\Cmap(x,a)$, and the substitution applies to the current macro step only; later decisions are not constrained. Each decision thus requires $|\Bgrid|+1=10$ mode predictions, each involving at most three stage plans and the entry-planner calls along the nominal path; the computational cost is reported in Section~\ref{sec:experiments}.
+where $\lexmin$ selects the lexicographic minimizer, with remaining ties broken by a fixed order of the grid. Thus the proposal is executed whenever it triggers a mode event by itself or no candidate is certifiable; otherwise it is replaced by the nearest certifiable candidate, and among equally near candidates by the one with the earliest event (Fig.~\ref{fig:ecc}(a)). The executed intent is $a^{e}=\Cmap(x,a)$, and the substitution applies to the current macro step only; later decisions are not constrained. Each decision thus requires $|\Bgrid|+1=10$ mode predictions, each involving at most three stage plans and the entry-planner calls along the nominal path; the computational cost is reported in Section~\ref{sec:experiments}.
 
 Throughout this article, \textit{certification} refers to a test performed with the execution layer's own prediction model. It does not certify safety, which is judged only on the truth trajectory, nor does it guarantee capture. Its structural properties are summarized next.
 
@@ -111,7 +126,7 @@ Proposition~\ref{prop:cert} states that certification is conservative toward the
 
 \subsection{Training--Execution Consistent Learning}\label{sec:consistent}
 
-Certification modifies the transitions that the policy experiences. If it were applied only at execution time, the policy would be optimized for the execution-layer kernel $\PE$ but deployed on the certified system, and, as for any postprocessing filter that is invisible during learning, it could not be expected to be closed-loop optimal for the system it actually controls \cite{reiter2026arc}. ECC removes this inconsistency by using the same map $\Cmap$ during training and execution. The certification-induced kernel is
+Certification modifies the transitions that the policy experiences. If it were applied only at execution time, the policy would be optimized for the execution-layer kernel $\PE$ but deployed on the certified system, and, as for any postprocessing filter that is invisible during learning, it could not be expected to be closed-loop optimal for the system it actually controls \cite{reiter2026arc}. ECC removes this inconsistency by using the same map $\Cmap$ during training and execution (Fig.~\ref{fig:ecc}(c)). The certification-induced kernel is
 \begin{equation}\label{eq:PC}
 \PC(x',r\,|\,x,a)=\PE\bigl(x',r\,|\,x,\Cmap(x,a)\bigr),
 \end{equation}

@@ -34,13 +34,28 @@ The information available to the two layers differs by design. The policy reads 
 \begin{figure*}[t]
 \centering
 \input{figures/framework}
-\caption{Execution-aware hierarchical framework. The policy proposes a stage intent from the observation $o$; the execution-opportunity certification $\Cmap$ evaluates the proposal and a $3\times3$ grid of candidate intents with a $48$-s mode prediction of the execution layer and returns the executed intent $a^{e}$; RWG and the near-field MPC fly $a^{e}$ on the 6-DOF truth model. The same $\Cmap$ is used in training and in execution. The replay buffer stores the proposed intent $a$ with the true outcome of executing $a^{e}$, and the execution feedback $\zE$ enters only the critic.}
+\caption{Execution-aware hierarchical framework. Every stage, the policy proposes an intent $a$; the certification $\Cmap$ evaluates $a$ and a $3\times3$ grid of candidates with a $48$-s mode prediction built from the planners and rules of the execution layer and returns the executed intent $a^{e}$, which RWG and the near-field MPC fly on the truth model. The same $\Cmap$ acts in training and in execution. Dashed paths exist only in training: the buffer stores the proposed $a$ with the outcome of executing $a^{e}$, and the execution feedback $\zE$ enters only the critics.}
 \label{fig:framework}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\begin{minipage}[b]{0.30\textwidth}\centering
+\resizebox{\linewidth}{!}{\input{figures/sweepcone}}\\[2pt]{\footnotesize (a)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.34\textwidth}\centering
+\input{figures/intent_effect}\\[2pt]{\footnotesize (b)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.33\textwidth}\centering
+\input{figures/retiming}\\[2pt]{\footnotesize (c)}
+\end{minipage}
+\caption{Rotation-synchronized window guidance. (a) Sweep-cone geometry: the port rotates about $\shat$ on a cone of half-angle $\beta$; the line of sight $\er$ has polar angle $\lambda$, $\epol$ points toward the spin axis, $\eaz$ toward the oncoming port, and $\varphi$ is the remaining phase to the pass. (b) Port--line-of-sight angle \eqref{eq:theta} for $\beta=85^{\circ}$, $\Omega=2.4^{\circ}$/s, and $\lambda=90^{\circ}$ under the phase rates $\Omega(1+\kappa)$ with $\kappa=0.35$, $0$, and $-0.35$, and for $\lambda=130^{\circ}$ ($|\dlat|>\thg$) at $\kappa=0$; shading marks the entry gate. (c) Entry re-timing: when the plan arriving at $t_{0}$ with $F_{0}$ is infeasible ($\times$), the candidates \eqref{eq:retime} around $t_{0}$ are tried in place of abandoning the pass.}
+\label{fig:rwg}
 \end{figure*}
 
 \subsection{Sweep-Cone Geometry and Passing Windows}\label{sec:geometry}
 
-Under the constant-rate prediction of Assumption~\ref{ass:info}, the port direction rotates uniformly about the spin axis $\shat$ and sweeps a cone of half-angle $\beta$, referred to as the sweep cone, where $\beta$ is the angle between the port direction and $\shat$. This rotating geometry plays the role that the time-varying line-of-sight region plays in multistage approaches to tumbling targets \cite{dong2022aa}, with the difference that its period is comparable to the mission deadline. At the relative position $q$ with range $r$, we define the local orthonormal basis (Fig.~\ref{fig:sweep})
+Under the constant-rate prediction of Assumption~\ref{ass:info}, the port direction rotates uniformly about the spin axis $\shat$ and sweeps a cone of half-angle $\beta$, referred to as the sweep cone, where $\beta$ is the angle between the port direction and $\shat$. This rotating geometry plays the role that the time-varying line-of-sight region plays in multistage approaches to tumbling targets \cite{dong2022aa}, with the difference that its period is comparable to the mission deadline. At the relative position $q$ with range $r$, we define the local orthonormal basis (Fig.~\ref{fig:rwg}(a))
 \begin{itemize}
 \item $\er=q/r$, the line-of-sight direction;
 \item $\epol$, the unit projection of $\shat$ onto the plane normal to $\er$, pointing toward the spin axis;
@@ -48,12 +63,6 @@ Under the constant-rate prediction of Assumption~\ref{ass:info}, the port direct
 \end{itemize}
 The geometry is described by the line-of-sight polar angle $\lambda=\angle(\er,\shat)$, the latitude offset $\dlat=\lambda-\beta$, and the phase $\varphi\in[0,2\pi)$ that the port still has to sweep about $\shat$ before reaching the meridian plane of the line of sight; the next pass occurs after $\varphi/\Omega$.
 
-\begin{figure}
-\centering
-\input{figures/sweepcone}
-\caption{Sweep-cone geometry. The port direction rotates about the spin axis $\shat$ on a cone of half-angle $\beta$; the line of sight $\er$ makes the polar angle $\lambda$ with $\shat$; $\epol$ points toward the spin axis and $\eaz$ toward the oncoming port; $\varphi$ is the phase that remains before the port crosses the meridian plane of the line of sight.}
-\label{fig:sweep}
-\end{figure}
 
 For the line of sight held at its current direction, the angle $\theta(\tau)$ between the port direction and $\er$ after $\tau$ seconds follows from the spherical law of cosines,
 \begin{equation}\label{eq:theta}
@@ -94,7 +103,7 @@ Under the constant-rate prediction, let the relative velocity be resolved as $v=
 \end{equation}
 \end{lemma}
 
-With the target velocity \eqref{eq:vstar}, each component of the intent acts on one quantity: $v_{c}$ on the range, $v_{l}$ on the latitude offset, and $v_{z}$ on the phase, whose rate is scaled by $1+\kappa$ with $\kappa=v_{z}/(\Omega r\sin\lambda)$. Meeting the oncoming port ($v_{z}>0$) advances the pass, accompanying it ($v_{z}<0$) delays the pass and prolongs the alignment, and $v_{z}=0$ leaves the natural sweep of $\Omega h\approx34$--$43^{\circ}$ per stage. At $r=10$~m, $|\kappa|$ reaches $0.32$--$0.41$, i.e., the along-sweep component changes the phase rate by about $\pm35\%$. The latitude law regulates the line of sight onto the sweep cone:
+With the target velocity \eqref{eq:vstar}, each component of the intent acts on one quantity: $v_{c}$ on the range, $v_{l}$ on the latitude offset, and $v_{z}$ on the phase, whose rate is scaled by $1+\kappa$ with $\kappa=v_{z}/(\Omega r\sin\lambda)$. Meeting the oncoming port ($v_{z}>0$) advances the pass, accompanying it ($v_{z}<0$) delays the pass and prolongs the alignment, and $v_{z}=0$ leaves the natural sweep of $\Omega h\approx34$--$43^{\circ}$ per stage. At $r=10$~m, $|\kappa|$ reaches $0.32$--$0.41$, i.e., the along-sweep component changes the phase rate by about $\pm35\%$, which shifts the window and changes its length (Fig.~\ref{fig:rwg}(b)). The latitude law regulates the line of sight onto the sweep cone:
 
 \begin{proposition}[Latitude regulation]\label{prop:lat}
 Let the latitude rate follow the law \eqref{eq:vlat} with saturation level $\bar v=0.12$~m/s, and let $r\le\bar r$. Then $|\dlat|$ decreases monotonically, enters the set $|\dlat|\le\bar v/(k_{\lambda}\bar r)$ in finite time, and from then on decays exponentially with time constant $1/k_{\lambda}=50$~s.
@@ -125,7 +134,7 @@ During the transfer, the entry plan is retained as long as the tracking deviatio
 &\bigl(t_{0}+s,\ F_{1}\bigr), && s\in\{0,2,4,8\}~\text{s},
 \end{aligned}
 \end{equation}
-in this order, where $F_{0}$ and $F_{1}$ are $80\%$ and $95\%$ of the per-axis thrust bound, respectively, and every candidate must arrive no later than $\Lt$. The first feasible candidate is adopted; if none is feasible, the entry is lost, the mode reverts to hold, and control returns to the policy. Re-timing thus replaces the alternative of abandoning the current pass, which costs about one spin period, by a re-plan around the original arrival instant that costs at most $8$~s.
+in this order, where $F_{0}$ and $F_{1}$ are $80\%$ and $95\%$ of the per-axis thrust bound, respectively, and every candidate must arrive no later than $\Lt$. The first feasible candidate is adopted; if none is feasible, the entry is lost, the mode reverts to hold, and control returns to the policy. Re-timing thus replaces the alternative of abandoning the current pass, which costs about one spin period, by a re-plan around the original arrival instant that costs at most $8$~s (Fig.~\ref{fig:rwg}(c)).
 
 \begin{proposition}[Monotone feasibility of re-timing]\label{prop:retime}
 For a given state and entry rule, if a feasible entry plan exists with the arrival instant fixed at $t_{0}$, then the re-timing procedure returns a feasible plan, and it returns the fixed-arrival plan itself. Moreover, for any fixed arrival instant and linearization point, the feasible set of the convex entry subproblem with thrust bound $F_{1}$ contains that with $F_{0}$.
