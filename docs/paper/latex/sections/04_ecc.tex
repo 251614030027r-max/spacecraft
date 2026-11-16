@@ -94,7 +94,7 @@ a^{\star}(x,a), & \text{otherwise},
 \begin{equation}\label{eq:astar}
 a^{\star}(x,a)=\lexmin_{b\in\Bc(x)}\bigl(\norm{b-a},\ \tauhat(x,b)\bigr),
 \end{equation}
-where $\lexmin$ selects the lexicographic minimizer, with remaining ties broken by a fixed order of the grid. Thus the proposal is executed whenever it triggers a mode event by itself or no candidate is certifiable; otherwise it is replaced by the nearest certifiable candidate, and among equally near candidates by the one with the earliest event. The executed intent is $a^{e}=\Cmap(x,a)$, and the substitution applies to the current macro step only; later decisions are not constrained.
+where $\lexmin$ selects the lexicographic minimizer, with remaining ties broken by a fixed order of the grid. Thus the proposal is executed whenever it triggers a mode event by itself or no candidate is certifiable; otherwise it is replaced by the nearest certifiable candidate, and among equally near candidates by the one with the earliest event. The executed intent is $a^{e}=\Cmap(x,a)$, and the substitution applies to the current macro step only; later decisions are not constrained. Each decision thus requires $|\Bgrid|+1=10$ mode predictions, each involving at most three stage plans and the entry-planner calls along the nominal path; the computational cost is reported in Section~\ref{sec:experiments}.
 
 Throughout this article, \textit{certification} refers to a test performed with the execution layer's own prediction model. It does not certify safety, which is judged only on the truth trajectory, nor does it guarantee capture. Its structural properties are summarized next.
 
@@ -130,6 +130,27 @@ If $\Cmap(x,a_{1})=\Cmap(x,a_{2})$, then $\PC(\cdot\,|\,x,a_{1})=\PC(\cdot\,|\,x
 \end{corollary}
 
 The proofs are given in Appendix~\ref{app:proofs}. Corollary~\ref{cor:equiv} has a practical reading. In the regions where certification substitutes the intent, all proposals mapped to the same candidate have the same value, so the policy does not need to learn to emit the certified intent itself; the policy and the certification form one decision rule. A policy trained with certification is accordingly matched to the certified system rather than to the bare execution layer, and removing certification at execution time changes the system for which the policy was trained. Section~\ref{sec:experiments} examines both execution-time ablations. The Bellman relation \eqref{eq:bellman} is posed on the full state $x$; the actor reading $o$ and the critics reading $(o,\zE)$ constitute an asymmetric approximation of this target, and, as for off-policy actor--critic learning with function approximation in general, the statement concerns the learning target rather than the convergence of the learner.
+
+The analytical results of Sections~\ref{sec:framework} and~\ref{sec:ecc} are summarized in Table~\ref{tab:results}. The RWG results establish how the window is exposed and preserved by the execution layer, and the ECC results establish how certification acts on a proposal and what the critic learns when certification is part of training.
+
+\begin{table}
+\caption{Analytical Properties of RWG and ECC}
+\label{tab:results}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{4.0pc}>{\raggedright\arraybackslash}p{8.2pc}>{\raggedright\arraybackslash}p{5.8pc}@{}}
+\hline
+Result & Statement & Role\\
+\hline
+Lemma~\ref{lem:window} & Passing window in closed form; best alignment and near-maximal duration at $\dlat\approx0$ & Defines the opportunity\\
+Lemma~\ref{lem:kin} & Spin-frame line-of-sight kinematics & Links intent to geometry\\
+Prop.~\ref{prop:lat} & Monotone and eventually exponential latitude regulation & Exposes the window\\
+Prop.~\ref{prop:retime} & Re-timing never removes a feasible entry & Preserves the window\\
+Prop.~\ref{prop:cert} & Minimal, deterministic substitution only when a critical window would be missed & Acts on the proposal\\
+Prop.~\ref{prop:consistent} & Stored data sample the certified decision process & Aligns the learning target\\
+Cor.~\ref{cor:equiv} & Equal value for proposals with the same certified intent & Policy and certification as one rule\\
+\hline
+\end{tabular*}
+\end{table}
 
 \subsection{Learning Algorithm}\label{sec:sac}
 
