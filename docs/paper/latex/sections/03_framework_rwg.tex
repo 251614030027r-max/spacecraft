@@ -1,0 +1,168 @@
+\section{HIERARCHICAL FRAMEWORK AND ROTATION-SYNCHRONIZED WINDOW GUIDANCE}\label{sec:framework}
+
+This section presents the execution-aware hierarchical SAC--MPC coordination framework, in which a learned decision layer and a constrained execution layer operate together. We first outline the integration of learning and constrained execution and its multirate structure, then develop the rotation-synchronized window guidance (RWG) that turns a low-dimensional learned intent into motion synchronized with the rotating port, and finally describe the planners and controllers of the execution layer. The coupling between the two layers, which is the main methodological contribution, is the subject of Section~\ref{sec:ecc}.
+
+\subsection{Integration of Learning and Constrained Execution}\label{sec:integration}
+
+Constrained optimization handles the safety constraints of Table~\ref{tab:constraints} explicitly, but its horizon is limited to a few seconds in the near field, whereas the value of an action in Problem~1 is decided by whether a port pass tens of seconds ahead is used or missed \cite{reiter2026arc,ren2026taes}. Conversely, a learned policy can represent long-horizon, state-dependent trade-offs between time, propellant, and opportunity, but learning thrust commands end to end, as in \cite{yang2025taes}, requires extensive interaction and offers limited means to enforce hard constraints \cite{reiter2026arc}. We therefore assign the two roles to two layers. A learned high-level policy issues, once per stage of nominal duration $h=16$~s, a two-dimensional stage intent $a=(a_{p},a_{z})\in[-1,1]^{2}$ that sets the closing pace and the timing of the encounter with the rotating port. A fixed execution layer, whose parameters are not learned, turns the intent into a feasible motion, decides and plans the entry toward the port, and flies the near-field approach. In the terminology of \cite{reiter2026arc}, the decision layer acts as a hierarchical architecture that parameterizes an optimization-based executor, which is treated as part of the environment during learning. The framework is characterized by the following three features.
+
+\textit{1) Event-driven macro steps:} The policy acts only in the stage-flight and hold modes defined below. After a decision, the execution layer runs until the first of the following events, which closes a macro step: the nominal stage of $16$~s elapses; the tracking deviation exceeds $3$~m and a hold is triggered, in which case a new decision is requested at the next $2$-s check; an entry transfer or terminal descent begins, after which no further decision is taken until the episode ends or control returns to the policy; or a terminal event occurs. Each macro step yields the true reward accumulated over its duration, the successor state, and a termination flag. A constant per-decision discount $\gd=0.999^{8}$ is used, corresponding to a factor of $0.999$ per $2$~s over a nominal stage.
+
+\textit{2) Execution modes:} The execution layer operates in one of four modes $m\in\{S,H,E,D\}$, listed in Table~\ref{tab:modes}. Translation in the far field ($r>7.5$~m) is flown by a feedforward--PD tracking law with pointing control of the camera, while the near-field model predictive controller (MPC) flies every phase within $7.5$~m as well as the entry transfer and the terminal descent. If an entry plan becomes infeasible during the transfer and cannot be re-timed, or the chaser leaves the descent region, the mode reverts to hold and control returns to the policy.
+
+\textit{3) Multirate operation:} The layers run on four time scales. Truth integration, safety evaluation, and MPC run every $0.1$~s; mode logic, entry checks, and propellant checks run every $2$~s; decisions are taken once per stage; and the mode prediction used by the coupling of Section~\ref{sec:ecc} looks $48$~s, i.e., three stages, ahead.
+
+\begin{table}
+\caption{Execution Modes}
+\label{tab:modes}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{3.3pc}>{\raggedright\arraybackslash}p{5.6pc}>{\raggedright\arraybackslash}p{9.0pc}@{}}
+\hline
+Mode & Entered when & Translation / attitude control\\
+\hline
+Stage flight $S$ & Stage plan of the new intent is feasible & Far field: tracking law along the stage plan, pointing control; near field: MPC along the same plan\\
+Hold $H$ & Stage plan infeasible or deviation $>3$ m & Holds the inertial position at hold onset (tracking law or MPC)\\
+Entry transfer $E$ & Entry rule passed and entry plan feasible & MPC tracks the entry plan\\
+Terminal descent $D$ & Mouth region, operation sphere, or in cone with $r<7$ m & MPC tracks a descent reference along the port axis\\
+\hline
+\end{tabular*}
+\end{table}
+
+
+The information available to the two layers differs by design. The policy reads an observation $o$ composed of physically normalized geometric, kinematic, and mission quantities defined in Section~\ref{sec:ecc}. The execution layer additionally knows its own short-horizon judgments, e.g., when the next port pass occurs and whether its planner can reach it, and its own execution status. How this executor knowledge is fed back to learning without being required at execution time is the core of the coupling developed in Section~\ref{sec:ecc}. The overall architecture is depicted in Fig.~\ref{fig:framework}.
+
+\begin{figure*}[t]
+\centering
+\input{figures/framework}
+\caption{Execution-aware hierarchical framework. The policy proposes a stage intent from the observation $o$; the execution-opportunity certification $\Cmap$ evaluates the proposal and a $3\times3$ grid of candidate intents with a $48$-s mode prediction of the execution layer and returns the executed intent $a^{e}$; RWG and the near-field MPC fly $a^{e}$ on the 6-DOF truth model. The same $\Cmap$ is used in training and in execution. The replay buffer stores the proposed intent $a$ with the true outcome of executing $a^{e}$, and the execution feedback $\zE$ enters only the critic.}
+\label{fig:framework}
+\end{figure*}
+
+\subsection{Sweep-Cone Geometry and Passing Windows}\label{sec:geometry}
+
+Under the constant-rate prediction of Assumption~\ref{ass:info}, the port direction rotates uniformly about the spin axis $\shat$ and sweeps a cone of half-angle $\beta$, referred to as the sweep cone, where $\beta$ is the angle between the port direction and $\shat$. This rotating geometry plays the role that the time-varying line-of-sight region plays in multistage approaches to tumbling targets \cite{dong2022aa}, with the difference that its period is comparable to the mission deadline. At the relative position $q$ with range $r$, we define the local orthonormal basis (Fig.~\ref{fig:sweep})
+\begin{itemize}
+\item $\er=q/r$, the line-of-sight direction;
+\item $\epol$, the unit projection of $\shat$ onto the plane normal to $\er$, pointing toward the spin axis;
+\item $\eaz=\er\times\epol$, oriented against the direction in which the port sweeps across the line of sight, i.e., toward the oncoming port.
+\end{itemize}
+The geometry is described by the line-of-sight polar angle $\lambda=\angle(\er,\shat)$, the latitude offset $\dlat=\lambda-\beta$, and the phase $\varphi\in[0,2\pi)$ that the port still has to sweep about $\shat$ before reaching the meridian plane of the line of sight; the next pass occurs after $\varphi/\Omega$.
+
+\begin{figure}
+\centering
+\input{figures/sweepcone}
+\caption{Sweep-cone geometry. The port direction rotates about the spin axis $\shat$ on a cone of half-angle $\beta$; the line of sight $\er$ makes the polar angle $\lambda$ with $\shat$; $\epol$ points toward the spin axis and $\eaz$ toward the oncoming port; $\varphi$ is the phase that remains before the port crosses the meridian plane of the line of sight.}
+\label{fig:sweep}
+\end{figure}
+
+For the line of sight held at its current direction, the angle $\theta(\tau)$ between the port direction and $\er$ after $\tau$ seconds follows from the spherical law of cosines,
+\begin{equation}\label{eq:theta}
+\cos\theta(\tau)=\cos\lambda\cos\beta+\sin\lambda\sin\beta\cos(\varphi-\Omega\tau),
+\end{equation}
+with the phase difference wrapped to $[-\pi,\pi]$. The following lemma characterizes the passing window for an entry gate $\theta(\tau)\le\thg$.
+
+\begin{lemma}[Passing window]\label{lem:window}
+Let $\sin\lambda\sin\beta>0$ and define
+\begin{equation}\label{eq:cstar}
+c^{\star}=\frac{\cos\thg-\cos\lambda\cos\beta}{\sin\lambda\sin\beta}.
+\end{equation}
+Then: (i) if $c^{\star}>1$, equivalently $|\dlat|>\thg$, no $\tau$ satisfies $\theta(\tau)\le\thg$; (ii) if $c^{\star}\le-1$, $\theta(\tau)\le\thg$ for all $\tau$; (iii) otherwise, $\theta(\tau)\le\thg$ if and only if $|\varphi-\Omega\tau|\le\Delta\varphi$ with the phase half-width $\Delta\varphi=\arccos c^{\star}$, so that each pass offers a window of duration $2\Delta\varphi/\Omega$ centered at $\tau=\varphi/\Omega$, where $\theta$ attains its minimum $|\dlat|$.
+\end{lemma}
+
+The proof is given in Appendix~\ref{app:proofs}. Lemma~\ref{lem:window} exposes the two levers available to the chaser: the half-width $\Delta\varphi$ grows as $|\dlat|$ shrinks, and the window position is set by the phase $\varphi$. For $\beta$ near $90^{\circ}$ and $\dlat\approx0$, $\Delta\varphi\approx\thg$; with the entry gate $\thg=35^{\circ}$ and $\Omega\in[2.1,2.7]^{\circ}$/s, a pass lasts about $26$--$33$~s, after which the next pass follows only one spin period later. Since entries are attempted at the discrete arrival times $\Tset=\{15,20,25,30,40,50,60\}$~s, the nominal geometric opportunity set is
+\begin{equation}\label{eq:wgeo}
+\Wgeo=\bigl\{(\dlat,\varphi):\exists\,\tau\in\Tset,\ |\varphi-\Omega\tau|\le\Delta\varphi\bigr\}.
+\end{equation}
+Membership in $\Wgeo$ is necessary but not sufficient for an executable entry, which additionally requires the range, speed, and planner feasibility conditions of Section~\ref{sec:entry}; the executable entries form a subset of $\Wgeo$ concentrated at small $|\dlat|$ \todo{RWG geometry figure: analytic window contour, planner-feasible entries, nominal intent arrows}.
+
+\subsection{Rotation-Synchronized Stage Intent}\label{sec:intent}
+
+RWG maps the two-dimensional intent to a three-dimensional target velocity at the end of the stage,
+\begin{equation}\label{eq:vstar}
+v^{\star}=-v_{c}\,\er+v_{l}\,\epol+v_{z}\,\eaz,
+\end{equation}
+with the closing speed $v_{c}=0.05+0.15\,a_{p}\in[-0.10,0.20]$~m/s and the along-sweep speed $v_{z}=0.15\,a_{z}\in[-0.15,0.15]$~m/s set by the policy, and the latitude speed
+\begin{equation}\label{eq:vlat}
+v_{l}=\clip\bigl(k_{\lambda}\,r\,\dlat,\ \pm0.12~\text{m/s}\bigr),\qquad k_{\lambda}=0.02~\text{s}^{-1},
+\end{equation}
+set by a fixed geometric regulation law. Locally, the three components act on the three quantities that govern Lemma~\ref{lem:window}:
+\begin{equation}\label{eq:localkin}
+\dot r\approx-v_{c},\qquad \dot{\dlat}=-\frac{v_{l}}{r},\qquad \dot\varphi=-\Omega-\frac{v_{z}}{r\sin\lambda}.
+\end{equation}
+The latitude law contracts $\dlat$ with a $50$-s time constant when unsaturated, which places the line of sight on the sweep cone and thereby maximizes the window half-width. The along-sweep component advances the pass when $v_{z}>0$, i.e., the chaser moves to meet the oncoming port, delays it when $v_{z}<0$, i.e., the chaser accompanies the port and prolongs the alignment, and leaves the natural sweep of $\Omega h\approx34$--$43^{\circ}$ per stage when $v_{z}=0$. At $r\approx10$~m, the along-sweep component changes the phase rate, and thus the time to the next pass, by about $\pm35\%$. The two learned degrees of freedom thus have a clear division of labor: $a_{p}$ sets the approach pace, and $a_{z}$ sets the encounter timing with the rotating port. Meeting, accompanying, and waiting are values of one continuous action rather than predefined discrete maneuvers; which of them is preferable depends on the remaining time, the mission type, and the propellant, which is precisely the state-dependent decision delegated to learning.
+
+The stage goal is obtained from the current inertial relative state $(q,v)$ in three steps.
+\begin{enumerate}
+\item \textit{Stage authority:} the velocity change $v^{\star}-v$ is scaled, if necessary, onto the ball of radius $2d/h$, where $d=0.7\,(1.6~\text{N}/m_{C})\,h^{2}/2\approx1.35$~m is the displacement achievable with $70\%$ of the planning thrust, which gives about $0.17$~m/s per stage; the result is $v_{\mathrm{goal}}$.
+\item \textit{End position:} $q_{\mathrm{goal}}=q+h\,(v+v_{\mathrm{goal}})/2$.
+\item \textit{Safety projection:} only the inward radial component of $v_{\mathrm{goal}}$ is reduced, in two passes, so that the stage ends no closer than $6.8$~m (the operation sphere, the mouth band, and a $0.3$-m margin) and its radial closing speed does not exceed the braking envelope at that range minus $0.02$~m/s. The operation sphere is thereby entered only through an entry transfer or the terminal descent.
+\end{enumerate}
+The stage planner of Section~\ref{sec:executor} then plans a $16$-s trajectory toward $(q_{\mathrm{goal}},v_{\mathrm{goal}})$ as a soft target.
+
+The stage duration balances three effects. During $16$~s the port sweeps $34$--$43^{\circ}$, about half a window, so that two to four decisions precede each pass; the constant-rate attitude prediction remains accurate to about $1^{\circ}$, against about $3^{\circ}$ and $9^{\circ}$ at $30$ and $60$~s; and the velocity change attainable within a stage, which scales with $h^{2}$, remains large enough to reshape the encounter. The $50$-s time constant of \eqref{eq:vlat} halves the latitude offset within about three stages, and the $70\%$ thrust authority leaves margin for tracking.
+
+\subsection{Dynamic Entry and Entry Re-Timing}\label{sec:entry}
+
+While the execution layer is in stage flight or hold, an entry rule is checked every $2$~s. It requires a range of at most $12$~m and a radial braking margin of at least $0.02$~m/s; then, for each arrival time $\tau\in\Tset$ in ascending order with $\theta(\tau)\le\thg$ under the constant-rate prediction and $t+\tau\le\Lt$, the entry planner of Section~\ref{sec:executor} is invoked, and the first feasible $\tau$ starts the entry transfer. The thresholds $12$~m, $35^{\circ}$, and $0.02$~m/s act as a prefilter that limits planner calls; they are not safety bounds, which remain those of Table~\ref{tab:constraints}.
+
+During the transfer, the entry plan is retained as long as the tracking deviation stays within $1$~m. Otherwise, the entry planner is re-solved toward the original arrival instant $t_{0}$ over the remaining time. If this fails, entry re-timing searches the arrival instants
+\begin{equation}\label{eq:retime}
+\begin{aligned}
+&\bigl(t_{0}+s,\ F_{0}\bigr), && s\in\{2,4,8\}~\text{s},\\
+&\bigl(t_{0}+s,\ F_{1}\bigr), && s\in\{0,2,4,8\}~\text{s},
+\end{aligned}
+\end{equation}
+in this order, where $F_{0}$ and $F_{1}$ are $80\%$ and $95\%$ of the per-axis thrust bound, respectively, and every candidate must arrive no later than $\Lt$. The first feasible candidate is adopted; if none is feasible, the entry is lost, the mode reverts to hold, and control returns to the policy. Re-timing thus replaces the alternative of abandoning the current pass, which costs about one spin period, by a re-plan around the original arrival instant that costs at most $8$~s.
+
+\begin{proposition}[Monotone feasibility of re-timing]\label{prop:retime}
+For a given state and entry rule, if a feasible entry plan exists with the arrival instant fixed at $t_{0}$, then the re-timing procedure returns a feasible plan, and it returns the fixed-arrival plan itself. Moreover, for any fixed arrival instant and linearization point, the feasible set of the convex entry subproblem with thrust bound $F_{1}$ contains that with $F_{0}$.
+\end{proposition}
+
+The proof is given in Appendix~\ref{app:proofs}. Proposition~\ref{prop:retime} states that re-timing never weakens the existence of an executable entry. It is a property of the candidate set, not of the closed loop; its effect on capture is assessed in Section~\ref{sec:experiments}. The candidates are checked against the port pose at the respective arrival instants by the entry planner itself. The largest shift of $8$~s corresponds to a port rotation of at most $21.6^{\circ}$, which is smaller than the full window width of about $70^{\circ}$ at $\dlat\approx0$; a re-timed arrival remains within the same pass whenever the phase margin of $t_{0}$ to the window edge is at least $\Omega s$.
+
+\subsection{Execution-Layer Planning and Control}\label{sec:executor}
+
+All planners of the execution layer use a double-integrator model in the inertial relative frame, which neglects differential gravity of order $10^{-5}$~m/s$^{2}$ at $12$~m, together with the constant-rate attitude prediction of the target. Only the truth propagation uses the full dynamics. In keeping with \cite{lian2026asr}, the planners are formulated as second-order cone programs (SOCPs) solved by sequential convexification; the emphasis is on encoding the mission constraints rather than on new numerical algorithms.
+
+\textit{1) Stage planner:} Given $(q_{0},v_{0})$ and the stage goal, the planner discretizes the $16$-s stage into $N_{s}=16$ intervals with piecewise-constant thrust $u_{k}$ and solves, with four convexification iterations,
+\begin{equation}\label{eq:stageplan}
+\begin{aligned}
+\min_{u}\ \ & 10\norm{q_{N_{s}}-q_{\mathrm{goal}}}^{2}+200\norm{v_{N_{s}}-v_{\mathrm{goal}}}^{2}\\
+&+0.1\,\Delta v+0.01\textstyle\sum_{k}\max\bigl(0,\norm{q_{k}}-20\bigr)\Delta t_{s}\\
+\text{s.t.}\ \ & \norm{u_{k}}\le1.6~\text{N},\quad \norm{q}\ge6.3~\text{m},\\
+& \text{radial closing speed}\le\vb\ \text{(chordwise)},\\
+& \norm{q}\le\min\bigl\{28,\max(20,r_{0}+d_{\mathrm{stop}})\bigr\}~\text{m},
+\end{aligned}
+\end{equation}
+subject to the exact double-integrator transitions, where $\Delta v$ is the planned velocity increment, $\Delta t_{s}=1$~s, and $d_{\mathrm{stop}}$ is the stopping distance. The keep-out sphere is linearized as a half-space at the previous iterate, and all path constraints are imposed both at the nodes and at four interior points of each interval using the exact double-integrator position and velocity. The plan is accepted after a $0.1$-s check of range ($\ge6.05$~m), braking envelope, and maximum range ($\le29.5$~m); otherwise it is re-solved at most twice with enlarged margins, and an intent whose plan still fails is not executable and leads to hold. The goal is soft, while every safety-related constraint is hard.
+
+\textit{2) Far-field tracking and pointing:} For $r>7.5$~m, translation tracks the stage plan $(q_{\mathrm{ref}},v_{\mathrm{ref}})$ in the inertial frame by
+\begin{equation}\label{eq:pd}
+a_{\mathrm{cmd}}=a_{\mathrm{ff}}+K_{p}(q_{\mathrm{ref}}-q)+K_{d}(v_{\mathrm{ref}}-v),
+\end{equation}
+with the planned acceleration $a_{\mathrm{ff}}$, $K_{p}=0.04$~s$^{-2}$, and $K_{d}=0.40$~s$^{-1}$ (natural frequency $0.2$~rad/s, critical damping), saturated per axis at $2$~N. In hold, the reference is the inertial position at hold onset. The attitude keeps the camera on the port with
+\begin{equation}\label{eq:point}
+\tau_{c}=J_{C}\bigl(K_{\theta}\theta_{e}-K_{\omega}\omega_{C}\bigr)+\omega_{C}\times J_{C}\omega_{C},
+\end{equation}
+where $\theta_{e}$ is the pointing error vector, $K_{\theta}=0.36$~s$^{-2}$, and $K_{\omega}=1.2$~s$^{-1}$ (natural frequency $0.6$~rad/s), saturated at $0.6$~N$\cdot$m per axis. In the far field, the translational objective is an inertial trajectory over one stage, for which \eqref{eq:pd} suffices; the target-fixed rotating formulation of the MPC is reserved for the proximity region, where the port-relative constraints become active.
+
+\textit{3) Entry planner:} For an arrival time $\tau$, the entry planner computes a minimum-$\Delta v$ transfer to the moving mouth point
+\begin{equation}\label{eq:mouth}
+E(t+\tau)=R_{T}(t+\tau)\,(6.3\,n_{p}),
+\end{equation}
+located on the port axis $0.3$~m outside the operation sphere and rotating with the target, where $R_{T}(\cdot)$ is the constant-rate attitude prediction. The terminal velocity equals the co-moving velocity of this point minus an inward component of $0.02$~m/s. With $N_{e}=30$ intervals and four convexification iterations, the planner solves
+\begin{equation}\label{eq:entryplan}
+\begin{aligned}
+\min_{u}\ \ & \Delta v+0.01\textstyle\sum_{k}\max\bigl(0,\norm{q_{k}}-20\bigr)\Delta t_{e}\\
+\text{s.t.}\ \ & \norm{u_{k}}\le F,\quad q_{N_{e}}=E(t+\tau),\\
+& v_{N_{e}}=\dot E(t+\tau)-0.02\,n_{E},\\
+& 6.3~\text{m}\le\norm{q}\le28~\text{m},\quad \text{braking envelope},
+\end{aligned}
+\end{equation}
+subject to the double-integrator transitions, where $\Delta t_{e}=\tau/N_{e}$, $n_{E}$ is the outward unit vector at the mouth point, the keep-out bound is linearized as before, and $F=F_{0}=0.8\times2$~N, or $F_{1}=0.95\times2$~N during re-timing. Since a minimum-$\Delta v$ transfer is close to bang--coast--bang, planning at the full bound would leave no margin for tracking; the $80\%$ bound reserves this margin for the MPC that tracks the plan. The plan is checked every $2$~s and re-planned or re-timed as described in Section~\ref{sec:entry}.
+
+\textit{4) Terminal descent:} The descent starts when the chaser enters the mouth region or the operation sphere, or is inside the approach cone with $r<7$~m. Its reference is a lead point on the port axis in $\FT$ that advances from the current axial position toward $p_{\mathrm{cap}}$ at the smaller of the braking-envelope speed $\vb(d_{\mathrm{ax}})$ and the Coriolis-admissible speed $(0.5\times2~\text{N})/(2\Omega m_{C})$, until capture or a terminal event.
+
+\textit{5) Near-field MPC:} Within $7.5$~m and during entry and descent, an MPC formulated on the relative $\SE$ state \eqref{eq:rel} in $\FT$ computes the full control wrench. It linearizes the dynamics analytically at the current state, uses a horizon of $35$ steps of $0.1$~s, and minimizes a quadratic tracking cost with state scales of $75^{\circ}$, $20$~m, $0.05$~rad/s, and $1.1$~m/s, an input weight of $0.01$, and a terminal weight of $1000$. The translational reference is the path of the current mode (stage plan, entry plan, or descent lead point), and the attitude reference is the line of sight to the port, switching to the docking attitude during the descent. The constraints comprise the per-axis input bounds and the safety constraints of Table~\ref{tab:constraints} linearized along the current predicted trajectory, with the approach cone approximated by an eight-face polyhedron tightened by $0.02$ and softened by a slack variable (weight $10^{4}$, upper bound $2$). The resulting conic program is solved by an interior-point solver; if it fails, a zero wrench is applied for that step. The MPC thus supplies near-field execution capability, while long-horizon decisions are left to the policy.
+
+The planners used by the mode prediction of Section~\ref{sec:ecc} are separate instances of the same planners, so that predicting the consequence of an intent leaves the state of the planners that actually fly the chaser unchanged.

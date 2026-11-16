@@ -1,0 +1,120 @@
+\section{PROBLEM FORMULATION}\label{sec:problem}
+
+The pre-capture phase considered in this article begins with the chaser $12$--$16$~m from a freely tumbling, noncooperative target and ends when the chaser holds a capture pose in front of the target docking port. To define the variables, constraints, and objectives involved in this problem, this section introduces the coordinate frames and the six-degree-of-freedom (6-DOF) dynamics, the port geometry and the safety constraints, and the mission specification that leads to the optimization problem addressed in the remainder of the article.
+
+\subsection{Coordinate Frames and Spacecraft Dynamics}\label{sec:dynamics}
+
+Four right-handed frames are used, as illustrated in Fig.~\ref{fig:frames}. 1)~The Earth-centered inertial frame $\FI$ has its origin at the Earth's center, its $X$-axis toward the vernal equinox, and its $Z$-axis along the Earth's rotation axis. 2)~The target body frame $\FT$ and 3)~the chaser body frame $\FC$ are attached to the respective centers of mass; the axes of $\FT$ are aligned with the principal axes of the target, and the camera boresight of the chaser is the $+x$-axis of $\FC$. 4)~The local-vertical local-horizontal frame $\FL$ of the target is used only to describe the initial relative positions. The target flies on a $500$-km circular orbit with an inclination of $45^{\circ}$.
+
+The configuration of each spacecraft is described on the Lie group $\SE$, which represents attitude and position jointly and globally without singularities \cite{yang2025taes,gong2026ast}. The pose is $g=(R,p)\in\SE$, where $R\in\SO$ maps $\FC$ (or $\FT$) to $\FI$ and $p\in\R^{3}$ is the inertial position, and the body-frame twist is $\xi=[\omega^{\T},v^{\T}]^{\T}$, with angular velocity $\omega$ and translational velocity $v$. Following \cite{yang2025taes}, the kinematics and dynamics of each rigid body read
+\begin{align}
+\dot g &= g\,\hat{\xi}, \label{eq:kin}\\
+J\dot\omega &= -\omega\times J\omega+\tau_{g}+\tau_{c}, \label{eq:rot}\\
+m\dot v &= -m\,\omega\times v+f_{g}+f_{c}, \label{eq:trans}
+\end{align}
+where $\hat{\xi}\in\mathfrak{se}(3)$ is the matrix form of $\xi$, $m$ and $J$ are the mass and inertia matrix, and $(\tau_{c},f_{c})$ is the control wrench expressed in the body frame. With $p_{b}=R^{\T}p$, $\rho=\norm{p}$, and the second-moment matrix $M=\tfrac12\mathrm{tr}(J)I_{3}-J$, the gravitational wrench comprises the gravity-gradient torque and the central force with its second-order mass-moment correction and the $J_{2}$ perturbation:
+\begin{align}
+\tau_{g} &= \frac{3\mu}{\rho^{5}}\,p_{b}\times Jp_{b},\label{eq:tg}\\
+f_{g} &= -\frac{\mu m}{\rho^{3}}p_{b}-\frac{3\mu}{\rho^{5}}Mp_{b}+\frac{15\mu\,p_{b}^{\T}Mp_{b}}{2\rho^{7}}p_{b}+R^{\T}f_{J_{2}},\label{eq:fg}
+\end{align}
+where $\mu$ is the gravitational parameter of the Earth and $f_{J_{2}}$ is the $J_{2}$ force in $\FI$ \cite{yang2025taes,tian2024taes}. No other external disturbance is applied.
+
+The chaser and the target are both propagated with \eqref{eq:kin}--\eqref{eq:fg} in $\FI$ by an adaptive Runge--Kutta (RK45) integrator with relative and absolute tolerances of $10^{-7}$ and $10^{-9}$ and a maximum step of $0.1$~s. The relative configuration and twist of the chaser with respect to the target are
+\begin{equation}\label{eq:rel}
+g_{r}=g_{T}^{-1}g_{C},\qquad \xi_{r}=\xi_{C}-\mathrm{Ad}_{g_{r}^{-1}}\xi_{T},
+\end{equation}
+whose exponential coordinates form the 12-dimensional relative state (relative rotation vector, relative position, relative angular velocity, and relative velocity) used by the near-field controller. The control wrench is applied with a zero-order hold of $\Delta t=0.1$~s and is saturated per axis at $|f_{c,i}|\le 2$~N and $|\tau_{c,i}|\le 0.6$~N$\cdot$m. Propellant use is measured by the accumulated velocity increment $\dvused=\sum_{k}\norm{f_{c,k}}\Delta t/m_{C}$.
+
+The target is a homogeneous box of $225$~kg with a grapple rod leading from the box to the docking port; the chaser parameters follow \cite{yang2025taes}. Both are listed in Table~\ref{tab:params}. The target tumbles freely with a spin rate $\Omega=\norm{\omega_{T}}$ between $2.1$ and $2.7^{\circ}$/s about an axis that deviates by $10$--$20^{\circ}$ from its body $z$-axis, so that the spin period $P=2\pi/\Omega$ lies between $133$ and $171$~s.
+
+\begin{table}
+\caption{Spacecraft Parameters}
+\label{tab:params}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{9.6pc}>{\raggedright\arraybackslash}p{9.2pc}@{}}
+\hline
+Quantity & Value\\
+\hline
+Target mass & $225$ kg\\
+Target principal inertia & $\diag(30,39,48)$ kg$\cdot$m$^{2}$\\
+Target half-dimensions & $0.62\times0.51\times0.37$ m\\
+Grapple-rod radius & $0.05$ m\\
+Target spin rate $\Omega$ & $2.1$--$2.7^{\circ}$/s\\
+Spin-axis offset from body $z$-axis & $10$--$20^{\circ}$\\
+Chaser mass $m_{C}$ & $106$ kg\\
+Chaser inertia & $\approx\diag(20.3,19.9,23.7)$ kg$\cdot$m$^{2}$ (small products of inertia)\\
+Chaser envelope radius & $0.95$ m\\
+Thrust / torque bound (per axis) & $2$ N / $0.6$ N$\cdot$m\\
+\hline
+\end{tabular*}
+\end{table}
+
+\begin{assumption}\label{ass:info}
+The relative state is measured without error. The inertia of the target is unknown to the chaser; every prediction of the target attitude used for decision and planning propagates the current attitude with the current angular velocity held constant, which corresponds to an isotropic inertia estimate equal to one third of the trace of the true inertia. Only the truth propagation \eqref{eq:kin}--\eqref{eq:fg} uses the true inertia.
+\end{assumption}
+
+The constant-rate prediction in Assumption~\ref{ass:info} is the only knowledge of the target motion available to the chaser. It is accurate over a few tens of seconds and degrades over longer horizons, which is one reason why the decision interval introduced in Section~\ref{sec:framework} is kept short compared with the spin period.
+
+\subsection{Docking Port, Safety Constraints, and Capture}\label{sec:constraints}
+
+In $\FT$, the docking port is located at $p_{\mathrm{port}}=[-1.5,0,0]^{\T}$~m, its approach axis is $n_{p}=[-1,0,0]^{\T}$, and the capture point is $p_{\mathrm{cap}}=[-3.0,0,0]^{\T}$~m. Since the target tumbles, the port and the capture point move in $\FI$, and the chaser must meet a moving capture interface rather than a fixed point. Let $q$ denote the chaser position relative to the target center of mass expressed in $\FT$ and $r=\norm{q}$. The approach cone (corridor) is the set of positions whose axial distance from the port along $n_{p}$ is at least $1$~m and whose lateral distance does not exceed the axial distance multiplied by $\tan 35^{\circ}$. The operation sphere is the ball of radius $6$~m about the target center, and the mouth region is the part of the approach cone with $r<6.5$~m, i.e., the operation sphere extended by a $0.5$-m mouth band.
+
+Approach speeds are limited by a braking envelope $\vb(d)$, defined as the piecewise-linear inner approximation of $\sqrt{v_{f}^{2}+2a_{b}d}$ with knots at $d\in\{0,0.25,0.5,1,2,4,8,16,32\}$~m, where $v_{f}=0.05$~m/s and $a_{b}=0.5\times 2\,\text{N}/m_{C}\approx0.0094$~m/s$^{2}$. Because every segment is a chord of a concave function, the envelope is nowhere looser than the constant-deceleration profile. The safety constraints of Table~\ref{tab:constraints} are evaluated on the truth state every $0.1$~s; this classification into motion constraints and actuator limits follows \cite{tian2024taes,xu2026ast}. The radial closing speed is measured on the inertial line of sight, whereas the total and axial speeds are measured relative to the rotating target. A violation of any constraint terminates the episode as unsafe, while actuator saturation is treated as a limit rather than a violation.
+
+\begin{table}
+\caption{Safety Constraints Evaluated on the Truth State}
+\label{tab:constraints}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{4.4pc}>{\raggedright\arraybackslash}p{3.7pc}>{\raggedright\arraybackslash}p{9.8pc}@{}}
+\hline
+Constraint & Region & Condition\\
+\hline
+Collision & All & Clearance between the chaser envelope sphere and the target box and grapple rod $\ge 0$\\
+Sphere or corridor & All & $r\ge 6$ m, or inside the approach cone\\
+Field of view & All & Angle between the boresight and the line of sight to the port $\le 50^{\circ}$\\
+Radial braking & Outside mouth & Radial closing speed $\le \vb(r-6\,\text{m})$\\
+Total speed & Mouth region & Relative speed $\le 0.35$ m/s\\
+Axial braking & Mouth region & Axial closing speed $\le \vb(d_{\mathrm{ax}})$, with $d_{\mathrm{ax}}$ the axial distance to $p_{\mathrm{cap}}$\\
+Range & All & $r\le 30$ m\\
+\hline
+\end{tabular*}
+\end{table}
+
+The capture condition requires the chaser to be inside the approach cone with a position error with respect to $p_{\mathrm{cap}}$ of at most $0.25$~m, an attitude error of at most $10^{\circ}$, a relative speed of at most $0.05$~m/s, and a relative angular-velocity error of at most $0.02$~rad/s. Capture is declared when this condition holds continuously for $1$~s.
+
+\subsection{Mission Specification and Problem Statement}\label{sec:mission}
+
+Each pre-capture task carries a mission type that fixes a deadline $\Td$, a velocity-increment budget $\Bmax$, and the relative cost of time and propellant, as summarized in Table~\ref{tab:missions}. Urgent missions have short deadlines and favor completion time; economy missions have longer deadlines, a tighter budget, and favor propellant. The economy budget of $2.0$~m/s is selected by a prescreening with non-learning stage policies: at this budget the propellant constraint binds in a substantial share of episodes, while every prescreened task is still captured by at least one of these policies. A task terminates when the propellant use reaches $\Bmax$ (fuel exhaustion, checked every $2$~s). A terminal reserve $\Dd=45$~s is kept for the final descent, so that $\Lt=\Td-\Dd$ is the latest admissible time to begin an entry toward the port.
+
+\begin{table}
+\caption{Mission Types}
+\label{tab:missions}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccc@{}}
+\hline
+Type & $\Td$ (s) & $\Bmax$ (m/s) & $c_{t}$ (1/s) & $c_{f}$ (s/m)\\
+\hline
+Urgent & $\mathcal{U}(140,200)$ & $3.0$ & $0.10$ & $10$\\
+Economy & $\mathcal{U}(280,340)$ & $2.0$ & $0.02$ & $40$\\
+\hline
+\end{tabular*}
+\end{table}
+
+The initial attitude of the target is uniformly distributed on $\SO$. The chaser starts at a uniformly random direction in $\FL$ at a distance of $12$--$16$~m, with an inertial relative speed of at most $0.05$~m/s, a boresight within $15^{\circ}$ of the port, and per-axis angular rates of at most $0.005$~rad/s.
+
+The task performance is measured by the true return
+\begin{equation}\label{eq:return}
+G=\sum_{k}\bigl(-c_{t}\Delta t-c_{f}\Delta v_{k}\bigr)+r_{\mathrm{term}},
+\end{equation}
+accumulated every $0.1$~s, where $\Delta v_{k}$ is the velocity increment of step $k$ and the terminal reward is $r_{\mathrm{term}}=+100$ for capture, $-100$ for timeout ($t\ge\Td$), $-100$ for fuel exhaustion, and $-150$ for an unsafe termination. All four outcomes end the episode.
+
+\noindent\textit{Problem~1:} Under the truth dynamics \eqref{eq:kin}--\eqref{eq:fg} and the constraints of Table~\ref{tab:constraints}, find an observation-feedback control policy that maximizes the expected true return $\E[G]$ over the distribution of targets, initial conditions, and missions; equivalently, capture within the deadline and budget whenever possible and, given capture, spend as little time (urgent) or propellant (economy) as possible.
+
+Problem~1 couples two scales that no single short-horizon optimization can resolve. Entry toward the port is admissible only while the port faces the chaser, which happens once per spin period. Missing a pass costs about $P\in[133,171]$~s, which is comparable to the entire deadline of an urgent mission once the terminal reserve is deducted. Whether to accelerate toward the current pass, to wait for it, or to commit to the next one therefore depends on the remaining time and propellant, whereas the feasibility of each individual maneuver is decided by constraints that act on a time scale of seconds.
+
+\begin{figure}
+\centering
+\input{figures/frames}
+\caption{Coordinate frames and port geometry. The docking port and the capture point are fixed in $\FT$ and move in $\FI$ with the tumbling target; the approach cone of half-angle $35^{\circ}$ opens along the port axis $n_{p}$, and the operation sphere of radius $6$~m surrounds the target.}
+\label{fig:frames}
+\end{figure}

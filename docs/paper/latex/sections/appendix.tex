@@ -1,0 +1,41 @@
+\appendices
+
+\section{PROOFS}\label{app:proofs}
+
+\textit{Proof of Lemma~\ref{lem:window}:} Let $e_{1}$ be the unit vector orthogonal to $\shat$ in the meridian plane of the line of sight and $e_{2}=\shat\times e_{1}$, so that $\er=\cos\lambda\,\shat+\sin\lambda\,e_{1}$. Under the constant-rate prediction, the port direction after $\tau$ seconds is $u(\tau)=\cos\beta\,\shat+\sin\beta\,(\cos\psi\,e_{1}+\sin\psi\,e_{2})$ with azimuth $\psi=-(\varphi-\Omega\tau)$ relative to the meridian of the line of sight. Hence $\cos\theta(\tau)=u(\tau)^{\T}\er=\cos\lambda\cos\beta+\sin\lambda\sin\beta\cos(\varphi-\Omega\tau)$, which is \eqref{eq:theta}. Since $\sin\lambda\sin\beta>0$ and the cosine is decreasing on $[0,\pi]$, $\theta(\tau)\le\thg$ is equivalent to $\cos(\varphi-\Omega\tau)\ge c^{\star}$. If $c^{\star}>1$, this inequality has no solution, and $c^{\star}>1$ is equivalent to $\cos\thg>\cos\lambda\cos\beta+\sin\lambda\sin\beta=\cos(\lambda-\beta)$, i.e., $|\dlat|>\thg$ because $|\lambda-\beta|\in[0,\pi]$. If $c^{\star}\le-1$, the inequality holds for every $\tau$. Otherwise, with the phase difference wrapped to $[-\pi,\pi]$, it holds if and only if $|\varphi-\Omega\tau|\le\arccos c^{\star}=\Delta\varphi$, which is an interval of length $2\Delta\varphi/\Omega$ in $\tau$ centered at $\varphi/\Omega$. At the center, $\cos\theta=\cos(\lambda-\beta)$, so that the minimum angle is $|\dlat|$. \hfill$\square$
+
+\textit{Proof of Proposition~\ref{prop:retime}:} The fixed-arrival procedure solves the entry problem toward $t_{0}$ with the bound $F_{0}$. The re-timing procedure evaluates the same problem first and the candidates \eqref{eq:retime} afterwards, and it adopts the first feasible one. If a feasible plan with the arrival instant $t_{0}$ exists, the first evaluation of the re-timing procedure is that same convex problem with the same data, so the procedure stops there and returns the fixed-arrival plan. For the second statement, fix the arrival instant and the linearization point. The convex subproblems with the bounds $F_{0}$ and $F_{1}$ share every constraint except $\norm{u_{k}}\le F$, and $F_{1}>F_{0}$, so every plan feasible under $F_{0}$ is feasible under $F_{1}$. \hfill$\square$
+
+\textit{Proof of Proposition~\ref{prop:cert}:} Statement 1 is the first case of \eqref{eq:certmap}. In the second case, $\Bc(x)$ is a nonempty subset of the finite grid $\Bgrid$, so the lexicographic minimizer of $(\norm{b-a},\tauhat(x,b))$ over $\Bc(x)$ exists; by definition it belongs to $\Bc(x)$, minimizes $\norm{b-a}$, and has the smallest $\tauhat$ among the minimizers of $\norm{b-a}$, which is statement 2. The remaining ties are resolved by a fixed order of $\Bgrid$, and $\ehat$, $\tauhat$, and $\dvhat$ are deterministic functions of $(x,b)$ by Definition~\ref{def:pred}; hence $\Cmap(x,a)$ is uniquely defined, which is statement 3. \hfill$\square$
+
+\textit{Proof of Proposition~\ref{prop:consistent}:} By construction, $x$ contains every variable that determines the evolution of the closed loop over a macro step: the truth state, the time, the propellant used, the mission parameters, and the complete internal state of the execution layer. Given $x_{k}$ and an executed intent, the truth propagation and the execution layer determine the successor state and the macro-step reward, which defines $\PE$. The mode prediction runs on separate planner instances and therefore leaves $x_{k}$ unchanged, and $\Cmap(x_{k},a_{k})$ is a deterministic function of $(x_{k},a_{k})$ by Proposition~\ref{prop:cert}. Hence, conditioned on $(x_{k},a_{k})$, the pair $(x_{k+1},r_{k})$ is distributed according to $\PE(\cdot\,|\,x_{k},\Cmap(x_{k},a_{k}))=\PC(\cdot\,|\,x_{k},a_{k})$, independently of how $a_{k}$ was sampled. The shaped reward \eqref{eq:shaping} is a function of $(x_{k},r_{k},x_{k+1})$, and the termination flag is a function of $x_{k+1}$. Therefore the stored transitions are samples of the decision process $(\PC,\rtil,\gd)$, and \eqref{eq:bellman} is the Bellman equation of a policy $\pi$ in this process. The target $\rtil_{k}+\gd(1-d_{k})\,\E_{a'\sim\pi}Q(x_{k+1},a')$ formed from a stored transition is a sample of the right-hand side of \eqref{eq:bellman} at $(x_{k},a_{k})$. \hfill$\square$
+
+\textit{Proof of Corollary~\ref{cor:equiv}:} By \eqref{eq:PC}, $\PC(\cdot\,|\,x,a)$ depends on $a$ only through $\Cmap(x,a)$, so $\Cmap(x,a_{1})=\Cmap(x,a_{2})$ implies $\PC(\cdot\,|\,x,a_{1})=\PC(\cdot\,|\,x,a_{2})$. The right-hand side of \eqref{eq:bellman} depends on $a$ only through $\PC(\cdot\,|\,x,a)$, which gives $Q^{\pi}_{\Cmap}(x,a_{1})=Q^{\pi}_{\Cmap}(x,a_{2})$. \hfill$\square$
+
+\section{LEARNING HYPERPARAMETERS}\label{app:hyper}
+
+The hyperparameters of the decision layer are listed in Table~\ref{tab:hyper}. They are identical for all learning-based methods compared in Section~\ref{sec:experiments}, except for the algorithm-specific settings of the twin-delayed baseline \cite{fujimoto2018td3} reported there.
+
+\begin{table}[h]
+\caption{Learning Hyperparameters}
+\label{tab:hyper}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{9.4pc}>{\raggedright\arraybackslash}p{9.4pc}@{}}
+\hline
+Item & Value\\
+\hline
+Hidden layers (actor and critics) & $[256,256]$\\
+Learning rate (actor and critics) & $3\times10^{-4}$\\
+Replay-buffer capacity & $10^{5}$\\
+Batch size & $256$\\
+Warm-up & $200$ decisions with uniform random intents\\
+Updates per stored transition & $2$\\
+Per-decision discount $\gd$ & $0.999^{8}\approx0.992$\\
+Temperature $\alpha$ & $0.05$ (fixed)\\
+Target-network soft-update rate & $0.005$\\
+Training budget & $5000$ high-level decisions\\
+Training missions & urgent $3/4$, economy $1/4$\\
+Collector processes & $2$\\
+\hline
+\end{tabular*}
+\end{table}

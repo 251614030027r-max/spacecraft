@@ -1,0 +1,161 @@
+\section{EXECUTION-FEEDBACK CLOSED-LOOP COORDINATION}\label{sec:ecc}
+
+The hierarchy of Section~\ref{sec:framework} separates long-horizon decisions from short-horizon constrained execution, but it also separates what the two layers know. The consequence of a stage intent materializes only after the execution layer has planned it, passed it through its entry gates, and tracked it; the decisive link, namely whether the port pass can be converted into an entry, is resolved by the execution layer on a time scale of seconds. A decision layer trained only from realized transitions faces three forms of mismatch with its executor. 1)~\textit{Information:} the execution layer knows whether and when an intent will lead to an entry or descent, whereas the policy must infer this from sparse terminal outcomes. 2)~\textit{Time scale:} decisions are taken every $16$~s, while entry opportunities open once per spin period and last a few tens of seconds. 3)~\textit{Consequence:} when opportunities are scarce, neighboring intents can lead to capture and timeout, respectively, so that the value function exhibits cliffs located by executor rules, which are difficult to learn from returns alone.
+
+The execution-feedback closed-loop coordination (ECC) addresses this mismatch through two feedback channels supplied by the same execution-layer interface. At the state level, an execution feedback vector $\zE$ enters the critic during training. At the action level, an execution-opportunity certification $\Cmap$ revises the proposed intent with the execution layer's own short-horizon mode prediction, identically in training and in execution. Learning itself remains standard off-policy temporal-difference learning on real transitions; the execution layer generates no value labels.
+
+\subsection{Decision Process, Observation, and Reward}\label{sec:mdp}
+
+Decisions are taken at macro-step boundaries in modes $S$ and $H$. The full state $x$ at such an instant comprises the truth state (relative pose and twist, target attitude and angular velocity), the time, the propellant used, the mission parameters, and the internal state of the execution layer, namely its mode, its hold reference, the record of the previous stage, and the warm starts of its solvers. Because entry transfers and descents run until termination or until the entry is lost, which voids the entry plan and reverts to hold, no unfinished entry plan exists at a decision instant, and the execution layer holds no estimator state under Assumption~\ref{ass:info}. Executing an intent $a$ from $x$ until the end of the macro step defines the execution-layer kernel $\PE(x',r\,|\,x,a)$, where $r$ is the true reward \eqref{eq:return} accumulated over the macro step.
+
+The policy reads the observation $o$ listed in Table~\ref{tab:obs}. It consists of 18 quantities derived from the current relative state, the constant-rate attitude prediction, and the mission parameters, each normalized by a physical scale. The relative velocity is resolved in the spin-adapted basis $(\er,\epol,\eaz)$ of Section~\ref{sec:geometry}, and the phase is encoded by its sine and cosine, so that the observation expresses the sweep-cone geometry directly. The relative attitude error is not observed by the policy because it is regulated by the execution layer.
+
+\begin{table}
+\caption{Policy Observation $o$ and Execution Feedback $\zE$}
+\label{tab:obs}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{13.8pc}l@{}}
+\hline
+Quantity & Scale\\
+\hline
+\multicolumn{2}{@{}l}{\textit{Policy observation $o$ (18 items)}}\\
+Range $r$ & $15$ m\\
+Relative velocity in $(\er,\epol,\eaz)$ (3) & $0.2$ m/s\\
+Angle between port direction and line of sight & $180^{\circ}$\\
+Latitude offset $\dlat$ & $90^{\circ}$\\
+Phase $(\sin\varphi,\cos\varphi)$ (2) & --\\
+Spin rate $\Omega$ & $2.7^{\circ}$/s\\
+Remaining time $\Td-t$ & $300$ s\\
+Mission type (urgent $1$, economy $0$) & --\\
+Propellant used $\dvused$ & $2.5$ m/s\\
+Propellant remaining $\Bmax-\dvused$ & $3.0$ m/s\\
+Radial braking margin (clipped to $\pm3$) & $0.1$ m/s\\
+Sweep-cone half-angle $\beta$ & $90^{\circ}$\\
+Port direction in the spin frame (3) & --\\
+\hline
+\multicolumn{2}{@{}l}{\textit{Execution feedback $\zE$ (6 items, critic only)}}\\
+Time to the next pass $\varphi/\Omega$ & $150$ s\\
+Entry reachability $\min_{\tau\in\Tset}\theta(\tau)$ & $180^{\circ}$\\
+Deadline margin after the pass, $\Td-t-\varphi/\Omega-60$ s (clipped to $\pm3$) & $100$ s\\
+Position residual at the end of the previous stage & $1$ m\\
+Velocity residual at the end of the previous stage & $0.1$ m/s\\
+Hold indicator & --\\
+\hline
+\end{tabular*}
+\end{table}
+
+Training uses the potential-based shaped reward
+\begin{equation}\label{eq:shaping}
+\rtil=r+\gd\,\Phi(x')-\Phi(x),
+\end{equation}
+with the potential $\Phi(x)=-\min(25~\text{m},\norm{q-m_{24}})$, where $m_{24}$ is the mouth point \eqref{eq:mouth} predicted $24$~s ahead and $\Phi(x')=0$ at termination. Potential-based shaping with the learning discount $\gd$ leaves the optimal policies unchanged \cite{ng1999shaping}; it serves only to densify the learning signal, and all evaluations report the true return \eqref{eq:return}.
+
+\subsection{Execution Feedback for the Critic}\label{sec:feedback}
+
+The execution feedback $\zE$ (Table~\ref{tab:obs}) consists of three opportunity judgments formed by the execution layer, namely the time to the next pass, the reachability of an entry at the candidate arrival times, and the deadline margin that would remain after the pass once the time needed for the final phase is deducted, and of three execution-status quantities, namely the position and velocity residuals of the previous stage with respect to its plan and whether the chaser is holding. The actor and the critics are
+\begin{equation}\label{eq:asym}
+\pi_{\theta}(a\,|\,o),\qquad Q_{\phi_{i}}(o,\zE,a),\quad i=1,2.
+\end{equation}
+The feedback is consumed only by the critics during training; at execution time, the policy acts on $o$ alone.
+
+Under the same geometric observation, $\zE$ distinguishes situations in which an opportunity exists from those in which it does not, and intents that were executed as planned from those that were not. The critic can thereby represent value relations that follow the realized consequences of execution more closely than a critic restricted to $o$, and the actor is improved against this execution-informed critic without depending on executor quantities at deployment. Since conditioning on additional information cannot shrink the class of representable value functions, the asymmetric critic is at least as expressive as its symmetric counterpart; its benefit is an empirical question addressed in Section~\ref{sec:experiments}.
+
+\subsection{Mode Prediction}\label{sec:prediction}
+
+The action-level channel rests on a question that the execution layer can answer from its own rules: if an intent were held from now on, would the execution layer leave stage flight, and if so, when and at what propellant cost?
+
+\begin{definition}[Mode prediction]\label{def:pred}
+For a decision state $x$ and an intent $b$, the mode prediction rolls out the nominal stage plans generated by the rules of Section~\ref{sec:intent} (target velocity, stage authority, safety projection) and the stage planner for up to three stages, i.e., the horizon $\Hp=48$~s, treating a rejected stage as a hold. Every $2$~s along the nominal path it applies the same tests as the execution layer: first the descent condition and then the entry rule of Section~\ref{sec:entry}, invoking the entry planner for each admissible arrival time. The first descent or feasible entry is the predicted mode event. The prediction stops at the horizon, at the deadline, or when the planned propellant exhausts the remaining budget, and returns
+\begin{equation}\label{eq:pred}
+\bigl(\ehat(x,b),\ \tauhat(x,b),\ \dvhat(x,b)\bigr),
+\end{equation}
+where $\ehat\in\{0,1\}$ indicates a predicted mode event, $\tauhat$ is its time (or the stopping time), and $\dvhat$ is the planned propellant up to the event, including the entry plan for an entry event.
+\end{definition}
+
+The prediction uses the constant-rate attitude prediction and the inertia estimate of Assumption~\ref{ass:info}, uses no data from past episodes, and returns the same answer for the same state. It does not evaluate rewards or values and does not rank intents; a predicted event is a mode switch in the execution-layer model, which is distinct from a capture. Because the prediction runs on separate planner instances, the trajectory actually flown is identical whether or not a prediction is made.
+
+\subsection{Execution-Opportunity Certification}\label{sec:certification}
+
+At every decision, the mode prediction is evaluated for the proposed intent $a$ and for the nine candidates of the uniform grid $\Bgrid=\{-1,0,1\}^{2}$ on the action box. With the current time $t$ and the spin period $P$, the certifiable candidate set is
+\begin{equation}\label{eq:certset}
+\begin{aligned}
+\Bc(x)=\bigl\{b\in\Bgrid:\ & \ehat(x,b)=1,\ \ t+\tauhat(x,b)+P>\Lt,\\
+& \dvused+\dvhat(x,b)\le\Bmax\bigr\}.
+\end{aligned}
+\end{equation}
+The three conditions require, in turn, that the candidate trigger an entry or a descent, that the triggered event belong to a critical window, i.e., one whose loss would leave no further pass before the latest admissible entry time $\Lt$, and that the candidate be affordable within the budget. The second condition is a time-based proxy for opportunity scarcity that costs no additional prediction. The certification map is
+\begin{equation}\label{eq:certmap}
+\Cmap(x,a)=
+\begin{cases}
+a, & \text{if } \ehat(x,a)=1 \text{ or } \Bc(x)=\emptyset,\\
+a^{\star}(x,a), & \text{otherwise},
+\end{cases}
+\end{equation}
+\begin{equation}\label{eq:astar}
+a^{\star}(x,a)=\lexmin_{b\in\Bc(x)}\bigl(\norm{b-a},\ \tauhat(x,b)\bigr),
+\end{equation}
+where $\lexmin$ selects the lexicographic minimizer, with remaining ties broken by a fixed order of the grid. Thus the proposal is executed whenever it triggers a mode event by itself or no candidate is certifiable; otherwise it is replaced by the nearest certifiable candidate, and among equally near candidates by the one with the earliest event. The executed intent is $a^{e}=\Cmap(x,a)$, and the substitution applies to the current macro step only; later decisions are not constrained.
+
+Throughout this article, \textit{certification} refers to a test performed with the execution layer's own prediction model. It does not certify safety, which is judged only on the truth trajectory, nor does it guarantee capture. Its structural properties are summarized next.
+
+\begin{proposition}[Certification]\label{prop:cert}
+For every decision state $x$ and proposal $a$:
+\begin{enumerate}
+\item if $\ehat(x,a)=1$ or $\Bc(x)=\emptyset$, then $\Cmap(x,a)=a$;
+\item otherwise, $\Cmap(x,a)\in\Bc(x)$, $\norm{\Cmap(x,a)-a}\le\norm{b-a}$ for all $b\in\Bc(x)$, and no $b\in\Bc(x)$ with $\norm{b-a}=\norm{\Cmap(x,a)-a}$ has $\tauhat(x,b)<\tauhat(x,\Cmap(x,a))$;
+\item $\Cmap$ is a single-valued function of $(x,a)$.
+\end{enumerate}
+\end{proposition}
+
+Proposition~\ref{prop:cert} states that certification is conservative toward the policy: it leaves the proposal untouched unless the proposal would miss a critical window that a nearby candidate can use, and it then changes the intent minimally on the candidate grid. A substitution converts a would-be miss into an entry when three conditions hold jointly: the predicted event of the selected candidate materializes on the truth model, subsequent decisions keep the chaser in the window, and the proposal would indeed have missed it. Each condition corresponds to a distinct way in which a substitution can fail to help, namely prediction error, later departure, and premature intervention; Section~\ref{sec:experiments} therefore reports the net effect of certification together with the outcome flips in both directions.
+
+\subsection{Training--Execution Consistent Learning}\label{sec:consistent}
+
+Certification modifies the transitions that the policy experiences. If it were applied only at execution time, the policy would be optimized for the execution-layer kernel $\PE$ but deployed on the certified system, and, as for any postprocessing filter that is invisible during learning, it could not be expected to be closed-loop optimal for the system it actually controls \cite{reiter2026arc}. ECC removes this inconsistency by using the same map $\Cmap$ during training and execution. The certification-induced kernel is
+\begin{equation}\label{eq:PC}
+\PC(x',r\,|\,x,a)=\PE\bigl(x',r\,|\,x,\Cmap(x,a)\bigr),
+\end{equation}
+and the replay buffer stores the proposed intent $a$, not the executed intent $a^{e}$, together with the reward and successor obtained by executing $a^{e}$. Unlike schemes that learn from the projected action or from a mixture of projected and original actions \cite{lu2025eaai}, the critic thus learns what actually happens when the policy proposes $a$.
+
+\begin{proposition}[Consistency of the learning target]\label{prop:consistent}
+Let transitions be collected by proposing $a_{k}\sim\pi(\cdot\,|\,o_{k})$, executing $\Cmap(x_{k},a_{k})$, and storing $(o_{k},z_{E,k},a_{k},\rtil_{k},o_{k+1},z_{E,k+1},d_{k})$. Then $(x_{k+1},r_{k})\sim\PC(\cdot\,|\,x_{k},a_{k})$, so that the stored transitions are samples of the decision process $(\PC,\rtil,\gd)$ on the full state. Consequently, the temporal-difference target formed from a stored transition is a sample of the Bellman operator of the certified system,
+\begin{equation}\label{eq:bellman}
+Q^{\pi}_{\Cmap}(x,a)=\E_{\PC}\Bigl[\rtil+\gd(1-d)\,\E_{a'\sim\pi}Q^{\pi}_{\Cmap}(x',a')\Bigr],
+\end{equation}
+and the value learned for a proposal $a$ is the value of proposing $a$ in the coordinated system as it is executed.
+\end{proposition}
+
+\begin{corollary}[Certification equivalence]\label{cor:equiv}
+If $\Cmap(x,a_{1})=\Cmap(x,a_{2})$, then $\PC(\cdot\,|\,x,a_{1})=\PC(\cdot\,|\,x,a_{2})$, and $Q^{\pi}_{\Cmap}(x,a_{1})=Q^{\pi}_{\Cmap}(x,a_{2})$ for every policy $\pi$.
+\end{corollary}
+
+The proofs are given in Appendix~\ref{app:proofs}. Corollary~\ref{cor:equiv} has a practical reading. In the regions where certification substitutes the intent, all proposals mapped to the same candidate have the same value, so the policy does not need to learn to emit the certified intent itself; the policy and the certification form one decision rule. A policy trained with certification is accordingly matched to the certified system rather than to the bare execution layer, and removing certification at execution time changes the system for which the policy was trained. Section~\ref{sec:experiments} examines both execution-time ablations. The Bellman relation \eqref{eq:bellman} is posed on the full state $x$; the actor reading $o$ and the critics reading $(o,\zE)$ constitute an asymmetric approximation of this target, and, as for off-policy actor--critic learning with function approximation in general, the statement concerns the learning target rather than the convergence of the learner.
+
+\subsection{Learning Algorithm}\label{sec:sac}
+
+The decision layer is trained with soft actor--critic (SAC) \cite{haarnoja2018sac} in the asymmetric form \eqref{eq:asym}. The policy is a Gaussian squashed by $\tanh$ onto $[-1,1]^{2}$, and the actor and the two critics are fully connected networks with two hidden layers of $256$ units and separate input layers. With target critics $\bar Q_{i}$, the critic target and the losses are
+\begin{align}
+y&=\rtil+\gd(1-d)\Bigl[\min_{i}\bar Q_{i}(o',\zE',a')\nonumber\\
+&\qquad\qquad-\alpha\log\pi_{\theta}(a'\,|\,o')\Bigr],\label{eq:target}\\
+\mathcal{L}_{Q}(\phi_{i})&=\E\bigl[(Q_{\phi_{i}}(o,\zE,a)-y)^{2}\bigr],\label{eq:qloss}\\
+\mathcal{L}_{\pi}(\theta)&=\E\Bigl[\alpha\log\pi_{\theta}(\tilde a\,|\,o)-\min_{i}Q_{\phi_{i}}(o,\zE,\tilde a)\Bigr],\label{eq:piloss}
+\end{align}
+where $a'\sim\pi_{\theta}(\cdot\,|\,o')$, $\tilde a\sim\pi_{\theta}(\cdot\,|\,o)$, and the expectations are taken over the replay buffer. The temperature is fixed at $\alpha=0.05$, the target critics are updated softly with rate $0.005$, and two gradient updates are performed for every stored transition. Experience is collected asynchronously by two collector processes, each running one environment, while the learner answers every action request with the current policy and updates on each arriving transition. Algorithm~\ref{alg:ecc} summarizes the procedure, and the hyperparameters are listed in Appendix~\ref{app:hyper}. At execution time, the policy mean is used and the same certification is applied.
+
+\begin{algorithm}[t]
+\caption{ECC Training and Execution}
+\label{alg:ecc}
+\small
+\begin{algorithmic}[1]
+\State Initialize $\pi_{\theta}$, $Q_{\phi_{1}},Q_{\phi_{2}}$, targets $\bar Q_{1},\bar Q_{2}$, buffer $\mathcal{D}$
+\For{each high-level decision in mode $S$ or $H$}
+  \State Observe $o$ and $\zE$; propose $a\sim\pi_{\theta}(\cdot\,|\,o)$ (mean at execution)
+  \State Predict $(\ehat,\tauhat,\dvhat)$ for $\Bgrid\cup\{a\}$ over $\Hp$
+  \State Form $\Bc(x)$ by \eqref{eq:certset}; set $a^{e}\gets\Cmap(x,a)$ by \eqref{eq:certmap}, \eqref{eq:astar}
+  \State Execute $a^{e}$ with RWG and MPC until the macro step ends
+  \State Accumulate the true reward $r$; set $\rtil$ by \eqref{eq:shaping}
+  \State Store $(o,\zE,a,\rtil,o',\zE',d)$ in $\mathcal{D}$ \Comment{proposed $a$}
+  \State Perform two SAC updates \eqref{eq:target}--\eqref{eq:piloss} \Comment{training}
+\EndFor
+\end{algorithmic}
+\end{algorithm}

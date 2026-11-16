@@ -1,0 +1,58 @@
+% Overall framework (two-column width, drawn at the text width)
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[>=Stealth,font=\footnotesize,
+  blk/.style={draw,rounded corners=2pt,align=center,inner sep=3pt,fill=white},
+  learn/.style={blk,fill=blue!7},
+  cert/.style={blk,fill=orange!12},
+  exe/.style={blk,fill=green!8,text width=2.35cm,minimum height=0.95cm},
+  truth/.style={blk,fill=gray!14},
+  lbl/.style={font=\scriptsize,inner sep=1.5pt},
+  arr/.style={->,thick},
+  fb/.style={->,thick,dashed}]
+
+  % ---------------- nodes
+  \node[learn,text width=2.25cm,minimum height=1.25cm] (pi) at (0,0)
+       {Policy $\pi_{\theta}(a\,|\,o)$\\[1pt]{\scriptsize one decision per stage}};
+  \node[cert,text width=2.85cm,minimum height=1.25cm] (cert) at (4.05,0)
+       {Execution-opportunity certification\\[1pt]$a^{e}=\Cmap(x,a)$};
+  \node[cert,text width=2.85cm,minimum height=0.95cm] (pred) at (4.05,2.05)
+       {Mode prediction of $\Bgrid\cup\{a\}$\\[1pt]{\scriptsize horizon $\Hp=48$ s}};
+
+  \node[exe] (e1) at (8.6,0.62)  {Sweep-cone intent\\$\to$ stage goal};
+  \node[exe] (e2) at (8.6,-0.62) {Stage planner,\\far-field tracking};
+  \node[exe] (e3) at (11.35,0.62)  {Dynamic entry,\\entry re-timing};
+  \node[exe] (e4) at (11.35,-0.62) {Terminal descent,\\near-field MPC};
+  \node[draw,dashed,rounded corners=3pt,inner sep=5pt,fit=(e1)(e2)(e3)(e4)] (chain) {};
+  \node[lbl,anchor=south west] at (chain.north west) {Execution layer (fixed)};
+  \draw[->] (e1) -- (e2);
+  \draw[->] (e2) -- (e3);
+  \draw[->] (e3) -- (e4);
+
+  \node[truth,text width=1.95cm,minimum height=1.25cm] (plant) at (14.95,0)
+       {6-DOF truth\\dynamics on $\SE$};
+
+  \node[learn,text width=2.25cm,minimum height=0.95cm] (critic) at (0,-2.75)
+       {Critics\\$Q_{\phi_{i}}(o,\zE,a)$};
+  \node[learn,text width=3.6cm,minimum height=0.95cm] (buf) at (4.55,-2.75)
+       {Replay buffer\\$(o,\zE,a,\rtil,o',\zE',d)$};
+
+  % ---------------- decision and execution path
+  \draw[arr] (pi) -- node[lbl,above] {proposed $a$} (cert);
+  \draw[arr] (cert) -- node[lbl,above] {executed $a^{e}$} (chain.west |- cert);
+  \draw[arr] (chain.east |- plant) -- node[lbl,above] {wrench} (plant);
+  \draw[arr] (pred) -- node[lbl,right] {$(\ehat,\tauhat,\dvhat)$} (cert);
+  \draw[fb] (pred.east) -- node[lbl,above] {same planners and rules} (pred.east -| e3.north) -- (e3.north |- chain.north);
+
+  % observation feedback
+  \draw[arr] (plant.north) -- ++(0,2.55) -| node[lbl,above,pos=0.22] {observation $o$} (pi.north);
+
+  % ---------------- learning loop
+  \draw[arr] (plant.south) |- node[lbl,below,pos=0.62] {true reward and successor of executing $a^{e}$} (buf.east);
+  \draw[arr] ($(pi.south)+(0.7,0)$) -- ++(0,-0.8) -| node[lbl,above,pos=0.25] {stores proposed $a$} ($(buf.north)+(-0.8,0)$);
+  \draw[arr] (buf.west) -- (critic.east);
+  \draw[arr] ($(critic.north)+(-0.55,0)$) -- node[lbl,left] {actor update} ($(pi.south)+(-0.55,0)$);
+  \draw[fb] (e2.south |- chain.south) -- ++(0,-2.62) -| node[lbl,below,pos=0.25] {execution feedback $\zE$ (critics only, during training)} (critic.south);
+
+  % ---------------- annotation
+  \node[lbl,text=orange!55!black,anchor=north] at ($(cert.south)+(0.35,-0.08)$) {same $\Cmap$ in training and execution};
+\end{tikzpicture}}

@@ -1,0 +1,60 @@
+% ---------------------------------------------------------------------------
+% Notation and helper macros (single source for symbols used in the paper)
+% ---------------------------------------------------------------------------
+
+% Placeholder for content that waits for the formal results or author input.
+\newcommand{\todo}[1]{{\color{red}[\textbf{TODO:} #1]}}
+
+% Generic
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\SE}{\mathrm{SE}(3)}
+\newcommand{\SO}{\mathrm{SO}(3)}
+\newcommand{\T}{\top}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\clip}{\operatorname{clip}}
+\newcommand{\diag}{\operatorname{diag}}
+\newcommand{\argmin}{\operatorname*{arg\,min}}
+\newcommand{\lexmin}{\operatorname*{lex\,min}}
+
+% Frames
+\newcommand{\FI}{\mathcal{F}_{I}}
+\newcommand{\FT}{\mathcal{F}_{T}}
+\newcommand{\FC}{\mathcal{F}_{C}}
+\newcommand{\FL}{\mathcal{F}_{L}}
+
+% Mission
+\newcommand{\Td}{T_{d}}            % mission deadline
+\newcommand{\Dd}{\Delta_{d}}       % terminal reserve
+\newcommand{\Lt}{L}                % latest admissible entry time
+\newcommand{\Bmax}{B_{\max}}       % Delta-v budget
+\newcommand{\dvused}{\Delta v_{\mathrm{u}}} % Delta-v used so far
+
+% Geometry
+\newcommand{\shat}{\hat{s}}
+\newcommand{\er}{e_{r}}
+\newcommand{\epol}{e_{\mathrm{pol}}}
+\newcommand{\eaz}{e_{\mathrm{az}}}
+\newcommand{\dlat}{\Delta\lambda}
+\newcommand{\thg}{\theta_{g}}
+\newcommand{\Tset}{\mathcal{T}}          % entry arrival-time candidates
+\newcommand{\Wgeo}{\mathcal{W}_{\mathrm{geo}}}
+\newcommand{\vb}{v_{b}}                  % braking envelope
+
+% Decision and execution
+\newcommand{\Bgrid}{\mathfrak{B}}        % candidate intent grid
+\newcommand{\Bc}{\mathfrak{B}_{c}}       % certifiable candidate set
+\newcommand{\Cmap}{\mathcal{C}}          % certification map
+\newcommand{\zE}{z_{E}}                  % execution feedback
+\newcommand{\PE}{P_{\mathcal{E}}}        % execution-layer macro kernel
+\newcommand{\PC}{P_{\mathcal{C}}}        % certification-induced kernel
+\newcommand{\gd}{\gamma_{d}}             % per-decision discount
+\newcommand{\Hp}{H_{p}}                  % mode-prediction horizon
+\newcommand{\ehat}{\hat{e}}
+\newcommand{\tauhat}{\hat{\tau}}
+\newcommand{\dvhat}{\widehat{\Delta v}}
+\newcommand{\rtil}{\tilde{r}}
+
+% Method names (fixed terminology, see fact sheet 00)
+\newcommand{\ECC}{ECC}
+\newcommand{\RWG}{RWG}
