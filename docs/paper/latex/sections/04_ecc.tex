@@ -58,7 +58,7 @@ The execution feedback $\zE$ (Table~\ref{tab:obs}) consists of three opportunity
 \end{equation}
 The feedback is consumed only by the critics during training; at execution time, the policy acts on $o$ alone.
 
-Under the same geometric observation, $\zE$ distinguishes situations in which an opportunity exists from those in which it does not, and intents that were executed as planned from those that were not. The critic can thereby represent value relations that follow the realized consequences of execution more closely than a critic restricted to $o$, and the actor is improved against this execution-informed critic without depending on executor quantities at deployment. Since conditioning on additional information cannot shrink the class of representable value functions, the asymmetric critic is at least as expressive as its symmetric counterpart; its benefit is an empirical question addressed in Section~\ref{sec:experiments}.
+For the same geometric observation, $\zE$ tells the critic whether an opportunity actually exists and whether the previous intent was executed as planned. The critic can thus follow the realized consequences of execution more closely, and the actor is improved against this execution-informed critic without needing executor quantities at deployment. Additional conditioning cannot reduce what the critic can represent; how much it helps is evaluated in Section~\ref{sec:experiments}.
 
 \subsection{Mode Prediction}\label{sec:prediction}
 
@@ -107,7 +107,7 @@ For every decision state $x$ and proposal $a$:
 \end{enumerate}
 \end{proposition}
 
-Proposition~\ref{prop:cert} states that certification is conservative toward the policy: it leaves the proposal untouched unless the proposal would miss a critical window that a nearby candidate can use, and it then changes the intent minimally on the candidate grid. A substitution converts a would-be miss into an entry when three conditions hold jointly: the predicted event of the selected candidate materializes on the truth model, subsequent decisions keep the chaser in the window, and the proposal would indeed have missed it. Each condition corresponds to a distinct way in which a substitution can fail to help, namely prediction error, later departure, and premature intervention; Section~\ref{sec:experiments} therefore reports the net effect of certification together with the outcome flips in both directions.
+Proposition~\ref{prop:cert} states that certification is conservative toward the policy: it acts only when the proposal would miss a critical window that a nearby candidate can use, and then changes the intent minimally. A substitution turns a would-be miss into an entry when the predicted event materializes on the truth model, later decisions keep the chaser in the window, and the proposal would indeed have missed it; Section~\ref{sec:experiments} therefore reports the net effect together with outcome changes in both directions.
 
 \subsection{Training--Execution Consistent Learning}\label{sec:consistent}
 
@@ -129,9 +129,9 @@ and the value learned for a proposal $a$ is the value of proposing $a$ in the co
 If $\Cmap(x,a_{1})=\Cmap(x,a_{2})$, then $\PC(\cdot\,|\,x,a_{1})=\PC(\cdot\,|\,x,a_{2})$, and $Q^{\pi}_{\Cmap}(x,a_{1})=Q^{\pi}_{\Cmap}(x,a_{2})$ for every policy $\pi$.
 \end{corollary}
 
-The proofs are given in Appendix~\ref{app:proofs}. Corollary~\ref{cor:equiv} has a practical reading. In the regions where certification substitutes the intent, all proposals mapped to the same candidate have the same value, so the policy does not need to learn to emit the certified intent itself; the policy and the certification form one decision rule. A policy trained with certification is accordingly matched to the certified system rather than to the bare execution layer, and removing certification at execution time changes the system for which the policy was trained. Section~\ref{sec:experiments} examines both execution-time ablations. The Bellman relation \eqref{eq:bellman} is posed on the full state $x$; the actor reading $o$ and the critics reading $(o,\zE)$ constitute an asymmetric approximation of this target, and, as for off-policy actor--critic learning with function approximation in general, the statement concerns the learning target rather than the convergence of the learner.
+The proofs are given in Appendix~\ref{app:proofs}. By Corollary~\ref{cor:equiv}, proposals mapped to the same candidate have the same value, so the policy need not learn to emit the certified intent itself: policy and certification act as one decision rule. A policy trained this way is matched to the certified system, and removing certification at execution changes the system it was trained for; Section~\ref{sec:experiments} examines both execution-time ablations. Proposition~\ref{prop:consistent} concerns the learning target on the full state $x$; the actor on $o$ and the critics on $(o,\zE)$ approximate this target.
 
-The analytical results of Sections~\ref{sec:framework} and~\ref{sec:ecc} are summarized in Table~\ref{tab:results}. The RWG results establish how the window is exposed and preserved by the execution layer, and the ECC results establish how certification acts on a proposal and what the critic learns when certification is part of training.
+Table~\ref{tab:results} summarizes the analytical results: the RWG results describe how the window is exposed and preserved, and the ECC results how certification acts and what the critic learns.
 
 \begin{table}
 \caption{Analytical Properties of RWG and ECC}
@@ -141,7 +141,7 @@ The analytical results of Sections~\ref{sec:framework} and~\ref{sec:ecc} are sum
 \hline
 Result & Statement & Role\\
 \hline
-Lemma~\ref{lem:window} & Passing window in closed form; best alignment and near-maximal duration at $\dlat\approx0$ & Defines the opportunity\\
+Lemma~\ref{lem:window} & Passing window in closed form & Defines the opportunity\\
 Lemma~\ref{lem:kin} & Spin-frame line-of-sight kinematics & Links intent to geometry\\
 Prop.~\ref{prop:lat} & Monotone and eventually exponential latitude regulation & Exposes the window\\
 Prop.~\ref{prop:retime} & Re-timing never removes a feasible entry & Preserves the window\\
