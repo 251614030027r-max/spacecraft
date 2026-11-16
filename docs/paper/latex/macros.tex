@@ -19,7 +19,6 @@
 \newcommand{\diag}{\operatorname{diag}}
 \newcommand{\argmin}{\operatorname*{arg\,min}}
 \newcommand{\argmax}{\operatorname*{arg\,max}}
-\newcommand{\ind}{\mathbb{1}}
 \newcommand{\dd}{\mathrm{d}}
 
 % Frames
@@ -61,14 +60,15 @@
 \newcommand{\Kset}{\mathcal{K}}                 % approach cone
 \newcommand{\Km}{\mathcal{K}_{\mathrm{m}}}      % mouth region
 \newcommand{\Sset}{\mathcal{S}}                 % safe set
-\newcommand{\Xcap}{\mathcal{X}_{\mathrm{cap}}}  % capture set
+\newcommand{\Xcap}{\mathcal{S}_{\mathrm{cap}}}  % capture set
+\newcommand{\vmg}{v_{\mathrm{mg}}}              % radial braking margin
 \newcommand{\vb}{v_{\mathrm{b}}}                % braking envelope
 \newcommand{\rhos}{\rho_{\mathrm{s}}}           % operation-sphere radius
 \newcommand{\rhom}{\rho_{\mathrm{m}}}           % mouth radius / planning keep-out radius
 \newcommand{\brhom}{\vect{\rho}_{\mathrm{m}}}   % mouth point
 
 % Time and mission
-\newcommand{\Ts}{T_{\mathrm{s}}}                % spin period
+\newcommand{\Ts}{T_{\mathrm{sp}}}               % spin period
 \newcommand{\Td}{T_{\mathrm{d}}}                % deadline
 \newcommand{\Tr}{T_{\mathrm{r}}}                % terminal reserve
 \newcommand{\te}{\bar t_{\mathrm{e}}}           % latest admissible entry time
@@ -76,7 +76,7 @@
 \newcommand{\taup}{\tau_{\mathrm{p}}}           % time to the next pass
 \newcommand{\Bmax}{\bar B}                      % velocity-increment budget
 \newcommand{\Tp}{T_{\mathrm{pr}}}                % mode-prediction horizon
-\newcommand{\Tm}{T_{\mathrm{m}}}                % mode-logic period
+\newcommand{\Tm}{T_{\mathrm{ml}}}               % mode-logic period
 \newcommand{\Tset}{\mathcal{T}}                 % candidate arrival times
 
 % Decision and execution

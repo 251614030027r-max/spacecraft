@@ -19,14 +19,14 @@
 
   % ---------------- execution layer
   \node[itf,draw=actcol] (M) at (6.75,1.75) {Mode prediction\\$\Mpred(x,\bb)$};
-  \node[itf] (X) at (6.75,0.6) {Intent execution\\(kernel $\PE$)};
+  \node[itf] (X) at (6.75,0.6) {Execution of\\the intent $\atil$};
   \node[itf,draw=stcol] (Z) at (6.75,-0.55) {Execution\\feedback $\bz(x)$};
   \node[exe] (r1) at (10.2,1.75) {Sweep-cone stage goal\\and stage plan};
   \node[exe] (r2) at (10.2,0.6) {Entry condition,\\entry plan, re-timing};
   \node[exe] (r3) at (10.2,-0.55) {Tracking law,\\near-field MPC};
   \draw[->] (r1) -- (r2); \draw[->] (r2) -- (r3);
   \node[lbl,gray!40!black] (il) at (6.75,2.42) {interface (Definition~1)};
-  \node[lbl,gray!40!black] (rl) at (10.2,2.42) {RWG instance};
+  \node[lbl,gray!40!black] (rl) at (10.2,2.42) {RWG and constrained control};
   \node[draw,gray!70!black,rounded corners=3pt,inner sep=4pt,fit=(M)(Z)(r1)(r3)(il)(rl)] (exe) {};
   \node[lbl,anchor=south west] at (exe.north west) {Execution layer};
   \draw[gray!60,densely dotted] ($(M.north east)!0.5!(r1.north west)+(0,0.25)$) -- ($(Z.south east)!0.5!(r3.south west)+(0,-0.08)$);
@@ -42,8 +42,11 @@
   \draw[arr] (pi) -- node[lbl,above] {$\ba$} (C);
   \draw[arr,actcol] (C) -- node[lbl,above] {$\atil$} (X);
   \draw[arr,actcol] (M.west) -| node[lbl,above,pos=0.28] {$(\ehat,\tauhat,\dvhat)$} (C.north);
-  \draw[arr] (exe.east |- dyn) -- node[lbl,above] {wrench} (dyn);
-  \draw[arr] (dyn.north) -- ++(0,2.05) -| node[lbl,above,pos=0.25] {state $x$, observation $\bo$} (pi.north);
+  \draw[arr] (exe.east |- dyn) -- node[lbl,above=2pt,pos=0.45] {wrench} (dyn);
+  \draw[arr] (dyn.north) -- ++(0,2.05) -| node[lbl,above,pos=0.25] {observation $\bo$} (pi.north);
+  \coordinate (top) at ($(dyn.north)+(0,2.05)$);
+  \coordinate (cx) at ($(C.north)+(-0.7,0)$);
+  \draw[arr] (cx |- top) -- node[lbl,left,pos=0.35] {state $x$} (cx);
 
   % ---------------- training-only paths (dashed)
   \draw[trn] (dyn.south) |- node[lbl,below,pos=0.7] {$\rtil$ and successor of executing $\atil$} (D.east);
@@ -57,7 +60,7 @@
     \draw[arr] (0,0) -- (0.6,0) node[lbl,right] {training and execution};
     \draw[trn] (3.6,0) -- (4.2,0) node[lbl,right] {training only};
     \draw[arr,actcol] (0,-0.45) -- (0.6,-0.45) node[lbl,right,text=black] {action-level channel};
-    \draw[arr,stcol] (3.6,-0.45) -- (4.2,-0.45) node[lbl,right,text=black] {state-level channel};
+    \draw[trn,stcol] (3.6,-0.45) -- (4.2,-0.45) node[lbl,right,text=black] {state-level channel};
   \end{scope}
 \end{tikzpicture}
 \end{document}

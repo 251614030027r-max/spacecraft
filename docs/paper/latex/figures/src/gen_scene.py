@@ -58,7 +58,9 @@ w(r"\draw[blue!55] " + " -- ".join(f(P(p)) for p in cpts) + " -- cycle;")
 for s in csil:
     w(r"\draw[blue!55] " + f(P(port)) + " -- " + f(P(s)) + ";")
 # port axis and points
-w(r"\draw[->,thick,blue!70!black] " + f(P(port)) + " -- " + f(P(port + np.array([-3.9, 0, 0]))) + r" node[anchor=south east,inner sep=1pt] {$\bnp$};")
+w(r"\draw[->,thick,blue!70!black] " + f(P(port)) + " -- " + f(P(port + np.array([-2.9, 0, 0]))) + r" node[anchor=north,inner sep=2pt] {$\bnp$};")
+mouth = np.array([-6.3, 0, 0])
+w(r"\fill[blue!70!black] " + f(P(mouth)) + " circle (1.6pt);")
 # target box
 for n, quad in faces:
     if np.dot(n, v) > 0:
@@ -82,6 +84,7 @@ cx, cy = P(ch); bx, by = np.array(P(ch + bs)) - np.array(P(ch)); ang = np.degree
 w(rf"\fill[green!12] ({cx:.3f},{cy:.3f}) -- ++({ang-38:.1f}:1.35) arc[start angle={ang-38:.1f},end angle={ang+38:.1f},radius=1.35] -- cycle;")
 w(rf"\draw[green!45!black] ({cx:.3f},{cy:.3f}) -- ++({ang-38:.1f}:1.35) ({cx:.3f},{cy:.3f}) -- ++({ang+38:.1f}:1.35);")
 w(r"\draw[->,densely dotted,shorten >=4pt] " + f(P(O)) + " -- " + f(P(ch)) + ";")
+w(r"\filldraw[fill=white,draw=black] " + f(P(O)) + " circle (1.3pt);")
 w(r"\draw[->,thick] " + f(P(ch)) + " -- " + f(P(ch + 2.2*bs)) + r" node[anchor=south east,inner sep=1pt] {$\vect{e}_{\mathrm{C}}$};")
 w(rf"\filldraw[fill=gray!25,draw=black,rotate around={{{ang:.1f}:({cx:.3f},{cy:.3f})}}] ({cx-0.17:.3f},{cy-0.13:.3f}) rectangle ({cx+0.17:.3f},{cy+0.13:.3f});")
 # labels (screen coordinates relative to projected anchors)
@@ -89,6 +92,7 @@ def lab(p, txt, anchor, dx=0, dy=0, style=""):
     x, y = P(p); w(rf"\node[{style}anchor={anchor},inner sep=1pt,align=center] at ({x+dx:.3f},{y+dy:.3f}) {{{txt}}};")
 lab(port, r"$\bpport$", "north", 0.12, -0.20)
 lab(cap, r"$\bpcap$", "south", 0.0, 0.10, "red!75!black,")
+lab(mouth, r"$\brhom$", "south", 0.05, 0.08, "blue!70!black,")
 lab(cbase + np.array([0, 0, 4.9]), r"approach cone $\Kset$\\(half-angle $\vartheta_{\mathrm{c}}$)", "south", 0.0, 0.0, "blue!70!black,")
 lab(np.array([0, 0, 0]), r"operation sphere\\(radius $\rhos$)", "south west", 1.45, 1.95, "gray!80!black,")
 lab(O, r"$\FT$", "north west", 0.55, -0.42)
