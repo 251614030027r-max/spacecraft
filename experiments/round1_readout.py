@@ -7,7 +7,8 @@ condition), ``evidence/FORMAL/*_VERIFIED.json`` (validation checkpoints), ``evid
 (training episodes), ``evidence/ECC_FINAL_PRECHECK/screen/urgent/S/`` (development urgent screen, 48 openings) and
 ``evidence/FORMAL_PREP/PRESCREEN/budget_2.0/`` (development economy prescreen, 48 openings).
 Outputs: ``READOUT.json`` (all numbers of facts/08), ``MAIN_TABLE.csv``, ``TRAINING_CURVES.csv``, ``VALIDATION_CURVES.csv``,
-``DEV_REFERENCES.csv``. Paired statistics: per-seed rows, then pooled paired difference with a bootstrap interval that
+``DEV_REFERENCES.csv``, ``PAIRED.csv`` (every comparison: estimate, interval, per seed, flips) and
+``URGENT_EPISODES_WIDE.csv`` (one row per seed and urgent opening: outcome, return, time and delta-v of every group). Paired statistics: per-seed rows, then pooled paired difference with a bootstrap interval that
 resamples openings within each seed (10,000 draws), as registered in ``docs/paper/EXPERIMENTS.md`` section 5.
 """
 import argparse
@@ -196,6 +197,30 @@ def main():
     write_csv(out / 'TRAINING_CURVES.csv', training_curves())
     write_csv(out / 'VALIDATION_CURVES.csv', validation_curves())
     dev = dev_references(); write_csv(out / 'DEV_REFERENCES.csv', dev); res['dev_references'] = dev
+    prow = []
+    for key, v in res['paired'].items():
+        cond, _, pair = key.partition(': ')
+        for m, x in v.items():
+            if x is None:
+                continue
+            prow.append({'condition': cond, 'comparison': pair, 'metric': m, 'n': x['n'], 'estimate': x['estimate'],
+                         'ci_low': x['ci95'][0], 'ci_high': x['ci95'][1], 'median': x.get('median', ''),
+                         'seed20': x['per_seed']['20'], 'seed21': x['per_seed']['21'], 'seed22': x['per_seed']['22'],
+                         'a_only': (x.get('flips') or {}).get('a_only', ''), 'b_only': (x.get('flips') or {}).get('b_only', '')})
+    write_csv(out / 'PAIRED.csv', prow)
+    wide = []
+    arms = list(GROUPS) + ['ECC+rigid']
+    for s in SEEDS:
+        for o in sorted({k[3] for k in rows if k[1] == 'urgent' and k[2] == s}):
+            row = {'seed': s, 'opening': o}
+            for arm in arms:
+                r = rows.get((arm, 'urgent', s, o))
+                if r:
+                    tag = arm.replace(' ', '_')
+                    row.update({f'{tag}_event': r['event'], f'{tag}_return': float(r['return']),
+                                f'{tag}_time_s': float(r['time_s']), f'{tag}_delta_v': float(r['delta_v'])})
+            wide.append(row)
+    write_csv(out / 'URGENT_EPISODES_WIDE.csv', wide)
     (out / 'READOUT.json').write_text(json.dumps(res, indent=1), encoding='utf-8')
     print(json.dumps({k: v for k, v in res['paired'].items() if k.startswith('urgent')}, indent=1)[:3000])
 
