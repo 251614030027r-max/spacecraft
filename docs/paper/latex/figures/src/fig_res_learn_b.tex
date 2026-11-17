@@ -1,0 +1,16 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Training: screening interventions per time-limited task (screened groups); mean and range over 3 seeds.
+\begin{tikzpicture}[font=\footnotesize]
+\begin{axis}[resstyle,width=6.2cm,height=4.6cm,xmin=1000,xmax=4800,ymin=0.1,ymax=1.6,
+  xtick={1000,2000,3000,4000},xticklabels={1k,2k,3k,4k},xlabel={Decisions},ylabel={Corrections per task},
+  ylabel style={yshift=-4pt},xlabel style={yshift=3pt},
+  legend style={at={(0.02,0.02)},anchor=south west,row sep=-2pt},legend cell align=left]
+\band{nofb}{cNOFB}{intlo}{inthi}
+\band{ecc}{cECC}{intlo}{inthi}
+\addplot[cNOFB,thick,dashed] table[x=x,y=int]{data/train_nofb.dat}; \addlegendentry{w/o exec.\ feedback}
+\addplot[cECC,very thick] table[x=x,y=int]{data/train_ecc.dat}; \addlegendentry{ECC}
+\end{axis}
+\end{tikzpicture}
+\end{document}

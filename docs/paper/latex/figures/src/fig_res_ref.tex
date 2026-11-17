@@ -1,0 +1,17 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Outcome composition of the reference lines (48 initial conditions) and of ECC (288 test tasks).
+\begin{tikzpicture}[font=\footnotesize]
+\begin{axis}[resstyle,xbar stacked,bar width=8pt,width=6.0cm,height=5.2cm,xmin=0,xmax=100,
+  ytick={0,1,2,3,4,6},yticklabels={Pure MPC,{Rotation-unaware closing},Deadline rule,{Fixed intent $(1,0)$},{Direct entry planning},ECC},y dir=reverse,
+  ymin=-0.6,ymax=6.6,xlabel={Share of tasks (\%)},xlabel style={yshift=3pt},ymajorgrids=false,
+  legend style={at={(0.5,1.02)},anchor=south,legend columns=4,column sep=2pt},legend image code/.code={\fill[#1] (0cm,-0.08cm) rectangle (0.25cm,0.1cm);}]
+\addplot[fill=oCap,draw=white,point meta=explicit symbolic,nodes near coords,nodes near coords style={font=\scriptsize,text=white}] table[x=capture,y=y,meta=ncap]{data/reference.dat}; \addlegendentry{capture}
+\addplot[fill=oTime,draw=white] table[x=timeout,y=y]{data/reference.dat}; \addlegendentry{timeout}
+\addplot[fill=oFuel,draw=white] table[x=fuel,y=y]{data/reference.dat}; \addlegendentry{fuel}
+\addplot[fill=oUns,draw=white] table[x=unsafe,y=y]{data/reference.dat}; \addlegendentry{unsafe}
+\draw[gray,densely dashed] (axis cs:0,5) -- (axis cs:100,5);
+\end{axis}
+\end{tikzpicture}
+\end{document}

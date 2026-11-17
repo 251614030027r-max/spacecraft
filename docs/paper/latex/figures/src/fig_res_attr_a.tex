@@ -1,0 +1,19 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% 2x2 attribution: captures of the four groups trained from scratch and the paired effect of adding each channel.
+\begin{tikzpicture}[>=Stealth,font=\footnotesize,
+  cell/.style={draw=gray!60,rounded corners=2pt,minimum width=2.0cm,minimum height=1.05cm,align=center},
+  eff/.style={font=\scriptsize,align=center,inner sep=1pt}]
+  \node[cell,fill=cSAC!12] (sac) at (0,0) {SAC--MPC\\$204$ ($70.8\%$)};
+  \node[cell,fill=cNOSCR!14] (nos) at (4.3,0) {w/o screening\\$211$ ($73.3\%$)};
+  \node[cell,fill=cNOFB!18] (nof) at (0,-2.3) {w/o feedback\\$225$ ($78.1\%$)};
+  \node[cell,fill=cECC!22,very thick,draw=cECC] (ecc) at (4.3,-2.3) {\textbf{ECC}\\$236$ ($81.9\%$)};
+  \draw[->,thick,stcol] (sac) -- node[eff,above] {$+2.4$\\{}[$-1.7$, $6.6$]} (nos);
+  \draw[->,thick,stcol] (nof) -- node[eff,below] {$+3.8$\\{}[$0.3$, $7.3$]} (ecc);
+  \draw[->,thick,actcol] (sac) -- node[eff,left,text width=1.3cm,align=right] {$+7.3$\\{}[$2.8$, $11.8$]} (nof);
+  \draw[->,thick,actcol] (nos) -- node[eff,right,text width=1.3cm,align=left] {$+8.7$\\{}[$4.5$, $12.8$]} (ecc);
+  \node[stcol,anchor=south] at (2.15,0.85) {$+$ execution feedback};
+  \node[actcol,rotate=90,anchor=south] at (-2.35,-1.15) {$+$ screening};
+\end{tikzpicture}
+\end{document}

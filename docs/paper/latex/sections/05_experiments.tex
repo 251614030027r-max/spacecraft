@@ -1,15 +1,37 @@
 \section{NUMERICAL SIMULATIONS}\label{sec:experiments}
 
+This section evaluates ECC and RWG on time-limited capture of the tumbling target. Section~\ref{sec:setup} describes the scenario, the compared methods, and the test protocol. Section~\ref{sec:learning-curves} reports the learning process, and Section~\ref{sec:case} follows one capture through its phases. Section~\ref{sec:main} compares the learned methods, Section~\ref{sec:attribution} attributes the improvement to the two channels of ECC and shows screening at a decision, and Section~\ref{sec:rwg-results} examines the components of RWG together with the reference lines.
+
 \subsection{Simulation Setup}\label{sec:setup}
 
-The scenario, constraint, and mission parameters are listed in Table~\ref{tab:scenario}. The target flies on a $500$-km circular orbit with an inclination of $45^{\circ}$, and both spacecraft are propagated with \eqref{eq:kin}--\eqref{eq:fg} by an adaptive Runge--Kutta integrator; no other disturbance is applied. The target is a homogeneous box with a grapple rod leading to the port, tumbling freely at a spin rate between $2.1$ and $2.7^{\circ}$/s about an axis that deviates by $10$--$20^{\circ}$ from its body $z$-axis, so that $\Ts\in[133,171]$~s. Its initial attitude is uniformly distributed on $\SO$. The chaser starts in a uniformly random direction at a range of $12$--$16$~m, with a relative speed of at most $0.05$~m/s, a boresight within $15^{\circ}$ of the port, and per-axis angular rates of at most $0.005$~rad/s.
+The scenario, constraint, and task parameters are listed in Table~\ref{tab:scenario}. The target flies on a $500$-km circular orbit with an inclination of $45^{\circ}$, and both spacecraft are propagated with \eqref{eq:kin}--\eqref{eq:fg} by an adaptive Runge--Kutta integrator. The target is a homogeneous box with a grapple rod leading to the port and tumbles freely at a spin rate between $2.1$ and $2.7^{\circ}$/s about an axis that deviates by $10$--$20^{\circ}$ from its body $z$-axis, so that $\Ts\in[133,171]$~s. Its initial attitude is uniformly distributed on $\SO$. The chaser starts in a uniformly random direction at a range of $12$--$16$~m, with a relative speed of at most $0.05$~m/s, a boresight within $15^{\circ}$ of the port, and per-axis angular rates of at most $0.005$~rad/s. With deadlines of $140$--$200$~s, the latest admissible entry time $\te$ lies between $95$ and $155$~s, which is comparable to a single spin period: missing a pass costs about as much time as the whole interval available for the entry.
 
-Two mission types are considered. Urgent missions have short deadlines and price time; economy missions have longer deadlines and a tighter budget and price propellant. The economy budget was selected by a prescreening with non-learning stage policies: at this budget, the propellant constraint binds in a substantial share of tasks, while every prescreened task is still captured by at least one of these policies. Fig.~\ref{fig:timescales} compares the latest admissible entry times with the spin period: for urgent missions, $\te$ is comparable to one spin period, and for economy missions to two. Training draws urgent missions with probability $3/4$.
+Each learning method is trained from scratch with three seeds for $5000$ decisions under the parameters of Table~\ref{tab:params}. Training tasks follow the evaluated setting with probability $3/4$; otherwise, a task with a deadline drawn from $\mathcal{U}(280,340)$~s, a budget of $2.0$~m/s, and the weights $c_{\mathrm{t}}=0.02$~s$^{-1}$ and $c_{\mathrm{f}}=40$~s/m is drawn, so that the policy experiences both pricings of time and propellant, which the indicator $\iota$ in \eqref{eq:obs} identifies.
 
-The execution-layer and learning parameters are listed in Table~\ref{tab:params}. They are the same for all learning-based methods compared below.
+The four learning methods of Table~\ref{tab:methods} form a $2\times2$ design over the two channels of ECC. SAC--MPC trains the same hierarchy with SAC, a standard critic $Q(\bo,\ba)$, and no screening; ECC w/o screening adds only the execution feedback to the critics, and ECC w/o feedback adds only the screening. All four share the execution layer, the observation, the action space, the training distribution, and the interaction budget; the critics that read $\bz$ have a wider input layer.
 
 \begin{table}
-\caption{Scenario, Constraint, and Mission Parameters}
+\caption{Learning Methods}
+\label{tab:methods}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{7.6pc}>{\centering\arraybackslash}p{5.0pc}>{\centering\arraybackslash}p{5.0pc}@{}}
+\hline
+Method & Critics read $\bz$ & Screening\\
+\hline
+SAC--MPC & -- & --\\
+ECC w/o screening & \checkmark & --\\
+ECC w/o feedback & -- & \checkmark\\
+ECC & \checkmark & \checkmark\\
+\hline
+\end{tabular*}
+\end{table}
+
+Five reference lines without learning place these results in context. Pure MPC applies the near-field MPC of Section~\ref{sec:executor} from the initial instant, with its setpoint at the capture point rotating with the target and no stage layer. The fixed intent $\ba=[1,0]^{\T}$ closes at full pace and waits for the natural sweep, and the deadline rule closes at a range-dependent pace and turns toward the oncoming port at full along-sweep speed once waiting for its natural pass would leave too little time before the deadline; both act through RWG and the execution layer. Direct entry planning invokes the entry planner from the far field and re-plans whenever an entry is lost, so it searches entry trajectories directly rather than through the two-dimensional intent. Rotation-unaware closing removes the latitude regulation and the along-sweep component from the stage goal and closes along the line of sight with $a_{\mathrm{p}}=1$.
+
+The learned policies are tested on $96$ initial conditions, unseen in training, with each of the three seeds, giving $288$ tasks per method; the policy mean is used. Because all methods are tested on the same initial conditions, every comparison is paired, and $95\%$ intervals of paired differences are obtained by a bootstrap that resamples the initial conditions within each seed ($10\,000$ draws). The reference lines are evaluated on $48$ further initial conditions from the same distribution. The outcome of a task is capture, timeout, fuel exhaustion, or an unsafe state (Section~\ref{sec:mdp}); the capture rate and the return $G$ of the unshaped reward \eqref{eq:reward} measure performance, and the completion time and velocity increment are compared on tasks captured by both methods of a pair. A flip is a task captured by one method of a pair only.
+
+\begin{table}
+\caption{Scenario, Constraint, and Task Parameters}
 \label{tab:scenario}
 \tablefont
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{7.5pc}>{\raggedright\arraybackslash}p{11.3pc}@{}}
@@ -25,8 +47,8 @@ $\bpport$, $\bpcap$, $\bnp$ & $[-1.5,0,0]^{\T}$ m, $[-3,0,0]^{\T}$ m, $[-1,0,0]^
 $\vartheta_{\mathrm{c}}$, $\ell_{\min}$, $\rhos$, $\ell_{\mathrm{m}}$ & $35^{\circ}$, $1$ m, $6$ m, $0.5$ m\\
 $\vartheta_{\mathrm{fov}}$, $\bar v_{\mathrm{m}}$, $\bar\rho$, $v_{\mathrm{f}}$ & $50^{\circ}$, $0.35$ m/s, $30$ m, $0.05$ m/s\\
 Capture tolerance; $T_{\mathrm{hold}}$ & $0.25$ m, $10^{\circ}$, $0.05$ m/s, $0.02$ rad/s; $1$ s\\
-Urgent: $\Td$, $\Bmax$, $c_{\mathrm{t}}$, $c_{\mathrm{f}}$ & $\mathcal{U}(140,200)$ s, $3.0$ m/s, $0.10$ s$^{-1}$, $10$ s/m\\
-Economy: $\Td$, $\Bmax$, $c_{\mathrm{t}}$, $c_{\mathrm{f}}$ & $\mathcal{U}(280,340)$ s, $2.0$ m/s, $0.02$ s$^{-1}$, $40$ s/m\\
+Deadline $\Td$, budget $\Bmax$ & $\mathcal{U}(140,200)$ s, $3.0$ m/s\\
+Weights $c_{\mathrm{t}}$, $c_{\mathrm{f}}$ & $0.10$ s$^{-1}$, $10$ s/m\\
 \hline
 \end{tabular*}
 \end{table}
@@ -57,11 +79,120 @@ Training budget & $5000$ decisions, $2$ asynchronous collectors\\
 \end{tabular*}
 \end{table}
 
+\subsection{Learning Process}\label{sec:learning-curves}
+
+\begin{figure*}[t]
+\centering
+\begin{minipage}[b]{0.33\textwidth}\centering
+\includegraphics{figures/fig_res_learn_a.pdf}\\[1pt]{\footnotesize (a)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.33\textwidth}\centering
+\includegraphics{figures/fig_res_learn_b.pdf}\\[1pt]{\footnotesize (b)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.33\textwidth}\centering
+\includegraphics{figures/fig_res_learn_c.pdf}\\[1pt]{\footnotesize (c)}
+\end{minipage}
+\caption{Learning process. (a) Capture rate of the behavior policy over windows of $100$ time-limited training tasks for the four methods; lines show the mean and bands the range over three seeds. (b) Screening corrections per time-limited training task for the two screened methods. (c) Captures of the deterministic policy on $24$ validation initial conditions at checkpoints of ECC and SAC--MPC; markers show the seeds and lines their mean.}
+\label{fig:learning}
+\end{figure*}
+
+Fig.~\ref{fig:learning}(a) shows the capture rate of the behavior policies during training. The two screened methods capture more often than the two unscreened ones from the first windows onward and stay ahead throughout training: screening turns proposals that would miss the last pass into entries while the policy is still exploring, so captures, and the rewards they carry, enter the replay buffer early. Among the screened methods, ECC reaches the highest capture rate toward the end of training. Without screening, the capture rate rises more slowly, and the execution feedback alone does not separate the two unscreened curves.
+
+Fig.~\ref{fig:learning}(b) counts how often screening replaces the proposal. For ECC, the number of corrections per task decreases from $0.88$, $1.15$, and $1.33$ in the first window of the three seeds to $0.66$, $0.68$, and $0.91$ in the last one, while the capture rate rises; screening thus acts less often as the policy improves. Without the execution feedback, the correction count stays between $0.8$ and $1.1$ per task throughout training. The validation curves in Fig.~\ref{fig:learning}(c) confirm the trend for the deterministic policies: ECC improves from $17$, $18$, and $15$ to $19$, $19$, and $20$ captures out of $24$ over the five checkpoints, whereas SAC--MPC moves from $13$, $12$, and $17$ to $13$, $12$, and $18$. The checkpoints serve only these curves; the policies tested below are those after $5000$ decisions.
+
+\subsection{Representative Capture}\label{sec:case}
+
+\begin{figure*}[t]
+\centering
+\fbox{\parbox[c][5.2cm][c]{0.94\textwidth}{\centering\small\color{gray!70!black}
+Figure generated from the trajectory data of the selected task.\\[4pt]
+(a) Chaser trajectory in $\FT$ with the moving port axis, the approach cone, the operation sphere, and markers of stage ends, the entry transfer, and the descent onset.\\[2pt]
+(b) Range, port--line-of-sight angle $\psi$ with the gate $\psig$, and radial braking margin $\vmg$ versus time, with the execution modes shaded.\\[2pt]
+(c) Attitude and angular-velocity errors with respect to the capture pose and the propellant used $\Delta v$ versus time.}}
+\caption{Representative capture by ECC (seed $20$, test initial condition selected by a fixed rule). (a) Trajectory in the target body frame. (b) Range, port--line-of-sight angle, and radial braking margin with the execution modes. (c) Attitude and angular-velocity errors and propellant use.}
+\label{fig:case}
+\end{figure*}
+
+Fig.~\ref{fig:case} follows one capture through its phases. The task is fixed in advance as the lowest-numbered test initial condition captured by ECC, by SAC--MPC with the same seed, and by pure MPC, so that the figure shows a typical rather than a selected success. \todo{Narrative of the case after the trajectory export: stage decisions and the resulting change of $\dlat$ and $\varphi$, the time of the entry decision relative to the pass, the margins during the entry transfer and the descent, and the terminal errors at capture.}
+
+\subsection{Comparison of the Learned Methods}\label{sec:main}
+
+\begin{table*}
+\caption{Results of the Learned Methods on $288$ Time-Limited Test Tasks}
+\label{tab:main}
+\tablefont
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccccc@{}}
+\hline
+Method & Captures (rate) & Captures per seed & Timeouts & Unsafe & Mean return $G$ & Median time / $\Delta v$ of captures\\
+\hline
+\textbf{ECC} & \textbf{236 (81.9\%)} & 81 / 81 / 74 & 52 & 0 & \textbf{36.4} & 132.4 s / 1.32 m/s\\
+ECC w/o feedback & 225 (78.1\%) & 65 / 81 / 79 & 62 & 1 & 28.5 & 133.1 s / 1.31 m/s\\
+ECC w/o screening & 211 (73.3\%) & 68 / 74 / 69 & 76 & 1 & 19.1 & 133.4 s / 1.25 m/s\\
+SAC--MPC & 204 (70.8\%) & 69 / 60 / 75 & 84 & 0 & 14.8 & 131.0 s / 1.23 m/s\\
+\hline
+\end{tabular*}
+\end{table*}
+
+\begin{figure*}[t]
+\centering
+\begin{minipage}[b]{0.40\textwidth}\centering
+\includegraphics{figures/fig_res_main_a.pdf}\\[1pt]{\footnotesize (a)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.26\textwidth}\centering
+\includegraphics{figures/fig_res_main_b.pdf}\\[1pt]{\footnotesize (b)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.30\textwidth}\centering
+\includegraphics{figures/fig_res_main_c.pdf}\\[1pt]{\footnotesize (c)}
+\end{minipage}
+\caption{Results of the learned methods on the $288$ time-limited test tasks. (a) Outcome composition with the number of captures. (b) Capture rate per seed (circle, square, and triangle for seeds $20$, $21$, and $22$) and pooled (bar); F and S abbreviate execution feedback and screening. (c) Paired outcomes of ECC and SAC--MPC on the same tasks.}
+\label{fig:main}
+\end{figure*}
+
+Table~\ref{tab:main} and Fig.~\ref{fig:main} summarize the four learned methods. ECC captures $236$ of the $288$ tasks ($81.9\%$) and attains the highest mean return, followed by ECC w/o feedback, ECC w/o screening, and SAC--MPC with $204$ captures ($70.8\%$). The failures are almost entirely timeouts: no method exhausts its propellant, and the two unsafe outcomes occur once each in the two partial variants. Under the deadline, the outcome is decided by whether a pass is converted into an entry in time, and the methods differ in how often they achieve this.
+
+Paired on the same tasks, ECC raises the capture rate over SAC--MPC by $11.1$ percentage points (pp), with the interval $[6.6,16.0]$~pp, and the return by $21.6$ $[12.2,31.4]$. Fig.~\ref{fig:main}(c) shows the source of the difference: $43$ tasks are captured by ECC only and $11$ by SAC--MPC only, and on the $193$ tasks captured by both, the completion time differs by $-0.5$~s $[-1.9,1.0]$ and the velocity increment by $+0.04$~m/s $[0.02,0.07]$, about $3\%$ of the median. ECC therefore gains by converting timeouts into captures, at an unchanged completion time and a slightly larger propellant use. The gain holds in two of the three seeds, with $+12$ and $+21$ captures, and vanishes in the third ($-1$), where SAC--MPC reaches its best seed (Fig.~\ref{fig:main}(b)).
+
+\subsection{Contribution of the Two Channels}\label{sec:attribution}
+
+\begin{figure*}[t]
+\centering
+\begin{minipage}[b]{0.50\textwidth}\centering
+\includegraphics{figures/fig_res_attr_a.pdf}\\[1pt]{\footnotesize (a)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.48\textwidth}\centering
+\includegraphics{figures/fig_res_attr_b.pdf}\\[1pt]{\footnotesize (b)}
+\end{minipage}
+\caption{Attribution of the improvement. (a) Captures of the four methods trained from scratch in the $2\times2$ design and the paired capture-rate effect, in pp with $95\%$ intervals, of adding the execution feedback (blue) or the screening (orange). (b) Paired capture-rate differences with $95\%$ intervals (black) and per-seed differences (gray markers); "screening, F on" compares ECC with ECC w/o screening, "feedback, S off" compares ECC w/o screening with SAC--MPC, and "entry re-timing" compares ECC with the same model without re-timing. The right column lists the flips.}
+\label{fig:attribution}
+\end{figure*}
+
+The $2\times2$ design separates the two channels, since each edge of the square in Fig.~\ref{fig:attribution}(a) adds one channel to a method trained from scratch. Screening improves the capture rate in both columns, by $7.3$ $[2.8,11.8]$~pp without the execution feedback and by $8.7$ $[4.5,12.8]$~pp with it, with flips of $36/15$ and $33/8$. Its effect is the largest of the two channels and is positive in all three seeds when the feedback is present (Fig.~\ref{fig:attribution}(b)). Screening acts at the decisions where a single intent separates capture from timeout: it replaces a proposal whose predicted course reaches no entry before $\te$ by a candidate that does.
+
+The execution feedback raises the capture rate by $3.8$ $[0.3,7.3]$~pp when screening is active, whereas without screening its effect, $2.4$ $[-1.7,6.6]$~pp, is not distinguishable from zero. The two channels are therefore complementary: the feedback tells the critics whether an opportunity exists and whether the previous intent was executed as planned, and this information pays off in the closed loop in which screening converts the identified opportunities into entries. Combined, the two channels yield the $11.1$-pp gain of ECC over SAC--MPC, with the four cells ordered $204$, $211$, $225$, and $236$ captures.
+
+\begin{figure*}[t]
+\centering
+\fbox{\parbox[c][4.6cm][c]{0.94\textwidth}{\centering\small\color{gray!70!black}
+Figure generated from the decision log of the selected task.\\[4pt]
+(a) Action box at the decision with the nine candidates of $\Gset$ marked as admissible or not, the proposal $\ba$, and the executed intent $\atil$.\\[2pt]
+(b) Time line of the task: passes of the port, decision instants, the predicted event $t+\tauhat$ of the executed intent, the start of the entry transfer, the descent, the capture, and $\te$ and $\Td$; the same time line for SAC--MPC on this task.}}
+\caption{Screening at a decision (ECC, seed $20$, test initial condition selected by a fixed rule). (a) Candidates, proposal, and executed intent on the action box. (b) Time line of the predicted and realized events of ECC, and of SAC--MPC on the same task.}
+\label{fig:screen-case}
+\end{figure*}
+
+Fig.~\ref{fig:screen-case} shows screening at work on one task, fixed in advance as the lowest-numbered test initial condition on which screening corrected an intent of ECC that led to capture, while SAC--MPC with the same seed failed. \todo{Narrative after the decision-log export: the proposal and why it triggers no event, the admissible candidates and their predicted events, the executed intent and the realized entry, and the outcome of SAC--MPC on the same task.}
+
+\subsection{Rotation-Synchronized Guidance and Reference Lines}\label{sec:rwg-results}
+
 \begin{figure}[t]
 \centering
-\includegraphics{figures/fig_timescales.pdf}
-\caption{Latest admissible entry time $\te=\Td-\Tr$ of the two mission types compared with one and two spin periods.}
-\label{fig:timescales}
+\includegraphics{figures/fig_res_ref.pdf}
+\caption{Outcome composition of the reference lines on $48$ initial conditions and of ECC on the $288$ test tasks, with the number of captures.}
+\label{fig:reference}
 \end{figure}
 
-\todo{Sections~V-B onward are written after the formal experiments are delivered: compared methods and training, representative case, main results on urgent and economy missions, attribution by the $2\times2$ design (execution feedback $\times$ screening, four groups trained from scratch), ablations (without rotation guidance; entry re-timing on and off), mechanism and operating boundary, computational cost.}
+Entry re-timing preserves passes that would otherwise be lost to tracking deviations. With re-timing disabled, which also removes it from the mode prediction, the same ECC policies capture $228$ of the $288$ tasks. Re-timing adds $2.8$ $[0.3,5.6]$~pp, positive in all three seeds, with $11$ tasks captured only with re-timing and $3$ only without it (Fig.~\ref{fig:attribution}(b)). On the tasks captured in both settings, re-timing also shortens the completion time by $1.5$ $[1.0,2.0]$~s and reduces the velocity increment by $0.013$ $[0.004,0.022]$~m/s, because a re-planned entry reaches the mouth point within the current pass instead of after a renewed approach.
+
+Rotation guidance determines whether passes become usable at all. With the same full-pace closing intent, the chaser captures $35$ of $48$ tasks when RWG regulates the latitude and synchronizes the phase, but only $21$ when it closes along the line of sight (Fig.~\ref{fig:reference}). All $27$ failures of the rotation-unaware closing are timeouts: without latitude regulation, the line of sight stays off the sweep cone, where Lemma~\ref{lem:window} admits no window, and the port passes by without becoming reachable.
+
+The reference lines in Fig.~\ref{fig:reference} also delimit the role of each layer. Pure MPC captures $16$ of $48$ tasks; it chases the rotating capture point from the initial range, and its failures include $13$ fuel exhaustions and $10$ unsafe states, which shows that a constrained controller with a horizon of seconds cannot schedule the encounter with the port. The deadline rule and the fixed intent, which act through RWG and the execution layer, capture $33$ and $35$ tasks ($69\%$ and $73\%$) and remain below the $81.9\%$ of ECC, whose policy adapts the pace and the timing to the state. Direct entry planning captures $44$ tasks ($92\%$) by searching entry trajectories from the far field at every check; it marks the capture rate that the execution layer attains when entries are searched directly, outside the two-dimensional intent through which the learned policy acts.
