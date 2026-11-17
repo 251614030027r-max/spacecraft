@@ -6,6 +6,11 @@ Arms (``make_model``):
   environment's certification on, this is ECC (``ECC_CERT_LOOP``); without it, "ECC w/o certification" (``EACH_C``).
 * ``e_sac`` -- SAC whose critic reads the policy view only (``SAC_C``; with certification ``SAC_CERT_LOOP``).
 * ``e_td3`` -- SB3 TD3 on the policy view, matched settings (``TD3_C``).
+* ``e_evt`` -- ECC with event-aligned value feedback (``ECC_EVT``, ``docs/ecc2/ECC_EVT.md``): the critic reads the policy
+  view only and is trained on a mixture of the one-step soft target and an event-aligned multi-step target that sums
+  the real (shaped) rewards from the decision to the end of its approach segment -- the first macro-step with an
+  execution mode event (entry transfer or descent started, or the episode ended), at most EVENT_SPAN decisions -- and
+  bootstraps after it (``event_segments``, ``EventReplay``).
 
 SAC: twin critic, fixed entropy coefficient ENT_COEF (automatic temperature drove critic overestimation, DEAD_ENDS
 D02), [256, 256], learning rate 3e-4, replay 1e5, batch 256, 200 uniform random decisions before learning, tau 0.005,
@@ -23,6 +28,7 @@ import json
 import subprocess
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 import gymnasium as gym
 import numpy as np
@@ -40,9 +46,35 @@ ENT_COEF = 0.05
 SIGMA_DECAY = 0.99        # running mean of the squared real TD residual (diagnostic)
 #: critic / actor updates per stored real transition
 UPDATES_PER_TRANSITION = 2
-LEARNER_VERSION = "t2-learner-8.0"
+LEARNER_VERSION = "t2-learner-8.1"  # 8.1: arm e_evt (old arms unchanged)
 #: arms and whether the critic reads the executor feedback view
-ARMS = {'e_priv': True, 'e_sac': False, 'e_td3': False}
+ARMS = {'e_priv': True, 'e_sac': False, 'e_td3': False, 'e_evt': False}
+#: event-aligned value feedback (arm e_evt): maximum decisions of an approach segment, weight of the event-aligned target
+EVENT_SPAN = 5
+EVENT_LAMBDA = 0.5
+
+
+def event_segments(rewards, events, terminals, gamma: float = GAMMA_STAGE, span: int = EVENT_SPAN, closed: bool = False):
+    """Event-aligned returns of consecutive decisions k = 0..n-1 of one episode (pure function).
+
+    The approach segment of decision k ends at m(k) = min{j >= k : events[j] or j = k + span - 1}; ``events[j]`` marks a
+    macro-step with an execution mode event (entry transfer or descent started, or the episode ended). For each decision
+    whose segment is complete it returns (k, m, G_k, terminal_m, gamma^(m - k + 1)) with G_k = sum_{j=k}^{m} gamma^(j-k)
+    r_j; the target is then G_k + gamma^(m-k+1) (1 - terminal_m) V(o_{m+1}). A decision whose segment is still open is
+    not returned unless ``closed`` (the episode's data ended: the segment is cut at the last decision)."""
+    n, out = len(rewards), []
+    for k in range(n):
+        m = None
+        for j in range(k, min(k + span, n)):
+            if events[j] or j == k + span - 1:
+                m = j; break
+        if m is None:
+            if not closed:
+                break
+            m = n - 1
+        g = sum(gamma ** (j - k) * float(rewards[j]) for j in range(k, m + 1))
+        out.append((k, m, g, bool(terminals[m]), gamma ** (m - k + 1)))
+    return out
 
 
 class StageReplay(ReplayBuffer):
@@ -64,6 +96,44 @@ class StageReplay(ReplayBuffer):
                 (self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(-1, 1),
                 self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env))
         return ReplayBufferSamples(*tuple(map(self.to_torch, data)))
+
+
+class EventReplay(StageReplay):
+    """StageReplay plus the event-aligned target of every stored decision: the segment return G, the successor after
+    the segment, its terminal flag and the discount gamma^(m-k+1) (``event_segments``)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        shape = (self.buffer_size, self.n_envs)
+        self.ev_returns = np.zeros(shape, np.float32)
+        self.ev_next_observations = np.zeros((*shape, *self.obs_shape), self.observation_space.dtype)
+        self.ev_terminals = np.zeros(shape, np.float32)
+        self.ev_discounts = np.zeros(shape, np.float32)
+
+    def add_event(self, obs, next_obs, action, reward, done, infos, ev_return, ev_next_obs, ev_terminal, ev_discount):
+        pos = self.pos
+        self.ev_returns[pos] = ev_return; self.ev_next_observations[pos] = np.array(ev_next_obs)
+        self.ev_terminals[pos] = ev_terminal; self.ev_discounts[pos] = ev_discount
+        self.add(obs, next_obs, action, reward, done, infos)
+
+    def _get_samples(self, batch_inds, env=None):
+        base = super()._get_samples(batch_inds, env)
+        e = lambda a: self.to_torch(a[batch_inds, 0].reshape(-1, 1))
+        ev = (e(self.ev_returns), self.to_torch(self._normalize_obs(self.ev_next_observations[batch_inds, 0, :], env)),
+              e(self.ev_terminals), e(self.ev_discounts))
+        return EventSamples(base.observations, base.actions, base.next_observations, base.dones, base.rewards, *ev)
+
+
+class EventSamples(NamedTuple):
+    observations: th.Tensor
+    actions: th.Tensor
+    next_observations: th.Tensor
+    dones: th.Tensor
+    rewards: th.Tensor
+    ev_returns: th.Tensor
+    ev_next_observations: th.Tensor
+    ev_terminals: th.Tensor
+    ev_discounts: th.Tensor
 
 
 class T2SAC(SAC):
@@ -92,6 +162,9 @@ class T2SAC(SAC):
             actions_pi, log_prob = self.actor.action_log_prob(data.observations); log_prob = log_prob.reshape(-1, 1)
             with th.no_grad():
                 target = data.rewards + (1 - data.dones) * self.gamma * self._soft_value(data.next_observations, ent_coef)
+                if isinstance(data, EventSamples):       # event-aligned value feedback (arm e_evt)
+                    event = data.ev_returns + (1 - data.ev_terminals) * data.ev_discounts * self._soft_value(data.ev_next_observations, ent_coef)
+                    target = (1.0 - EVENT_LAMBDA) * target + EVENT_LAMBDA * event
             current = self.critic(data.observations, data.actions)
             real = 0.5 * sum(F.mse_loss(q, target) for q in current)
             with th.no_grad():
@@ -164,7 +237,8 @@ def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transi
                      train_freq=(1, 'step'), gradient_steps=2, policy_delay=2,
                      target_policy_noise=0.2, target_noise_clip=0.5, replay_buffer_class=TD3Replay)
     kw = {'net_arch': [256, 256], 'actor_dim': OBS_DIM, 'critic_dim': obs_dim if ARMS[arm] else OBS_DIM}
-    return T2SAC(SplitViewPolicy, env, seed=seed, device='cpu', verbose=0, policy_kwargs=kw,
+    extra = {'replay_buffer_class': EventReplay} if arm == 'e_evt' else {}
+    return T2SAC(SplitViewPolicy, env, seed=seed, device='cpu', verbose=0, policy_kwargs=kw, **extra,
                  gamma=GAMMA_STAGE, learning_rate=3e-4, buffer_size=100_000, batch_size=64 if smoke else 256,
                  learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=max(1, int(round(updates_per_transition))),
                  ent_coef=ENT_COEF, tau=0.005)
@@ -221,8 +295,8 @@ class SplitViewPolicy(SACPolicy):
 
 def _slim(info: dict) -> dict:
     """What the learner process keeps from a step's info."""
-    return {k: info[k] for k in ('event', 'time_s', 'delta_v', 'mission', 'true_reward', 'exec_stats', 'min_margins', 'terminal')
-            if k in info}
+    return {k: info[k] for k in ('event', 'time_s', 'delta_v', 'mission', 'true_reward', 'exec_stats', 'min_margins', 'terminal',
+                                 'mode_event') if k in info}
 
 
 def worker(conn, rank: int, seed: int, window: bool, mission: str, geometry: bool = True, certify: bool = False,
@@ -251,6 +325,20 @@ def worker(conn, rank: int, seed: int, window: bool, mission: str, geometry: boo
         transition = (obs, next_obs, np.asarray(action, np.float32), float(reward), bool(term), bool(trunc), _slim(info))
         obs = env.reset()[0] if (term or trunc) else next_obs
     conn.close()
+
+
+def _event_store(buffer: EventReplay, pend: list, item) -> None:
+    """Append a decision of one worker's episode and store every decision whose approach segment is complete."""
+    pend.append(item)
+    o, o1, act, r, done, term, info = item
+    closed = done
+    segs = event_segments([x[3] for x in pend], [bool(x[6].get('mode_event')) or x[4] for x in pend], [x[5] for x in pend],
+                          closed=closed)
+    for k, m, g, terminal, disc in segs:
+        x = pend[k]
+        buffer.add_event(x[0][None], x[1][None], x[2][None], np.array([x[3]]), np.array([x[4]]), [x[6]],
+                         g, pend[m][1][None], float(terminal), disc)
+    del pend[:len(segs)]
 
 
 def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[int], smoke: bool = False,
@@ -295,6 +383,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     rng = np.random.default_rng(seed)
     noise_rng = np.random.default_rng([seed, 3003]) if arm == 'e_td3' else None
     ret_true, ret_shaped = {}, {}                 # each worker's current episode return (true task reward / shaped training reward)
+    pending = {}                                  # e_evt: each worker's decisions whose approach segment is still open
     active = list(pipes)
     while active:
         for conn in wait(active):
@@ -304,7 +393,10 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                 o, o1, act, r, term, trunc, info = transition
                 done = term or trunc
                 info = dict(info, **({'TimeLimit.truncated': True} if trunc and not term else {}))
-                model.replay_buffer.add(o[None], o1[None], act[None], np.array([r]), np.array([done]), [info])
+                if isinstance(model.replay_buffer, EventReplay):
+                    _event_store(model.replay_buffer, pending.setdefault(w_, []), (o, o1, act, r, done, bool(term), info))
+                else:
+                    model.replay_buffer.add(o[None], o1[None], act[None], np.array([r]), np.array([done]), [info])
                 model.num_timesteps += 1; order.append(w_)
                 ret_true[w_] = ret_true.get(w_, 0.0) + float(info.get('true_reward') or 0.0); ret_shaped[w_] = ret_shaped.get(w_, 0.0) + float(r)
                 if done:

@@ -5,7 +5,7 @@
  "method_behaviour_reference": "e0a617532008dac02e2d50f7e859aca613e03e5e",
  "trained": {
   "ECC_CERT_LOOP": {
-   "display": "ECC",
+   "display": "ECC (round 1)",
    "arm": "e_priv",
    "obs": "cut_priv",
    "window": true,
@@ -75,6 +75,18 @@
    "critic_view": 48,
    "role": "rotation-guidance ablation: stage targets close along the line of sight only",
    "color": "#cc79a7"
+  },
+  "ECC_EVT": {
+   "display": "ECC",
+   "arm": "e_evt",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "certify": true,
+   "actor_view": 24,
+   "critic_view": 24,
+   "role": "final method (2026-11-18): event-aligned value feedback (critic on the policy view, mixture of the one-step soft target and the event-aligned multi-step target) with execution-opportunity screening; docs/ecc2/ECC_EVT.md",
+   "color": "#8e44ad"
   }
  },
  "fixed": {
@@ -154,7 +166,8 @@
      "TD3_C",
      "EACH_C",
      "SAC_CERT_LOOP",
-     "ECC_CERT_LOOP_NOGEO"
+     "ECC_CERT_LOOP_NOGEO",
+     "ECC_EVT"
     ],
     "fixed": [
      "pure",
@@ -183,7 +196,8 @@
      "trained": [
       "ECC_CERT_LOOP",
       "SAC_C",
-      "TD3_C"
+      "TD3_C",
+      "ECC_EVT"
      ]
     },
     "eval_switches": {
@@ -284,7 +298,10 @@
      "SAC_C_s21_urgent_cert",
      "SAC_C_s21_economy_cert",
      "SAC_C_s22_urgent_cert",
-     "SAC_C_s22_economy_cert"
+     "SAC_C_s22_economy_cert",
+     "ECC_EVT_s20_urgent",
+     "ECC_EVT_s21_urgent",
+     "ECC_EVT_s22_urgent"
     ],
     "note": "Pre-registered in docs/paper/EXPERIMENTS.md. Budgets by mission type (user 2026-11-13): urgent 3.0 m/s, economy 2.0 m/s in training and evaluation (env.t2_stage.ECONOMY_BUDGET_M_S); the separate resource condition R is dropped."
    },

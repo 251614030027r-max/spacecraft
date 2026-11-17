@@ -39,10 +39,11 @@ def test_formal_openings_disjoint():
 def test_formal_registry_evaluation_matrix():
     stage = final.stage_of("formal")
     assert stage["steps"] == 5000 and stage["seeds"] == [20, 21, 22]
-    assert len(stage["trained"]) == 6
+    assert len(stage["trained"]) == 7           # six round-1 configurations + ECC_EVT (2026-11-18, urgent only)
     labels = set(stage["evaluations"])
     assert len(labels) == len(stage["evaluations"])
-    assert len(labels) == 18 * len(stage["conditions"]) + 21
+    assert len(labels) == 18 * len(stage["conditions"]) + 21 + 3
+    assert {f"ECC_EVT_s{s}_urgent" for s in (20, 21, 22)} <= labels
     assert not any(label.endswith("_resource") for label in labels)
     from env.t2_stage import ECONOMY_BUDGET_M_S
     assert stage["conditions"]["economy"]["budget_m_s"] == ECONOMY_BUDGET_M_S == 2.0
