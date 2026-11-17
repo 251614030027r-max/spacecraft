@@ -2,16 +2,16 @@
 \input{preamble}
 \begin{document}
 % Paired outcomes of ECC and SAC--MPC on the same 288 tasks.
-\begin{tikzpicture}[font=\footnotesize,cell/.style={draw=white,line width=1.5pt,minimum width=1.55cm,minimum height=1.15cm,align=center}]
+\begin{tikzpicture}[font=\footnotesize,cell/.style={draw=white,line width=1.5pt,minimum width=1.75cm,minimum height=1.15cm,align=center}]
   \node[cell,fill=oCap!55] at (0,0) {$193$\\[-1pt]{\scriptsize both}};
-  \node[cell,fill=cECC!70,text=white] at (1.55,0) {$\mathbf{43}$\\[-1pt]{\scriptsize ECC only}};
-  \node[cell,fill=cSAC!45] at (0,-1.15) {$11$\\[-1pt]{\scriptsize SAC only}};
-  \node[cell,fill=oTime!70] at (1.55,-1.15) {$41$\\[-1pt]{\scriptsize neither}};
+  \node[cell,fill=cECC!70,text=white] at (1.75,0) {$\mathbf{43}$\\[-1pt]{\scriptsize ECC only}};
+  \node[cell,fill=cSAC!45] at (0,-1.15) {$11$\\[-1pt]{\scriptsize SAC--MPC only}};
+  \node[cell,fill=oTime!70] at (1.75,-1.15) {$41$\\[-1pt]{\scriptsize neither}};
   \node[font=\scriptsize,anchor=south] at (0,0.62) {captured};
-  \node[font=\scriptsize,anchor=south] at (1.55,0.62) {not captured};
-  \node[anchor=south] at (0.775,0.95) {SAC--MPC};
-  \node[font=\scriptsize,anchor=east] at (-0.82,0) {captured};
-  \node[font=\scriptsize,anchor=east,align=right] at (-0.82,-1.15) {not\\captured};
-  \node[rotate=90,anchor=south] at (-1.95,-0.575) {ECC};
+  \node[font=\scriptsize,anchor=south] at (1.75,0.62) {not captured};
+  \node[anchor=south] at (0.875,0.95) {SAC--MPC};
+  \node[font=\scriptsize,anchor=east] at (-0.92,0) {captured};
+  \node[font=\scriptsize,anchor=east,align=right] at (-0.92,-1.15) {not\\captured};
+  \node[rotate=90,anchor=south] at (-2.05,-0.575) {ECC};
 \end{tikzpicture}
 \end{document}

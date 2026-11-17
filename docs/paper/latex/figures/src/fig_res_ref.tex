@@ -1,10 +1,10 @@
 \documentclass[border=1pt]{standalone}
 \input{preamble}
 \begin{document}
-% Outcome composition of the reference lines (48 initial conditions) and of ECC (288 test tasks).
+% Outcome composition of the non-learning baselines (48 initial conditions) and of ECC (288 test tasks).
 \begin{tikzpicture}[font=\footnotesize]
 \begin{axis}[resstyle,xbar stacked,bar width=8pt,width=6.0cm,height=5.2cm,xmin=0,xmax=100,
-  ytick={0,1,2,3,4,6},yticklabels={Pure MPC,{Rotation-unaware closing},Deadline rule,{Fixed intent $(1,0)$},{Direct entry planning},ECC},y dir=reverse,
+  ytick={0,1,2,3,4,6},yticklabels={Pure MPC,{Rotation-unaware approach},Deadline rule,{Fixed intent},{Direct entry planning},ECC},y dir=reverse,
   ymin=-0.6,ymax=6.6,xlabel={Share of tasks (\%)},xlabel style={yshift=3pt},ymajorgrids=false,
   legend style={at={(0.5,1.02)},anchor=south,legend columns=4,column sep=2pt},legend image code/.code={\fill[#1] (0cm,-0.08cm) rectangle (0.25cm,0.1cm);}]
 \addplot[fill=oCap,draw=white,point meta=explicit symbolic,nodes near coords,nodes near coords style={font=\scriptsize,text=white}] table[x=capture,y=y,meta=ncap]{data/reference.dat}; \addlegendentry{capture}

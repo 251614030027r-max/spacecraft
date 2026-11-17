@@ -1,0 +1,40 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\usepgfplotslibrary{groupplots}
+\begin{document}
+% Learning process: (a) training capture rate (mean and min--max over three seeds, windows of 100 tasks),
+% (b) screening corrections per training task, (c) validation captures of the deterministic policy (24 tasks).
+\begin{tikzpicture}[font=\footnotesize]
+\begin{groupplot}[group style={group size=1 by 3,vertical sep=6pt,xticklabels at=edge bottom},
+  resstyle,width=8.9cm,height=3.3cm,xmin=700,xmax=5200,xtick={1000,2000,3000,4000,5000},xticklabels={1k,2k,3k,4k,5k},
+  ylabel style={yshift=-3pt},legend cell align=left]
+\nextgroupplot[ymin=20,ymax=90,ytick={30,50,70,90},ylabel={Capture (\%)},
+  legend style={at={(0.5,1.03)},anchor=south,legend columns=2,column sep=6pt,row sep=-1pt}]
+\band{sac}{cSAC}{caplo}{caphi}
+\band{noscr}{cNOSCR}{caplo}{caphi}
+\band{nofb}{cNOFB}{caplo}{caphi}
+\band{ecc}{cECC}{caplo}{caphi}
+\addplot[cECC,very thick] table[x=x,y=cap]{data/train_ecc.dat}; \addlegendentry{ECC}
+\addplot[cNOFB,thick,dashed] table[x=x,y=cap]{data/train_nofb.dat}; \addlegendentry{ECC w/o feedback}
+\addplot[cNOSCR,thick,dashdotted] table[x=x,y=cap]{data/train_noscr.dat}; \addlegendentry{ECC w/o screening}
+\addplot[cSAC,thick,dotted] table[x=x,y=cap]{data/train_sac.dat}; \addlegendentry{SAC--MPC}
+\node[anchor=north west,inner sep=2pt] at (rel axis cs:0,1) {(a)};
+\nextgroupplot[ymin=0.3,ymax=1.8,ytick={0.5,1.0,1.5},ylabel={Corrections},yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=1,/pgf/number format/fixed zerofill}]
+\band{nofb}{cNOFB}{intlo}{inthi}
+\band{ecc}{cECC}{intlo}{inthi}
+\addplot[cNOFB,thick,dashed] table[x=x,y=int]{data/train_nofb.dat};
+\addplot[cECC,very thick] table[x=x,y=int]{data/train_ecc.dat};
+\node[anchor=north west,inner sep=2pt] at (rel axis cs:0,1) {(b)};
+\nextgroupplot[ymin=10,ymax=24,ytick={12,16,20,24},ylabel={Captures},xlabel={Decisions},xlabel style={yshift=3pt}]
+\addplot[only marks,mark=o,mark size=1.5pt,cSAC] table[x expr=\thisrow{x}+60,y=s20]{data/val_sac.dat};
+\addplot[only marks,mark=o,mark size=1.5pt,cECC] table[x expr=\thisrow{x}-60,y=s20]{data/val_ecc.dat};
+\addplot[only marks,mark=square,mark size=1.4pt,cSAC] table[x expr=\thisrow{x}+60,y=s21]{data/val_sac.dat};
+\addplot[only marks,mark=square,mark size=1.4pt,cECC] table[x expr=\thisrow{x}-60,y=s21]{data/val_ecc.dat};
+\addplot[only marks,mark=triangle,mark size=1.7pt,cSAC] table[x expr=\thisrow{x}+60,y=s22]{data/val_sac.dat};
+\addplot[only marks,mark=triangle,mark size=1.7pt,cECC] table[x expr=\thisrow{x}-60,y=s22]{data/val_ecc.dat};
+\addplot[cSAC,thick,dotted] table[x=x,y=mean]{data/val_sac.dat};
+\addplot[cECC,very thick] table[x=x,y=mean]{data/val_ecc.dat};
+\node[anchor=north west,inner sep=2pt] at (rel axis cs:0,1) {(c)};
+\end{groupplot}
+\end{tikzpicture}
+\end{document}

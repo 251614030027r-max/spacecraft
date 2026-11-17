@@ -1,0 +1,32 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Representative capture: chaser trajectory in the target body frame, colored by execution mode.
+\begin{tikzpicture}[font=\footnotesize]
+\begin{axis}[resstyle,view={-20}{58},width=8.6cm,height=8.6cm,unit vector ratio=1 1 1,
+  xmin=-16,xmax=12,ymin=-10,ymax=14,zmin=-11,zmax=6,
+  xlabel={$x$ (m)},ylabel={$y$ (m)},zlabel={$z$ (m)},
+  xtick={-10,0,10},ytick={-10,0,10},ztick={-10,0},
+  xlabel style={sloped,yshift=5pt},ylabel style={sloped,yshift=5pt},zlabel style={yshift=-8pt},
+  grid=major,grid style={gray!12},clip=false]
+% operation sphere (equator and two meridians)
+\addplot3[gray!55,thin,domain=0:360,samples=73,samples y=0] ({6*cos(x)},{6*sin(x)},0);
+\addplot3[gray!55,thin,domain=0:360,samples=73,samples y=0] ({6*cos(x)},0,{6*sin(x)});
+% approach cone about the port axis (apex at the port, half-angle 35 deg, drawn to l = 9 m)
+\addplot3[cDesc!70!black,thin,domain=0:360,samples=73,samples y=0] ({-1.5-9},{9*0.7002*cos(x)},{9*0.7002*sin(x)});
+\addplot3[cDesc!70!black,thin] coordinates {(-10.5,6.302,0) (-1.5,0,0) (-10.5,-6.302,0)};
+\addplot3[cDesc!70!black,thin] coordinates {(-10.5,0,6.302) (-1.5,0,0) (-10.5,0,-6.302)};
+% port axis
+\addplot3[black,densely dashed,thin] coordinates {(-1.5,0,0) (-15,0,0)};
+% target body (box) and grapple rod
+\addplot3[black,fill=gray!35,thin] coordinates {(-0.62,-0.51,0.37) (0.62,-0.51,0.37) (0.62,0.51,0.37) (-0.62,0.51,0.37) (-0.62,-0.51,0.37)};
+\addplot3[black,thin] coordinates {(-0.62,-0.51,-0.37) (0.62,-0.51,-0.37) (0.62,0.51,-0.37) (-0.62,0.51,-0.37) (-0.62,-0.51,-0.37)};
+\addplot3[black,thick] coordinates {(-0.62,0,0) (-1.5,0,0)};
+% trajectory by execution mode
+\input{data/case_traj}
+\input{data/case_marks}
+\addplot3[only marks,mark=square*,mark size=1.6pt,black] coordinates {(-3,0,0)};
+\node[anchor=south,inner sep=2pt,font=\scriptsize] at (axis cs:-13.5,0,0.3) {port axis};
+\end{axis}
+\end{tikzpicture}
+\end{document}

@@ -3,8 +3,8 @@
 \begin{document}
 % Paired capture-rate differences with 95% stratified bootstrap intervals; per-seed differences as small markers.
 \begin{tikzpicture}[font=\footnotesize]
-\begin{axis}[resstyle,width=6.6cm,height=5.0cm,xmin=-10,xmax=25,ymin=-0.6,ymax=5.6,
-  ytick={0,1,2,3,4,5},yticklabels={entry re-timing,{feedback, S off},{feedback, S on},{screening, F off},{screening, F on},ECC vs SAC--MPC},
+\begin{axis}[resstyle,width=5.2cm,height=5.0cm,xmin=-10,xmax=25,ymin=-0.6,ymax=5.6,
+  ytick={0,1,2,3,4,5},yticklabels={{ECC vs w/o re-timing},{w/o screening vs SAC--MPC},{ECC vs w/o feedback},{w/o feedback vs SAC--MPC},{ECC vs w/o screening},{ECC vs SAC--MPC}},
   xlabel={Capture-rate difference (pp)},xlabel style={yshift=3pt},ymajorgrids=false,clip=false]
 \draw[gray!70!black,densely dashed] (axis cs:0,-0.6) -- (axis cs:0,5.6);
 \addplot[only marks,mark=o,mark size=1.2pt,gray] table[x=s20,y expr=\thisrow{y}+0.22]{data/forest.dat};
@@ -18,7 +18,7 @@
 \node[font=\scriptsize,anchor=west] at (axis cs:25.5,2) {21/10};
 \node[font=\scriptsize,anchor=west] at (axis cs:25.5,1) {24/17};
 \node[font=\scriptsize,anchor=west] at (axis cs:25.5,0) {11/3};
-\node[font=\scriptsize,anchor=south west] at (axis cs:25.5,5.4) {flips};
+\node[font=\scriptsize,anchor=south west,align=left,inner sep=1pt] at (axis cs:25.5,5.35) {Only 1st/\\only 2nd};
 \end{axis}
 \end{tikzpicture}
 \end{document}
