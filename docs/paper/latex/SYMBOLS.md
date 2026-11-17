@@ -59,6 +59,6 @@ bar = upper bound; tilde = transformed; Δ = increment only; upright subscripts 
 | π_θ, Q_ζi, ζ_i^- | policy, critics, target-critic parameters | IV-B |
 | ε̂, τ̂, Δv̂ | predicted event indicator, event time, propellant | IV-C |
 | 𝒢, 𝒢_a, 𝒞, ã, a* | candidate set, admissible set, correction map, executed intent, minimizer | IV-C |
-| P_C, 𝓑^π, Π, V_C, V_E, Υ | screened kernel, soft Bellman operator, policy class, returns under P_C / P_E; Υ feedback law in Problem 1 (II-C) | IV-D |
+| P_C, 𝓑^π, Q^π_C, Υ | closed-loop kernel with screening, soft Bellman operator, its fixed point; Υ feedback law in Problem 1 (II-C) | IV-D |
 | α, Q_tg, 𝓛, ℬ, U | SAC temperature, critic target, losses, replay buffer, soft value | IV-D |
 | k_1, k_2, φ_r, c_w | auxiliary unit vectors, line-of-sight azimuth, cosine argument (proofs) | App |

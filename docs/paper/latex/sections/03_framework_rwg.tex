@@ -50,7 +50,7 @@ Because entry transfers and descents run until termination or until the entry is
 \begin{figure*}[t]
 \centering
 \includegraphics{figures/fig_framework.pdf}
-\caption{Hierarchical framework. The execution layer exposes the interface of Definition~\ref{def:interface}: the macro-step transition $\PE$ of an executed intent, the mode prediction $\Mpred$, and the execution feedback $\bz$. The action-level channel (orange) corrects the proposal $\ba$ into the executed intent $\atil$ in training and execution alike; the state-level channel (blue) feeds $\bz$ to the critics. Dashed paths exist only in training.}
+\caption{Hierarchical framework. The execution layer exposes the interface of Definition~\ref{def:interface}: the macro-step transition $\PE$ of an executed intent, the mode prediction $\Mpred$, and the execution feedback $\bz$. The action-level channel (orange) corrects the proposal $\ba$ into the executed intent $\atil$; the state-level channel (blue) feeds $\bz$ to the critics. Dashed paths are learning updates.}
 \label{fig:framework}
 \end{figure*}
 
@@ -165,16 +165,13 @@ in this order, subject to $t_{0}+\sigma\le\te$, where the shifts $\sigma>0$ in $
 
 \begin{figure*}[t]
 \centering
-\begin{minipage}[b]{0.27\textwidth}\centering
+\hfill\begin{minipage}[b]{0.34\textwidth}\centering
 \includegraphics{figures/fig_screen_a.pdf}\\[2pt]{\footnotesize (a)}
 \end{minipage}\hfill
-\begin{minipage}[b]{0.35\textwidth}\centering
+\begin{minipage}[b]{0.46\textwidth}\centering
 \includegraphics{figures/fig_screen_b.pdf}\\[2pt]{\footnotesize (b)}
-\end{minipage}\hfill
-\begin{minipage}[b]{0.36\textwidth}\centering
-\includegraphics{figures/fig_screen_c.pdf}\\[2pt]{\footnotesize (c)}
-\end{minipage}
-\caption{Execution-opportunity screening. (a) Correction on the action box: the proposal $\ba$ triggers no mode event and is replaced by the nearest admissible candidate $\atil$; the dotted circle is the distance level set through $\atil$. (b) Critical-window condition of \eqref{eq:admissible}: the event predicted at $t+\tauhat$ is critical because the next pass, one spin period later, falls after $\te$. (c) Kernels learned and executed: with screening in training and execution, the policy is learned and executed under $\PC$; with screening at execution only, it is learned under $\PE$ but executed under $\PC$.}
+\end{minipage}\hfill\mbox{}
+\caption{Execution-opportunity screening. (a) Correction on the action box: the proposal $\ba$ triggers no mode event and is replaced by the nearest admissible candidate $\atil$; the dotted circle is the distance level set through $\atil$. (b) Critical-window condition of \eqref{eq:admissible}: the event predicted at $t+\tauhat$ is critical because the next pass, one spin period later, falls after $\te$.}
 \label{fig:screen}
 \end{figure*}
 

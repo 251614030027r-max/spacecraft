@@ -8,7 +8,7 @@
   the rest of Section V, and Section VI wait for the formal results.
 - `figures/fig_*.pdf` — compiled figures included by the paper (Overleaf needs only these PDFs).
   Fig. 1 `fig_scene`; Fig. 2 `fig_timeline`; Fig. 3 `fig_framework`; Fig. 4 `fig_rwg_{a,b,c}`;
-  Fig. 5 `fig_screen_{a,b,c}`; Fig. 6 `fig_timescales`.
+  Fig. 5 `fig_screen_{a,b}`; Fig. 6 `fig_timescales`.
 - `figures/src/` — TikZ/pgfplots sources of the figures and `build.sh` (run `sh figures/src/build.sh` to rebuild all
   PDFs; `gen_scene.py` generates the 3-D projection of Fig. 1). Edit sources, then rebuild; never edit the PDFs.
 - `refs.bib` — references; entries preceded by `% TODO` must be verified.

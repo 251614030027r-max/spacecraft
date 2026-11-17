@@ -16,7 +16,7 @@
 - 对比：哈工大 Yang 2025 场景最近但方法与实验过于简单；北航 Tian 2024 约束写法最规范但主体是 ADP 理论。二者降为局部参照。
 
 ### 不照搬的地方
-- 它的 III-D 给出递归可行与渐近稳定"保证"；我们只写结构性 Proposition（E1、E2、推论、重定时可行候选不减）与 Lemma（扫掠窗口），并在每条后写清"不蕴含什么"（facts/05 §5.6）。
+- 它的 III-D 给出递归可行与渐近稳定"保证"；我们只写结构性结果（Lemma 1 扫掠窗口、Proposition 1 名义窗口调节、Proposition 2 校验后的决策过程、Property 1 修正映射），并按 facts/05 §5.6 用一条范围 Remark 说明不蕴含什么。
 - 它的 Monte Carlo 只报均值与成功率；我们按 EXPERIMENTS 的配对统计（种子分层、区间、翻转数）写，比它更严格。
 - 它在结论里写具体百分比；我们结论里的数字全部等正式结果，先用 \todo{}。
 - 它的引言较长且偏应用背景；我们引言最后写，按死区迟滞稿的"两个问题 → 两个机制 → 贡献"压紧。
@@ -35,13 +35,13 @@
 | （无对应；III-C 的 Definition 写法） | Definition + 解析式 + 示意图 | III-B Sweep-cone geometry（**Lemma 1**） | 自旋坐标系、λ/β/Δλ/φ、球面余弦式、窗口半宽 Δφ、几何机会集与"几何≠可执行"（facts/03 §3.1） | Dong 2022 时变 LOS 锥 |
 | III-A Problem 2 的写法 | 优化层的代价与约束写成显式问题 | III-C RWG stage guidance；III-D Dynamic entry and entry re-timing（**Proposition 1**）；III-E Execution-layer planners and near-field MPC | 意图→目标速度、局部运动学、限幅与安全投影（facts/03 §3.2–3.3）；入口判定与重定时、可行候选不减（§3.4–3.5）；阶段规划器、入口规划器（SOCP 写成显式问题）、远场跟踪律、末段下降、近场 MPC（facts/04） | Lian 2026 SOC 约束写法 |
 | III-B Determination of MTS via RL | 任务写成 MDP→"可观测的三类信息"→统一归一化系数→状态表示与公式→动作定义→奖励（分段式）→网络结构图→SAC 三个损失→流程图 Fig. 3 | IV-A MDP formulation, observation, execution feedback and reward | 宏步 MDP 与折扣 γ_d（facts/02 §2.4）→策略观测 o 的 18 项"按类别"列出（距离与速度 / 几何与相位 / 任务与燃料 / 制动裕度），统一按物理尺度归一化（facts/02 §2.5）→动作 a=(a_p,a_z)→真实回报与势函数塑形（facts/01 §1.8、facts/06 §6.2）→网络与 SAC 更新（facts/06 §6.1–6.3） | Yang 2025 观测归一化动机 |
-| III-C Convexification（Definition 1 + 步骤图） | 先给定义，再分步骤构造，配 2-D 示意 | IV-B Mode prediction（Definition）；IV-C Certification（Definition + **Proposition 2**） | 模式预测"问什么、怎么算、输出、它不是什么"（facts/05 §5.2）；可认证候选集三条件、认证映射、E1（§5.3）；F5(a) 式 3×3 候选示意 | Leung 2024 / Lu 2025 对照"最小修改" |
-| III-D Recursive feasibility and stability（Theorem + case 分析 + Table I + Algorithm 1） | 定理→分情形证明→汇总表→算法框 | IV-D Training–execution consistent learning（**Proposition 3**、**Corollary 1**）；IV-E Algorithm and overall diagram | 认证诱导转移核、存提议动作、E2 与推论、部分可观与函数逼近说明（facts/05 §5.4）；Algorithm 1（facts/05 §5.5 伪代码）；方法总图（§5.5）；证明放附录 | AC4MPC 命题–证明–Remark；Reiter §8.3.2 |
+| III-C Convexification（Definition 1 + 步骤图） | 先给定义，再分步骤构造，配 2-D 示意 | IV-C Execution-opportunity screening（Definition 2 + Property 1 + Remark 1） | 模式预测（facts/05 §5.2）；可行候选集三条件、修正映射（§5.3）；Fig. 5(a) 式 3×3 候选示意 | Leung 2024 / Lu 2025 对照"最小修改" |
+| III-D Recursive feasibility and stability（Theorem + case 分析 + Table I + Algorithm 1） | 定理→分情形证明→汇总表→算法框 | IV-D Learning in the screened closed loop（**Proposition 2**）；Algorithm 1 | 含认证（screening）的闭环宏转移核、存提议动作、学习过程与部分可观说明（facts/05 §5.4）；Algorithm 1（facts/05 §5.5）；命题 2 证明放正文 | AC4MPC 命题–证明–Remark |
 | IV 开头段 | 预告各小节要证明什么 + 运行平台 | V 开头 | 预告 RQ1–RQ4 与对应小节（EXPERIMENTS §1） | — |
 | IV-A Training process | 环境参数表、初始条件采样式、训练曲线与基线对比、解释收敛原因 | V-A Setup, baselines and training | T1 环境/训练/信息划分/各方法设置；初始条件与任务分布（facts/01 §1.4、§1.7）；对比方法与消融定义（facts/07）；F1 学习曲线 \todo{} | Zheng 2026 参数总表；Zeng 2026 消融句式 |
 | IV-B Typical cases | 选代表案例，画轨迹 + 关键时程，并标出决策时刻 | V-B Representative case | F2–F3：按事先规则选定的物理案例，目标本体系轨迹、阶段/认证标记、约束裕度时程（EXPERIMENTS §7）\todo{} | Xu 2026 Fig. 6–9 |
 | IV-C Comparative experiments | 先介绍各基线"各有所长"→统一 MC→成功率/计算时间/燃耗→解释为何无人 100% | V-C Main results on urgent and economy missions | F4/T2：U 结局构成与回报配对差、E 共同成功配对的时间与 Δv、N 汇总（EXPERIMENTS §5）\todo{} | Ramezani 2026 Table 4 |
-| （它没有部件消融） | — | V-D Attribution and ablations | F6：2×2 归因、执行时认证开/关与仅执行时认证、w/o 旋转引导、重定时开/关 \todo{} | Zeng 2026 §4.4 |
+| （它没有部件消融） | — | V-D Attribution and ablations | F6：2×2 归因（执行反馈 × 认证，四组从零训练）、w/o 旋转引导、重定时开/关 \todo{} | Zeng 2026 §4.4 |
 | IV-D Robustness analysis | 加入扰动后重复同一批 MC | V-E Mechanism and operating boundary | F5 认证机制（η / N_geo 分层）、F7 燃料与自旋率分层；在线开销 vs 16 s 决策周期 \todo{} | Yang 2025 Fig. 6；Zeng 2026 开销 |
 | V Conclusion | 方法一句话→各模块作用→关键数字→应用前景→未来工作 | VI Conclusion | 方法与机制总结→结果 \todo{}→局限（编号）→未来工作 | Xu 2026 Limitations |
 | 附录/参考文献 | IEEE 格式 | Appendix | 命题证明；超参数表；（可选）开发期负结果 T3 | Yang 2025 附录 |
@@ -58,7 +58,7 @@
 - **结论段：** 一句话复述方法 → 各模块作用 → 关键结果（等正式数字）→ 局限与未来工作。
 
 ### 篇幅参考
-Ren 2026 正文 16 页（参考文献 50 篇以上），图 10、表 4、算法 1、定理 1。我们预计：图 7–9（框架图、RWG 几何、F1、F2–F3、F4、F5、F6、F7 视篇幅合并）、表 3（T1、T2、对比方法设置）、算法 1、Lemma 1、Proposition 1–3、Corollary 1（重定时 = Prop. 1，E1 = Prop. 2，E2 = Prop. 3）；参考文献 40–50 篇。
+Ren 2026 正文 16 页（参考文献 50 篇以上），图 10、表 4、算法 1、定理 1。当前稿：方法章图 5 张 + 实验设置图 1 张、方法章表 2 张 + 实验设置表 2 张、算法 1、Lemma 1、Proposition 1–2、Property 1；参考文献 40–50 篇（目标）。
 
 ## 1 总览：每篇文献在本文中的角色
 
@@ -79,14 +79,14 @@ Ren 2026 正文 16 页（参考文献 50 篇以上），图 10、表 4、算法 
 | Zheng 2026 | Acta Astronaut. 249, 2026 | 事件触发 RL–MPC | 相关工作（RL 管时机）；V 参数总表、评价指标小节、敏感性 |
 | Tammam 2025 | CEP 156, 2025 | 分层 DRL 航天 | 相关工作一句 |
 | Adjei 2026 | AST 178, 2026 | SAC+MPC 分层（航空） | 相关工作"长时域最优 vs 约束权限" |
-| Reiter 综述 2026 | Annu. Rev. Control 61, 2026 | 定位与理论依据 | I RL/MPC 互补；本文分类定位（hierarchical / MPC as part of environment）；E2 动机（§8.3.2 后处理滤波器） |
+| Reiter 综述 2026 | Annu. Rev. Control 61, 2026 | 定位与理论依据 | I RL/MPC 互补；本文分类定位（hierarchical / MPC as part of environment） |
 | AC4MPC | IEEE TCST, 2025 | RL–MPC 代表 + 命题写法 | 相关工作（critic 作终端代价）；IV 命题–证明–Remark 组织 |
 | ecc26_rollout | ECC 2026 | RL–MPC 代表 | 相关工作（学习给名义解、优化精修） |
 | Leung 2024 | SCL 185, 2024 | 参考整形 | 相关工作（对上层命令做最小修改）——见待定事项 1 |
 | Tartaglione 2024 | Automatica 166, 2024 | 参考整形 | 同上；"Problem 1 / Problem 2"分层陈述写法 |
 | Wu 2024 | IEEE 期刊（TODO） | MPC 价值估计 | 相关工作（预测用于价值目标；ECC 不这样做） |
 | Zeng 2026 | Neurocomputing 701, 2026 | 实验组织模板 | V "w/o 部件"消融句式；在线开销对比决策周期；种子带曲线 |
-| Lu 2025 | EAAI 161, 2025 | 安全层 + 混合学习 | 相关工作；E2 中"存提议动作"的对照；V 屏蔽开/关组织 |
+| Lu 2025 | EAAI 161, 2025 | 安全层 + 混合学习 | 相关工作；IV-D "存提议动作"的设计对照；V 介入案例的组织 |
 | Duan & Zou 2025 | Autom. Constr. 174, 2025 | 跨领域分层安全 | 相关工作一句 |
 | 死区迟滞（用户首篇） | 中文期刊稿 | 组织形式 | 引言"两个问题→机制→贡献"；实验章节顺序；不引用 |
 
@@ -99,7 +99,7 @@ Ren 2026 正文 16 页（参考文献 50 篇以上），图 10、表 4、算法 
 - MPC 与 RL 的能力边界：Reiter 综述 §5（性质近乎正交）、AC4MPC 引言（RL 近全局低精度 vs MPC 局部高精度）、Ren 2026（MPC 两个局限：参考难得、有限时域只得局部最优）、Xu 2026。
 - 学习在航天控制：Yang 2025（SE(3) 上 PPO/TD3/SAC 端到端）、Tammam 2025（分层 DRL）、Lu 2026（安全 RL）、Ren 2026（端到端 RL 的可靠性顾虑）。
 - RL–MPC 结合与分类：Reiter 综述 §6（三大类、五种参数化架构）、Gong 2026（学习代价权重）、Ramezani 2026（MPC 轨迹进奖励）、Ren 2026 / Zheng 2026（RL 决定机动或重优化时机）、Adjei 2026（按阶段分配权限）、AC4MPC / ecc26（critic 作终端代价、学习给名义解）、Wu 2024（预测用于价值估计）。
-- 决策–执行失配的文献依据：Reiter 综述 §8.3.2（学习时不可见的后处理滤波器使策略不能期望闭环最优）；安全/参考整形层对上层命令做最小修改：Lu 2025、Zeng 2026、Leung 2024、Tartaglione 2024、Duan 2025——共同点是修改发生在学习之外或只为可行性/安全，不回馈"机会是否存在"。
+- 决策–执行失配的文献依据：Reiter 综述（MPC 作为环境一部分的分层结构）；安全/参考整形层对上层命令做最小修改：Lu 2025、Zeng 2026、Leung 2024、Tartaglione 2024、Duan 2025——共同点是修改只为可行性/安全，不回馈"机会是否存在"。
 - 组织：沿用死区迟滞稿与 Tian 2024 的"现有工作 → 两个问题 → 对应机制 → 贡献"写法；贡献句式参考 Yang 2025（每条以对比前人收尾）。
 
 **II Problem Formulation / System Modeling**
@@ -118,7 +118,7 @@ Ren 2026 正文 16 页（参考文献 50 篇以上），图 10、表 4、算法 
 
 **IV ECC**
 - 命题组织：AC4MPC（Assumption → Lemma/Proposition → Proof → Remark，结论后加适用范围限定句）、Leung 2024（Proposition + 简短证明）。证明放附录参照 Tartaglione 2024。
-- E2 动机：Reiter 综述 §8.3.2；与 Lu 2025 的"混合学习（投影动作/原动作）"对照说明为何存提议动作。
+- 存提议动作的对照：与 Lu 2025 的"混合学习（投影动作/原动作）"对照说明为何存提议动作。
 - 与最小修改类方法的差别：Leung 2024 / Tartaglione 2024 / Lu 2025 / Zeng 2026。
 - 算法框：Yang 2025 附录伪代码、Lu 2026 §4.3"learning and deployment"。
 
@@ -127,7 +127,7 @@ Ren 2026 正文 16 页（参考文献 50 篇以上），图 10、表 4、算法 
 - 基线：TD3 与 SAC 对照参照 Yang 2025；纯 MPC 作传统基线参照死区迟滞稿 3.4、Ramezani 2026（LQG-MPC）。
 - 指标：成功率（全部阈值同时满足）、终端六自由度误差、控制量参照 Ramezani 2026 Table 4、Yang 2025 Table III、Gong 2026 Table 4；评价指标先单列一小节参照 Zheng 2026 §4.2。
 - 消融：句式参照 Zeng 2026 §4.4（"without X, which retains … but disables …, thereby evaluating …"）；组件逐一加入的组织参照 Zheng 2026 §4.5。
-- 执行时认证开/关、介入案例：Lu 2025。
+- 认证介入案例、训练期累计超时与不安全：Lu 2025。
 - 在线开销对比决策周期：Zeng 2026（每次决策耗时 vs 决策间隔）、Gong 2026（平均求解时间列）。
 - 边界：按目标角速度分层参照 Yang 2025 Fig. 6；燃料预算参照 Ramezani 2026 Fig. 15。
 - 案例时程：Xu 2026 Fig. 6–9（分阶段子图 + 时间线叙述）、Yang 2025 Figs. 7–9。
@@ -272,7 +272,7 @@ Ren 2026 正文 16 页（参考文献 50 篇以上），图 10、表 4、算法 
 - 结构：1 Intro（1.1 范围、1.2 相关综述、1.3 记号、1.4 概览）；2 Problem setting（MDP）；3 RL（DP、TD、PG、DQN/DDPG/PPO/SAC）；4 MPC（问题形式、约束、不确定性、数值方法、次优性）；5 Comparison of MPC and RL（状态空间、模型、随机性、模型失配、稳定性、约束 5.6、在线计算、离线工程、泛化、实践表现；Table 2/3）；6 Combination approaches（三大类：MPC as expert actor / MPC within the deployed policy / MPC as part of the critic；6.1 参数化 MPC 架构：integrated / algorithmic / hierarchical / parallel / parameterized）；7 MPC as expert actor；8 MPC within the deployed policy（8.1 aligned learning、8.2 closed-loop learning（8.2.2 MPC as part of the environment）、8.3 pre/post-processing（8.3.1 参考生成、8.3.2 后处理/安全滤波器）、8.4 RL 引导 MPC 优化）；9 MPC as a critic；10 理论（MPC–MDP 等价、折扣近似、10.3 闭环最优的状态转移模型）；11 软件；12 结论。
 - 与本文的关系（核心定位来源）：
   - 定位句：本文属于 6.1.3 hierarchical architecture（NN 输出参数/参考给优化层，φ=φ_θ(s) 在求解前计算）+ 8.2.2 "MPC as part of the environment"（评价器评估的是给优化层的参数，而非 MPC 实际输出）。BACKGROUND 1.3"学习任务参考"一类即此。
-  - E2 的关键引证：8.3.2 指出后处理滤波器在学习时不可见，因此策略不能期望闭环最优（"Since the trained policy is not aware of the filter, its performance cannot be expected to be closed-loop optimal"）→ 我们"认证在训练与执行中共用"的动机，引用 Section 8.3（facts/05 已写明）。
+  - 8.3.2 讨论了学习时不可见的后处理滤波器；本文方法不区分训练与执行，认证是闭环固定组成部分（2026-11-17 研究层决定），论文不再引用这一节作对比论证。
   - 5.6：安全 RL 的三类约束表述（硬约束、机会约束、累积代价）及"safe RL 要么保守要么违约"→ 支撑"把约束留给 MPC/规划器"的选择。
   - 5 节总论：MPC 源于多变量约束控制、RL 追求闭环性能，二者性质近乎正交 → 引言第二段的权威依据。
   - 10.3：模型预测精度 ≠ 闭环最优 → 可在讨论中说明"认证依赖执行层模型的预测，其价值由真值后果检验"。
@@ -314,15 +314,15 @@ Ren 2026 正文 16 页（参考文献 50 篇以上），图 10、表 4、算法 
 - 结构：1 Intro（贡献 1.–4.）；2 相关工作；3 Methodology（MPC 先验 + 有界残差 RL；风险自适应混合执行 HEM（在线调节残差权限 + MPC 回退）；解耦双评价器（任务回报与安全代价分开）；课程学习）；4 实验（4.3 对比：5 个基线 DQN/PPO/SAC/PPO-L/…，每法 5 种子 × 1000 回合，低/中/高三档交通密度；4.3.1 训练曲线均值±标准差带；在线开销：每次策略更新 MPC 先验 11.60 ms + 推理 0.42 ms，最大 17.46 ms ≪ 0.5 s 决策周期；4.3.3 观测噪声鲁棒性；4.4 消融：full / w/o HEM / w/o DC / w/o EP / w/o DC and EP / MPC，表中 SR/CR/FR 三档）；5 结论。
 - 与本文的关系：
   - 实验组织模板（EXPERIMENTS §0 已对应）："w/o 部件"消融命名 → 我们 ECC w/o certification / execution feedback / rotation guidance；在线开销"每步耗时 vs 决策周期"→ 我们"认证耗时 vs 16 s 决策周期"；种子带的训练曲线 → F1。
-  - 方法上：执行层在线调节学习动作的"权限"（HEM）与我们"认证在执行时修正意图"形式相近；区别：它是风险启发式、训练外的软安全；我们的认证判据是执行层模型下的模式事件 + 关键窗口 + 燃料，训练与执行共用。解耦双评价器与我们"评价器读执行反馈"都是"评价器结构"上的改动，可并列一句。
+  - 方法上：执行层在线调节学习动作的"权限"（HEM）与我们"认证修正意图"形式相近；区别：它是风险启发式的软安全；我们的认证判据是执行层模型下的模式事件 + 关键窗口 + 燃料，是闭环的固定组成部分。解耦双评价器与我们"评价器读执行反馈"都是"评价器结构"上的改动，可并列一句。
 - 写法：消融逐项解释"(2) without HEM, which retains… but disables…, thereby evaluating…"——这一句式非常适合我们写三个消融的定义。
 
 ### Lu 2025 = P. Lu, S. Zhang, F. Tan, F. Zhang, Y. Feng, B. Hu, Engineering Applications of Artificial Intelligence 161 (2025) 112108
 - 题目：An uncertainty-aware safe-evolving reinforcement learning algorithm for decision-making and control in highway autonomous driving
 - 内容：内部稳定（策略更新高概率单调改进）+ 外部稳定（以基准策略为参照不差于它）+ 动作投影与混合学习（对学习策略做"最小修改"以保证安全，并同时从安全动作与原动作学习）；高速公路仿真。实验：屏蔽开/关、训练期累计不安全事件、介入案例。
 - 与本文的关系：
-  - 相关工作"安全层对学习动作做最小修改（projection / shield）"一类；它显式讨论了"学习时用投影后动作还是原动作"的混合学习——与我们 E2"经验池存提议的 a、回报来自认证后执行"直接相关，可作对照：我们选择存提议动作，使评价器学习"提出 a 时系统真实发生什么"。
-  - 实验组织（EXPERIMENTS §0）：同一模型执行时认证开/关、训练期累计超时与不安全、F5 介入案例。
+  - 相关工作"安全层对学习动作做最小修改（projection / shield）"一类；它显式讨论了"学习时用投影后动作还是原动作"的混合学习，可作设计对照：我们存提议动作，回报与后继来自修正后执行，使评价器学习"提出 a 时闭环真实发生什么"。
+  - 实验组织（EXPERIMENTS §0）：训练期累计超时与不安全、F5 介入案例。
 - 不借：其"provable safety"主张。
 
 ### Duan & Zou = Automation in Construction 174 (2025) 106130
