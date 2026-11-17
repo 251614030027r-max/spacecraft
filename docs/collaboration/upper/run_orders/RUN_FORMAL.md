@@ -1,5 +1,7 @@
 # 执行书：RUN_FORMAL（ECC 正式实验）
 
+**结束（2026-11-17，用户）：** 只运行了第 1–4 场（ECC、SAC–MPC、ECC w/o 认证、ECC w/o 执行反馈）。第 5–6 场（TD3–MPC、ECC w/o 旋转引导）和尚未运行的固定策略评估不再运行。本轮结果此后作为开发证据，方法进入第二版（科学 `docs/ecc2/GATE0.md`，执行书 RUN_ECC2_GATE0）。
+
 **状态：待用户单独授权；授权前不得启动任何一步。前提已满足（2026-11-13）：RUN_CLEANUP 已交付并复核通过（collab `fa7506d4`），代码在 Windows 上对冻结行为逐位等价，本机已就绪（`READY.json`）。** 授权时用户在本页写明"已批准"和日期；若要删减组别，必须在授权前写明删哪一组，不能训练后再选。
 
 设计依据：科学分支 `docs/paper/EXPERIMENTS.md`（事先登记）；方法 `docs/paper/facts/`（原 `METHOD.md`）；准备工作 RUN_FORMAL_PREP 已交付（科学 `e47a1165`，collab `5496cb51`），上层复核见本页第 7 节；工程收尾 RUN_CLEANUP 须先交付并复核通过（第 7 节）。

@@ -1,23 +1,24 @@
-# 项目状态（上层维护；2026-11-12）
+# 项目状态（上层维护；2026-11-18）
 
 开发期（至 11-11）的完整状态表与执行书记录：[archive/PROJECT_STATE_20261111.md](archive/PROJECT_STATE_20261111.md)。
 
-## 1. 当前状态
+## 1. 当前状态（2026-11-18）
 
 | 项 | 状态 |
 |---|---|
-| 方法 | 冻结：`ECC_CERT_LOOP`（ECC + RWG），行为基准科学 `e0a61753`；论文方法事实稿 `docs/paper/facts/`（11-14 起，中文，按方法部分顺序；只改文档） |
-| 代码 | 正式代码科学 `e8474e21`（11-13：不改结果的提速，环境墙钟约 −14%，沙箱逐位核验 `evidence/SPEEDUP_20261113/`）；工程收尾后的科学 `21730075`：只保留正式实验用到的代码；冻结路径对 `fcd8d2ee` 逐位等价（上层沙箱：环境 7 种情形、6 个配置单进程短训；`docs/paper/AUDIT.md` 第 4 节）；执行器与物理模块与 `e0a61753` 逐字节相同 |
-| 正式实验设计 | 事先登记：`docs/paper/EXPERIMENTS.md`；条件 U / E / N；经济任务预算 2.0 m/s（训练与评估，来自预筛），紧急 3.0 m/s，取消 R（用户 11-13）；不加第七组 |
-| 运行中 | 无。下层预检已完成（collab `6403b21b`：检出 `e8474e21`，pytest 160 passed，标签 `archive/formal-code-20261114`；Defender 排除与 Windows Update 策略待管理员落实） |
-| 待授权 | [RUN_FORMAL](upper/run_orders/RUN_FORMAL.md)：冻结科学 `e8474e21`（下层检出、全量 pytest 160 passed、打标签 `archive/formal-code-20261114`）；队列排程 + 训练完即评估，按场次运行（每场一个实验组 × 三个种子，由用户下达开场指令，场次之间挂起），约 9–12 场；前提已满足——RUN_CLEANUP 已交付并复核通过（collab `fa7506d4`，科学证据 `6d3d6baa`）；Windows pytest 158 passed、逐位等价；本机只保留最近四轮，正式目录不存在，磁盘充足。由用户单独授权 |
+| 第一轮正式实验 | 已结束，只运行了四个训练组（ECC、SAC–MPC、ECC w/o 认证、ECC w/o 执行反馈；科学 `561a89d3`、`fade060b`、`aa9efdb4`、`1c191a89`）。紧急任务：ECC 236/288，SAC–MPC 204/288；评价器反馈的作用不显著；经济任务无收益。剩余的 TD3–MPC、ECC w/o 旋转引导与固定策略评估不再运行（用户 2026-11-17）。结果此后作为开发证据，论文不再把认证开关、训练–执行一致性作为主张（科学 `e721c68c`） |
+| 方法 | 重构中：ECC 第二版"执行后果门控的选项价值学习"，方向经用户认可；规格与判据在科学 `docs/ecc2/GATE0.md`。RWG、规划器、MPC、模式预测不动 |
+| 运行中 / 待执行 | [RUN_ECC2_GATE0](upper/run_orders/RUN_ECC2_GATE0.md)：离线可行性审查（日志分析 + 开发初始条件上的分支重放），不训练 |
+| 下一步 | 第 0 关通过后另立第 1 关（开发期小规模训练）规格；不通过则按判据停止或调整 |
+| 论文写作 | 写作窗口（用户组织）；方法事实稿 `docs/paper/facts/`。ECC 一节待第二版方法定稿后改写 |
 
 ## 2. 执行书（方法线，按时间倒序）
 
 | 状态 | 执行书 |
 |---|---|
 | 已交付（collab `fa7506d4`，科学 `6d3d6baa`；上层复核通过） | [RUN_CLEANUP](upper/run_orders/RUN_CLEANUP.md)：归档标签、Windows 逐位核验、本机资产整理 |
-| 待授权 | [RUN_FORMAL](upper/run_orders/RUN_FORMAL.md)：冻结科学 `e8474e21`（下层检出、全量 pytest 160 passed、打标签 `archive/formal-code-20261114`）；队列排程 + 训练完即评估，按场次运行（每场一个实验组 × 三个种子，由用户下达开场指令，场次之间挂起），约 9–12 场；前提已满足——RUN_CLEANUP 已交付并复核通过（collab `fa7506d4`，科学证据 `6d3d6baa`）；Windows pytest 158 passed、逐位等价；本机只保留最近四轮，正式目录不存在，磁盘充足。由用户单独授权 |
+| 待执行 | [RUN_ECC2_GATE0](upper/run_orders/RUN_ECC2_GATE0.md)：ECC 第二版离线可行性审查（不训练） |
+| 已结束（四个训练组；其余不再运行，用户 11-17） | [RUN_FORMAL](upper/run_orders/RUN_FORMAL.md)：冻结科学 `e8474e21`（下层检出、全量 pytest 160 passed、打标签 `archive/formal-code-20261114`）；队列排程 + 训练完即评估，按场次运行（每场一个实验组 × 三个种子，由用户下达开场指令，场次之间挂起），约 9–12 场；前提已满足——RUN_CLEANUP 已交付并复核通过（collab `fa7506d4`，科学证据 `6d3d6baa`）；Windows pytest 158 passed、逐位等价；本机只保留最近四轮，正式目录不存在，磁盘充足。由用户单独授权 |
 | 已交付（科学 `e47a1165`，collab `5496cb51`；上层复核通过） | [RUN_FORMAL_PREP](upper/run_orders/RUN_FORMAL_PREP.md)：正式实验准备 WP1–WP8 |
 | 已交付（科学 `d738839e`） | [RUN_GOV_B](upper/run_orders/RUN_GOV_B.md)：在环 ECC 选型（B 步） |
 | 已交付 | [RUN_GOV_A](upper/run_orders/RUN_GOV_A.md)：执行机会调节器（否决，D45） |
