@@ -1,9 +1,9 @@
 {
-  "resource_schedule_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\FORMAL\\记录\\SAC_C\\AFFINITY_DESKTOP_RESERVE.json",
+  "resource_schedule_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\记录\\run-entry.json",
   "retained_model_zip_sha256_verified": 239,
   "current_delivery_report": "docs/collaboration/lower/handoffs/formal/ECC_EVT_SESSION5_RESULT.md",
-  "updated_at": "2026-11-18T13:29:15.329227+09:00",
-  "next_action": "pytest 退出码0后直接训练 ECC_LE 三种子，完成后自动接续 SAC_LE 三种子。",
+  "updated_at": "2026-11-18T13:32:34.733153+09:00",
+  "next_action": "后台完成 ECC_LE 三种子训练后自动启动 SAC_LE 三种子；逐种子评估紧急任务和五检查点验证曲线；检验先推送，训练结果分别交付。",
   "deletion_ledger": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\cleanup_20261112\\记录\\DELETED_FILES_20261112.jsonl",
   "current_scope": {
     "steps": 5000,
@@ -26,7 +26,7 @@
     ]
   },
   "order_collab_commit": "927f9c6a3237ce54b7450b09fc9e8f0db519f21b",
-  "automatic_followup": "DISABLED",
+  "automatic_followup": "ECC_LE_BACKGROUND_CONTROLLER_AND_HOURLY_READ_ONLY",
   "local_report": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_EVT\\记录\\RESULT.md",
   "execution_state": "le_running",
   "formal_evidence_commit": "769061f25101c876ce129a9355bbdd1d027dcfb4",
@@ -44,7 +44,7 @@
     "local_settings_verification": "user_confirmed"
   },
   "evaluation_active": true,
-  "status": "ECC_LE / SAC_LE 开训前测试",
+  "status": "ECC_LE 三种子训练中；配对检验并行，SAC_LE 三种子已授权自动接续",
   "training_active": true,
   "topic": "ecc_le",
   "windows_evidence_commit": "6d3d6baa9201a21442103d6ee0bfd30fe356cf12",
@@ -61,5 +61,10 @@
     "ECC_LE_s21",
     "ECC_LE_s22"
   ],
-  "active_auxiliary": "probe"
+  "active_auxiliary": "probe",
+  "background_task": "Spacecraft_ECC_LE_20261118",
+  "health_task": "Spacecraft_ECC_LE_Health_20261118",
+  "health_interval_minutes": 60,
+  "start_collab_commit": "8844a40f18c5a790c85f83e437d5cc39c6ff1855",
+  "logging_start_verified": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\记录\\START_LOGGING_CHECK.json"
 }
