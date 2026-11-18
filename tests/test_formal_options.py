@@ -48,7 +48,7 @@ def test_resume_verifies_existing_bytes_before_skip(tmp_path):
 
 def test_completeness_report_lists_every_registered_result(tmp_path):
     report = check_formal(tmp_path, stage_of("formal"))
-    assert len(report["missing_runs"]) == 24          # 8 configurations x 3 seeds
+    assert len(report["missing_runs"]) == 27          # 9 configurations x 3 seeds
     assert report["evaluations"]["ECC_EVT_s20_urgent"]["expected"] == 96
     assert report["validation"]["ECC_EVT_s22_step5000"]["expected"] == 24
     assert report["evaluations"]["ECC_CERT_LOOP_s20_economy_nocert"]["expected"] == 96
