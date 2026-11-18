@@ -670,7 +670,7 @@ class T2StageEnv(gym.Env):
         info = {"event": event, "true_reward": reward, "stage_s": e.time_s - t0, "held": g.mode == "hold", "mode": g.mode,
                 "plan_status": "macro", "rate_limited": False, "planned_dv": None, "executed_dv": None, "cert": None,
                 "time_s": e.time_s, "delta_v": e._delta_v, "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission),
-                "far_field_controls": self.far_field_controls, "mode_event": True}
+                "far_field_controls": self.far_field_controls}
         return self.observation(), float(shaped), terminated, event == "numerical_failure", info
 
     # ---------------------------------------------------------------- ECC: opportunity evaluation and certification
@@ -809,7 +809,7 @@ class T2StageEnv(gym.Env):
         first_mode, first_mode_t = None, None
         while True:
             r, event, info = self._advance(); reward += r; steps += 1
-            if first_mode is None and g.mode in ("bridge", "descent"):     # bookkeeping only (mode-event boundary)
+            if self.audit_logging and first_mode is None and g.mode in ("bridge", "descent"):
                 first_mode, first_mode_t = g.mode, float(e.time_s)
             if event is not None:
                 break
@@ -842,9 +842,7 @@ class T2StageEnv(gym.Env):
         info = {"event": event, "true_reward": reward, "stage_s": e.time_s - t0, "held": held, "mode": g.mode,
                 "plan_status": plan["status"], "rate_limited": goal["rate_limited"], "planned_dv": plan.get("delta_v_m_s"),
                 "executed_dv": e._delta_v - dv0, "cert": cert, "time_s": e.time_s, "delta_v": e._delta_v,
-                "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission), "far_field_controls": self.far_field_controls,
-                # execution mode event of this macro-step: an entry transfer or descent started, or the episode ended
-                "mode_event": bool(first_mode is not None or terminated or truncated)}
+                "range_m": float(np.linalg.norm(q1)), "mission": dict(self.mission), "far_field_controls": self.far_field_controls}
         if self.audit_logging:
             macro_end = (
                 "entry" if first_mode == "bridge" else "descent" if first_mode == "descent"

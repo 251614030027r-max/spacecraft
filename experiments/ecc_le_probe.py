@@ -15,9 +15,27 @@ from pathlib import Path
 import numpy as np
 
 
+def _actor(policy: str):
+    from experiments.t2 import exec_config_of, load_checkpoint, policy_action
+    p = Path(policy)
+    if p.is_dir():
+        ckpt = p / 'final.zip'
+        cfg = exec_config_of(ckpt)
+        if not cfg['certify']:
+            raise SystemExit(f'{policy}: the probe runs a policy flown with its certifier')
+        model = load_checkpoint(ckpt)
+        return cfg, (lambda e, o: model.predict(o, deterministic=True)[0])
+    return {'window': True, 'geometry': True, 'certify': True}, (lambda e, o: policy_action(policy, e, o))
+
+
+def _env(opening, cfg):
+    from env.t2_stage import T2StageEnv, mission_from_name
+    return T2StageEnv(openings=[opening], shaping=False, window=cfg['window'], geometry=cfg['geometry'],
+                      mission=mission_from_name('urgent'), certify=True)
+
+
 def job(j):
     import torch; torch.set_num_threads(1)
-    from experiments.ecc2_gate0 import _actor, _env
     from experiments.t2 import dump, run_episode
     f = Path(j['out']) / f"{j['label']}_{j['opening']}.json"
     if f.exists():

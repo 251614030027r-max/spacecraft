@@ -76,18 +76,6 @@
    "role": "rotation-guidance ablation: stage targets close along the line of sight only",
    "color": "#cc79a7"
   },
-  "ECC_EVT": {
-   "display": "ECC",
-   "arm": "e_evt",
-   "obs": "cut_priv",
-   "window": true,
-   "geometry": true,
-   "certify": true,
-   "actor_view": 24,
-   "critic_view": 24,
-   "role": "not adopted (224/288 < 236/288, 2026-11-18); kept for traceability; final method (2026-11-18): event-aligned value feedback (critic on the policy view, mixture of the one-step soft target and the event-aligned multi-step target) with execution-opportunity screening; docs/ecc2/ECC_EVT.md",
-   "color": "#8e44ad"
-  },
   "ECC_LE": {
    "display": "ECC",
    "arm": "e_priv",
@@ -193,7 +181,6 @@
      "EACH_C",
      "SAC_CERT_LOOP",
      "ECC_CERT_LOOP_NOGEO",
-     "ECC_EVT",
      "ECC_LE",
      "SAC_LE"
     ],
@@ -225,7 +212,6 @@
       "ECC_CERT_LOOP",
       "SAC_C",
       "TD3_C",
-      "ECC_EVT",
       "ECC_LE",
       "SAC_LE"
      ]
@@ -329,9 +315,6 @@
      "SAC_C_s21_economy_cert",
      "SAC_C_s22_urgent_cert",
      "SAC_C_s22_economy_cert",
-     "ECC_EVT_s20_urgent",
-     "ECC_EVT_s21_urgent",
-     "ECC_EVT_s22_urgent",
      "ECC_LE_s20_urgent",
      "ECC_LE_s21_urgent",
      "ECC_LE_s22_urgent",
