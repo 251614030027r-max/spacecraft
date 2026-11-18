@@ -87,6 +87,19 @@
    "critic_view": 24,
    "role": "final method (2026-11-18): event-aligned value feedback (critic on the policy view, mixture of the one-step soft target and the event-aligned multi-step target) with execution-opportunity screening; docs/ecc2/ECC_EVT.md",
    "color": "#8e44ad"
+  },
+  "ECC_LE": {
+   "display": "ECC",
+   "arm": "e_priv",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": true,
+   "certify": true,
+   "long_entry": true,
+   "actor_view": 24,
+   "critic_view": 48,
+   "role": "final method candidate (2026-11-18): round-1 ECC plus the long-arrival entry candidate of the screening at the last usable pass; docs/ecc2/ECC_LE.md",
+   "color": "#8e44ad"
   }
  },
  "fixed": {
@@ -167,7 +180,8 @@
      "EACH_C",
      "SAC_CERT_LOOP",
      "ECC_CERT_LOOP_NOGEO",
-     "ECC_EVT"
+     "ECC_EVT",
+     "ECC_LE"
     ],
     "fixed": [
      "pure",
@@ -197,7 +211,8 @@
       "ECC_CERT_LOOP",
       "SAC_C",
       "TD3_C",
-      "ECC_EVT"
+      "ECC_EVT",
+      "ECC_LE"
      ]
     },
     "eval_switches": {
@@ -301,7 +316,10 @@
      "SAC_C_s22_economy_cert",
      "ECC_EVT_s20_urgent",
      "ECC_EVT_s21_urgent",
-     "ECC_EVT_s22_urgent"
+     "ECC_EVT_s22_urgent",
+     "ECC_LE_s20_urgent",
+     "ECC_LE_s21_urgent",
+     "ECC_LE_s22_urgent"
     ],
     "note": "Pre-registered in docs/paper/EXPERIMENTS.md. Budgets by mission type (user 2026-11-13): urgent 3.0 m/s, economy 2.0 m/s in training and evaluation (env.t2_stage.ECONOMY_BUDGET_M_S); the separate resource condition R is dropped."
    },

@@ -94,6 +94,7 @@ def cmd_train(a):
     train(out, c['arm'], int(a.seed), steps, int(a.workers or reg['protocol']['workers']), marks, a.smoke_steps is not None,
           updates_per_transition=float(reg['protocol']['updates_per_transition']), window=bool(c['window']),
           mission=st['mission'], geometry=bool(c['geometry']), certify=bool(c.get('certify', False)),
+          long_entry=bool(c.get('long_entry', False)),
           manifest_extra={'final_config': a.config, 'final_stage': a.stage,
                           'final_registry_sha256': hashlib.sha256(REGISTRY.read_bytes()).hexdigest()})
     verify_manifest(json.loads((out / 'manifest.json').read_text(encoding='utf-8')), a.config)
@@ -103,8 +104,9 @@ def verify_manifest(m: dict, config: str) -> None:
     """A run's manifest against its registered configuration."""
     c = registry()['trained'][config]
     want = {'arm': c['arm'], 'obs_profile': c['obs'], 'window': c['window'], 'geometry': c['geometry'], 'actor_view': c['actor_view'],
-            'critic_view': c['critic_view'], 'certify': bool(c.get('certify', False))}
-    got = {**m, 'certify': bool(m.get('certify', False))}       # runs before 2026-11-12 omit 'certify' when it is off
+            'critic_view': c['critic_view'], 'certify': bool(c.get('certify', False)), 'long_entry': bool(c.get('long_entry', False))}
+    got = {**m, 'certify': bool(m.get('certify', False)),       # runs before 2026-11-12 omit 'certify' when it is off
+           'long_entry': bool(m.get('long_entry', False))}      # runs before 2026-11-18 have no long-arrival entry
     bad = {k: (got.get(k), v) for k, v in want.items() if got.get(k) != v}
     if bad:
         raise SystemExit(f'manifest of {config} does not match the registry: {bad}')
@@ -259,6 +261,7 @@ def _executor_env(opening: int, src: str, rigid: bool, condition=None):
         m = json.loads((Path(src) / 'manifest.json').read_text(encoding='utf-8'))
         env = T2StageEnv(openings=[opening], shaping=False, window=bool(m.get('window', True)) and not rigid,
                          geometry=bool(m.get('geometry', True)), mission=mission, certify=bool(m.get('certify', False)))
+        env.long_entry = bool(m.get('long_entry', False))
         return env, m
     return T2StageEnv(openings=[opening], shaping=False, geometry=not src.startswith('b_'), window=not rigid, mission=mission), None
 

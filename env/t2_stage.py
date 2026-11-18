@@ -458,6 +458,10 @@ class T2StageEnv(gym.Env):
         self.window = bool(window)
         #: the certification map C(x, a) (``_certify``): the same map in training and execution
         self.certify = bool(certify)
+        #: long-arrival entry candidate of the screening (off by default; ``_long_entry_due``): at the last usable pass,
+        #: when no screened intent switches to an entry, the entry planner is tried from the current range over the
+        #: long arrival grid DIRECT_TAUS_S (up to the latest admissible arrival)
+        self.long_entry = False
         self.cert_prober = None
         self._opp = None                       # the decision state's opportunity evaluation (cached per decision)
         #: read-only decision / episode diagnostics in ``info`` (formal runs); never changes the trajectory
@@ -562,6 +566,15 @@ class T2StageEnv(gym.Env):
                 self._bridge = {"t": self.env.time_s, "tau": float(g.bridge.plan["tau_s"])}
                 return True
         return False
+
+    def _long_entry_due(self, cert: dict, frame: dict) -> bool:
+        """The long-arrival entry is tried only at the last usable pass: the flown intent predicts no entry-mode switch,
+        the port passes within this stage, and missing this pass leaves no other before the latest admissible arrival."""
+        if cert.get("own_event") or cert.get("intervened"):
+            return False
+        opp = self._opp
+        t, ttp = float(self.env.time_s), float(frame["time_to_pass_s"])
+        return ttp <= STAGE_S and t + ttp + opp["period"] > opp["latest"]
 
     def _close_bridge(self, event) -> None:
         """A lost entry (the plan dropped back to a hold) is counted; the episode goes on."""
@@ -775,6 +788,12 @@ class T2StageEnv(gym.Env):
             a, cert = self._certify(a)
         q, v = relative_inertial(e)
         frame = frame_now(e, q)
+        if self.long_entry and cert is not None and self._long_entry_due(cert, frame) and self.start_direct_gstar():
+            self.stats["long_entries"] = self.stats.get("long_entries", 0) + 1
+            self._bridge = {"t": e.time_s, "tau": float(g.bridge.plan["tau_s"])}
+            out = self._macro_to_end()
+            out[-1].update(cert={**cert, "long_entry": True}, mode="bridge" if out[-1]["mode"] == "bridge" else out[-1]["mode"])
+            return out
         goal = stage_goal(q, v, frame, a, mass, geometry=self.geometry, task=self.env.config.task)
         plan = g.planner.solve(q, v, goal["q_goal"], goal["v_goal"])
         t0, dv0, phi0 = e.time_s, e._delta_v, self._phi()

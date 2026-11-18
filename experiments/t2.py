@@ -147,7 +147,8 @@ def exec_config_of(checkpoint) -> dict:
     d = run_manifest(checkpoint)
     if d.get('obs_profile') != 'cut_priv':
         raise ValueError(f'{checkpoint}: interface {d.get("obs_profile")!r} is not the formal interface cut_priv')
-    return {'window': bool(d.get('window', True)), 'geometry': bool(d.get('geometry', True)), 'certify': bool(d.get('certify', False))}
+    return {'window': bool(d.get('window', True)), 'geometry': bool(d.get('geometry', True)), 'certify': bool(d.get('certify', False)),
+            'long_entry': bool(d.get('long_entry', False))}
 
 
 def load_checkpoint(checkpoint):
@@ -170,10 +171,12 @@ def eval_job(job):
     env = T2StageEnv(openings=[opening], shaping=False, window=window, geometry=cfg['geometry'], mission=mission_from_name(mission),
                      certify=certify)
     env.audit_logging = bool(job.get('audit', False))
+    env.long_entry = cfg['long_entry'] and certify
     res = run_episode(env, opening, lambda e, o: model.predict(o, deterministic=True)[0])
     if env.audit_logging:
         res['condition'] = job.get('condition') or ('urgent' if env.mission['urgent'] else 'economy')
     res['certify'] = certify; res['cert_interventions'] = env.stats.get('cert_interventions', 0)
+    res['long_entries'] = env.stats.get('long_entries', 0)
     res.update(policy=label, checkpoint=str(checkpoint), window=window, geometry=cfg['geometry'], entries_lost=env.stats.get('entries_lost', 0),
                window_recoveries=env.generator.bridge.recovery_log); dump(file, res); return res
 

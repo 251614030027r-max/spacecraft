@@ -300,7 +300,7 @@ def _slim(info: dict) -> dict:
 
 
 def worker(conn, rank: int, seed: int, window: bool, mission: str, geometry: bool = True, certify: bool = False,
-           audit_logging: bool = False) -> None:
+           audit_logging: bool = False, long_entry: bool = False) -> None:
     """One environment: send (transition or None, observation to act on), receive the action; until 'stop'."""
     import os
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
@@ -310,6 +310,7 @@ def worker(conn, rank: int, seed: int, window: bool, mission: str, geometry: boo
     env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, shaping=True, window=window,
                      mission=mission_from_name(mission), geometry=geometry, certify=certify)
     env.audit_logging = audit_logging
+    env.long_entry = bool(long_entry)
     obs, _ = env.reset(); transition = None
     while True:
         conn.send((transition, obs))
@@ -321,7 +322,8 @@ def worker(conn, rank: int, seed: int, window: bool, mission: str, geometry: boo
             st = env.stats or {}
             info['exec_stats'] = {**{k: st.get(k, 0) for k in ('stages', 'holds', 'rejected', 'bridge_attempts', 'rate_limited', 'entries_lost')},
                                   'window_recoveries': int(getattr(env.generator.bridge, 'recoveries', 0)) if env.generator is not None else 0,
-                                  **({'cert_interventions': st['cert_interventions']} if 'cert_interventions' in st else {})}
+                                  **({'cert_interventions': st['cert_interventions']} if 'cert_interventions' in st else {}),
+                                  **({'long_entries': st['long_entries']} if 'long_entries' in st else {})}
         transition = (obs, next_obs, np.asarray(action, np.float32), float(reward), bool(term), bool(trunc), _slim(info))
         obs = env.reset()[0] if (term or trunc) else next_obs
     conn.close()
@@ -343,7 +345,7 @@ def _event_store(buffer: EventReplay, pend: list, item) -> None:
 
 def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[int], smoke: bool = False,
           updates_per_transition: float = UPDATES_PER_TRANSITION, window: bool = True, mission: str = 'urgent_mix:0.75',
-          geometry: bool = True, certify: bool = False, manifest_extra: dict | None = None) -> None:
+          geometry: bool = True, certify: bool = False, manifest_extra: dict | None = None, long_entry: bool = False) -> None:
     import multiprocessing as mp
     from multiprocessing.connection import wait
     from stable_baselines3.common.logger import configure
@@ -365,6 +367,7 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
                                                    'ent_coef': None if arm == 'e_td3' else ENT_COEF, 'collection': 'asynchronous',
                                                    'window': window, 'geometry': bool(geometry), 'certify': bool(certify),
+                                                   **({'long_entry': True} if long_entry else {}),
                                                    'gradient_steps_per_transition': model.gradient_steps, 'mission': mission,
                                                    'obs_profile': OBS_PROFILE, 'actor_view': OBS_DIM,
                                                    'critic_view': int(getattr(model.policy, 'critic_dim', OBS_DIM)),
@@ -375,7 +378,8 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     pipes, procs = [], []
     for rank in range(workers):
         a, b = ctx.Pipe()
-        p = ctx.Process(target=worker, args=(b, rank, seed, window, mission, bool(geometry), bool(certify), audit_logging), daemon=True)
+        p = ctx.Process(target=worker, args=(b, rank, seed, window, mission, bool(geometry), bool(certify), audit_logging, bool(long_entry)),
+                        daemon=True)
         p.start(); pipes.append(a); procs.append(p)
     marks = sorted(set([m for m in marks if m <= steps] + [steps]))
     model.save(out / 'checkpoints' / 'step_0')
