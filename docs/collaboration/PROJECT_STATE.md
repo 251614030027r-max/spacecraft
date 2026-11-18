@@ -9,7 +9,7 @@
 | 第一轮正式实验 | 已结束，只运行了四个训练组（ECC、SAC–MPC、ECC w/o 认证、ECC w/o 执行反馈；科学 `561a89d3`、`fade060b`、`aa9efdb4`、`1c191a89`）。紧急任务：ECC 236/288，SAC–MPC 204/288；评价器反馈的作用不显著；经济任务无收益。剩余的 TD3–MPC、ECC w/o 旋转引导与固定策略评估不再运行（用户 2026-11-17）。结果此后作为开发证据，论文不再把认证开关、训练–执行一致性作为主张（科学 `e721c68c`） |
 | 方法 | 原 ECC（第一轮）为对照。最终方法定义：执行机会集合 + 机会协调（保持 / 修正 / 启动远场入口）+ 标准 SAC 价值学习（科学 `docs/ecc2/METHOD_FINAL.md`，`d3fd8b5a`）；候选 `ECC_LE`，强基线 `SAC_LE` |
 | 运行中 / 待执行 | [RUN_ECC_LE](upper/run_orders/RUN_ECC_LE.md)：先用第一轮 ECC 模型只评估检验（≥ 250/288），达标即训练 ECC_LE |
-| 下一步 | ECC_LE 按采用规则与原 ECC 配对比较；采用则论文以 ECC_LE 定稿，否则保留原 ECC |
+| 下一步 | ECC_LE 按采用规则与原 ECC 配对比较；判定后执行 [RUN_CLOSEOUT](upper/run_orders/RUN_CLOSEOUT.md)（TD3–MPC、旋转引导消融、同批初始条件的参考线），然后收尾写论文 |
 | 论文写作 | 写作窗口（用户组织）；方法事实稿 `docs/paper/facts/`。ECC 一节待第二版方法定稿后改写 |
 
 ## 2. 执行书（方法线，按时间倒序）
