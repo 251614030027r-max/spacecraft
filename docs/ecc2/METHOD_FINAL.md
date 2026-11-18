@@ -92,3 +92,23 @@
 - 学习器：`train/t2_mve_sac.py`，arm `e_priv`（读 z）与 `e_sac`（不读 z）；
 - 配置：`docs/final_method/METHOD_REGISTRY.json` 中的 `ECC_LE`、`SAC_LE`；
 - 只评估检验：`experiments/ecc_le_probe.py`。
+
+## 7. 收尾（用户 2026-11-18）
+
+ECC_LE / SAC_LE 交付后，按第 4、5 节判定：
+
+1. **ECC_LE 被采用：** 论文以 ECC_LE（或第 4 节判定后不读 z 的结构）替换 ECC，再运行剩下两组，然后收尾写论文：
+   - **TD3–MPC**（`TD3_C`，第一轮配置不变）；
+   - **ECC w/o rotation guidance**：最终方法的旋转引导消融。保留 z 时用 `ECC_LE_NOGEO`，不保留时用 `SAC_LE_NOGEO`。
+   - 同时在相同的 96 个紧急初始条件上运行纯 MPC 与直接入口规划（`pure`、`gstar`，已登记的固定策略），参考线改用与学习方法相同的初始条件。
+2. **ECC_LE 未被采用：** 保留原 ECC，剩下两组用第一轮配置（`TD3_C`、`ECC_CERT_LOOP_NOGEO`），再加同样的参考线。
+
+**论文中的对比组：**
+
+- 最终 ECC；
+- SAC–MPC；
+- TD3–MPC；
+- SAC + 同样的机会协调（`SAC_LE`；若最终方法不读 z，则它就是最终方法本身，此行不列）；
+- ECC w/o rotation guidance；
+- 第一轮 ECC：协调中没有远场入口；
+- ECC w/o screening（`EACH_C`）：没有机会协调。

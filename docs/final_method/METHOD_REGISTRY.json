@@ -101,6 +101,32 @@
    "critic_view": 24,
    "role": "strong baseline (2026-11-18): standard SAC critic on the policy view with the same opportunity coordination (screening + long-arrival entry) as ECC_LE; also the single overall check of the execution-conditioned critic inputs; docs/ecc2/METHOD_FINAL.md",
    "color": "#eb6834"
+  },
+  "ECC_LE_NOGEO": {
+   "display": "ECC w/o rotation guidance",
+   "arm": "e_priv",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": false,
+   "certify": true,
+   "long_entry": true,
+   "actor_view": 24,
+   "color": "#cc79a7",
+   "critic_view": 48,
+   "role": "rotation-guidance ablation of ECC_LE (stage goals close along the line of sight only); run if ECC_LE is adopted with the critic inputs kept"
+  },
+  "SAC_LE_NOGEO": {
+   "display": "ECC w/o rotation guidance",
+   "arm": "e_sac",
+   "obs": "cut_priv",
+   "window": true,
+   "geometry": false,
+   "certify": true,
+   "long_entry": true,
+   "actor_view": 24,
+   "color": "#cc79a7",
+   "critic_view": 24,
+   "role": "rotation-guidance ablation of SAC_LE; run instead of ECC_LE_NOGEO if the final method drops the critic inputs"
   }
  },
  "fixed": {
@@ -182,7 +208,9 @@
      "SAC_CERT_LOOP",
      "ECC_CERT_LOOP_NOGEO",
      "ECC_LE",
-     "SAC_LE"
+     "SAC_LE",
+     "ECC_LE_NOGEO",
+     "SAC_LE_NOGEO"
     ],
     "fixed": [
      "pure",
@@ -320,7 +348,13 @@
      "ECC_LE_s22_urgent",
      "SAC_LE_s20_urgent",
      "SAC_LE_s21_urgent",
-     "SAC_LE_s22_urgent"
+     "SAC_LE_s22_urgent",
+     "ECC_LE_NOGEO_s20_urgent",
+     "ECC_LE_NOGEO_s21_urgent",
+     "ECC_LE_NOGEO_s22_urgent",
+     "SAC_LE_NOGEO_s20_urgent",
+     "SAC_LE_NOGEO_s21_urgent",
+     "SAC_LE_NOGEO_s22_urgent"
     ],
     "note": "Pre-registered in docs/paper/EXPERIMENTS.md. Budgets by mission type (user 2026-11-13): urgent 3.0 m/s, economy 2.0 m/s in training and evaluation (env.t2_stage.ECONOMY_BUDGET_M_S); the separate resource condition R is dropped."
    },
