@@ -1,0 +1,62 @@
+{
+  "registered_utc": "2026-11-18T12:43:18.190494+00:00",
+  "authorization_source_thread": "01a1b903-6794-7be1-a31b-ea59b8f44e65",
+  "status": "queued_waiting_for_TD3_completion_and_model_handoff",
+  "automatic_start_enabled": false,
+  "priority": "after all TD3 seeds and registered evaluations; no LE compute before that",
+  "training_authorized": false,
+  "scientific_training_sha": "d3fd8b5a71e6e6287a418b1c99aebaaa52f4550f",
+  "configs": [
+    "ECC_LE",
+    "SAC_LE"
+  ],
+  "seeds": [
+    20,
+    21,
+    22
+  ],
+  "trained_decisions_per_seed": 5000,
+  "urgent_openings": "300000-300095",
+  "validation_openings": "295200-295223",
+  "validation_checkpoints": [
+    1000,
+    2000,
+    3000,
+    4000,
+    5000
+  ],
+  "reuse_pending_verification": {
+    "config": "ECC_LE",
+    "checkpoint_step": 2000,
+    "seeds": [
+      20,
+      21,
+      22
+    ],
+    "episodes": 72,
+    "raw_json_received": false,
+    "hashes_received": false
+  },
+  "handoff": {
+    "model_package_received": false,
+    "transfer_location": null,
+    "required": [
+      "model ZIPs for final and registered checkpoints",
+      "original manifest files and hashes",
+      "training verification",
+      "existing raw JSON results",
+      "SHA256 list"
+    ],
+    "git_contains_model_zips_assumed": false
+  },
+  "implementation": "separate checkout of training freeze or demonstrated equivalent; retain original manifest and hashes; record migration mapping separately; do not modify TD3 import tree",
+  "delivery": {
+    "ECC_LE": "SESSION6",
+    "SAC_LE": "SESSION7",
+    "push_append_only": true,
+    "local_CURRENT_update": false
+  },
+  "expected_evaluation_episodes": 1296,
+  "expected_new_episodes_if_72_reused": 1224,
+  "earliest_estimate_jst": "2026-11-19 around noon; actual TD3 completion and model handoff are hard gates, clock time is not a start trigger"
+}
