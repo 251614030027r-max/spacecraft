@@ -1,0 +1,47 @@
+{
+  "scientific_sha": "7e55a65d373666bdb901357e07f5c53713647a4c",
+  "collab_sha": "90d2ed06377ff047bec26ad077ae74b762abc250",
+  "pytest_started_utc": "2026-11-18T05:57:29.669555+00:00",
+  "pytest_command": [
+    "python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q"
+  ],
+  "authorized_config": "TD3_C",
+  "seeds": [
+    20,
+    21,
+    22
+  ],
+  "steps_per_seed": 5000,
+  "collection_workers": 2,
+  "scheduling": "sequential seeds, urgent + five validation checkpoints immediately after each seed",
+  "hardware": {
+    "logical_cpus": 3,
+    "cpu_max": "200000 100000",
+    "memory_limit_bytes": 8589934592,
+    "disk_free_bytes": 6077779968
+  },
+  "runtime_limits": {
+    "ulimit_cpu": "unlimited",
+    "platform_keepalive_guarantee": "not provided by environment status",
+    "background_survival_test": "passed_across_command_exits",
+    "background_probe_samples": 24
+  },
+  "science_worktree_clean": true,
+  "pytest_exit_code": 0,
+  "pytest_finished_utc": "2026-11-18T06:00:02.344800+00:00",
+  "telemetry": {
+    "mechanism": "Python 3.12 sys.monitoring, read-only train frame locals; repository files unchanged",
+    "ops_path": "/workspace/td3-cloud-ops",
+    "per_decision_log": "progress.jsonl",
+    "per_episode_log": "episodes.live.jsonl",
+    "tensorboard": "tensorboard/",
+    "selftest": "passed exact step + TensorBoard readback + Python random state unchanged",
+    "training_arrival_order": "asynchronous, timing dependent as registered"
+  },
+  "torch_build": "2.9.1+cpu",
+  "cloud_environment_id": "ccarenv_b64_Y2NhcmVudl85ZGU4ODA4NmU4Y2M4MTkxOGI1ODYyY2I0OThhZDJmMQ"
+}
