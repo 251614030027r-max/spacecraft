@@ -1,21 +1,19 @@
-"""Learner of the ECC method (``docs/paper/METHOD.md``): SAC (and the TD3 baseline) on the 16 s stage decision.
+"""Learner of the ECC method (``docs/paper/facts/06``, ``docs/final_method/ROUND2.md``): standard SAC (and the TD3
+baseline) on the 16 s stage decision. Actor and critics read the same 17-value observation.
 
-Arms (``make_model``):
-* ``e_priv`` -- asymmetric critic: the actor reads the policy view (first OBS_DIM values of the ``cut_priv``
-  observation), the critic reads the policy view and the executor feedback z_E (OBS_DIM_PRIV values). With the
-  environment's certification on, this is ECC (``ECC_CERT_LOOP``); without it, "ECC w/o certification" (``EACH_C``).
-* ``e_sac`` -- SAC whose critic reads the policy view only (``SAC_C``; with certification ``SAC_CERT_LOOP``).
-* ``e_td3`` -- SB3 TD3 on the policy view, matched settings (``TD3_C``).
+Algorithms (``make_model``):
+* ``sac`` -- SAC: twin critic, fixed entropy coefficient ENT_COEF (automatic temperature drove critic overestimation,
+  DEAD_ENDS D02), [256, 256], learning rate 3e-4, replay 1e5, batch 256, 200 uniform random decisions before learning,
+  tau 0.005, gamma = GAMMA_STAGE per decision, UPDATES_PER_TRANSITION updates per stored transition.
+* ``td3`` -- SB3 TD3 with matched settings (target smoothing 0.2 / 0.5, policy delay 2, Gaussian collection noise 0.1).
 
-SAC: twin critic, fixed entropy coefficient ENT_COEF (automatic temperature drove critic overestimation, DEAD_ENDS
-D02), [256, 256], learning rate 3e-4, replay 1e5, batch 256, 200 uniform random decisions before learning, tau 0.005,
-gamma = GAMMA_STAGE per decision, UPDATES_PER_TRANSITION updates per stored transition. Success / unsafe / timeout /
-resource exhaustion are terminal (no bootstrap); a numerical failure is a truncation. The stored action is the
-policy's proposal; reward and successor come from the (certified) execution.
+Success / unsafe / timeout / resource exhaustion are terminal (no bootstrap); a numerical failure is a truncation. The
+stored action is the policy's proposal; reward and successor come from the (coordinated) execution.
 
 Collection (``train``): asynchronous -- each worker process steps its own environment and the learner answers every
 action request with the current policy. With more than one worker the arrival order of transitions depends on the
 workers' timing (recorded as ``worker_order``), so multi-worker runs are not bitwise repeatable; single-worker runs are.
+Every run writes TensorBoard logs (``<run>/tb``; ``docs/final_method/ROUND2.md`` section 1.5).
 """
 from __future__ import annotations
 
@@ -30,25 +28,26 @@ import torch as th
 import torch.nn.functional as F
 from stable_baselines3 import SAC, TD3
 from stable_baselines3.common.buffers import ReplayBuffer
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.utils import polyak_update
-from stable_baselines3.sac.policies import SACPolicy
 
-from env.t2_stage import GAMMA_STAGE, OBS_DIM, OBS_DIM_PRIV, OBS_PROFILE
+from env.t2_stage import GAMMA_STAGE, OBS_DIM
 
 ENT_COEF = 0.05
 SIGMA_DECAY = 0.99        # running mean of the squared real TD residual (diagnostic)
 #: critic / actor updates per stored real transition
 UPDATES_PER_TRANSITION = 2
-LEARNER_VERSION = "t2-learner-8.1"  # 8.1: long-arrival entry plumbing (learning unchanged)
-#: arms and whether the critic reads the executor feedback view
-ARMS = {'e_priv': True, 'e_sac': False, 'e_td3': False}
+LEARNER_VERSION = "t2-learner-9.0"  # 9.0: round 2 (one observation for actor and critics, TensorBoard, final model only)
+ALGOS = ('sac', 'td3')
+#: episodes in the TensorBoard moving capture rate
+TB_WINDOW = 100
+#: decisions between progress records (heartbeat, episodes.json)
+HEARTBEAT_EVERY = 250
 
 
 class StageReplay(ReplayBuffer):
-    """The SB3 replay buffer with a transition counter (``k_candidates`` is accepted for loading older checkpoints)."""
+    """The SB3 replay buffer with a transition counter."""
 
-    def __init__(self, *args, k_candidates: int = 0, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model_counts = {'transitions': 0}
 
@@ -151,23 +150,16 @@ def td3_exploration_action(model, obs, noise_rng):
     return np.clip(intent + noise, -1.0, 1.0).astype(np.float32)
 
 
-def make_model(env, arm: str, seed: int, smoke: bool = False, updates_per_transition: float = UPDATES_PER_TRANSITION) -> T2SAC | T2TD3:
-    if arm not in ARMS:
-        raise ValueError(f'unknown arm {arm}: {sorted(ARMS)}')
-    obs_dim = int(env.observation_space.shape[0])
-    if arm == 'e_td3':
-        return T2TD3('MlpPolicy', env, seed=seed, device='cpu', verbose=0,
-                     policy_kwargs={'net_arch': [256, 256], 'features_extractor_class': SliceExtractor,
-                                    'features_extractor_kwargs': {'dim': OBS_DIM}},
-                     gamma=GAMMA_STAGE, tau=0.005, learning_rate=3e-4, buffer_size=100_000,
-                     batch_size=64 if smoke else 256, learning_starts=16 if smoke else 200,
-                     train_freq=(1, 'step'), gradient_steps=2, policy_delay=2,
-                     target_policy_noise=0.2, target_noise_clip=0.5, replay_buffer_class=TD3Replay)
-    kw = {'net_arch': [256, 256], 'actor_dim': OBS_DIM, 'critic_dim': obs_dim if ARMS[arm] else OBS_DIM}
-    return T2SAC(SplitViewPolicy, env, seed=seed, device='cpu', verbose=0, policy_kwargs=kw,
-                 gamma=GAMMA_STAGE, learning_rate=3e-4, buffer_size=100_000, batch_size=64 if smoke else 256,
-                 learning_starts=16 if smoke else 200, train_freq=(1, 'step'), gradient_steps=max(1, int(round(updates_per_transition))),
-                 ent_coef=ENT_COEF, tau=0.005)
+def make_model(env, algo: str, seed: int, smoke: bool = False, updates_per_transition: float = UPDATES_PER_TRANSITION) -> T2SAC | T2TD3:
+    if algo not in ALGOS:
+        raise ValueError(f'unknown algorithm {algo}: {ALGOS}')
+    common = dict(seed=seed, device='cpu', verbose=0, policy_kwargs={'net_arch': [256, 256]}, gamma=GAMMA_STAGE, tau=0.005,
+                  learning_rate=3e-4, buffer_size=100_000, batch_size=64 if smoke else 256, learning_starts=16 if smoke else 200,
+                  train_freq=(1, 'step'))
+    if algo == 'td3':
+        return T2TD3('MlpPolicy', env, gradient_steps=2, policy_delay=2, target_policy_noise=0.2, target_noise_clip=0.5,
+                     replay_buffer_class=TD3Replay, **common)
+    return T2SAC('MlpPolicy', env, gradient_steps=max(1, int(round(updates_per_transition))), ent_coef=ENT_COEF, **common)
 
 
 # ---------------------------------------------------------------------- asynchronous collection
@@ -187,56 +179,22 @@ class SpacesEnv(gym.Env):
         return np.zeros(self.obs_dim, np.float32), 0.0, True, False, {}
 
 
-class SliceExtractor(BaseFeaturesExtractor):
-    """The first ``dim`` values of the observation (T2.11: the actor's reduced interface, or the critic's view)."""
-
-    def __init__(self, observation_space, dim: int):
-        super().__init__(observation_space, features_dim=int(dim))
-        self.dim = int(dim)
-
-    def forward(self, obs):
-        return obs[..., :self.dim]
-
-
-class SplitViewPolicy(SACPolicy):
-    """T2.11: one observation (OBS_DIM_PRIV: reduced interface followed by the executor's judgements), two views. The
-    actor reads the first ``actor_dim`` values -- the deployed policy never sees the executor's information; the critic
-    reads the first ``critic_dim`` -- all of it for EACC-A (the executor's judgements as training-time information), the
-    actor's view for the SAC baseline (so the baseline is SAC on the reduced interface, the same environment process)."""
-
-    def __init__(self, *args, actor_dim: int = OBS_DIM, critic_dim: int = OBS_DIM, **kwargs):
-        self.actor_dim, self.critic_dim = int(actor_dim), int(critic_dim)
-        kwargs['share_features_extractor'] = False
-        super().__init__(*args, **kwargs)
-
-    def make_actor(self, features_extractor=None):
-        return super().make_actor(SliceExtractor(self.observation_space, self.actor_dim))
-
-    def make_critic(self, features_extractor=None):
-        return super().make_critic(SliceExtractor(self.observation_space, self.critic_dim))
-
-    def _get_constructor_parameters(self):
-        return {**super()._get_constructor_parameters(), 'actor_dim': self.actor_dim, 'critic_dim': self.critic_dim}
-
-
 def _slim(info: dict) -> dict:
     """What the learner process keeps from a step's info."""
     return {k: info[k] for k in ('event', 'time_s', 'delta_v', 'mission', 'true_reward', 'exec_stats', 'min_margins', 'terminal')
             if k in info}
 
 
-def worker(conn, rank: int, seed: int, window: bool, mission: str, geometry: bool = True, certify: bool = False,
-           audit_logging: bool = False, long_entry: bool = False) -> None:
-    """One environment: send (transition or None, observation to act on), receive the action; until 'stop'."""
+def worker(conn, rank: int, seed: int, env_kwargs: dict, audit_logging: bool = False) -> None:
+    """One environment: send (transition or None, observation to act on), receive the action; until 'stop'.
+    ``env_kwargs``: geometry, window, coordination, correction, long_entry, potential of ``T2StageEnv``."""
     import os
     for k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
         os.environ.setdefault(k, '1')
     th.set_num_threads(1)
-    from env.t2_stage import T2StageEnv, mission_from_name
-    env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, shaping=True, window=window,
-                     mission=mission_from_name(mission), geometry=geometry, certify=certify)
+    from env.t2_stage import T2StageEnv
+    env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, shaping=True, **env_kwargs)
     env.audit_logging = audit_logging
-    env.long_entry = bool(long_entry)
     obs, _ = env.reset(); transition = None
     while True:
         conn.send((transition, obs))
@@ -246,59 +204,101 @@ def worker(conn, rank: int, seed: int, window: bool, mission: str, geometry: boo
         next_obs, reward, term, trunc, info = env.step(action)
         if term or trunc:                         # the episode's executor statistics (logging only)
             st = env.stats or {}
-            info['exec_stats'] = {**{k: st.get(k, 0) for k in ('stages', 'holds', 'rejected', 'bridge_attempts', 'rate_limited', 'entries_lost')},
-                                  'window_recoveries': int(getattr(env.generator.bridge, 'recoveries', 0)) if env.generator is not None else 0,
-                                  **({'cert_interventions': st['cert_interventions']} if 'cert_interventions' in st else {}),
-                                  **({'long_entries': st['long_entries']} if 'long_entries' in st else {})}
+            info['exec_stats'] = {**{k: st.get(k, 0) for k in ('stages', 'holds', 'rejected', 'bridge_attempts', 'rate_limited',
+                                                               'entries_lost', 'corrections', 'long_entries')},
+                                  'window_recoveries': int(getattr(env.generator.bridge, 'recoveries', 0)) if env.generator is not None else 0}
         transition = (obs, next_obs, np.asarray(action, np.float32), float(reward), bool(term), bool(trunc), _slim(info))
         obs = env.reset()[0] if (term or trunc) else next_obs
     conn.close()
 
 
-def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[int], smoke: bool = False,
-          updates_per_transition: float = UPDATES_PER_TRANSITION, window: bool = True, mission: str = 'urgent_mix:0.75',
-          geometry: bool = True, certify: bool = False, manifest_extra: dict | None = None, long_entry: bool = False) -> None:
+#: TensorBoard outcome code of an episode
+OUTCOME_CODE = {'success': 1, 'timeout': 0, 'resource_exhausted': -1, 'unsafe': -2, 'numerical_failure': -3}
+
+
+class TrainingLog:
+    """TensorBoard record of a run (``<run>/tb``), x = stored transitions (decisions). Writing it consumes no random
+    number and does not change the run."""
+
+    def __init__(self, path: Path):
+        from collections import deque
+        from torch.utils.tensorboard import SummaryWriter
+        self.writer = SummaryWriter(log_dir=str(path))
+        self.recent = deque(maxlen=TB_WINDOW)
+        self.updates_logged = 0
+
+    def episode(self, step: int, ep: dict) -> None:
+        w, st = self.writer, ep.get('exec_stats') or {}
+        captured = float(ep.get('event') == 'success')
+        self.recent.append(captured)
+        w.add_scalar('episode/capture', captured, step)
+        w.add_scalar('episode/outcome', OUTCOME_CODE.get(ep.get('event'), -4), step)
+        w.add_scalar('episode/return_true', float(ep['return_true']), step)
+        w.add_scalar('episode/return_shaped', float(ep['return_shaped']), step)
+        w.add_scalar('episode/time_s', float(ep.get('time_s') or 0.0), step)
+        w.add_scalar('episode/delta_v', float(ep.get('delta_v') or 0.0), step)
+        w.add_scalar('episode/corrections', float(st.get('corrections', 0)), step)
+        w.add_scalar('episode/long_entries', float(st.get('long_entries', 0)), step)
+        w.add_scalar(f'rolling/capture_rate_{TB_WINDOW}', sum(self.recent) / len(self.recent), step)
+
+    def updates(self, step: int, stats: list) -> None:
+        for row in stats[self.updates_logged:]:
+            for key in ('real_td', 'actor_loss', 'q_pi_mean'):
+                if row.get(key) is not None:
+                    self.writer.add_scalar(f'train/{key}', float(row[key]), step)
+        self.updates_logged = len(stats)
+
+    def close(self) -> None:
+        self.writer.flush(); self.writer.close()
+
+
+def train(out: Path, algo: str, seed: int, steps: int, workers: int, env_kwargs: dict, smoke: bool = False,
+          updates_per_transition: float = UPDATES_PER_TRANSITION, manifest_extra: dict | None = None,
+          audit_logging: bool = False) -> None:
     import multiprocessing as mp
     from multiprocessing.connection import wait
     from stable_baselines3.common.logger import configure
-    from env.t2_stage import T2_VERSION
+    from env.t2_stage import T2_VERSION, T2Mission
     out.mkdir(parents=True, exist_ok=False); (out / 'checkpoints').mkdir()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     th.set_num_threads(1)
-    model = make_model(SpacesEnv(OBS_DIM_PRIV), arm, seed, smoke, updates_per_transition=updates_per_transition)
+    model = make_model(SpacesEnv(OBS_DIM), algo, seed, smoke, updates_per_transition=updates_per_transition)
     model.set_logger(configure(None, [])); model._current_progress_remaining = 1.0
-    td3_manifest = {}
-    if arm == 'e_td3':
-        td3_manifest = {
-            'algorithm': 'TD3', 'net_arch': [256, 256], 'learning_rate': model.learning_rate,
-            'buffer_size': model.buffer_size, 'batch_size': model.batch_size,
-            'learning_starts': model.learning_starts, 'gamma': model.gamma, 'tau': model.tau,
-            'policy_delay': model.policy_delay, 'target_policy_noise': model.target_policy_noise,
-            'target_noise_clip': model.target_noise_clip, 'exploration_sigma': model.exploration_sigma,
-        }
-    (out / 'manifest.json').write_text(json.dumps({'arm': arm, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head, 'smoke': smoke,
-                                                   'ent_coef': None if arm == 'e_td3' else ENT_COEF, 'collection': 'asynchronous',
-                                                   'window': window, 'geometry': bool(geometry), 'certify': bool(certify),
-                                                   **({'long_entry': True} if long_entry else {}),
-                                                   'gradient_steps_per_transition': model.gradient_steps, 'mission': mission,
-                                                   'obs_profile': OBS_PROFILE, 'actor_view': OBS_DIM,
-                                                   'critic_view': int(getattr(model.policy, 'critic_dim', OBS_DIM)),
-                                                   'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION,
-                                                   **td3_manifest, **(manifest_extra or {})}, indent=1), encoding='utf-8')
-    audit_logging = (manifest_extra or {}).get('final_stage') == 'formal'
+    algo_manifest = {'algorithm': algo.upper(), 'net_arch': [256, 256], 'learning_rate': model.learning_rate,
+                     'buffer_size': model.buffer_size, 'batch_size': model.batch_size, 'learning_starts': model.learning_starts,
+                     'gamma': model.gamma, 'tau': model.tau, 'gradient_steps_per_transition': model.gradient_steps}
+    if algo == 'td3':
+        algo_manifest.update(policy_delay=model.policy_delay, target_policy_noise=model.target_policy_noise,
+                             target_noise_clip=model.target_noise_clip, exploration_sigma=model.exploration_sigma)
+    else:
+        algo_manifest['ent_coef'] = ENT_COEF
+    mission = T2Mission()
+    (out / 'manifest.json').write_text(json.dumps({'algo': algo, 'seed': seed, 'steps': steps, 'workers': workers, 'git_head': head,
+                                                   'smoke': smoke, 'collection': 'asynchronous', **env_kwargs,
+                                                   'mission': {'deadline_s': list(mission.deadline_s), 'budget_m_s': mission.budget_m_s,
+                                                               'time_cost_per_s': mission.time_cost_per_s,
+                                                               'fuel_cost_per_m_s': mission.fuel_cost_per_m_s},
+                                                   'obs_dim': OBS_DIM, 'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION,
+                                                   **algo_manifest, **(manifest_extra or {})}, indent=1), encoding='utf-8')
+    log = TrainingLog(out / 'tb')
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
     for rank in range(workers):
         a, b = ctx.Pipe()
-        p = ctx.Process(target=worker, args=(b, rank, seed, window, mission, bool(geometry), bool(certify), audit_logging, bool(long_entry)),
-                        daemon=True)
+        p = ctx.Process(target=worker, args=(b, rank, seed, dict(env_kwargs), audit_logging), daemon=True)
         p.start(); pipes.append(a); procs.append(p)
-    marks = sorted(set([m for m in marks if m <= steps] + [steps]))
     model.save(out / 'checkpoints' / 'step_0')
     episodes, order, t0 = [], [], time.time()
     rng = np.random.default_rng(seed)
-    noise_rng = np.random.default_rng([seed, 3003]) if arm == 'e_td3' else None
+    noise_rng = np.random.default_rng([seed, 3003]) if algo == 'td3' else None
     ret_true, ret_shaped = {}, {}                 # each worker's current episode return (true task reward / shaped training reward)
+
+    def progress():
+        (out / 'heartbeat.json').write_text(json.dumps({'steps': int(model.num_timesteps), 'wall_s': time.time() - t0, 'episodes': len(episodes),
+                                                        'updates': int(model._n_updates), 'replay': model.replay_buffer.model_counts}), encoding='utf-8')
+        (out / 'episodes.json').write_text(json.dumps(episodes, default=str), encoding='utf-8')
+        (out / 'model_stats.json').write_text(json.dumps(model.model_stats), encoding='utf-8')
+
     active = list(pipes)
     while active:
         for conn in wait(active):
@@ -316,15 +316,12 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
                                      'return_true': ret_true.pop(w_, 0.0), 'return_shaped': ret_shaped.pop(w_, 0.0),
                                      **({'exec_stats': info['exec_stats']} if info.get('exec_stats') is not None else {}),
                                      **{k: info[k] for k in ('min_margins', 'terminal') if k in info}})
+                    log.episode(int(model.num_timesteps), episodes[-1])
                 if model.num_timesteps >= model.learning_starts:
                     model.train(gradient_steps=model.gradient_steps, batch_size=model.batch_size)
-                while marks and model.num_timesteps >= marks[0]:
-                    m = marks.pop(0); model.save(out / 'checkpoints' / f'step_{m}')
-                    (out / 'heartbeat.json').write_text(json.dumps({'steps': int(model.num_timesteps), 'wall_s': time.time() - t0, 'episodes': len(episodes),
-                                                                    'updates': int(model._n_updates), 'replay': model.replay_buffer.model_counts}), encoding='utf-8')
-                    # logs at every checkpoint (a stopped run keeps them)
-                    (out / 'episodes.json').write_text(json.dumps(episodes, default=str), encoding='utf-8')
-                    (out / 'model_stats.json').write_text(json.dumps(model.model_stats), encoding='utf-8')
+                    log.updates(int(model.num_timesteps), model.model_stats)
+                if model.num_timesteps % HEARTBEAT_EVERY == 0:
+                    progress()
             if model.num_timesteps >= steps:
                 conn.send('stop'); active.remove(conn); continue
             if model.num_timesteps < model.learning_starts:
@@ -337,7 +334,8 @@ def train(out: Path, arm: str, seed: int, steps: int, workers: int, marks: list[
     for p in procs:
         p.join(timeout=60)
     model.save(out / 'final')
-    (out / 'episodes.json').write_text(json.dumps(episodes, default=str), encoding='utf-8')
-    (out / 'model_stats.json').write_text(json.dumps(model.model_stats), encoding='utf-8')
+    model.save(out / 'checkpoints' / f'step_{int(model.num_timesteps)}')
+    progress()
+    log.close()
     (out / 'finished.json').write_text(json.dumps({'steps': int(model.num_timesteps), 'updates': int(model._n_updates), 'wall_s': time.time() - t0,
                                                    'worker_order': order, 'replay': model.replay_buffer.model_counts}), encoding='utf-8')

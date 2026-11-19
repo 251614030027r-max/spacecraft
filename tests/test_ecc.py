@@ -1,10 +1,10 @@
-"""The ECC method's environment, execution chain, certification and learner (``docs/paper/METHOD.md``)."""
+"""The ECC method's environment, execution chain, coordination, potential and learner (``docs/final_method/ROUND2.md``)."""
 import numpy as np
 import pytest
 import torch as th
 
-from env.t2_stage import (EXEC_STATE_FEATURES, GAMMA_STAGE, OBS_DIM, OBS_DIM_PRIV, PLANNER_FEATURES, STAGE_S, InfoEnv,
-                          T2Mission, T2StageEnv, d_authority, mission_from_name, observe, spin_frame, stage_goal)
+from env.t2_stage import (GAMMA_STAGE, OBS_DIM, OBS_FEATURES, STAGE_S, InfoEnv, T2Mission, T2StageEnv, d_authority, observe,
+                          spin_frame, stage_goal)
 
 
 def _frame():
@@ -163,37 +163,32 @@ def test_info_env_hides_the_true_inertia_only():
     assert view.time_s == e.time_s and view.target_state is e.target_state
 
 
-def test_observation_is_the_policy_view_followed_by_the_executor_feedback():
-    """cut_priv: the policy view zeroes the planner answers and the executor's internal state; z_E is the full vector."""
+def test_observation_is_the_17_value_policy_view():
+    """One observation for actor and critics: the first draft's policy view without its zeroed entries and the mission
+    class; values unchanged."""
     from env.t1_p_stage import relative_inertial
     env = T2StageEnv(openings=[1000004]); o, _ = env.reset(options={'opening': 1000004})
     o, *_ = env.step(np.array([0.5, 0.2]))
     q, v = relative_inertial(env.env); t = env.env.target_state
-    full = observe(env.env, q, v, env.env.time_s, env.env._delta_v, env.mission, t.rotation, t.omega, env.last)
-    cut = list(PLANNER_FEATURES) + list(EXEC_STATE_FEATURES)
-    keep = [i for i in range(OBS_DIM) if i not in cut]
-    assert o.shape == (OBS_DIM_PRIV,) and not o[cut].any()
-    assert np.array_equal(o[keep], full[keep]) and np.array_equal(o[OBS_DIM:], full)
-    assert o[OBS_DIM + 16] in (0.0, 1.0) and env.observation_space.shape == (OBS_DIM_PRIV,)
+    assert OBS_DIM == 17 == len(OBS_FEATURES) and o.shape == (17,) and o.dtype == np.float32
+    assert env.observation_space.shape == (17,)
+    assert np.array_equal(o, observe(env.env, q, v, env.env.time_s, env.env._delta_v, env.mission, t.rotation, t.omega))
+    f = spin_frame(t.rotation, t.omega, q, env.env.config.task.approach_axis)
+    assert o[0] == np.float32(f['r'] / 15.0) and o[9] == np.float32((env.mission['deadline_s'] - env.env.time_s) / 300.0)
+    assert o[11] == np.float32((env.mission['budget_m_s'] - env.env._delta_v) / 3.0)
 
 
-# ---------------------------------------------------------------------- missions
-def test_missions_keep_the_natural_deadlines_and_trade_time_against_fuel():
-    nat = T2Mission(urgent_deadline_s=(140.0, 200.0), economy_budget_m_s=2.0)
-    for op in range(294100, 294130):
-        n = nat.sample(op)
-        assert mission_from_name('natural').sample(op) == n
-        assert mission_from_name('urgent' if n['urgent'] else 'economy').sample(op) == n
-        u, e = mission_from_name('urgent').sample(op), mission_from_name('economy').sample(op)
-        assert u['urgent'] and not e['urgent'] and 140.0 <= u['deadline_s'] <= 200.0 and 280.0 <= e['deadline_s'] <= 340.0
-        assert u['time_cost_per_s'] > 0.05 and u['fuel_cost_per_m_s'] < 20 and e['time_cost_per_s'] < 0.05 and e['fuel_cost_per_m_s'] > 20
-        assert u['budget_m_s'] == 3.0 and e['budget_m_s'] == 2.0 and n['budget_m_s'] == (3.0 if n['urgent'] else 2.0)
-    train = [mission_from_name('urgent_mix:0.75').sample(o) for o in range(1_000_000, 1_002_000)]
-    assert all(x['budget_m_s'] == (3.0 if x['urgent'] else 2.0) for x in train)
-    share = np.mean([x['urgent'] for x in train])
-    assert abs(share - 0.75) < 0.03
-    with pytest.raises(ValueError):
-        mission_from_name('scarcity')
+# ---------------------------------------------------------------------- the task
+def test_the_task_is_time_limited_capture_with_the_first_draft_deadlines():
+    m = T2Mission()
+    for op in range(294100, 294160):
+        x = m.sample(op)
+        rng = np.random.default_rng(np.random.SeedSequence([op, 290021])); rng.integers(0, 2)
+        assert x == {'deadline_s': float(round(rng.uniform(140.0, 200.0), 1)), 'budget_m_s': 3.0,
+                     'time_cost_per_s': 0.10, 'fuel_cost_per_m_s': 10.0}
+    env = T2StageEnv(openings=[294100], shaping=False); env.reset(options={'opening': 294100})
+    assert env.env.config.max_time_s == env.mission['deadline_s'] and env.env.config.reward.time_cost_per_s == 0.10
+    assert env.env.config.reward.delta_v_cost_per_m_s == 10.0
 
 
 def test_pure_row_is_the_mpc_alone():
@@ -204,7 +199,64 @@ def test_pure_row_is_the_mpc_alone():
     assert env.far_field_controls == 0 and env.generator is None
 
 
-# ---------------------------------------------------------------------- ECC: mode prediction and certification
+# ---------------------------------------------------------------------- opportunity-reachability potential
+def test_nominal_mouth_time_respects_the_box_speed_and_the_braking_envelope():
+    from env.t2_stage import nominal_mouth_time
+    task = T2StageEnv(openings=[294000]).env.config.task
+    t16, t12, t8 = (nominal_mouth_time(r, 0.0, task) for r in (16.0, 12.0, 8.0))
+    assert t16 > t12 > t8 > 0.0 and nominal_mouth_time(6.3, 0.0, task) == 0.0
+    assert t16 - t12 == pytest.approx(4.0 / 0.20, abs=0.6)                     # box speed beyond the braking envelope
+    assert t8 > 1.7 / 0.20 + 1.0                                               # slower than the box near the sphere
+    assert nominal_mouth_time(6.3, 60.0, task) > 0.0                           # the latitude law has to act first
+    assert nominal_mouth_time(10.0, 0.0, task) < nominal_mouth_time(10.0, 80.0, task)
+
+
+def test_time_to_entry_follows_the_pass_windows_and_the_deadline():
+    from env.t2_stage import nominal_mouth_time, time_to_entry, window_half_width
+    from dynamics.lie import so3_exp
+    env = T2StageEnv(openings=[294000]); task = env.env.config.task
+    w = np.radians(2.4); omega = np.array([0.0, 0.0, w]); period = 2 * np.pi / w
+    rot = so3_exp(np.array([np.radians(40.0), 0.0, 0.0]))                       # port axis tilted from the spin axis
+    q = 7.0 * (rot @ task.approach_axis); q = q / np.linalg.norm(q) * 7.0       # on the port axis: a pass right now
+    f = spin_frame(rot, omega, q, task.approach_axis)
+    beta = np.radians(f['beta_deg']); half_s = window_half_width(beta, beta, np.radians(35.0)) / w
+    t_m = nominal_mouth_time(f['r'], f['lat_err_deg'], task)
+    t_go = time_to_entry(q, rot, omega, task, 300.0)
+    assert t_go is not None and t_go >= t_m - 1e-9
+    centre = min(f['time_to_pass_s'], f['time_to_pass_s'] - period, key=abs)
+    assert t_go == pytest.approx(max(t_m, centre - half_s)) or t_go >= centre + period - half_s - 1e-9
+    assert time_to_entry(q, rot, omega, task, t_m - 1.0) is None                 # the deadline leaves no arrival
+    far = q / np.linalg.norm(q) * 15.0
+    assert time_to_entry(far, rot, omega, task, 400.0) > t_go                     # farther: later entry
+
+
+def test_potential_is_bounded_and_the_first_draft_potential_is_kept():
+    from env.t1_p_stage import relative_inertial
+    from dynamics.lie import so3_exp
+    from env.t2_stage import ENTRY_RADIUS_M, POTENTIAL_CAP
+    for kind in ('opportunity', 'lead24'):
+        env = T2StageEnv(openings=[1000004], potential=kind); env.reset(options={'opening': 1000004})
+        phi = env._phi()
+        assert -POTENTIAL_CAP <= phi <= 0.0
+    q, _ = relative_inertial(env.env); t = env.env.target_state
+    mouth = t.rotation @ so3_exp(24.0 * t.omega) @ (ENTRY_RADIUS_M * env.env.config.task.approach_axis)
+    assert phi == -min(25.0, float(np.linalg.norm(q - mouth)))
+    env.mission = dict(env.mission, deadline_s=env.env.time_s + 50.0)            # no admissible arrival left
+    env.potential_kind = 'opportunity'
+    assert env._phi() == -POTENTIAL_CAP
+    with pytest.raises(ValueError):
+        T2StageEnv(openings=[1000004], potential='lead30')
+
+
+def test_shaped_reward_is_potential_based_with_terminal_zero():
+    env = T2StageEnv(openings=[1000004]); env.reset(options={'opening': 1000004})
+    phi0 = env._phi()
+    _, r, term, trunc, info = env.step(np.array([1.0, 0.0]))
+    phi1 = 0.0 if term else env._phi()
+    assert r == pytest.approx(info['true_reward'] + GAMMA_STAGE * phi1 - phi0, abs=1e-12)
+
+
+# ---------------------------------------------------------------------- ECC: mode prediction and coordination
 def test_mode_prediction_gate_is_the_executor_rule_and_evaluation_leaves_execution_unchanged():
     """The prediction's gate reproduces the executor's metrics and descent region on real states; the opportunity
     evaluation uses its own planner instances, so an episode is the same whether or not it is evaluated."""
@@ -227,52 +279,105 @@ def test_mode_prediction_gate_is_the_executor_rule_and_evaluation_leaves_executi
             break
 
 
-def test_certification_map_on_fabricated_executor_answers():
-    """C(x, a): the intent is kept when its own prediction has an event; otherwise the nearest certified probe
-    (ties: the earlier event) is flown; nothing changes when no probe is certified; off by default."""
+class _Own:
+    """A fabricated mode prediction of the intent itself."""
+
+    def __init__(self, ev):
+        self.ev, self.calls = ev, 0
+
+    def probe_intent(self, x, *args):
+        self.calls += 1
+        return {'event': self.ev, 't': 20.0 if self.ev else 48.0, 'kind': 'entry' if self.ev else None, 'dv': 0.1}
+
+
+def _coordination_env(**kw):
     from env.t2_probe import PROBE_GRID
-    env = T2StageEnv(openings=[1000004]); env.reset(options={'opening': 1000004})
-    assert env.certify is False
-    rows = [{'event': 0, 't': 48.0, 'dv': 0.1, 'kind': None, 'certified': False} for _ in PROBE_GRID]
-    i_near, i_far, i_tie = PROBE_GRID.index((0.0, 0.0)), PROBE_GRID.index((1.0, 1.0)), PROBE_GRID.index((0.0, 1.0))
+    env = T2StageEnv(openings=[1000004], coordination=True, **kw); env.reset(options={'opening': 1000004})
+    rows = [{'event': 0, 't': 48.0, 'dv': 0.1, 'kind': None, 'critical': False} for _ in PROBE_GRID]
 
-    class Own:
-        def __init__(self, ev): self.ev = ev
-        def probe_intent(self, x, *args): return {'event': self.ev, 't': 20.0 if self.ev else 48.0, 'kind': 'entry' if self.ev else None, 'dv': 0.1}
-
-    def set_rows(certified):
+    def set_rows(critical):
         rs = [dict(r) for r in rows]
-        for i, t in certified.items():
-            rs[i] = {'event': 1, 't': t, 'dv': 0.2, 'kind': 'entry', 'certified': True}
+        for i, t in critical.items():
+            rs[i] = {'event': 1, 't': t, 'dv': 0.2, 'kind': 'entry', 'critical': True}
         env._opp = {'t': float(env.env.time_s), 'episode': env.episode, 'args': (), 'rows': rs, 'period': 150.0, 'latest': 100.0}
-    env.cert_prober = Own(0)
+    return env, set_rows, PROBE_GRID
+
+
+def test_coordination_map_on_fabricated_executor_answers(monkeypatch):
+    """Keep when the intent's own prediction has an event; otherwise the nearest critical grid intent (ties: the earlier
+    event); otherwise the direct entry at the last usable pass; otherwise keep. Off by default."""
+    assert T2StageEnv(openings=[1000004]).coordination is False
+    env, set_rows, grid = _coordination_env()
+    i_near, i_far, i_tie = grid.index((0.0, 0.0)), grid.index((1.0, 1.0)), grid.index((0.0, 1.0))
+    launched = []
+    monkeypatch.setattr(env, 'start_direct_gstar', lambda: launched.append(1) or False)
+    monkeypatch.setattr(env, '_pass_clock', lambda: (150.0, 1e9))                # another pass always remains
+    env.prober = _Own(0)
     set_rows({i_near: 30.0, i_far: 10.0})
-    x, rec = env._certify(np.array([0.2, 0.1])); assert rec['intervened'] and tuple(x) == (0.0, 0.0)
+    x, rec = env._coordinate(np.array([0.2, 0.1])); assert rec['kind'] == 'correct' and tuple(x) == (0.0, 0.0)
     set_rows({i_far: 20.0, i_tie: 12.0})
-    x, rec = env._certify(np.array([0.5, 1.0])); assert tuple(x) == (0.0, 1.0) and rec['alt_t'] == 12.0
+    x, rec = env._coordinate(np.array([0.5, 1.0])); assert tuple(x) == (0.0, 1.0) and rec['alt_t'] == 12.0
     set_rows({})
-    x, rec = env._certify(np.array([0.2, 0.1])); assert not rec['intervened'] and tuple(x) == (0.2, 0.1)
-    env.cert_prober = Own(1); set_rows({i_near: 30.0})
-    x, rec = env._certify(np.array([0.2, 0.1])); assert not rec['intervened'] and tuple(x) == (0.2, 0.1)
-    assert env.stats['cert_interventions'] == 2
+    x, rec = env._coordinate(np.array([0.2, 0.1])); assert rec['kind'] == 'none' and tuple(x) == (0.2, 0.1)
+    env.prober = _Own(1); set_rows({i_near: 30.0})
+    x, rec = env._coordinate(np.array([0.2, 0.1])); assert rec['kind'] == 'keep' and tuple(x) == (0.2, 0.1)
+    assert env.stats['corrections'] == 2 and not launched
 
 
-def test_certified_set_needs_a_binding_pass_and_the_resource():
-    """A real evaluation: with the budget already spent nothing is certified; with a deadline far away no pass binds."""
+def test_direct_entry_only_at_the_last_usable_pass_and_after_the_grid(monkeypatch):
+    import env.t2_stage as T
+    env, set_rows, grid = _coordination_env()
+    env.prober = _Own(0); set_rows({})
+    launched = []
+
+    def launch():
+        launched.append(env.env.time_s)
+        env.generator.bridge.plan = {'tau_s': 40.0}
+        return True
+    monkeypatch.setattr(env, 'start_direct_gstar', launch)
+    t = float(env.env.time_s)
+    clock = {'ttp': 10.0, 'latest': t + 10.0 + 150.0 - 1.0}
+    monkeypatch.setattr(env, '_pass_clock', lambda: (150.0, clock['latest']))
+    monkeypatch.setattr(T, 'frame_now', lambda e, q: {'time_to_pass_s': clock['ttp']})
+    x, rec = env._coordinate(np.array([0.2, 0.1]))
+    assert rec['kind'] == 'launch' and len(launched) == 1 and env.stats['long_entries'] == 1
+    clock['ttp'] = STAGE_S + 5.0                                                 # the pass is not within this stage
+    assert env._coordinate(np.array([0.2, 0.1]))[1]['kind'] == 'none'
+    clock['ttp'], clock['latest'] = 10.0, t + 10.0 + 150.0 + 1.0                 # another pass remains before L
+    assert env._coordinate(np.array([0.2, 0.1]))[1]['kind'] == 'none'
+    clock['latest'] = t + 10.0 + 150.0 - 1.0
+    set_rows({grid.index((0.0, 0.0)): 30.0})                                     # a critical grid intent comes first
+    assert env._coordinate(np.array([0.2, 0.1]))[1]['kind'] == 'correct'
+    env.long_entry = False; set_rows({})
+    assert env._coordinate(np.array([0.2, 0.1]))[1]['kind'] == 'none' and len(launched) == 1
+
+
+def test_without_correction_only_the_intent_is_predicted(monkeypatch):
+    """'w/o core': keep and direct entry only; the grid is not evaluated."""
+    env, set_rows, grid = _coordination_env(correction=False)
+    monkeypatch.setattr(env, '_opportunity_eval', lambda: (_ for _ in ()).throw(AssertionError('grid evaluated')))
+    monkeypatch.setattr(env, '_pass_clock', lambda: (150.0, 1e9))
+    env.prober = _Own(0)
+    x, rec = env._coordinate(np.array([0.2, 0.1]))
+    assert rec['kind'] == 'none' and tuple(x) == (0.2, 0.1) and env.prober.calls == 1 and 'cands' not in rec
+
+
+def test_critical_set_needs_a_last_chance_and_the_resource():
+    """A real evaluation: with the budget already spent nothing is critical; with a deadline far away nothing is."""
     env = T2StageEnv(openings=[1000004]); env.reset(options={'opening': 1000004})
     env.mission = dict(env.mission, budget_m_s=float(env.env._delta_v))
-    assert not any(d['certified'] for d in env._opportunity_eval()['rows'])
-    env._opp = None; env.cert_prober = None
+    assert not any(d['critical'] for d in env._opportunity_eval()['rows'])
+    env._opp = None; env.prober = None
     env.mission = dict(env.mission, budget_m_s=3.0, deadline_s=env.env.time_s + 2000.0)
-    assert not any(d['certified'] for d in env._opportunity_eval()['rows'])
+    assert not any(d['critical'] for d in env._opportunity_eval()['rows'])
 
 
-def test_certification_and_audit_records_reach_the_step_info():
-    env = T2StageEnv(openings=[1000004], certify=True); env.audit_logging = True
+def test_coordination_and_audit_records_reach_the_step_info():
+    env = T2StageEnv(openings=[1000004], coordination=True); env.audit_logging = True
     env.reset(options={'opening': 1000004})
     _, _, _, _, info = env.step(np.array([0.2, 0.1]))
-    cert, audit = info['cert'], info['decision_audit']
-    assert set(cert) >= {'a', 'own_event', 'own_t', 'intervened', 'cands', 'own_kind', 'own_dv', 'wall_s'} and len(cert['cands']) == 9
+    coord, audit = info['coord'], info['decision_audit']
+    assert set(coord) >= {'a', 'own_event', 'own_t', 'kind', 'cands', 'own_kind', 'own_dv', 'wall_s'} and len(coord['cands']) == 9
     assert set(audit) == {'t_start', 'remaining_s', 'remaining_dv', 'phase_rad', 'time_to_pass_s', 'lat_err_deg', 'macro_end', 'true_mode_event_t'}
 
 
@@ -284,48 +389,57 @@ def test_learner_settings():
     assert 'gamma=GAMMA_STAGE' in src and abs(GAMMA_STAGE - 0.999 ** 8) < 1e-15
     assert 'gradient_steps=max(1, int(round(updates_per_transition)))' in src and m.UPDATES_PER_TRANSITION == 2
     assert 'model.train(gradient_steps=model.gradient_steps' in inspect.getsource(m.train)
-    model = m.make_model(m.SpacesEnv(OBS_DIM_PRIV), 'e_priv', 0)
+    model = m.make_model(m.SpacesEnv(OBS_DIM), 'sac', 0)
     assert model.ent_coef == m.ENT_COEF == 0.05 and model.batch_size == 256 and model.learning_starts == 200 and model.tau == 0.005
+    assert model.policy.net_arch == [256, 256] or model.policy.net_arch == {'pi': [256, 256], 'qf': [256, 256]}
     with pytest.raises(ValueError):
-        m.make_model(m.SpacesEnv(OBS_DIM_PRIV), 'e_acc', 0)
+        m.make_model(m.SpacesEnv(OBS_DIM), 'e_priv', 0)
 
 
-def test_critic_reads_the_executor_feedback_only_in_ecc_arms(tmp_path):
-    """Every actor reads only the policy view; the e_priv critic reads z_E too, the e_sac / TD3 critics do not; the
-    split survives save / load."""
+def test_actor_and_critics_read_the_same_observation(tmp_path):
     import train.t2_mve_sac as t
     env = T2StageEnv(openings=[294003]); o = env.reset(options={'opening': 294003})[0]
-    x = th.as_tensor(np.stack([o, o]))
-    x[1, OBS_DIM:] += 5.0                                            # change only the executor feedback
+    x = th.as_tensor(np.stack([o, o])); x[1, -1] += 1.0
     a = th.zeros((2, 2))
-    for arm, critic_sees in (('e_priv', True), ('e_sac', False)):
-        m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), arm, 0, smoke=True)
-        with th.no_grad():
-            mu = m.actor.get_action_dist_params(x)[0]; q = m.critic(x, a)[0]
-        assert th.allclose(mu[0], mu[1])                             # the deployed actor never reads it
-        assert (not th.allclose(q[0], q[1])) == critic_sees
-        m.save(tmp_path / f'{arm}.zip'); m2 = t.T2SAC.load(tmp_path / f'{arm}.zip', device='cpu')
-        assert m2.policy.actor_dim == OBS_DIM and m2.policy.critic_dim == (OBS_DIM_PRIV if critic_sees else OBS_DIM)
-        with th.no_grad():
-            assert th.allclose(m2.actor.get_action_dist_params(x)[0], m.actor.get_action_dist_params(x)[0])
-    td3 = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), 'e_td3', 0, smoke=True)
+    m = t.make_model(t.SpacesEnv(OBS_DIM), 'sac', 0, smoke=True)
     with th.no_grad():
-        assert th.allclose(td3.actor(x)[0], td3.actor(x)[1]) and th.allclose(*td3.critic(x, a)[0])
+        assert not th.allclose(m.actor.get_action_dist_params(x)[0][0], m.actor.get_action_dist_params(x)[0][1])
+        assert not th.allclose(*m.critic(x, a)[0])
+    assert m.actor.features_extractor.features_dim == OBS_DIM == m.critic.features_extractor.features_dim
+    m.save(tmp_path / 'sac.zip'); m2 = t.T2SAC.load(tmp_path / 'sac.zip', device='cpu')
+    with th.no_grad():
+        assert th.allclose(m2.actor.get_action_dist_params(x)[0], m.actor.get_action_dist_params(x)[0])
 
 
 def test_sac_update_runs_on_stored_transitions():
     import train.t2_mve_sac as t
     from stable_baselines3.common.logger import configure
-    m = t.make_model(t.SpacesEnv(OBS_DIM_PRIV), 'e_priv', 0, smoke=True)
+    m = t.make_model(t.SpacesEnv(OBS_DIM), 'sac', 0, smoke=True)
     m.set_logger(configure(None, [])); m._current_progress_remaining = 1.0
     rng = np.random.default_rng(0)
     for i in range(32):
-        o = rng.normal(size=(1, OBS_DIM_PRIV)).astype(np.float32)
+        o = rng.normal(size=(1, OBS_DIM)).astype(np.float32)
         m.replay_buffer.add(o, o, rng.uniform(-1, 1, size=(1, 2)).astype(np.float32), np.array([-1.0]), np.array([i % 7 == 0]), [{}])
     before = [p.clone() for p in m.critic.parameters()]
     m.train(gradient_steps=2, batch_size=8)
     assert m._n_updates == 2 and m.replay_buffer.model_counts['transitions'] == 32 and len(m.model_stats) == 1
     assert any(not th.equal(p, q) for p, q in zip(before, m.critic.parameters()))
+
+
+def test_tensorboard_log_records_episodes_and_updates(tmp_path):
+    from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+    import train.t2_mve_sac as t
+    log = t.TrainingLog(tmp_path / 'tb')
+    log.episode(10, {'event': 'success', 'return_true': 50.0, 'return_shaped': 60.0, 'time_s': 120.0, 'delta_v': 1.2,
+                     'exec_stats': {'corrections': 2, 'long_entries': 1}})
+    log.episode(20, {'event': 'timeout', 'return_true': -120.0, 'return_shaped': -110.0, 'time_s': 150.0, 'delta_v': 1.0})
+    log.updates(20, [{'real_td': 1.0, 'actor_loss': -2.0, 'q_pi_mean': 3.0}])
+    log.close()
+    acc = EventAccumulator(str(tmp_path / 'tb')); acc.Reload()
+    tags = set(acc.Tags()['scalars'])
+    assert {'episode/capture', 'episode/return_true', 'episode/corrections', 'rolling/capture_rate_100', 'train/real_td'} <= tags
+    assert [e.value for e in acc.Scalars('rolling/capture_rate_100')] == [1.0, 0.5]
+    assert [e.step for e in acc.Scalars('episode/outcome')] == [10, 20]
 
 
 # ---------------------------------------------------------------------- bitwise-neutral speed-ups

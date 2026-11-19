@@ -4,8 +4,8 @@
 
 **两个问题，两个机制：**
 - **理论问题——长期决策与短期受约束执行的耦合：ECC**（执行反馈闭环协同，Execution-feedback Closed-loop Coordination）。
-  - 学习侧：评价器在训练时读执行器的 6 项执行反馈 z_E；策略只读 18 项有效观测。
-  - 决策侧：执行器的机会评估以认证映射修正意图。
+  - 决策侧：执行层对意图做模式预测；意图自己接不上而处于最后机会时，执行改动最小的关键机会（最近的可兑现网格意图，否则末次经过时的直接入口）。
+  - 学习侧：标准 SAC 在含协调的闭环上学习，策略与评价器读同一 17 项观测；回放存提议意图。第二轮规格见 `docs/final_method/ROUND2.md`。
 - **场景问题——快速翻滚目标的动态捕获窗口：RWG**（旋转同步窗口引导，Rotation-synchronized Window Guidance）。
   - SAC 每 16 s 在目标自旋坐标系给出二维阶段意图（接近速度、沿扫掠速度），纬向由固定几何律调到端口扫掠锥上。
   - 入口由入口规划器（代码中的条件 G★）按端口经过时机规划，失败时在原到达时刻附近重定时。
@@ -33,12 +33,12 @@
 
 | 路径 | 内容 |
 |---|---|
-| `env/t2_stage.py` | 阶段决策环境：RWG 几何与阶段目标、执行链（远场跟踪律、入口规则、窗口重定时、冻结 MPC）、观测视图、任务分布、ECC 机会评估与认证映射、只读审计 |
+| `env/t2_stage.py` | 阶段决策环境：RWG 几何与阶段目标、执行链（远场跟踪律、入口规则、窗口重定时、冻结 MPC）、17 项观测、限时任务、机会可达性势函数、ECC 机会评估与协调、只读审计 |
 | `env/t2_probe.py` | ECC 模式预测：执行器自身的阶段层与入口规则，48 s |
 | `env/t1_*.py`、`env/se3_rendezvous_env.py`、`env/task.py` 等 | 冻结执行器与任务：真值环境、约束与判据、阶段规划器、条件 G★、MPC 接口（文件名中的 `t1` / `t2` 是历史命名） |
 | `controllers/mpc/`、`dynamics/`、`estimation/` | 冻结 MPC、六自由度动力学与引力模型、相对 EKF |
-| `train/t2_mve_sac.py` | 学习器：SAC（`e_priv` 非对称评价器、`e_sac`）与 TD3（`e_td3`），异步采集 |
-| `experiments/final.py` | 正式实验唯一入口；`experiments/t2.py` 回合运行器；`formal_readout.py` / `formal_figures.py` 读出与作图 |
+| `train/t2_mve_sac.py` | 学习器：标准 SAC 与 TD3 对照，异步采集，TensorBoard 日志 |
+| `experiments/final.py` | 实验唯一入口；`experiments/t2.py` 回合运行器；`paper_readout.py` 第一稿读数（第二轮读数的模板） |
 | `tests/` | `python -B -m pytest -q`，以退出码判定 |
 
 2026-11-12 工程收尾前的完整仓库（全部历史代码、测试、文档与证据）在科学提交 `fcd8d2ee`（标签 `archive/pre-cleanup-20261112`），对照表 `docs/archive/PATH_MAP_20261112.csv`。
