@@ -185,8 +185,56 @@
     }
   ],
   "credential_handling": "existing credential interfaces only; no token values printed or written",
-  "next_required_action": "restore valid GitHub upload credentials or transfer the exact local archive manually to the explicitly authorized draft; then replace null asset fields after digest/size verification",
+  "next_required_action": "Use native file download link to obtain unchanged archive, or have the environment owner repair the existing GitHub upload credential route; no new login/token/permission changes attempted.",
   "evaluation_or_training_performed": false,
   "archive_uploaded": false,
-  "receipt_uploaded_to_release": false
+  "receipt_uploaded_to_release": false,
+  "authentication_diagnostics": {
+    "startup_snapshot": {
+      "present": true,
+      "github_host_occurrences": []
+    },
+    "live_proxy_status_exit": 0,
+    "live_proxy_github_host_occurrences": [],
+    "live_proxy_status_json_available": true,
+    "gh_auth_token_diagnostics": {
+      "matches_inherited_GH_TOKEN": true,
+      "contains_explicit_placeholder_marker": false,
+      "has_recognized_github_PAT_prefix": true,
+      "value_printed_or_stored": false
+    },
+    "recorded_utc": "2026-11-19T07:53:48.875983+00:00",
+    "network_guidance_applied": true,
+    "inherited_proxy_and_CA_preserved": true,
+    "read_only_service_comparison": [
+      {
+        "probe": "api_draft_read",
+        "method": "GET",
+        "gh_exit_code": 0,
+        "http_status": 200
+      },
+      {
+        "probe": "uploads_read_only_probe",
+        "method": "GET",
+        "gh_exit_code": 1,
+        "http_status": 400
+      }
+    ],
+    "live_visible_http_policy": {
+      "mode": "denylist",
+      "allow_all_domains": false,
+      "safe_methods_only": false,
+      "platform_exceptions_apply": true
+    },
+    "credential_substitution_route_visibility": "not exposed by startup snapshot or live proxy status; no per-domain credential mapping available",
+    "placeholder_conclusion": "gh token equals inherited GH_TOKEN and has recognized GitHub token prefix; no explicit placeholder marker; cannot prove whether proxy substitution is involved",
+    "native_gh_already_attempted_upload": true,
+    "conclusion": "Native gh installed and configured with inherited GH_TOKEN. Draft GET on api.github.com succeeds (200). Earlier archive and small receipt POST via native gh on uploads.github.com failed (401 Bad credentials). Current route/auth configuration cannot perform this approved upload. Actual per-domain credential substitution rules are not exposed; cannot establish whether token is a proxy placeholder. Do not infer network-domain denial from this evidence.",
+    "further_upload_retries_performed": false,
+    "login_token_creation_or_permission_changes": false,
+    "read_only_uploads_probe_limitation": "GET returned 400; not a valid authentication test for an upload-only endpoint. Prior real POST uploads returned 401 and remain the relevant failure evidence."
+  },
+  "diagnostic_updated_utc": "2026-11-19T07:54:15.781364+00:00",
+  "preservation_verified_bytes": 63900531,
+  "preservation_verified_sha256": "ec4d5c4178205eb2ebb35f1fb3803efe9431a0b496b6d18798bf529457b08ff6"
 }
