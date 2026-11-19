@@ -2,20 +2,24 @@
 
 开发期（至 11-11）的完整状态表与执行书记录：[archive/PROJECT_STATE_20261111.md](archive/PROJECT_STATE_20261111.md)。
 
-## 1. 当前状态（2026-11-19）
+## 1. 当前状态（2026-11-19，第二轮）
 
 | 项 | 状态 |
 |---|---|
-| 方法 | 最终 ECC = `ECC_LE`：执行机会集合 + 机会协调（保持 / 修正 / 启动远场入口）+ SAC。采用依据：对第一轮 ECC 捕获 251 对 236/288，逐种子 0 / +4 / +11，回报 47.8 对 36.4，0 次不安全 |
-| 实验 | 全部交付：第一轮四组、ECC_LE、SAC_LE、TD3_C（云端）。论文数据 `evidence/PAPER_READOUT/`（科学 `8acc41dd`），事实稿 `docs/paper/facts/08_实验结果.md` |
-| 论文 | 第一稿：方法章与结果章已完成（科学 `9c2c711d`，`docs/paper/latex/`），其余由写作窗口完成 |
-| 下一步 | 新窗口：一轮干净的新正式实验（去掉评价器输入 z、奖励设计、对比组从简、只用紧急任务），见 [HANDOFF](HANDOFF.md) 第 2 节 |
+| 第一稿 | 完成：ECC_LE 251/288，论文数据 `evidence/PAPER_READOUT/`，代码 = 科学 `72a8d41` |
+| 第二轮方向（用户 2026-11-19） | 正式组：ECC、无反馈（SAC–MPC）、无核心（关修正，附加归因）、TD3–MPC、MPC；无副机制只在评估时关直接入口；6000 步、3 种子、只用限时任务；最终模型只评估 6000 步；学习曲线用 TensorBoard；泛化蒙特卡洛最后再定 |
+| 规格 | 科学 `docs/final_method/ROUND2.md`（清理、方法收敛、机会可达性势函数、开发检查判据），先于实现入库；实现与证据在科学 `3a8fc970` |
+| 清理 | 已完成：删去评价器输入 z（DEAD_ENDS D46）与经济任务；17 项观测；第一轮专用脚本删除；27 个开发期证据目录移出工作树（`c15ece12` 可取回） |
+| 方法收敛 | 已完成：协调写成一个机会集加一条规则，与第一稿 ECC_LE 执行逐位一致（`evidence/R2_EQUIV/`，12/12 回合） |
+| 奖励 | 已实现：机会可达性势函数（引理 1 窗口 + 命题 1 经过时机 + 制动包络 + 期限）；旧势函数保留为开关，只用于开发检查 |
+| 下一步 | [RUN_R2_DEV](upper/run_orders/RUN_R2_DEV.md)（等用户开场指令）→ 反馈机制开发（3000 步 × 3 种子，先讨论）→ 正式实验设计 |
 | 运行中 | 无 |
 
 ## 2. 执行书（方法线，按时间倒序）
 
 | 状态 | 执行书 |
 |---|---|
+| 待开场（用户指令） | [RUN_R2_DEV](upper/run_orders/RUN_R2_DEV.md)：第二轮开发检查（新势函数不伤性能） |
 | 已交付（collab `fa7506d4`，科学 `6d3d6baa`；上层复核通过） | [RUN_CLEANUP](upper/run_orders/RUN_CLEANUP.md)：归档标签、Windows 逐位核验、本机资产整理 |
 | 已交付（科学 `af61a48b`） | [RUN_PAPER_FIGS](upper/run_orders/RUN_PAPER_FIGS.md)：论文两张案例图的重放导出 |
 | 已交付（ECC_LE `b803b0eb`、SAC_LE `e8b9af0a`；采用 ECC_LE） | [RUN_ECC_LE](upper/run_orders/RUN_ECC_LE.md)：远场入口（检验 + 训练） |

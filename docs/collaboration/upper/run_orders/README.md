@@ -4,10 +4,11 @@
 
 | 文件 | 内容 |
 |---|---|
+| `RUN_R2_DEV.md` | 第二轮开发检查：新势函数不伤性能（`ECC` 对 `ECC_LEAD24`，dev 阶段，3000 步 × 种子 0–2）；等用户开场指令 |
 | `RUN_CLEANUP.md` | 工程收尾的下层部分：归档标签、Windows 全量 pytest 与逐位回归、本机资产整理 |
 | `RUN_ECC_LE.md` | 远场入口：最终 ECC（ECC_LE）与 SAC_LE（已交付） |
 | `RUN_PAPER_FIGS.md` | 论文案例图数据导出（已交付） |
-| `RUN_FORMAL.md` | 第一轮正式实验（四组已交付；其余不再运行） |
+| `RUN_FORMAL.md` | 第一轮正式实验（四组已交付；不再运行） |
 | `RUN_FORMAL_PREP.md` | 正式实验准备 WP1–WP8（已交付） |
 | `RUN_GOV_A.md`、`RUN_GOV_B.md` | ECC 最终轮 A / B 步（已交付；B 步选定 `ECC_CERT_LOOP`） |
 | `RUN_ECC.md` | ECC 开发轮（已交付） |
