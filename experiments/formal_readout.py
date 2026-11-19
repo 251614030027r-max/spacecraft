@@ -196,7 +196,7 @@ def mechanism(rows):
             cert = decision.get("cert")
             if cert is None or not cert.get("cands"):
                 continue
-            # EXPERIMENTS.md 6B: delta-v already used + predicted stage and entry delta-v within the budget
+            # round-1 design (docs/archive/EXPERIMENTS_ROUND1.md) 6B: delta-v already used + predicted stage and entry delta-v within the budget
             feasible = [c for c in cert["cands"] if c["event"] == 1
                         and c["dv"] + c["dv_entry"] <= decision["remaining_dv"]]
             early = min(feasible, key=lambda c: c["t"]) if feasible else None

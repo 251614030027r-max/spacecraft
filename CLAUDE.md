@@ -12,7 +12,7 @@ z_E (6 items) during training; the executor's opportunity evaluation certifies t
 alike (config `ECC_CERT_LOOP` = `e_priv` + `cut_priv` + `certify`; behaviour reference science `e0a61753`).
 
 **State (2026-11-12):** engineering wrap-up done -- the code holds only what the formal experiment runs (bitwise equal to
-`fcd8d2ee` / `e0a61753` on the frozen paths), the formal design is pre-registered (`docs/paper/EXPERIMENTS.md`), the
+`fcd8d2ee` / `e0a61753` on the frozen paths), the round-1 formal design is archived (`docs/archive/EXPERIMENTS_ROUND1.md`), the
 economy missions carry the 2.0 m/s budget in training and evaluation (urgent 3.0 m/s; no separate R condition, user
 2026-11-13), the formal run order `RUN_FORMAL` awaits the user's separate authorization.
 History: `docs/HISTORY.md`; refuted directions: `docs/DEAD_ENDS.md`; live state: collab `PROJECT_STATE.md` (wins over
@@ -21,7 +21,7 @@ anything here).
 ## Start here
 
 1. Collab branch `collab/spacecraft`: `docs/collaboration/PROJECT_STATE.md` and `HANDOFF.md`.
-2. `README.md`, `docs/paper/facts/`, `docs/paper/EXPERIMENTS.md`, `docs/final_method/METHOD_REGISTRY.json`,
+2. `README.md`, `docs/paper/facts/`, `docs/paper/latex/`, `docs/final_method/METHOD_REGISTRY.json`,
    `docs/engineering/REPRODUCE.md`.
 3. `docs/DEAD_ENDS.md` before proposing any method, interface, reward or task change.
 

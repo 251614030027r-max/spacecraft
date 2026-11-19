@@ -189,7 +189,7 @@ def t2_env_config(mission: T2Mission = T2Mission()) -> T1EnvConfig:
 
 
 
-#: the paper's task distribution (``docs/paper/EXPERIMENTS.md`` section 2): urgent deadlines U(140, 200) s with the
+#: the paper's task distribution (``docs/paper/facts/01``): urgent deadlines U(140, 200) s with the
 #: 3.0 m/s budget; economy deadlines U(280, 340) s with the 2.0 m/s budget (user 2026-11-13, from the completed prescreen)
 URGENT_DEADLINE_S = (140.0, 200.0)
 ECONOMY_BUDGET_M_S = 2.0

@@ -1,4 +1,4 @@
-"""The only entry of the formal experiments (``docs/paper/EXPERIMENTS.md``). Every configuration, opening block, seed
+"""The only entry of the formal experiments (round-1 design: ``docs/archive/EXPERIMENTS_ROUND1.md``). Every configuration, opening block, seed
 list, budget and evaluation switch comes from ``docs/final_method/METHOD_REGISTRY.json``.
 
     python -B -m experiments.final train    --stage formal --config NAME --seed S --output DIR [--workers W] [--smoke-steps N]

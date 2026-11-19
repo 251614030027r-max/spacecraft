@@ -1,4 +1,4 @@
-"""Long-arrival entry candidate of the opportunity coordination (``docs/ecc2/METHOD_FINAL.md``)."""
+"""Long-arrival entry candidate of the opportunity coordination (``docs/paper/facts/05``)."""
 
 
 def test_long_entry_is_off_by_default_and_only_due_at_the_last_pass():

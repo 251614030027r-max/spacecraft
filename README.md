@@ -18,7 +18,8 @@
 | `docs/paper/README.md` | 论文资料入口：写作取材指南 |
 | `docs/paper/facts/` | **方法事实稿**（中文，按论文方法部分顺序）：术语符号、建模、总体框架、RWG、执行层、ECC、学习、对比方法 |
 | `docs/paper/BACKGROUND.md` | 背景、两个问题、研究问题、贡献（引言素材） |
-| `docs/paper/EXPERIMENTS.md` | 正式实验设计（事先登记）：任务条件、训练组、终点与统计、图表 |
+| `docs/paper/latex/` | 论文初稿（TAES 模板） |
+| `evidence/PAPER_READOUT/` | 论文实验数据（`experiments/paper_readout.py`） |
 | `docs/final_method/METHOD_REGISTRY.json` | 正式实验的唯一配置来源 |
 | `docs/engineering/` | 工程记录：`REPRODUCE.md`（环境、测试、命令、开局号段）、`FACT_MAP.md`（论文对象 ↔ 源码）、`AUDIT.md`（一致性审计、收尾与提速的逐位核验） |
 | `docs/HISTORY.md` | 研究时间线（问题 → 做法 → 结论 → 转向） |

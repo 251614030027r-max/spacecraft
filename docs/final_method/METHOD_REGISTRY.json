@@ -1,11 +1,11 @@
 {
  "method": "ECC",
- "method_long": "Execution-opportunity certificate coupling with rotating-window guidance (RWG)",
- "note": "The only configuration source of the formal experiments: experiments/final.py launches registered configurations only, figures take display names from here. Method: docs/paper/METHOD.md; design: docs/paper/EXPERIMENTS.md. The development-period registry (EACH, U2, ECC rounds, governor) is docs/archive/registry/METHOD_REGISTRY_20261111.json.",
+ "method_long": "Execution-feedback closed-loop coordination (execution-opportunity coordination with rotation-synchronized window guidance)",
+ "note": "The only configuration source of the formal experiments: experiments/final.py launches registered configurations only, figures take display names from here. Method: docs/paper/facts/; results: docs/paper/facts/08 and evidence/PAPER_READOUT. The development-period registry (EACH, U2, ECC rounds, governor) is docs/archive/registry/METHOD_REGISTRY_20261111.json.",
  "method_behaviour_reference": "e0a617532008dac02e2d50f7e859aca613e03e5e",
  "trained": {
   "ECC_CERT_LOOP": {
-   "display": "ECC (round 1)",
+   "display": "ECC w/o long-range entry",
    "arm": "e_priv",
    "obs": "cut_priv",
    "window": true,
@@ -17,7 +17,7 @@
    "color": "#8e44ad"
   },
   "SAC_C": {
-   "display": "SAC–MPC",
+   "display": "SAC-MPC",
    "arm": "e_sac",
    "obs": "cut_priv",
    "window": true,
@@ -29,7 +29,7 @@
    "color": "#eb6834"
   },
   "TD3_C": {
-   "display": "TD3–MPC",
+   "display": "TD3-MPC",
    "arm": "e_td3",
    "obs": "cut_priv",
    "window": true,
@@ -41,7 +41,7 @@
    "color": "#0072b2"
   },
   "EACH_C": {
-   "display": "ECC w/o certification",
+   "display": "ECC w/o coordination",
    "arm": "e_priv",
    "obs": "cut_priv",
    "window": true,
@@ -86,11 +86,11 @@
    "long_entry": true,
    "actor_view": 24,
    "critic_view": 48,
-   "role": "final method candidate (2026-11-18): round-1 ECC plus the long-arrival entry candidate of the screening at the last usable pass; docs/ecc2/ECC_LE.md",
+   "role": "final method of the first paper draft (2026-11-19): execution-opportunity coordination (keep / correct / launch long-range entry) with critic inputs z; 251/288 urgent captures",
    "color": "#8e44ad"
   },
   "SAC_LE": {
-   "display": "SAC-MPC + enhanced execution",
+   "display": "ECC w/o execution inputs",
    "arm": "e_sac",
    "obs": "cut_priv",
    "window": true,
@@ -99,34 +99,8 @@
    "long_entry": true,
    "actor_view": 24,
    "critic_view": 24,
-   "role": "strong baseline (2026-11-18): standard SAC critic on the policy view with the same opportunity coordination (screening + long-arrival entry) as ECC_LE; also the single overall check of the execution-conditioned critic inputs; docs/ecc2/METHOD_FINAL.md",
+   "role": "same coordination, critic on the policy view (z dropped); 248/288",
    "color": "#eb6834"
-  },
-  "ECC_LE_NOGEO": {
-   "display": "ECC w/o rotation guidance",
-   "arm": "e_priv",
-   "obs": "cut_priv",
-   "window": true,
-   "geometry": false,
-   "certify": true,
-   "long_entry": true,
-   "actor_view": 24,
-   "color": "#cc79a7",
-   "critic_view": 48,
-   "role": "rotation-guidance ablation of ECC_LE (stage goals close along the line of sight only); run if ECC_LE is adopted with the critic inputs kept"
-  },
-  "SAC_LE_NOGEO": {
-   "display": "ECC w/o rotation guidance",
-   "arm": "e_sac",
-   "obs": "cut_priv",
-   "window": true,
-   "geometry": false,
-   "certify": true,
-   "long_entry": true,
-   "actor_view": 24,
-   "color": "#cc79a7",
-   "critic_view": 24,
-   "role": "rotation-guidance ablation of SAC_LE; run instead of ECC_LE_NOGEO if the final method drops the critic inputs"
   }
  },
  "fixed": {
@@ -208,9 +182,7 @@
      "SAC_CERT_LOOP",
      "ECC_CERT_LOOP_NOGEO",
      "ECC_LE",
-     "SAC_LE",
-     "ECC_LE_NOGEO",
-     "SAC_LE_NOGEO"
+     "SAC_LE"
     ],
     "fixed": [
      "pure",
@@ -348,15 +320,9 @@
      "ECC_LE_s22_urgent",
      "SAC_LE_s20_urgent",
      "SAC_LE_s21_urgent",
-     "SAC_LE_s22_urgent",
-     "ECC_LE_NOGEO_s20_urgent",
-     "ECC_LE_NOGEO_s21_urgent",
-     "ECC_LE_NOGEO_s22_urgent",
-     "SAC_LE_NOGEO_s20_urgent",
-     "SAC_LE_NOGEO_s21_urgent",
-     "SAC_LE_NOGEO_s22_urgent"
+     "SAC_LE_s22_urgent"
     ],
-    "note": "Pre-registered in docs/paper/EXPERIMENTS.md. Budgets by mission type (user 2026-11-13): urgent 3.0 m/s, economy 2.0 m/s in training and evaluation (env.t2_stage.ECONOMY_BUDGET_M_S); the separate resource condition R is dropped."
+    "note": "Pre-registered in docs/archive/EXPERIMENTS_ROUND1.md (round 1). Budgets by mission type (user 2026-11-13): urgent 3.0 m/s, economy 2.0 m/s in training and evaluation (env.t2_stage.ECONOMY_BUDGET_M_S); the separate resource condition R is dropped."
    },
    "formal_prescreen": {
     "eval_openings": "295100-295147",
