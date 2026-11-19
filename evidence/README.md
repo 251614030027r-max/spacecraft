@@ -14,33 +14,22 @@
 | `ECC_LE_DEV/` | 远场入口的开发期检验（固定意图 40/48 → 43/48） | 方法设计依据 |
 | `PAPER_FIGS/` | 两张案例图的轨迹数据（第一轮模型） | 第 V 节案例图 |
 
-## A　开发期证据（方法演进与设计依据）
+## A　工程核验与方法设计依据（保留）
 
-| 目录 | 内容 | 论文用途 |
-|---|---|---|
-| `FORMAL_PREP/` | 正式实验准备（RUN_FORMAL_PREP）：对 `e0a61753` 的环境与训练逐位回归、6 组开发冒烟、日志与补跑核验、读出与作图冒烟、资源条件预筛（R = 2.0 m/s） | 正式实验的软件准入与 R 的冻结依据 |
-| `GOV_B/`、`GOV_B_UPPER/` | 开发期 B 步：在环 ECC 对 SAC_C（紧急 +36.0，捕获 145 / 111，翻转 37 : 3）、上层分解（学习侧反馈为主要来源） | 方法选型依据；附录"开发期结果"，不并入正式样本 |
-| `GOV_A/` | 开发期 A 步：执行机会调节器（governor）被事先登记的判据否决 | DEAD_ENDS D45；回答"为何不用更强的执行期干预" |
-| `ECC_DEV/` | RUN_ECC：完整 ECC（证书进 critic）与部署期认证 | DEAD_ENDS O6、O7（下降类认证的安全性，论文局限） |
-| `ECC_FINAL_PRECHECK/` | 最终轮的等价性脚本与重放（`scripts/` 针对当时的检出运行） | 等价性方法的来源 |
-| `ECC_PRECHECK/` | ECC 实现前的沙箱核验 | — |
-| `U2_PROBE_PRECHECK/`、`U2_TRAIN/` | 执行器模式探询作 critic 输入（`no_gain`） | DEAD_ENDS D44 |
-| `U2C/`、`U2C_PRECHECK/` | 决策时认证的首次检验（认证映射的来源） | 认证机制的演进 |
-| `final_pretest/` | EACH 预实验：含 DUP（等宽 critic 对照）、NO_GEOM、窗口 / 刚性配对 | 附录：容量混杂（等宽对照）与旋转引导的开发期证据 |
-
-## B　负结果台账（DEAD_ENDS D39–D43 引用；审稿质疑"为何不用反事实标签 / 动作反馈"时使用）
-
-| 目录 | 对应 |
+| 目录 | 内容 |
 |---|---|
-| `T2_7_PRECHECK/`、`T2_7_GUIDE/` | 执行器引导（DEAD_ENDS 引用） |
-| `T2_8_PRECHECK/`、`T2_8_NIGHT/`、`T2_8_P4_INFO/`、`T2_8_P4_INFO_UPPER/` | P4 信息诊断：工程化观测已把规划器答案交给策略 |
-| `T2_11_EACCA/`、`T2_11_EACCA_UPPER/`、`T2_11_SELFCHECK/` | EACC-A（反事实标签 + 决策级校准）；D43 |
-| `T2_12_PRECHECK/`、`T2_12_EACC/` | 相对反事实标签 `e_rel`；D39 |
-| `T2_13_PRECHECK/`、`T2_14_PRECHECK/`、`T2_14_TERM/` | 只保留可评估的终局反事实；D40 |
-| `T2_16_PRECHECK/`、`T2_16_PI/`、`T2_17_PULL/` | 执行优势修正 actor 梯度；D41 |
-| `T2_19_CERT/` | 校准机会图作 critic 输入；D42 |
+| `final_pretest/` | EACH 预实验：含 NO_GEOM、窗口 / 刚性配对等；论文 RWG 的开发期证据（旋转引导 35/48 对 21/48） |
+| `ECC_FINAL_PRECHECK/` | 最终轮等价性脚本与重放（`experiments/paper_readout.py` 读取） |
+| `FORMAL_PREP/` | 正式实验准备：对 `e0a61753` 的环境与训练逐位回归、冒烟、资源条件预筛 |
+| `CLEANUP_EQUIV/` | 2026-11-12 工程收尾的逐位等价核验（脚本与结果） |
+| `SPEEDUP_20261113/` | 不改结果的提速改动的逐位核验 |
+| `R2_EQUIV/` | 第二轮：收敛后的协调与第一稿 ECC_LE 执行逐位一致的核验（`docs/final_method/ROUND2.md` 第 2 节） |
 
-## 已移出工作树（历史，按需从 `fcd8d2ee` 取回）
+## 已移出工作树（历史，按需取回）
+
+**2026-11-19（第二轮清理）：** 开发期证据（调节器 GOV_A / GOV_B、ECC_DEV、U2 / U2C、T2.7–T2.19 负结果台账）共 27 个目录、12,222 个文件，从科学提交 `c15ece12` 取回：`git checkout c15ece12 -- evidence/<目录>`。清单见 `docs/archive/PATH_MAP_20261119.csv`；DEAD_ENDS 中的证据路径不变。
+
+**2026-11-12（工程收尾）：** 从 `fcd8d2ee` 取回。
 
 | 组 | 目录 | 说明 |
 |---|---|---|
@@ -49,4 +38,4 @@
 | F01 / V3 线 | `E01`–`E08`、`historical/` | 价值仲裁与停止选项；结论见 DEAD_ENDS D01–D1x |
 | 开题 PPT 图 | `ppt_dev/` | 不用于论文 |
 
-**正式实验**的证据将放在 `FORMAL/`（执行书 collab `RUN_FORMAL.md`）。
+**第二轮**的证据：开发检查放 `R2_DEV/`，正式实验放 `R2_FORMAL/`（执行书在 collab 分支）。
