@@ -200,34 +200,65 @@ def test_pure_row_is_the_mpc_alone():
 
 
 # ---------------------------------------------------------------------- opportunity-reachability potential
-def test_nominal_mouth_time_respects_the_box_speed_and_the_braking_envelope():
-    from env.t2_stage import nominal_mouth_time
+def test_nominal_entry_time_is_the_approach_to_the_entry_range_plus_the_shortest_arrival():
+    from env.t2_stage import BRIDGE_TAUS_S, nominal_entry_time
     task = T2StageEnv(openings=[294000]).env.config.task
-    t16, t12, t8 = (nominal_mouth_time(r, 0.0, task) for r in (16.0, 12.0, 8.0))
-    assert t16 > t12 > t8 > 0.0 and nominal_mouth_time(6.3, 0.0, task) == 0.0
-    assert t16 - t12 == pytest.approx(4.0 / 0.20, abs=0.6)                     # box speed beyond the braking envelope
-    assert t8 > 1.7 / 0.20 + 1.0                                               # slower than the box near the sphere
-    assert nominal_mouth_time(6.3, 60.0, task) > 0.0                           # the latitude law has to act first
-    assert nominal_mouth_time(10.0, 0.0, task) < nominal_mouth_time(10.0, 80.0, task)
+    t16, t14, t12 = (nominal_entry_time(r, 0.0, task) for r in (16.0, 14.0, 12.0))
+    assert t12 == min(BRIDGE_TAUS_S) == nominal_entry_time(8.0, 0.0, task)        # inside the entry range: the transfer only
+    assert t16 - t14 == pytest.approx(2.0 / 0.20, abs=0.6) and t14 - t12 == pytest.approx(2.0 / 0.20, abs=0.6)
+    assert nominal_entry_time(12.0, 60.0, task) > t12                            # the latitude law has to act first
+    assert nominal_entry_time(10.0, 0.0, task) < nominal_entry_time(10.0, 80.0, task)
 
 
-def test_time_to_entry_follows_the_pass_windows_and_the_deadline():
-    from env.t2_stage import nominal_mouth_time, time_to_entry, window_half_width
+def test_time_to_entry_follows_the_pass_windows_the_sweep_lever_and_the_deadline():
+    """Phase arithmetic of section 3 on a constructed geometry: spin about z, port tilted 90 deg from the spin axis."""
+    from env.t2_stage import AZIMUTH_M_S, nominal_entry_time, time_to_entry, window_half_width
     from dynamics.lie import so3_exp
     env = T2StageEnv(openings=[294000]); task = env.env.config.task
-    w = np.radians(2.4); omega = np.array([0.0, 0.0, w]); period = 2 * np.pi / w
-    rot = so3_exp(np.array([np.radians(40.0), 0.0, 0.0]))                       # port axis tilted from the spin axis
-    q = 7.0 * (rot @ task.approach_axis); q = q / np.linalg.norm(q) * 7.0       # on the port axis: a pass right now
+    w = np.radians(2.4); omega = np.array([0.0, 0.0, w])
+    port = lambda rot: rot @ task.approach_axis
+    for phase_deg in (0.0, 60.0, 200.0, 350.0):
+        rot = so3_exp(np.array([np.radians(90.0), 0.0, 0.0]))         # port axis in the x-y plane
+        rot = so3_exp(np.array([0.0, 0.0, np.radians(phase_deg)])) @ rot
+        q = 12.0 * np.array([1.0, 0.0, 0.0])
+        f = spin_frame(rot, omega, q, task.approach_axis)
+        beta = np.radians(f['beta_deg']); half = window_half_width(beta, beta, np.radians(35.0))
+        kappa = AZIMUTH_M_S / (w * 12.0 * np.sin(beta))
+        t_m = nominal_entry_time(12.0, f['lat_err_deg'], task)
+        phi = f['phase_rad']
+        expect = None
+        for k in range(-1, 4):
+            c = -2 * np.pi * k
+            lo, hi = max(t_m, (phi - c - half) / (w * (1 + kappa))), (phi - c + half) / (w * (1 - kappa))
+            if lo <= hi:
+                expect = lo; break
+        assert time_to_entry(q, rot, omega, task, 1e4) == pytest.approx(expect)
+        assert time_to_entry(q, rot, omega, task, expect - 0.5) is None or time_to_entry(q, rot, omega, task, expect - 0.5) < expect
+        assert time_to_entry(q, rot, omega, task, t_m - 1.0) is None                # the deadline leaves no arrival
+    assert 0.0 < kappa < 1.0
+    far = 16.0 * np.array([1.0, 0.0, 0.0])
+    assert time_to_entry(far, rot, omega, task, 1e4) >= time_to_entry(q, rot, omega, task, 1e4)
+
+
+def test_the_sweep_lever_brings_a_late_window_within_reach():
+    """Without the along-sweep lever the next window would open after the latest arrival; meeting the port advances it."""
+    import env.t2_stage as T
+    from dynamics.lie import so3_exp
+    task = T2StageEnv(openings=[294000]).env.config.task
+    w = np.radians(2.4); omega = np.array([0.0, 0.0, w])
+    rot = so3_exp(np.array([0.0, 0.0, np.radians(-100.0)])) @ so3_exp(np.array([np.radians(90.0), 0.0, 0.0]))
+    q = 12.0 * np.array([1.0, 0.0, 0.0])
     f = spin_frame(rot, omega, q, task.approach_axis)
-    beta = np.radians(f['beta_deg']); half_s = window_half_width(beta, beta, np.radians(35.0)) / w
-    t_m = nominal_mouth_time(f['r'], f['lat_err_deg'], task)
-    t_go = time_to_entry(q, rot, omega, task, 300.0)
-    assert t_go is not None and t_go >= t_m - 1e-9
-    centre = min(f['time_to_pass_s'], f['time_to_pass_s'] - period, key=abs)
-    assert t_go == pytest.approx(max(t_m, centre - half_s)) or t_go >= centre + period - half_s - 1e-9
-    assert time_to_entry(q, rot, omega, task, t_m - 1.0) is None                 # the deadline leaves no arrival
-    far = q / np.linalg.norm(q) * 15.0
-    assert time_to_entry(far, rot, omega, task, 400.0) > t_go                     # farther: later entry
+    beta = np.radians(f['beta_deg']); half_s = T.window_half_width(beta, beta, np.radians(35.0)) / w
+    opens = f['time_to_pass_s'] - half_s
+    t_go = T.time_to_entry(q, rot, omega, task, opens - 10.0)
+    assert t_go is not None and t_go < opens - 10.0
+    saved = T.AZIMUTH_M_S
+    try:
+        T.AZIMUTH_M_S = 0.0
+        assert T.time_to_entry(q, rot, omega, task, opens - 10.0) is None
+    finally:
+        T.AZIMUTH_M_S = saved
 
 
 def test_potential_is_bounded_and_the_first_draft_potential_is_kept():

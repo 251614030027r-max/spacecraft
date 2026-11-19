@@ -142,47 +142,58 @@ NOMINAL_HORIZON_S = 400.0
 POTENTIALS = ("opportunity", "lead24")
 
 
-def nominal_mouth_time(r: float, lat_deg: float, task) -> float:
-    """t_m: nominal time to reach the mouth radius on the sweep cone. The range closes at the action box's largest
-    closing speed, capped by the radial braking envelope less the entry rule's margin; the latitude error follows the
-    fixed RWG latitude law until it is within the entry gate. inf if not reached within NOMINAL_HORIZON_S."""
+def nominal_entry_time(r: float, lat_deg: float, task) -> float:
+    """t_m: nominal earliest entry arrival. The stage layer closes the range to the entry rule's 12 m at the action box's
+    largest closing speed, capped by the radial braking envelope less the entry rule's margin, while the latitude error
+    follows the fixed RWG latitude law until it is within the entry gate; the entry transfer then needs at least the
+    shortest arrival time of the entry rule. inf if the entry range is not reached within NOMINAL_HORIZON_S."""
     v_box = CLOSING_M_S[0] + CLOSING_M_S[1]
     r, lat, t = float(r), float(lat_deg), 0.0
-    while not (r <= ENTRY_RADIUS_M + 1e-9 and abs(lat) <= BRIDGE_ANGLE_DEG):
+    while not (r <= BRIDGE_RANGE_M + 1e-9 and abs(lat) <= BRIDGE_ANGLE_DEG):
         if t >= NOMINAL_HORIZON_S:
             return float("inf")
         v_l = float(np.clip(LAT_GAIN_PER_S * r * np.radians(lat), -LAT_SPEED_M_S, LAT_SPEED_M_S))
         lat -= float(np.degrees(v_l * NOMINAL_STEP_S / max(r, 1e-6)))
         v_c = min(v_box, float(task.outer_radial_closing_speed_limit(r)) - BRIDGE_ENVELOPE_MARGIN_M_S)
-        r = max(ENTRY_RADIUS_M, r - max(v_c, 0.0) * NOMINAL_STEP_S)
+        r = max(BRIDGE_RANGE_M, r - max(v_c, 0.0) * NOMINAL_STEP_S)
         t += NOMINAL_STEP_S
-    return t
+    return t + min(BRIDGE_TAUS_S)
 
 
 def time_to_entry(q: np.ndarray, rotation: np.ndarray, omega_body: np.ndarray, task, time_left_s: float) -> float | None:
-    """T_go: time to the earliest entry arrival that the nominal approach can still make, i.e. the earliest
-    max(t_m, t_k - w) inside a pass window [t_k - w, t_k + w] and no later than ``time_left_s`` (the latest admissible
-    arrival less the current time). Pass times t_k = t_pass + k P (k >= -1) of the port through the line-of-sight
-    meridian under the constant-rate model; w from Lemma 1 on the sweep cone (lambda = beta) with the 35 deg entry
-    gate. None when no window can be made."""
+    """T_go: time to the earliest entry arrival that the RWG levers can still make (``docs/final_method/ROUND2.md``
+    section 3). t_m = ``nominal_entry_time``. In phase, pass k (centre c = -2 pi k, k >= -1) offers the window
+    [c - phi_hw, c + phi_hw] (Lemma 1 on the sweep cone, lambda = beta, 35 deg gate); the along-sweep speed moves the
+    remaining phase phi at Omega (1 + kappa), |kappa| <= kappa_max = v_a / (Omega rho sin beta) (Proposition 1(iii) at the
+    current range), so after t seconds the phase can be anywhere in [phi - Omega (1 + kappa_max) t, phi - Omega (1 -
+    kappa_max) t]. T_go is the earliest t >= t_m, t <= ``time_left_s`` (latest admissible arrival less the current time)
+    at which that interval meets a window; None when there is none."""
     f = spin_frame(rotation, omega_body, q, task.approach_axis)
     w = max(float(f["rate_rad_s"]), 1e-9)
-    period = 2.0 * np.pi / w
     beta = np.radians(f["beta_deg"])
     half = window_half_width(beta, beta, np.radians(BRIDGE_ANGLE_DEG))
-    half_s = (float(np.pi) if half is None else half) / w
-    t_m = nominal_mouth_time(f["r"], f["lat_err_deg"], task)
+    half = float(np.pi) if half is None else half
+    kappa = AZIMUTH_M_S / (w * max(float(f["r"]), 1e-6) * max(float(np.sin(beta)), 1e-6))
+    t_m = nominal_entry_time(f["r"], f["lat_err_deg"], task)
     if not np.isfinite(t_m) or t_m > time_left_s:
         return None
+    phi = float(f["phase_rad"])
     k = -1
     while True:
-        centre = float(f["time_to_pass_s"]) + k * period
-        start = centre - half_s
-        if start > time_left_s:
+        c = -2.0 * np.pi * k
+        earliest = max(t_m, (phi - c - half) / (w * (1.0 + kappa)))      # the fastest phase reaches the window's top
+        if earliest > time_left_s:
             return None
-        arrival = max(t_m, start)
-        if arrival <= centre + half_s and arrival <= time_left_s:
-            return float(arrival)
+        if kappa < 1.0:
+            latest = (phi - c + half) / (w * (1.0 - kappa))                # the slowest phase has left the window's bottom
+        else:                                                          # the phase can be held or moved back
+            latest = float("inf")
+            if kappa > 1.0:
+                earliest = max(earliest, (c - half - phi) / (w * (kappa - 1.0)))
+            elif phi < c - half:
+                earliest = float("inf")
+        if earliest <= latest and earliest <= time_left_s:
+            return float(earliest)
         k += 1
 
 
@@ -847,5 +858,5 @@ class T2StageEnv(gym.Env):
 
 __all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "OBS_FEATURES", "GAMMA_STAGE", "InfoEnv",
            "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
-           "d_authority", "observe", "t2_env_config", "window_half_width", "nominal_mouth_time", "time_to_entry",
+           "d_authority", "observe", "t2_env_config", "window_half_width", "nominal_entry_time", "time_to_entry",
            "POTENTIALS", "DEADLINE_S", "BUDGET_M_S"]
