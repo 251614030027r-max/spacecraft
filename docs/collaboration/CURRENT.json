@@ -1,9 +1,9 @@
 {
-  "resource_schedule_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\记录\\run-entry.json",
+  "resource_schedule_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\记录\\local_eval\\RESOURCE_SCHEDULE.json",
   "retained_model_zip_sha256_verified": 239,
-  "current_delivery_report": "docs/collaboration/lower/handoffs/formal/ECC_LE_START.md",
-  "updated_at": "2026-11-18T13:45:40.457166+09:00",
-  "next_action": "后台完成 ECC_LE 三种子训练后自动启动 SAC_LE 三种子；逐种子评估紧急任务和五检查点验证曲线；检验先推送，训练结果分别交付。",
+  "current_delivery_report": "docs/collaboration/lower/handoffs/formal/ECC_LE_SESSION6_RESULT.md",
+  "updated_at": "2026-11-19T16:46:45.272870+09:00",
+  "next_action": "本机完成其余评估，云端独占八组验证192回合；自动合并原始JSON与SHA并完成SESSION6/7交付。",
   "deletion_ledger": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\cleanup_20261112\\记录\\DELETED_FILES_20261112.jsonl",
   "current_scope": {
     "steps": 5000,
@@ -23,12 +23,17 @@
       20,
       21,
       22
-    ]
+    ],
+    "evaluation_location": "local_and_cloud",
+    "local_future_evaluation_authorized": true,
+    "evaluation_start_policy": "Finished verified seeds immediately, using spare cores; expand to 12 eval workers after training ends",
+    "cloud_validation_episodes": 192,
+    "local_evaluation_episodes": 1104
   },
   "order_collab_commit": "927f9c6a3237ce54b7450b09fc9e8f0db519f21b",
-  "automatic_followup": "ECC_LE_BACKGROUND_CONTROLLER_AND_HOURLY_READ_ONLY",
-  "execution_state": "le_running",
-  "formal_evidence_commit": "769061f25101c876ce129a9355bbdd1d027dcfb4",
+  "automatic_followup": "LOCAL_REGISTERED_EVALUATION_AND_DELIVERY",
+  "execution_state": "le_local_evaluation",
+  "formal_evidence_commit": "b803b0eb13cf65e4f008ae53ad385ce4b31d72c4",
   "native_state": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\RUN_STATE.json",
   "ready_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\cleanup_20261112\\记录\\READY.json",
   "scientific_commit": "d3fd8b5a71e6e6287a418b1c99aebaaa52f4550f",
@@ -43,8 +48,8 @@
     "local_settings_verification": "user_confirmed"
   },
   "evaluation_active": true,
-  "status": "ECC_LE 三种子训练中；配对检验并行，SAC_LE 三种子已授权自动接续",
-  "training_active": true,
+  "status": "本机评估及交付中",
+  "training_active": false,
   "topic": "ecc_le",
   "windows_evidence_commit": "6d3d6baa9201a21442103d6ee0bfd30fe356cf12",
   "run_order": "docs/collaboration/upper/run_orders/RUN_ECC_LE.md",
@@ -54,14 +59,14 @@
     "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\gov_a",
     "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\gov_b"
   ],
-  "active_training": [
-    "ECC_LE_s20",
-    "ECC_LE_s21",
-    "ECC_LE_s22"
+  "active_training": [],
+  "active_auxiliary": [
+    "SAC_LE_s20",
+    "SAC_LE_s21",
+    "SAC_LE_s22"
   ],
-  "active_auxiliary": "probe",
-  "background_task": "Spacecraft_ECC_LE_20261118",
-  "health_task": "Spacecraft_ECC_LE_Health_20261118",
+  "background_task": "Spacecraft_LE_HybridEvalV2_20261119",
+  "health_task": "Spacecraft_LE_HybridEval_Health_20261119",
   "health_interval_minutes": 60,
   "start_collab_commit": "8844a40f18c5a790c85f83e437d5cc39c6ff1855",
   "logging_start_verified": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\记录\\START_LOGGING_CHECK.json",
@@ -84,5 +89,74 @@
     "report": "evidence/ECC_LE_PROBE/README.md",
     "captures": 253,
     "unsafe": 0
+  },
+  "early_validation_2000": {
+    "active": false,
+    "workers": 1,
+    "priority": "BelowNormal",
+    "receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\记录\\early_validation\\STATUS.json",
+    "scope": "Move original registered step2000 validation forward; native results reused by final evaluation"
+  },
+  "resource_priority_update": {
+    "priority": "Normal",
+    "affinity": "all 12 logical CPUs",
+    "receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\记录\\PRIORITY_NORMAL_20261118.json",
+    "no_science_parameter_change": true,
+    "no_training_restart": true
+  },
+  "schedule_revision_receipt": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\记录\\local_eval\\SPLIT_192_AUTHORITY.json",
+  "cloud_evaluation_handoff": {
+    "owner_thread": "6afd3cf1-2ad8-8191-8006-b5ef88d1b0b5",
+    "queued_collab_commit": "f3686bc0",
+    "after": "TD3 completion",
+    "local_package_directory": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\记录\\cloud_handoff",
+    "transfer_state": "user_approved_uploaded_cloud_running",
+    "no_upload_performed": true,
+    "evaluation_owner": "cloud_partial",
+    "episodes": 192,
+    "release_id": 450932420
+  },
+  "cloud_partial_eval_candidate": {
+    "configuration": "SAC_LE",
+    "seeds": [
+      21,
+      22
+    ],
+    "condition": "validation",
+    "checkpoints": [
+      4000,
+      5000
+    ],
+    "openings": "295200-295223",
+    "episodes": 96,
+    "package_path": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\记录\\cloud_handoff\\SAC_LE_s21_s22_VALIDATION_4000_5000.zip",
+    "package_sha256": "360944af09b2cf5a7a487352eae0257e9d82046396d27d350713733288671e41",
+    "status": "superseded_by_assigned_192_episode_scope",
+    "local_evaluation_continues": true
+  },
+  "evaluation_owner": "local_and_cloud",
+  "cloud_owned_groups": [
+    "SAC_LE_s20_step4000",
+    "SAC_LE_s20_step5000",
+    "SAC_LE_s21_step4000",
+    "SAC_LE_s21_step5000",
+    "SAC_LE_s22_step4000",
+    "SAC_LE_s22_step5000",
+    "SAC_LE_s21_step3000",
+    "SAC_LE_s22_step3000"
+  ],
+  "paper_data_rollup": {
+    "status": "preparing; final automatically follows LE closeout",
+    "directory": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\PAPER_DATA_ROLLUP_20261119",
+    "draft_report": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\PAPER_DATA_ROLLUP_20261119\\记录\\RESULT.md",
+    "background_task": "Spacecraft_PaperData_Rollup_20261119",
+    "scope": "Whole-paper fact catalog, main comparisons, per-seed paired data, 21 model runs, raw source SHA, invalid/pending items; upper decides paper claims"
+  },
+  "local_report": "C:\\Users\\35884\\Documents\\Spacecraft\\过程文件\\ECC_LE\\记录\\ECC_LE\\RESULT.md",
+  "completed_deliveries": {
+    "ECC_LE": {
+      "science_commit": "b803b0eb13cf65e4f008ae53ad385ce4b31d72c4",
+      "report": "docs/collaboration/lower/handoffs/formal/ECC_LE_SESSION6_RESULT.md"
+    }
   }
 }
