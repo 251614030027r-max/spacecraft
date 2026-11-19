@@ -1,45 +1,53 @@
-# 交接（2026-11-12，三层共用）
+# 交接（2026-11-19，三层共用）
 
 **本文件不是执行单，不构成任何实验授权。** 现行工程状态见 [PROJECT_STATE](PROJECT_STATE.md)（上层维护）与 [CURRENT.json](CURRENT.json)（下层维护）。开发期的完整交接与研究演进在 [archive/](archive/README.md)。
 
-## 1. 研究问题与方法
+## 1. 研究问题与方法（2026-11-19）
 
-**对象：** 快速翻滚非合作目标的六自由度预捕获（追踪器 106 kg，每轴 ±2 N / ±0.6 N·m；目标 225 kg，自旋 2.1–2.7°/s，惯量未知；500 km / 45° 轨道，真值 RK45 含 J2，控制 0.1 s）。
+**对象：** 快速翻滚非合作目标的六自由度预捕获（追踪器 106 kg，每轴 ±2 N / ±0.6 N·m；目标 225 kg，自旋 2.1–2.7°/s，惯量未知；500 km / 45° 轨道，真值 RK45 含 J2，控制 0.1 s）。只做时限约束下的动态捕获（紧急任务），经济任务已取消。
 
-**两个问题（与汇报稿 `wang24.pdf` 一致）：**
-- **理论问题——长期决策与短期受约束执行的耦合 → ECC**（Execution-opportunity Certificate Coupling）：
-  - 评价器在训练时读执行器的 6 项执行反馈 z_E，策略只读 18 项有效观测；
-  - 执行器的机会评估（3 × 3 意图的 48 s 模式预测）在训练与执行中以同一认证映射修正意图；
-  - 回放存策略的提议动作。
-- **场景问题——快速翻滚目标的动态捕获窗口 → RWG**（旋转窗口引导）：
-  - 自旋坐标系二维阶段意图，纬向由固定律调到端口扫掠锥；
-  - 入口按端口经过时机规划，失败时在同一次经过内重定时；
-  - 冻结 MPC 执行近场。
+**方法（论文第一稿的最终 ECC，配置 `ECC_LE`，科学 `d3fd8b5a` 起）：**
+
+- **执行机会集合：** 短程机会，即 3 × 3 意图的 48 s 模式预测会触发入口或下降；远场机会，即末次可用经过时，入口规划器按 20–220 s 的到达时刻直接规划。
+- **机会协调：** 保持（意图自己会触发事件）/ 修正（关键窗口时换成最近的可修正候选）/ 启动远场入口（前两者都没有、处于末次可用经过）。
+- **学习：** 标准 SAC 在含协调的闭环上学习，回放存提议动作。评价器另读 6 项执行条件化输入 z；实验显示 z 作用不显著，下一轮去掉。
+- **RWG：** 自旋坐标系二维阶段意图、纬向调节、动态入口与重定时；规划器与 MPC 冻结。
 
 **唯一来源（科学分支）：**
 
 | 内容 | 路径 |
 |---|---|
-| 方法事实稿（中文，按论文方法部分顺序：术语符号、建模、框架、RWG、执行层、ECC、学习、对比方法） | `docs/paper/facts/`（`docs/paper/METHOD.md` 是索引） |
-| 论文对象 ↔ 源码 | `docs/engineering/FACT_MAP.md` |
-| 一致性审计（含收尾等价性、提速核验） | `docs/engineering/AUDIT.md` |
-| 背景、问题、贡献（引言素材） | `docs/paper/BACKGROUND.md` |
-| 正式实验设计（事先登记） | `docs/paper/EXPERIMENTS.md` |
+| 方法与结果事实稿（中文） | `docs/paper/facts/00`–`08` |
+| 论文初稿（方法与结果两章已完成，其余由写作窗口完成） | `docs/paper/latex/` |
+| 论文数据 | `evidence/PAPER_READOUT/`（`experiments/paper_readout.py`）；证据索引 `evidence/README.md` |
+| 背景、问题、贡献 | `docs/paper/BACKGROUND.md` |
 | 配置 | `docs/final_method/METHOD_REGISTRY.json` |
 | 命令与开局号段 | `docs/engineering/REPRODUCE.md` |
 | 时间线、负结果 | `docs/HISTORY.md`、`docs/DEAD_ENDS.md` |
 
-## 2. 现状
+## 2. 现状与下一轮
 
-- **方法冻结：** `ECC_CERT_LOOP`，行为基准科学 `e0a61753`。依据是开发期 B 步：紧急任务对 SAC_C +36.0，捕获 145 / 111，翻转 37 : 3，0 次不安全。
-- **工程收尾（11-12）：** 科学分支只保留正式实验用到的代码，冻结路径与 `fcd8d2ee` / `e0a61753` 逐位等价；历史代码、测试、证据和文档移出工作树。原样保存在 `fcd8d2ee`，对照表 `docs/archive/PATH_MAP_20261112.csv`。
-- **正式实验：**
-  - 6 组（ECC、SAC–MPC、TD3–MPC、ECC w/o 认证、ECC w/o 执行反馈、ECC w/o 旋转引导）× 种子 20 / 21 / 22 × 5000 决策；
-  - 条件 U / E / N 与 R（2.0 m/s）；
-  - 执行书 [RUN_FORMAL](upper/run_orders/RUN_FORMAL.md)，**待用户单独授权**。
-- **开放事项：**
-  - 下降类认证的安全性按规则报告（DEAD_ENDS O7）；
-  - 作图两处补项（F4 逐对分布、RWG 图的离散点与箭头）在写作阶段补。
+**第一稿的结果（紧急任务，3 种子 × 96 初始条件，`evidence/PAPER_READOUT/`）：**
+
+| 方法 | 捕获 / 288 | 平均回报 |
+|---|---|---|
+| ECC | 251（87.2%） | 47.8 |
+| ECC w/o execution inputs（不读 z） | 248 | 45.6 |
+| ECC w/o long-range entry（第一轮 ECC） | 236 | 36.4 |
+| ECC w/o coordination | 211 | 19.1 |
+| SAC–MPC | 204 | 14.8 |
+| TD3–MPC | 180 | −2.6 |
+
+**下一轮（新窗口辅助用户完成，用户 2026-11-19 的方向）：**
+
+1. **一轮干净的新正式实验，** 结果整体替换第一稿：新种子、新的初始条件段，所有组从零训练。
+2. **精简方法：** 去掉评价器的 6 项输入 z，结构即 `SAC_LE` 的配置（arm `e_sac` + 协调 + 远场入口）。
+3. **奖励设计：** 允许针对任务设计，例如把固定提前 24 s 的几何距离势函数，换成与旋转窗口、制动条件和期限余量一致的机会可达性势函数。目标是继续提高成功率，并作为方法中有依据的设计；改动先写规格入库。
+4. **对比组从简：** 不再要固定基线和各种变体，只保留必要的对比（如 SAC–MPC、TD3–MPC）和最多一个核心消融。
+5. **训练分布：** 经济任务不再使用。训练分布改为只有紧急任务，所有组一致。
+6. **案例图：** 第一稿的两张案例图来自第一轮模型（不含远场入口），新一轮用最终模型重放。
+
+**作废、不再引用：** 第一轮 ECC 之后的离线审查（Gate 0）、执行修正策略反馈规格、ECC_EVT，已从工作树删除，git 历史保留。
 
 ## 3. 资产
 
@@ -48,17 +56,17 @@
   - `collab/spacecraft`：只有 `docs/collaboration/`；
   - `main`：实验结束后合并。
 - **归档标签**由下层打：`archive/pre-cleanup-20261010`、`archive/collab-pre-cleanup-20261029`、`archive/t2-11-*`，以及本次 `archive/pre-cleanup-20261112`（`fcd8d2ee`）等，见 RUN_CLEANUP。
-- **证据：** 科学分支 `evidence/README.md`。正式实验证据将放在 `evidence/FORMAL/`。
+- **证据：** 科学分支 `evidence/README.md`；论文数据 `evidence/PAPER_READOUT/`，原始数据 `evidence/FORMAL/`。
 - **本机**（下层）：
   - 科学检出 `D:\py\DRL2`；
-  - 过程文件 `C:\Users\35884\Documents\Spacecraft\过程文件\`，只保留最近几轮（FORMAL_PREP、GOV_A / GOV_B、ECC 开发轮）；
+  - 过程文件 `C:\Users\35884\Documents\Spacecraft\过程文件\`：FORMAL（第一轮）、ECC_LE（ECC_LE / SAC_LE）及更早几轮；TD3_C 在云端运行，模型归档见 `evidence/PAPER_DATA_ROLLUP_20261119/`；
   - 盘点见 `lower/handoffs/` 最新的资产交付。
 
-## 3A. 写作窗口（2026-11-14 起，用户组织）
+## 3A. 写作窗口（用户组织）
 
-- 只读：科学分支的论文材料与证据、`References/`、本分支的汇报稿与研究演进；不与 Git 交互，输出由用户复制；
-- 取材以科学分支 `docs/paper/README.md` 为准：哪些文件是内容依据，哪些只取事实，哪些不看；论文用简洁的学术表达，不写工程细节；
-- 正式数字只取 `evidence/FORMAL/`，交付前用占位符。
+- 方法章（第 IV 节）与结果章（第 V 节）已按最终 ECC 写好，摘要、引言、结论由写作窗口辅助用户完成；
+- 取材以科学分支 `docs/paper/README.md` 为准；
+- 下一轮正式实验完成后，结果章整体替换。
 
 ## 4. 三层职责与纪律
 
@@ -98,5 +106,6 @@
 ## 5. 新窗口第一步
 
 1. 读本文件、[PROJECT_STATE](PROJECT_STATE.md)、科学分支 `README.md` 与 `CLAUDE.md`。
-2. 读 `docs/paper/facts/README.md`（方法事实稿）、`docs/paper/EXPERIMENTS.md`。
-3. 需要开发期细节（为何选这个方法、为何否定其他路线）时，看 `docs/HISTORY.md`、`docs/DEAD_ENDS.md` 与 [archive/](archive/README.md) 里的研究演进和旧交接。
+2. 读 `docs/paper/facts/README.md`（方法与结果事实稿），尤其 05（机会协调）和 08（结果）。
+3. 按第 2 节的方向为新一轮写规格（去掉 z、奖励设计、对比组、初始条件段与种子、训练分布），先入库再实现。
+4. 需要开发期细节时，看 `docs/HISTORY.md`、`docs/DEAD_ENDS.md` 与 [archive/](archive/README.md)。
