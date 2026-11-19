@@ -4,17 +4,18 @@ High-fidelity 6-DoF SE(3) **pre-capture** of a fast-tumbling non-cooperative tar
 per axis; target 225 kg box, spin 2.1-2.7 deg/s, unknown inertia; 500 km / 45 deg orbit, RK45 truth with central
 gravity and J2, 0.1 s control).
 
-**Method (frozen): ECC with RWG** -- `docs/paper/facts/` (Chinese method fact sheets; `docs/paper/METHOD.md` is now their index) is the only method source. SAC gives a 2-D stage intent
-every 16 s in the target's spin frame (closing speed, along-sweep speed; latitude regulated onto the port's sweep cone);
-a stage planner and a far-field tracking law fly it; when the port's pass is reachable the window-committed conditional
-G* plans the entry and the frozen MPC flies entry, descent and capture (RWG). ECC: the critic reads the executor feedback
-z_E (6 items) during training; the executor's opportunity evaluation certifies the intent in training and execution
-alike (config `ECC_CERT_LOOP` = `e_priv` + `cut_priv` + `certify`; behaviour reference science `e0a61753`).
+**Method (first paper draft): ECC with RWG** -- `docs/paper/facts/` (Chinese method and result fact sheets) is the only
+method source. SAC gives a 2-D stage intent every 16 s in the target's spin frame (closing speed, along-sweep speed;
+latitude regulated onto the port's sweep cone); a stage planner and a far-field tracking law fly it. The executor's
+opportunity coordination keeps the intent (it reaches an entry by itself), corrects it at a critical window (nearest
+grid intent with a predicted entry), or launches the long-range entry at the last usable pass; the frozen planners
+and MPC fly entry, descent and capture. Configuration `ECC_LE` (`e_priv` + `cut_priv` + `certify` + `long_entry`,
+science `d3fd8b5a`); 251/288 urgent captures.
 
-**State (2026-11-12):** engineering wrap-up done -- the code holds only what the formal experiment runs (bitwise equal to
-`fcd8d2ee` / `e0a61753` on the frozen paths), the round-1 formal design is archived (`docs/archive/EXPERIMENTS_ROUND1.md`), the
-economy missions carry the 2.0 m/s budget in training and evaluation (urgent 3.0 m/s; no separate R condition, user
-2026-11-13), the formal run order `RUN_FORMAL` awaits the user's separate authorization.
+**State (2026-11-19):** all runs delivered (round-1 four groups, ECC_LE, SAC_LE, TD3_C); paper data
+`evidence/PAPER_READOUT/`; paper draft `docs/paper/latex/` (methods and results chapters done). Economy missions are
+dropped (they only remain in this draft's training distribution). Next: one clean new formal round (drop the critic
+inputs z, reward / potential design, minimal comparison set, urgent tasks only) -- see collab `HANDOFF.md` section 2.
 History: `docs/HISTORY.md`; refuted directions: `docs/DEAD_ENDS.md`; live state: collab `PROJECT_STATE.md` (wins over
 anything here).
 
