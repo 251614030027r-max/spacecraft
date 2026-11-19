@@ -1,0 +1,32 @@
+{
+  "updated_at": "2026-11-19T12:25:57.517506+09:00",
+  "authority": "User: after training complete evaluate locally; cloud only finishes TD3; user already notified cloud",
+  "training_unchanged": true,
+  "science_freeze": "d3fd8b5a71e6e6287a418b1c99aebaaa52f4550f",
+  "scope": {
+    "configs": [
+      "ECC_LE",
+      "SAC_LE"
+    ],
+    "seeds": [
+      20,
+      21,
+      22
+    ],
+    "urgent": "300000-300095",
+    "validation": "295200-295223",
+    "checkpoints": [
+      1000,
+      2000,
+      3000,
+      4000,
+      5000
+    ]
+  },
+  "resource_plan": "After all training completes: six independent seed chains, 2 evaluation workers each, all 12 logical CPUs",
+  "completed_2000_validation": "72 episodes; verify original package hashes and reuse native files",
+  "cloud_evaluation_cancelled": true,
+  "external_model_upload_cancelled": true,
+  "no_model_upload_performed": true,
+  "delivery": "SESSION6 / SESSION7, verify then push with remote readback; never fetch/checkout science runtime"
+}
