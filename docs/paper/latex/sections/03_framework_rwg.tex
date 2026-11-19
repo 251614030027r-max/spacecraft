@@ -40,7 +40,7 @@ The decision layer interacts with the execution layer only through the following
 Let the decision state $x\in\Xset$ comprise the joint state $X$, the time $t$, the propellant used $\Delta v$, the mission parameters, and the internal state of the execution layer (mode, hold reference, record of the previous stage, and solver warm starts). At a decision state, the execution layer provides:
 \begin{enumerate}
 \item the macro-step kernel $\PE(x',r\,|\,x,\ba)$ induced by executing an intent $\ba$ from $x$ until the next decision, where $r$ is the reward of the macro step;
-\item the mode prediction $\Mpred(x,\bb)$ of Definition~\ref{def:pred} for any intent $\bb$;
+\item the mode prediction $\Mpred(x,\bb)$ of Definition~\ref{def:pred} for any intent $\bb$, and the long-range entry \eqref{eq:longentry} computed by its entry planner;
 \item an execution-feedback vector $\bz(x)$ of opportunity judgments and execution status.
 \end{enumerate}
 \end{definition}
@@ -50,7 +50,7 @@ Because entry transfers and descents run until termination or until the entry is
 \begin{figure*}[t]
 \centering
 \includegraphics{figures/fig_framework.pdf}
-\caption{Hierarchical framework. The execution layer exposes the interface of Definition~\ref{def:interface}: the macro-step transition $\PE$ of an executed intent, the mode prediction $\Mpred$, and the execution feedback $\bz$. The action-level channel (orange) corrects the proposal $\ba$ into the executed intent $\atil$; the state-level channel (blue) feeds $\bz$ to the critics. Dashed paths are learning updates.}
+\caption{Hierarchical framework. The execution layer exposes the interface of Definition~\ref{def:interface}: the macro-step transition $\PE$ of an executed intent, the mode prediction $\Mpred$, and the execution feedback $\bz$. The action-level channel (orange) keeps, corrects, or replaces the proposal $\ba$ by the executed action $\atil$; the state-level channel (blue) feeds $\bz$ to the critics. Dashed paths are learning updates.}
 \label{fig:framework}
 \end{figure*}
 
@@ -171,7 +171,7 @@ in this order, subject to $t_{0}+\sigma\le\te$, where the shifts $\sigma>0$ in $
 \begin{minipage}[b]{0.46\textwidth}\centering
 \includegraphics{figures/fig_screen_b.pdf}\\[2pt]{\footnotesize (b)}
 \end{minipage}\hfill\mbox{}
-\caption{Execution-opportunity screening. (a) Correction on the action box: the proposal $\ba$ triggers no mode event and is replaced by the nearest admissible candidate $\atil$; the dotted circle is the distance level set through $\atil$. (b) Critical-window condition of \eqref{eq:admissible}: the event predicted at $t+\tauhat$ is critical because the next pass, one spin period later, falls after $\te$.}
+\caption{Execution-opportunity coordination. (a) Correction on the action box: the proposal $\ba$ triggers no mode event and is replaced by the nearest admissible candidate $\atil$; the dotted circle is the distance level set through $\atil$. (b) Critical-window condition of \eqref{eq:admissible}: the event predicted at $t+\tauhat$ is critical because the next pass, one spin period later, falls after $\te$.}
 \label{fig:screen}
 \end{figure*}
 

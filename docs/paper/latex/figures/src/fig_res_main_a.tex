@@ -1,11 +1,11 @@
 \documentclass[border=1pt]{standalone}
 \input{preamble}
 \begin{document}
-% Outcome composition of the four learned methods on 288 test tasks (3 seeds x 96 initial conditions).
+% Outcome composition of the six learning methods on 288 test tasks (3 seeds x 96 initial conditions).
 \begin{tikzpicture}[font=\footnotesize]
-\begin{axis}[resstyle,xbar stacked,bar width=9pt,width=5.7cm,height=4.4cm,xmin=0,xmax=100,
-  ytick={0,1,2,3},yticklabels={ECC,{ECC w/o feedback},{ECC w/o screening},SAC--MPC},y dir=reverse,
-  ymin=-0.6,ymax=3.6,xlabel={Share of tasks (\%)},xlabel style={yshift=3pt},ymajorgrids=false,
+\begin{axis}[resstyle,xbar stacked,bar width=8pt,width=5.9cm,height=5.2cm,xmin=0,xmax=100,
+  ytick={0,1,2,3,4,5},yticklabels={ECC,{w/o execution inputs},{w/o long-range entry},{w/o coordination},SAC--MPC,TD3--MPC},y dir=reverse,
+  ymin=-0.6,ymax=5.6,xlabel={Share of tasks (\%)},xlabel style={yshift=3pt},ymajorgrids=false,
   legend style={at={(0.5,1.02)},anchor=south,legend columns=3,column sep=3pt},legend image code/.code={\fill[#1] (0cm,-0.08cm) rectangle (0.25cm,0.1cm);}]
 \addplot[fill=oCap,draw=white,point meta=explicit symbolic,nodes near coords,nodes near coords style={font=\scriptsize,text=white,anchor=east,xshift=-1pt}] table[x=capture,y=y,meta=ncap]{data/outcomes.dat}; \addlegendentry{capture}
 \addplot[fill=oTime,draw=white] table[x=timeout,y=y]{data/outcomes.dat}; \addlegendentry{timeout}
