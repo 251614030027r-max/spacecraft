@@ -15,27 +15,21 @@ def _fill(root, config, seed, captures, unsafe=0):
     (run / 'episodes.json').write_text(json.dumps(eps))
 
 
-def test_verdict_follows_the_registered_rule(tmp_path):
+def test_summary_counts_outcomes_per_seed_and_training_quarters(tmp_path):
     for seed in (0, 1, 2):
-        _fill(tmp_path, 'ECC', seed, 80 - (4 if seed == 0 else 0))
-        _fill(tmp_path, 'ECC_LEAD24', seed, 82, unsafe=0)
+        _fill(tmp_path, 'ECC', seed, 80 - (4 if seed == 0 else 0), unsafe=1)
     s, table = R.readout(tmp_path)
-    assert len(table) == 576 and s['configs']['ECC']['total']['captures'] == 236
-    assert s['verdict']['potential_for_formal'] == 'opportunity'                       # 236 >= 246 - 10
-    assert s['configs']['ECC']['per_seed']['0']['training']['hover_signal'] is False
+    c = s['configs']['ECC']
+    assert len(table) == 288 and c['complete'] and c['total']['captures'] == 236 and c['total']['unsafe'] == 3
+    assert c['per_seed']['0']['captures'] == 76 and c['per_seed']['0']['corrections_per_episode'] == 1.0
+    t = c['per_seed']['0']['training']
+    assert t['first_quarter']['capture_share'] == 0.0 and t['last_quarter']['capture_share'] == 1.0 and t['hover_signal'] is False
+    assert 'verdict' not in s
 
 
-def test_worse_by_more_than_ten_keeps_the_first_draft_potential(tmp_path):
-    for seed in (0, 1, 2):
-        _fill(tmp_path, 'ECC', seed, 78)
-        _fill(tmp_path, 'ECC_LEAD24', seed, 82)
-    assert R.readout(tmp_path)[0]['verdict']['potential_for_formal'] == 'lead24'      # 234 < 246 - 10
-
-
-def test_missing_results_give_no_verdict(tmp_path):
+def test_missing_results_are_listed(tmp_path):
     for seed in (0, 1, 2):
         _fill(tmp_path, 'ECC', seed, 80)
-        _fill(tmp_path, 'ECC_LEAD24', seed, 80)
     (tmp_path / 'C' / 'ECC_s1' / 'ECC_s1_295310.json').unlink()
     s = R.readout(tmp_path)[0]
-    assert s['verdict'] is None and s['configs']['ECC']['per_seed']['1']['missing_or_error'] == [295310]
+    assert not s['configs']['ECC']['complete'] and s['configs']['ECC']['per_seed']['1']['missing_or_error'] == [295310]

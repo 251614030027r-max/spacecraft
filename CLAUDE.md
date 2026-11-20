@@ -11,12 +11,12 @@ otherwise flies the critical opportunity of least change (nearest grid intent at
 entry at the last usable pass); the frozen planners and MPC fly entry, descent and capture. Standard SAC (actor and
 critics read the same 17-value observation; the first draft's critic inputs z are removed, DEAD_ENDS D46); single
 time-limited task (deadline U(140, 200) s, 3.0 m/s); training potential = opportunity-reachability potential.
-Configurations `ECC`, `ECC_NO_CORE`, `SAC_MPC`, `TD3_MPC` (+ `ECC_LEAD24` for the development check only).
+Configurations `ECC`, `ECC_NO_CORE`, `SAC_MPC`, `TD3_MPC`.
 
 **State (2026-11-19):** first draft done (`evidence/PAPER_READOUT/`, paper `docs/paper/latex/`, ECC_LE 251/288; that
-code is science `72a8d41`). Round 2: repository cleaned, method consolidated, potential implemented; next the
-development check (`dev` stage, seeds 0-2, 3000 decisions, openings 295300-295395), then the feedback-mechanism
-development round (to be discussed), then the formal design. History: `docs/HISTORY.md`; refuted directions:
+code is science `72a8d41`). Round 2: repository cleaned, method consolidated, potential implemented and adopted
+without a separate check (user 2026-11-20); next the feedback-mechanism development round (`dev` stage, seeds 0-2,
+3000 decisions, openings 295300-295395; design to be discussed), then the formal design. History: `docs/HISTORY.md`; refuted directions:
 `docs/DEAD_ENDS.md`; live state: collab `PROJECT_STATE.md` (wins over anything here).
 
 ## Start here

@@ -38,4 +38,4 @@
 | F01 / V3 线 | `E01`–`E08`、`historical/` | 价值仲裁与停止选项；结论见 DEAD_ENDS D01–D1x |
 | 开题 PPT 图 | `ppt_dev/` | 不用于论文 |
 
-**第二轮**的证据：开发检查放 `R2_DEV/`，正式实验放 `R2_FORMAL/`（执行书在 collab 分支）。
+**第二轮**的证据：反馈机制开发放 `R2_DEV/`，正式实验放 `R2_FORMAL/`（执行书在 collab 分支）。

@@ -24,7 +24,7 @@
 | 关键意图机会 O_I | `_opportunity_eval`（`critical`）：`event ∧ t + τ̂ + P > L ∧ used + Δv̂ + Δv̂_entry ≤ B_max` | `_coordinate` | ✓ | ✓ | P = 2π/‖ω‖ |
 | 协调规则 𝒞 | `_coordinate`：原意图有事件即保持；否则 O_I 中 (‖b − a‖, τ̂) 最小者；否则末次可用经过时启动直接入口（O_L，`start_direct_gstar`）；否则保持 | `step`（模式 S / H，`coordination = True`） | ✓ | ✓（manifest 记录 coordination / correction / long_entry，评估按训练方式，可加登记的评估开关） | 原意图不套用关键性 / 燃料条件 |
 | 存储提出动作 | `worker`：`transition = (obs, next_obs, action, ...)`，其中 `action` 是策略发来的提议 | 每宏步 | ✓ | — | 回报与后继来自认证后执行 |
-| 塑形 r̃ | `step`：`reward + GAMMA_STAGE·Φ(x′) − Φ(x)`（终局 0）；`_phi`：`opportunity` = −min(25, 0.1·T_go)（`nominal_entry_time`、`time_to_entry`），`lead24` 为第一稿势函数（只用于开发检查） | 每宏步 | ✓（`shaping = True`） | ✗（评估 `shaping = False`，报告 `return_true`） | — |
+| 塑形 r̃ | `step`：`reward + GAMMA_STAGE·Φ(x′) − Φ(x)`（终局 0）；`_phi`：`opportunity` = −min(25, 0.1·T_go)（`nominal_entry_time`、`time_to_entry`），`lead24` 为第一稿势函数（只用于复现 `evidence/R2_EQUIV`） | 每宏步 | ✓（`shaping = True`） | ✗（评估 `shaping = False`，报告 `return_true`） | — |
 | 真实回报 | `T1Reward`（捕获 +100、超时 / 耗尽 −100、不安全 −150）+ 任务时间 / 燃料代价 | — | — | ✓ | 0.10 /s、10 /(m/s) |
 | SAC 设置 | `make_model`：[256, 256]、3e-4、10⁵、256、起步 200、`gradient_steps = 2`、`ENT_COEF = 0.05`、τ = 0.005 | `train` | ✓ | — | 异步 2 个采集进程；每次动作请求都由学习进程用当前策略作答（采集进程不持有策略副本）。多进程时转移到达顺序取决于进程快慢（记录为 `worker_order`），因此多进程训练不能逐位复现，单进程可以 |
 | 任务 | `T2Mission`：限时捕获，期限 U(140, 200) s、预算 3.0 m/s；同一编号的期限与第一稿紧急条件相同 | `reset` | ✓ | ✓ | — |

@@ -451,7 +451,7 @@ class T2StageEnv(gym.Env):
         self.long_entry = bool(long_entry)
         if potential not in POTENTIALS:
             raise ValueError(f"unknown potential {potential!r}: {POTENTIALS}")
-        #: training potential: 'opportunity' (round 2) or 'lead24' (first draft; development check only)
+        #: training potential: 'opportunity' (round 2) or 'lead24' (first draft; kept only to reproduce evidence/R2_EQUIV)
         self.potential_kind = potential
         self.prober = None
         self._opp = None                       # the decision state's opportunity evaluation (cached per decision)
