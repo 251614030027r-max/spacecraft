@@ -29,6 +29,7 @@ python -B -m experiments.final traj    --entry ECC=RUN --openings A,B --output D
 python -B -m experiments.final check   --stage dev --root ROOT --output ROOT/CHECK.json
 python -B -m experiments.final resolve --stage dev --root ROOT --output ROOT/REGISTRY_RESOLVED.json
 tensorboard --logdir ROOT/B                                                              # 学习曲线（每个运行的 tb/）
+python -B -m experiments.r2_dev_readout --root ROOT --output ROOT/READOUT                # 开发轮读数与预登记判定
 ```
 
 冒烟（不用任何登记种子）：`train --stage dev --config ECC --seed 7 --smoke-steps 40 --workers 1 --output ...`，`eval --openings 294300-294301`。
