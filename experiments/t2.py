@@ -47,7 +47,8 @@ def run_episode(env, opening, act, record=None):
             **({'initial': initial, **env.episode_audit(),
                 'coord_wall_s_total': sum(d['coord'].get('wall_s', 0.0) for d in decisions if 'coord' in d),
                 'coord_decisions': sum('coord' in d for d in decisions)} if env.audit_logging else {}),
-            'corrections': s.get('corrections', 0), 'long_entries': s.get('long_entries', 0)}
+            'corrections': s.get('corrections', 0), 'long_entries': s.get('long_entries', 0),
+            'value_arbitrations': s.get('value_arbitrations', 0), 'arbitration_changed': s.get('arbitration_changed', 0)}
 
 
 def guarded(fn):
@@ -109,11 +110,19 @@ EXEC_KEYS = ('geometry', 'window', 'coordination', 'correction', 'long_entry')
 
 
 def exec_config_of(checkpoint) -> dict:
-    """The executor configuration a checkpoint was trained with."""
+    """The executor configuration a checkpoint was trained with (evaluation does not store experience, so the
+    equivalence switch is not part of it)."""
     d = run_manifest(checkpoint)
     if d.get('obs_dim') is None or 'coordination' not in d:
         raise ValueError(f'{checkpoint}: not a round-2 run (first-draft models load at science 72a8d41)')
-    return {k: bool(d[k]) for k in EXEC_KEYS}
+    return {**{k: bool(d[k]) for k in EXEC_KEYS}, 'arbitration': d.get('arbitration', 'nearest')}
+
+
+def attach_ranker(env, model) -> None:
+    """Value arbitration ranks with the evaluated model's critic (fixed, so the coordination map is deterministic)."""
+    if env.arbitration == 'value':
+        from train.t2_mve_sac import critic_ranker
+        env.ranker = critic_ranker(model)
 
 
 def load_checkpoint(checkpoint):
@@ -132,6 +141,7 @@ def eval_job(job):
     cfg = {**exec_config_of(checkpoint), **(job.get('env') or {})}     # registered evaluation switches on top
     env = T2StageEnv(openings=[opening], shaping=False, **cfg)
     env.audit_logging = bool(job.get('audit', False))
+    attach_ranker(env, model)
     res = run_episode(env, opening, lambda e, o: model.predict(o, deterministic=True)[0])
     res.update(policy=label, checkpoint=str(checkpoint), exec_config=cfg, entries_lost=env.stats.get('entries_lost', 0),
                window_recoveries=env.generator.bridge.recovery_log); dump(file, res); return res

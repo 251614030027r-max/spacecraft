@@ -36,7 +36,7 @@ ENT_COEF = 0.05
 SIGMA_DECAY = 0.99        # running mean of the squared real TD residual (diagnostic)
 #: critic / actor updates per stored real transition
 UPDATES_PER_TRANSITION = 2
-LEARNER_VERSION = "t2-learner-9.0"  # 9.0: round 2 (one observation for actor and critics, TensorBoard, final model only)
+LEARNER_VERSION = "t2-learner-9.1"  # 9.1: value arbitration requests and execution-equivalence experience (FEEDBACK_DEV)
 ALGOS = ('sac', 'td3')
 #: episodes in the TensorBoard moving capture rate
 TB_WINDOW = 100
@@ -71,12 +71,25 @@ class T2SAC(SAC):
     def __init__(self, *args, **kwargs):
         self.model_stats = []
         self.td_ms = None          # running mean of the squared real TD residual (sigma^2)
+        #: execution-equivalence experience (``docs/final_method/FEEDBACK_DEV.md`` 2.2): critic regression only
+        self.eq_buffer = None
         kwargs.setdefault('replay_buffer_class', StageReplay)
         kwargs.setdefault('ent_coef', ENT_COEF)   # fixed (DEAD_ENDS D02)
         super().__init__(*args, **kwargs)
 
     def _excluded_save_params(self):
-        return [*super()._excluded_save_params(), 'model_stats']
+        return [*super()._excluded_save_params(), 'model_stats', 'eq_buffer']
+
+    def enable_equivalence(self) -> None:
+        self.eq_buffer = StageReplay(self.buffer_size, self.observation_space, self.action_space, device=self.device,
+                                     n_envs=1, optimize_memory_usage=False)
+
+    def equivalence_batch(self, batch_size: int) -> int:
+        """k = min(batch, round(batch * N_eq / N_real)): equivalence samples added to a critic batch."""
+        if self.eq_buffer is None or self.eq_buffer.size() == 0:
+            return 0
+        n_real = max(self.replay_buffer.model_counts['transitions'], 1)
+        return int(min(batch_size, round(batch_size * self.eq_buffer.model_counts['transitions'] / n_real)))
 
     def _soft_value(self, obs, ent_coef):
         a, logp = self.actor.action_log_prob(obs)
@@ -89,9 +102,15 @@ class T2SAC(SAC):
         for step in range(gradient_steps):
             data = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)
             actions_pi, log_prob = self.actor.action_log_prob(data.observations); log_prob = log_prob.reshape(-1, 1)
+            obs_c, act_c, next_c, rew_c, done_c = data.observations, data.actions, data.next_observations, data.rewards, data.dones
+            k = self.equivalence_batch(batch_size)
+            if k:                                  # the critic also regresses on execution-equivalent proposals
+                eq = self.eq_buffer.sample(k, env=self._vec_normalize_env)
+                obs_c, act_c = th.cat([obs_c, eq.observations]), th.cat([act_c, eq.actions])
+                next_c, rew_c, done_c = th.cat([next_c, eq.next_observations]), th.cat([rew_c, eq.rewards]), th.cat([done_c, eq.dones])
             with th.no_grad():
-                target = data.rewards + (1 - data.dones) * self.gamma * self._soft_value(data.next_observations, ent_coef)
-            current = self.critic(data.observations, data.actions)
+                target = rew_c + (1 - done_c) * self.gamma * self._soft_value(next_c, ent_coef)
+            current = self.critic(obs_c, act_c)
             real = 0.5 * sum(F.mse_loss(q, target) for q in current)
             with th.no_grad():
                 ms = float(sum(((q - target) ** 2).mean() for q in current) / len(current))
@@ -106,7 +125,7 @@ class T2SAC(SAC):
             if (self._n_updates + step) % 25 == 0:
                 self.model_stats.append({'steps': int(self.num_timesteps), 'update': int(self._n_updates + step), 'real_td': float(real.item()),
                                          'sigma': float(np.sqrt(self.td_ms)), 'actor_loss': float(actor_loss.item()),
-                                         'q_pi_mean': float(q_pi.mean().item())})
+                                         'q_pi_mean': float(q_pi.mean().item()), **({'equivalence_batch': k} if k else {})})
         self._n_updates += gradient_steps
 
 
@@ -180,9 +199,25 @@ class SpacesEnv(gym.Env):
 
 
 def _slim(info: dict) -> dict:
-    """What the learner process keeps from a step's info."""
-    return {k: info[k] for k in ('event', 'time_s', 'delta_v', 'mission', 'true_reward', 'exec_stats', 'min_margins', 'terminal')
-            if k in info}
+    """What the learner process keeps from a step's info (with the execution-equivalent grid intents, if any)."""
+    out = {k: info[k] for k in ('event', 'time_s', 'delta_v', 'mission', 'true_reward', 'exec_stats', 'min_margins', 'terminal')
+           if k in info}
+    equivalent = (info.get('coord') or {}).get('equivalent')
+    if equivalent:
+        out['equivalent'] = equivalent
+    return out
+
+
+def critic_ranker(model):
+    """ranker(observation, candidates) -> min(Q1, Q2) of each candidate under the model's current critic
+    (``docs/final_method/FEEDBACK_DEV.md`` 2.1)."""
+    def rank(obs, cands):
+        cands = np.asarray(cands, np.float32).reshape(-1, 2)
+        o = th.as_tensor(np.repeat(np.asarray(obs, np.float32).reshape(1, -1), len(cands), axis=0))
+        with th.no_grad():
+            q = th.min(th.cat(model.critic(o, th.as_tensor(cands)), dim=1), dim=1).values
+        return q.numpy().astype(np.float64).tolist()
+    return rank
 
 
 def worker(conn, rank: int, seed: int, env_kwargs: dict, audit_logging: bool = False) -> None:
@@ -195,6 +230,11 @@ def worker(conn, rank: int, seed: int, env_kwargs: dict, audit_logging: bool = F
     from env.t2_stage import T2StageEnv
     env = T2StageEnv(seed_base=1_000_000 * (seed + 1) + rank * 100_000, shaping=True, **env_kwargs)
     env.audit_logging = audit_logging
+    if env.arbitration == 'value':                 # the learner's current critic ranks the executor's executable set
+        def ranker(obs, cands):
+            conn.send(('rank', np.asarray(obs, np.float32), np.asarray(cands, np.float32)))
+            return conn.recv()
+        env.ranker = ranker
     obs, _ = env.reset(); transition = None
     while True:
         conn.send((transition, obs))
@@ -205,7 +245,8 @@ def worker(conn, rank: int, seed: int, env_kwargs: dict, audit_logging: bool = F
         if term or trunc:                         # the episode's executor statistics (logging only)
             st = env.stats or {}
             info['exec_stats'] = {**{k: st.get(k, 0) for k in ('stages', 'holds', 'rejected', 'bridge_attempts', 'rate_limited',
-                                                               'entries_lost', 'corrections', 'long_entries')},
+                                                               'entries_lost', 'corrections', 'long_entries', 'value_arbitrations',
+                                                               'arbitration_changed', 'equivalent_samples')},
                                   'window_recoveries': int(getattr(env.generator.bridge, 'recoveries', 0)) if env.generator is not None else 0}
         transition = (obs, next_obs, np.asarray(action, np.float32), float(reward), bool(term), bool(trunc), _slim(info))
         obs = env.reset()[0] if (term or trunc) else next_obs
@@ -239,11 +280,14 @@ class TrainingLog:
         w.add_scalar('episode/delta_v', float(ep.get('delta_v') or 0.0), step)
         w.add_scalar('episode/corrections', float(st.get('corrections', 0)), step)
         w.add_scalar('episode/long_entries', float(st.get('long_entries', 0)), step)
+        w.add_scalar('episode/equivalent_samples', float(st.get('equivalent_samples', 0)), step)
+        w.add_scalar('episode/value_arbitrations', float(st.get('value_arbitrations', 0)), step)
+        w.add_scalar('episode/arbitration_changed', float(st.get('arbitration_changed', 0)), step)
         w.add_scalar(f'rolling/capture_rate_{TB_WINDOW}', sum(self.recent) / len(self.recent), step)
 
     def updates(self, step: int, stats: list) -> None:
         for row in stats[self.updates_logged:]:
-            for key in ('real_td', 'actor_loss', 'q_pi_mean'):
+            for key in ('real_td', 'actor_loss', 'q_pi_mean', 'equivalence_batch'):
                 if row.get(key) is not None:
                     self.writer.add_scalar(f'train/{key}', float(row[key]), step)
         self.updates_logged = len(stats)
@@ -281,6 +325,11 @@ def train(out: Path, algo: str, seed: int, steps: int, workers: int, env_kwargs:
                                                    'obs_dim': OBS_DIM, 'env_version': T2_VERSION, 'learner_version': LEARNER_VERSION,
                                                    **algo_manifest, **(manifest_extra or {})}, indent=1), encoding='utf-8')
     log = TrainingLog(out / 'tb')
+    ranker = critic_ranker(model)
+    if env_kwargs.get('equivalence'):
+        if algo != 'sac':
+            raise ValueError('execution-equivalence experience is defined for SAC only')
+        model.enable_equivalence()
     ctx = mp.get_context('spawn')
     pipes, procs = [], []
     for rank in range(workers):
@@ -302,13 +351,19 @@ def train(out: Path, algo: str, seed: int, steps: int, workers: int, env_kwargs:
     active = list(pipes)
     while active:
         for conn in wait(active):
-            transition, obs = conn.recv()
+            msg = conn.recv()
+            if isinstance(msg, tuple) and len(msg) == 3 and isinstance(msg[0], str) and msg[0] == 'rank':
+                conn.send(ranker(msg[1], msg[2]))          # value arbitration inside the worker's step
+                continue
+            transition, obs = msg
             w_ = pipes.index(conn)
             if transition is not None and model.num_timesteps < steps:
                 o, o1, act, r, term, trunc, info = transition
                 done = term or trunc
                 info = dict(info, **({'TimeLimit.truncated': True} if trunc and not term else {}))
                 model.replay_buffer.add(o[None], o1[None], act[None], np.array([r]), np.array([done]), [info])
+                for b in info.get('equivalent') or []:  # execution-equivalence experience: the same real transition
+                    model.eq_buffer.add(o[None], o1[None], np.asarray(b, np.float32)[None], np.array([r]), np.array([done]), [info])
                 model.num_timesteps += 1; order.append(w_)
                 ret_true[w_] = ret_true.get(w_, 0.0) + float(info.get('true_reward') or 0.0); ret_shaped[w_] = ret_shaped.get(w_, 0.0) + float(r)
                 if done:
@@ -338,4 +393,6 @@ def train(out: Path, algo: str, seed: int, steps: int, workers: int, env_kwargs:
     progress()
     log.close()
     (out / 'finished.json').write_text(json.dumps({'steps': int(model.num_timesteps), 'updates': int(model._n_updates), 'wall_s': time.time() - t0,
-                                                   'worker_order': order, 'replay': model.replay_buffer.model_counts}), encoding='utf-8')
+                                                   'worker_order': order, 'replay': model.replay_buffer.model_counts,
+                                                   **({'equivalence_samples': model.eq_buffer.model_counts['transitions']}
+                                                      if getattr(model, 'eq_buffer', None) is not None else {})}), encoding='utf-8')

@@ -14,11 +14,11 @@ def test_registered_configurations_match_the_spec():
     assert t['ECC'] == {**t['ECC'], 'algo': 'sac', 'coordination': True, 'correction': True, 'long_entry': True, 'potential': 'opportunity'}
     assert t['ECC_NO_CORE']['correction'] is False and t['ECC_NO_CORE']['long_entry'] is True
     assert not t['SAC_MPC']['coordination'] and t['TD3_MPC']['algo'] == 'td3' and not t['TD3_MPC']['coordination']
-    assert set(t) == {'ECC', 'ECC_NO_CORE', 'SAC_MPC', 'TD3_MPC'} and {c['potential'] for c in t.values()} == {'opportunity'}
+    assert set(t) == {'ECC', 'ECC_NO_CORE', 'SAC_MPC', 'TD3_MPC', 'ECC_FB', 'ECC_EQ'} and {c['potential'] for c in t.values()} == {'opportunity'}
     assert reg['eval_switches']['no_long_entry']['env'] == {'long_entry': False}
     assert reg['fixed'] == {'pure': reg['fixed']['pure']}
     dev = final.stage_of('dev')
-    assert dev['steps'] == 3000 and dev['seeds'] == [0, 1, 2] and dev['trained'] == ['ECC']
+    assert dev['steps'] == 3000 and dev['seeds'] == [0, 1, 2] and dev['trained'] == ['ECC', 'ECC_FB', 'ECC_EQ']
     assert final.block(dev['eval_openings']) == list(range(295300, 295396))
 
 
@@ -83,8 +83,9 @@ def test_resume_verifies_existing_bytes_before_skip(tmp_path):
 
 def test_completeness_report_requires_runs_results_and_tensorboard(tmp_path):
     rep = final.check_stage(tmp_path, 'dev')
-    assert not rep['complete'] and len(rep['missing_runs']) == 3 and len(rep['evaluations']) == 3
-    for cfg in ('ECC',):
+    assert not rep['complete'] and len(rep['missing_runs']) == 6 and len(rep['evaluations']) == 6
+    assert rep['conditional_not_run'] == ['ECC_EQ']
+    for cfg in ('ECC', 'ECC_FB'):
         for seed in (0, 1, 2):
             run = tmp_path / 'B' / f'TRAIN_{cfg}_s{seed}'; (run / 'tb').mkdir(parents=True)
             (run / 'manifest.json').write_text('{}'); (run / 'finished.json').write_text(json.dumps({'steps': 3000}))
@@ -93,3 +94,5 @@ def test_completeness_report_requires_runs_results_and_tensorboard(tmp_path):
             for o in range(295300, 295396):
                 (c / f'{cfg}_s{seed}_{o}.json').write_text('{}')
     assert final.check_stage(tmp_path, 'dev')['complete']
+    (tmp_path / 'B' / 'TRAIN_ECC_EQ_s0').mkdir()                       # once triggered, the conditional session must complete
+    assert not final.check_stage(tmp_path, 'dev')['complete']

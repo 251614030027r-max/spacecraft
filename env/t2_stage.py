@@ -140,6 +140,7 @@ POTENTIAL_RATE_PER_S = TIME_COST_PER_S # the task's time cost per second of the 
 NOMINAL_STEP_S = 0.5
 NOMINAL_HORIZON_S = 400.0
 POTENTIALS = ("opportunity", "lead24")
+ARBITRATIONS = ("nearest", "value")
 
 
 def nominal_entry_time(r: float, lat_deg: float, task) -> float:
@@ -440,7 +441,8 @@ class T2StageEnv(gym.Env):
 
     def __init__(self, openings: list[int] | None = None, seed_base: int = 1_000_000, mission: T2Mission = T2Mission(),
                  shaping: bool = True, geometry: bool = True, window: bool = True, coordination: bool = False,
-                 correction: bool = True, long_entry: bool = True, potential: str = "opportunity") -> None:
+                 correction: bool = True, long_entry: bool = True, potential: str = "opportunity",
+                 arbitration: str = "nearest", equivalence: bool = False) -> None:
         self.geometry = bool(geometry)
         self.window = bool(window)
         #: ECC coordination (``_coordinate``): the same map in training and execution
@@ -449,6 +451,15 @@ class T2StageEnv(gym.Env):
         self.correction = bool(correction)
         #: the direct-entry opportunity O_L at the last usable pass; off: "w/o long-range entry"
         self.long_entry = bool(long_entry)
+        if arbitration not in ARBITRATIONS:
+            raise ValueError(f"unknown arbitration {arbitration!r}: {ARBITRATIONS}")
+        #: choice among the critical grid intents (``docs/final_method/FEEDBACK_DEV.md`` 2.1): 'nearest' (first draft) or
+        #: 'value' (the learner's critic ranks the executor's executable set; needs ``ranker``)
+        self.arbitration = arbitration
+        #: execution-equivalence experience (FEEDBACK_DEV 2.2): report the grid intents mapped to the executed action
+        self.equivalence = bool(equivalence)
+        #: ranker(observation, candidates (n, 2)) -> n critic values min(Q1, Q2); set by the learner or the evaluator
+        self.ranker = None
         if potential not in POTENTIALS:
             raise ValueError(f"unknown potential {potential!r}: {POTENTIALS}")
         #: training potential: 'opportunity' (round 2) or 'lead24' (first draft; kept only to reproduce evidence/R2_EQUIV)
@@ -728,16 +739,23 @@ class T2StageEnv(gym.Env):
         if own["event"]:
             return done(a)
         if opp is not None:
-            best = None
-            for b, d in zip(PROBE_GRID, opp["rows"]):
-                if not d["critical"]:
-                    continue
-                key = (float(np.linalg.norm(np.asarray(b) - a)), float(d["t"]))
-                if best is None or key < best[0]:
-                    best = (key, b, d)
-            if best is not None:
+            crit = [(i, b, d) for i, (b, d) in enumerate(zip(PROBE_GRID, opp["rows"])) if d["critical"]]
+            if crit:
+                near = min(crit, key=lambda c: (float(np.linalg.norm(np.asarray(c[1]) - a)), float(c[2]["t"]), c[0]))
+                best = near
+                if self.arbitration == "value":
+                    if self.ranker is None:
+                        raise RuntimeError("value arbitration needs a ranker (the learner's or the evaluated model's critic)")
+                    q = [float(x) for x in self.ranker(self.observation(), np.asarray([c[1] for c in crit], np.float32))]
+                    best = min(zip(crit, q), key=lambda cq: (-cq[1], float(cq[0][2]["t"]), cq[0][0]))[0]
+                    rec["q"] = {str(list(c[1])): v for c, v in zip(crit, q)}
+                    self.stats["value_arbitrations"] = self.stats.get("value_arbitrations", 0) + 1
+                    self.stats["arbitration_changed"] = self.stats.get("arbitration_changed", 0) + int(best[0] != near[0])
                 self.stats["corrections"] = self.stats.get("corrections", 0) + 1
                 rec.update(kind="correct", a_exec=[float(x) for x in best[1]], alt_t=float(best[2]["t"]), alt_kind=best[2]["kind"])
+                if self.equivalence:
+                    rec["equivalent"] = self._equivalent(a, opp, crit, best)
+                    self.stats["equivalent_samples"] = self.stats.get("equivalent_samples", 0) + len(rec["equivalent"])
                 return done(np.asarray(best[1], np.float64))
         if self.long_entry:
             q, _ = relative_inertial(self.env)
@@ -747,10 +765,36 @@ class T2StageEnv(gym.Env):
                 self.stats["long_entries"] = self.stats.get("long_entries", 0) + 1
                 self._bridge = {"t": self.env.time_s, "tau": float(self.generator.bridge.plan["tau_s"])}
                 rec["kind"] = "launch"
+                if self.equivalence and opp is not None:
+                    rec["equivalent"] = self._equivalent(a, opp, [], None)
+                    self.stats["equivalent_samples"] = self.stats.get("equivalent_samples", 0) + len(rec["equivalent"])
                 return done(a)
         rec["kind"] = "none"
         return done(a)
 
+
+    def _equivalent(self, a: np.ndarray, opp: dict, crit: list, best) -> list[list[float]]:
+        """The grid intents (other than the proposal) that the coordination maps to the executed action
+        (``docs/final_method/FEEDBACK_DEV.md`` 2.2), judged on the executor's grid evaluation: the executed critical
+        intent itself and the grid intents without a predicted event whose choice would be the same -- under value
+        arbitration all of them (the choice does not depend on the proposal), under the nearest rule those whose nearest
+        critical intent is the executed one; for a launched direct entry (no critical intent) all event-less intents."""
+        from env.t2_probe import PROBE_GRID
+        out = []
+        for i, (b, d) in enumerate(zip(PROBE_GRID, opp["rows"])):
+            bb = np.asarray(b, np.float64)
+            if np.array_equal(bb, a):
+                continue
+            if best is not None and i == best[0]:
+                out.append([float(x) for x in b]); continue
+            if d["event"]:
+                continue
+            if best is None or self.arbitration == "value":
+                out.append([float(x) for x in b]); continue
+            mine = min(crit, key=lambda c: (float(np.linalg.norm(np.asarray(c[1]) - bb)), float(c[2]["t"]), c[0]))
+            if mine[0] == best[0]:
+                out.append([float(x) for x in b])
+        return out
 
     # ---------------------------------------------------------------- read-only diagnostics (formal runs)
     def decision_audit(self, t, dv, frame):
@@ -859,4 +903,4 @@ class T2StageEnv(gym.Env):
 __all__ = ["T2Mission", "T2StageEnv", "T2_VERSION", "STAGE_S", "OBS_DIM", "OBS_FEATURES", "GAMMA_STAGE", "InfoEnv",
            "stage_goal", "spin_frame", "frame_now", "target_velocity", "action_for_velocity", "latitude_velocity",
            "d_authority", "observe", "t2_env_config", "window_half_width", "nominal_entry_time", "time_to_entry",
-           "POTENTIALS", "DEADLINE_S", "BUDGET_M_S"]
+           "POTENTIALS", "ARBITRATIONS", "DEADLINE_S", "BUDGET_M_S"]

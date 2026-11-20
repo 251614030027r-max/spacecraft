@@ -48,7 +48,8 @@ def stage_of(name: str) -> dict:
 
 def env_kwargs(config: dict) -> dict:
     """``T2StageEnv`` keyword arguments of a registered trained configuration."""
-    return {k: config[k] for k in ('geometry', 'window', 'coordination', 'correction', 'long_entry', 'potential')}
+    return {k: config[k] for k in ('geometry', 'window', 'coordination', 'correction', 'long_entry', 'potential', 'arbitration',
+                                   'equivalence')}
 
 
 def _all_stage_seeds() -> set:
@@ -191,7 +192,7 @@ def fly(opening: int, name: str, src: str, env_override: dict | None = None) -> 
     import torch; torch.set_num_threads(1)
     from env.t1_p_stage import relative_inertial
     from env.t2_stage import T2StageEnv, angle_deg, frame_now
-    from experiments.t2 import exec_config_of, load_checkpoint
+    from experiments.t2 import attach_ranker, exec_config_of, load_checkpoint
     model = None
     if src == 'pure':
         env = T2StageEnv(openings=[opening], shaping=False)
@@ -199,6 +200,7 @@ def fly(opening: int, name: str, src: str, env_override: dict | None = None) -> 
         ck = final_model(Path(src))
         env = T2StageEnv(openings=[opening], shaping=False, **{**exec_config_of(ck), **(env_override or {})})
         model = load_checkpoint(ck)
+        attach_ranker(env, model)
     env.audit_logging = True
     env.env.audit_controls = True
     obs, _ = env.reset(options={'opening': opening})
@@ -308,7 +310,11 @@ def check_stage(root: Path, stage: str) -> dict:
         report['errors'].extend(str(directory / p) for p in sorted(actual - expected))
         report['evaluations' if folder == 'C' else 'screens'][label] = {'files': len(actual & expected), 'expected': len(expected)}
 
+    report['conditional_not_run'] = []
     for config in st['trained']:
+        if config in st.get('conditional', {}) and not any((root / 'B' / f'TRAIN_{config}_s{s}').exists() for s in st['seeds']):
+            report['conditional_not_run'].append(config)    # a conditional session that has not been triggered
+            continue
         for seed in st['seeds']:
             run = root / 'B' / f'TRAIN_{config}_s{seed}'
             if not (run / 'manifest.json').is_file():
