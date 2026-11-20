@@ -17,7 +17,8 @@ arbitration + execution-equivalence experience) (`docs/final_method/FEEDBACK_DEV
 **State (2026-11-19):** first draft done (`evidence/PAPER_READOUT/`, paper `docs/paper/latex/`, ECC_LE 251/288; that
 code is science `72a8d41`). Round 2: repository cleaned, method consolidated, potential implemented and adopted
 without a separate check (user 2026-11-20); feedback mechanism designed (`FEEDBACK_DEV.md`); next its development
-round (collab RUN_R2_FB2: `dev` stage, seeds 0-2, 3000 decisions, openings 295300-295491, paired mechanism check),
+round (collab RUN_R2_FB2, running: local 4 runs + cloud 2 runs; `dev` stage, seeds 0-2, 3000 decisions, openings
+295300-295491, paired mechanism check; delivery with `experiments.final pack --root local --root cloud`),
 then the formal design. History: `docs/HISTORY.md`; refuted directions:
 `docs/DEAD_ENDS.md`; live state: collab `PROJECT_STATE.md` (wins over anything here).
 

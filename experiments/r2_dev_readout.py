@@ -18,13 +18,14 @@ import csv
 import json
 from pathlib import Path
 
-from experiments.final import block, stage_of
+from experiments.final import Roots, block, stage_of
 
 
-def episodes(root: Path, config: str, seed: int, openings: list[int]) -> tuple[list[dict], list[int]]:
+def episodes(root, config: str, seed: int, openings: list[int]) -> tuple[list[dict], list[int]]:
     rows, missing = [], []
+    R = Roots(root)
     for o in openings:
-        f = root / 'C' / f'{config}_s{seed}' / f'{config}_s{seed}_{o}.json'
+        f = R.find('C', f'{config}_s{seed}', f'{config}_s{seed}_{o}.json')
         if not f.is_file():
             missing.append(o); continue
         r = json.loads(f.read_text(encoding='utf-8'))
@@ -66,7 +67,7 @@ def training(run: Path) -> dict | None:
     return {'episodes': len(eps), 'first_quarter': first, 'last_quarter': last, 'hover_signal': hover}
 
 
-def readout(root: Path, stage: str = 'dev') -> tuple[dict, list[dict]]:
+def readout(root, stage: str = 'dev') -> tuple[dict, list[dict]]:
     st = stage_of(stage)
     ops = block(st['eval_openings'])
     summary, table = {'stage': stage, 'openings': st['eval_openings'], 'configs': {}}, []
@@ -75,7 +76,7 @@ def readout(root: Path, stage: str = 'dev') -> tuple[dict, list[dict]]:
         for seed in st['seeds']:
             rows, missing = episodes(root, config, seed, ops)
             per_seed[str(seed)] = {**outcome(rows), 'missing_or_error': missing,
-                                   'training': training(root / 'B' / f'TRAIN_{config}_s{seed}')}
+                                   'training': training(Roots(root).find('B', f'TRAIN_{config}_s{seed}'))}
             incomplete |= bool(missing)
             rows_all += rows
         summary['configs'][config] = {'per_seed': per_seed, 'total': outcome(rows_all), 'complete': not incomplete,
@@ -90,7 +91,7 @@ P_CAPTURE_MARGIN, P_UNSAFE_TOLERANCE, P_SEEDS_NOT_WORSE = 10, 1, 2
 M_CAPTURE_MARGIN, M_FLIP_RATIO, M_UNSAFE_TOLERANCE = 3, 2, 1
 
 
-def paired(root: Path, stage: str = 'dev', config: str = 'ECC_FB', switch: str = 'nearest_arbitration') -> dict | None:
+def paired(root, stage: str = 'dev', config: str = 'ECC_FB', switch: str = 'nearest_arbitration') -> dict | None:
     """The same models evaluated with and without the switch: captures, unsafe and flips per opening and seed."""
     st = stage_of(stage)
     ops = block(st['eval_openings'])
@@ -113,10 +114,11 @@ def paired(root: Path, stage: str = 'dev', config: str = 'ECC_FB', switch: str =
             'arbitration_changed_on': sum(r['arbitration_changed'] for r, _ in both)}
 
 
-def _switch_rows(root: Path, config: str, seed: int, switch: str, ops: list[int]):
+def _switch_rows(root, config: str, seed: int, switch: str, ops: list[int]):
     rows, missing = [], []
+    R = Roots(root)
     for o in ops:
-        f = root / 'C' / f'{config}_s{seed}_{switch}' / f'{config}_s{seed}_{switch}_{o}.json'
+        f = R.find('C', f'{config}_s{seed}_{switch}', f'{config}_s{seed}_{switch}_{o}.json')
         if not f.is_file():
             missing.append(o); continue
         r = json.loads(f.read_text(encoding='utf-8'))
@@ -156,12 +158,12 @@ def write_episodes_csv(path: Path, table: list[dict]) -> None:
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--root', required=True); p.add_argument('--output', required=True); p.add_argument('--stage', default='dev')
+    p.add_argument('--root', action='append', required=True); p.add_argument('--output', required=True); p.add_argument('--stage', default='dev')
     a = p.parse_args()
     out = Path(a.output); out.mkdir(parents=True, exist_ok=True)
-    summary, table = readout(Path(a.root), a.stage)
+    summary, table = readout(a.root, a.stage)
     if a.stage == 'dev':
-        summary['paired_mechanism'] = paired(Path(a.root), a.stage)
+        summary['paired_mechanism'] = paired(a.root, a.stage)
         summary['verdict'] = feedback_verdict(summary, summary['paired_mechanism'])
     else:
         summary['verdict'] = None

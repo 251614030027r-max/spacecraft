@@ -58,3 +58,41 @@ def test_preflight_records_the_state(tmp_path):
     rec = final.preflight(tmp_path, run_tests=False)
     assert {'science_sha', 'clean_tree', 'logical_cores', 'versions', 'started'} <= rec.keys()
     assert json.loads((tmp_path / 'PREFLIGHT.json').read_text())['science_sha'] == rec['science_sha']
+
+
+def _move_run(src_root, dst_root, run, labels, keep_model=False):
+    import shutil
+    shutil.move(str(src_root / 'B' / run), str(dst_root / 'B' / run))
+    model = dst_root / 'B' / run / 'final.zip'
+    if not keep_model:
+        (dst_root / 'B' / run / 'final.zip.sha256').write_text(sha256(model.read_bytes()).hexdigest() + '  final.zip\n')
+        model.unlink()
+    for label in labels:
+        shutil.move(str(src_root / 'C' / label), str(dst_root / 'C' / label))
+
+
+def test_pack_merges_local_and_cloud_roots(tmp_path):
+    local, cloud, out = tmp_path / 'local', tmp_path / 'cloud', tmp_path / 'OUT'
+    _fake_round(local)
+    (cloud / 'B').mkdir(parents=True); (cloud / 'C').mkdir()
+    for seed in (1, 2):                                       # the cloud ran ECC_FB seeds 1 and 2
+        _move_run(local, cloud, f'TRAIN_ECC_FB_s{seed}', [f'ECC_FB_s{seed}', f'ECC_FB_s{seed}_nearest_arbitration'])
+    with pytest.raises(SystemExit):
+        final.pack('dev', [local], out)                       # the local root alone is incomplete
+    res = final.pack('dev', [local, cloud], out)
+    assert res['verdict'] is not None and res['raw_files_hashed'] == 9 * 192 + 6
+    raw = (out / 'RAW_SHA256SUMS').read_text()
+    assert 'cloud/B/TRAIN_ECC_FB_s1/final.zip  (recorded)' in raw and 'local/C/ECC_s0/' in raw
+    runs = json.loads((out / 'REGISTRY_RESOLVED.json').read_text())['runs']
+    assert runs['TRAIN_ECC_FB_s2']['model_hash_source'] == 'final.zip.sha256' and runs['TRAIN_ECC_s0']['location'].startswith('local/')
+    assert (out / 'runs' / 'TRAIN_ECC_FB_s1' / 'episodes.json').is_file() and '| 机器 |' in (out / 'RESULT.md').read_text()
+
+
+def test_the_same_result_in_two_roots_is_refused(tmp_path):
+    import shutil
+    local, cloud = tmp_path / 'local', tmp_path / 'cloud'
+    _fake_round(local)
+    (cloud / 'C').mkdir(parents=True)
+    shutil.copytree(local / 'C' / 'ECC_s0', cloud / 'C' / 'ECC_s0')
+    rep = final.check_stage([local, cloud], 'dev')
+    assert not rep['complete'] and any('duplicate' in e for e in rep['errors'])

@@ -28,11 +28,14 @@ python -B -m experiments.final eval    --stage STAGE --run RUN --switch no_long_
 python -B -m experiments.final traj    --entry ECC=RUN --openings A,B --output DIR
 python -B -m experiments.final preflight --root ROOT                                     # 开跑前记录（SHA、干净工作树、核数、pytest）
 python -B -m experiments.final pack    --stage dev --root ROOT --output evidence/R2_FB  # 一步交付（检查、哈希、读数、判定、RESULT.md）
+python -B -m experiments.final pack    --stage dev --root LOCAL --root CLOUD --output evidence/R2_FB   # 本机与云端结果合并交付
 python -B -m experiments.final check   --stage dev --root ROOT --output ROOT/CHECK.json
 python -B -m experiments.final resolve --stage dev --root ROOT --output ROOT/REGISTRY_RESOLVED.json
 tensorboard --logdir ROOT/B                                                              # 学习曲线（每个运行的 tb/）
 python -B -m experiments.r2_dev_readout --root ROOT --output ROOT/READOUT                # 开发轮读数与预登记判定
 ```
+
+**多台机器：** 执行书只规定做什么，不规定在哪台机器跑。云端的运行目录只需带回 `manifest.json`、`finished.json`、`episodes.json`、`tb/`，以及 `final.zip` 或其哈希文件 `final.zip.sha256`（一行 SHA-256），再加上它在 `C/` 下的评估结果。`pack` / `check` / `resolve` 用多个 `--root` 合并；同一结果出现在两处会被拒绝。
 
 冒烟（不用任何登记种子）：`train --stage dev --config ECC --seed 7 --smoke-steps 40 --workers 1 --output ...`，`eval --openings 294300-294301`。
 

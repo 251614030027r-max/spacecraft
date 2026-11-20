@@ -6,10 +6,10 @@ budget, opening block and evaluation switch comes from ``docs/final_method/METHO
                                             [--workers W] [--verify-existing SHA256SUMS]
     python -B -m experiments.final screen   --stage STAGE --policy pure --output ROOT [--openings A-B] [--workers W]
     python -B -m experiments.final traj     --entry NAME=RUN_DIR|NAME=pure --openings A,B --output DIR [--switch NAME]
-    python -B -m experiments.final resolve  --stage STAGE --root ROOT --output REGISTRY_RESOLVED.json
-    python -B -m experiments.final check    --stage STAGE --root ROOT [--output CHECK.json]
+    python -B -m experiments.final resolve  --stage STAGE --root ROOT [--root ROOT2] --output REGISTRY_RESOLVED.json
+    python -B -m experiments.final check    --stage STAGE --root ROOT [--root ROOT2] [--output CHECK.json]
     python -B -m experiments.final preflight --root ROOT [--no-tests]
-    python -B -m experiments.final pack     --stage STAGE --root ROOT --output DELIVERY_DIR
+    python -B -m experiments.final pack     --stage STAGE --root ROOT [--root ROOT2] --output DELIVERY_DIR
 
 ``train`` runs ``train.t2_mve_sac.train`` with the registered algorithm and executor configuration of NAME and the
 stage's budget; a seed outside the stage's list is refused (``--smoke-steps`` runs a short check with a seed outside
@@ -267,25 +267,67 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def resolve(stage: str, root: Path) -> dict:
-    """The registry resolved for the runs under ``root/B`` (``TRAIN_<CONFIG>_s<seed>``): science SHA, model SHA-256,
-    data locations. Refuses mixed science SHAs, budgets or configurations that do not match the registry."""
-    reg = registry(); st = stage_of(stage)
+class Roots:
+    """One or several result roots (e.g. the local machine and a copy of the cloud results), seen as one tree. Each
+    relative path must exist in at most one root."""
+
+    def __init__(self, roots):
+        roots = [roots] if isinstance(roots, (str, Path)) else list(roots.roots if isinstance(roots, Roots) else roots)
+        self.roots = [Path(r) for r in roots]
+
+    def find(self, *parts) -> Path:
+        hits = [r.joinpath(*parts) for r in self.roots if r.joinpath(*parts).exists()]
+        if len(hits) > 1:
+            raise SystemExit(f'{"/".join(map(str, parts))} exists in several roots: {[str(h) for h in hits]}')
+        return hits[0] if hits else self.roots[0].joinpath(*parts)
+
+    def glob(self, pattern: str) -> list[Path]:
+        return sorted((p for r in self.roots for p in r.glob(pattern)), key=lambda p: (self.rel(p), str(p)))
+
+    def rel(self, path: Path) -> str:
+        for r in self.roots:
+            try:
+                q = Path(path).relative_to(r).as_posix()
+            except ValueError:
+                continue
+            return q if len(self.roots) == 1 else f'{r.name}/{q}'
+        return Path(path).as_posix()
+
+
+def model_hash(run: Path) -> tuple[str, str]:
+    """(SHA-256, source) of a run's final model: the file itself, or the recorded ``final.zip.sha256`` of a model that
+    stays on another machine."""
+    if (run / 'final.zip').is_file():
+        return sha256(run / 'final.zip'), 'final.zip'
+    side = run / 'final.zip.sha256'
+    if side.is_file():
+        digest = side.read_text(encoding='utf-8').split()[0].lower()
+        if len(digest) == 64:
+            return digest, 'final.zip.sha256'
+    raise SystemExit(f'no final model or recorded model hash in {run}')
+
+
+def resolve(stage: str, root) -> dict:
+    """The registry resolved for the runs under ``<root>/B`` (``TRAIN_<CONFIG>_s<seed>``; one or several roots): science
+    SHA, model SHA-256, data locations. Refuses duplicate runs, mixed science SHAs, budgets or configurations that do not
+    match the registry."""
+    reg = registry(); st = stage_of(stage); R = Roots(root)
     runs, shas, budgets = {}, set(), set()
-    for d in sorted((root / 'B').glob('TRAIN_*')):
+    for d in R.glob('B/TRAIN_*'):
         if not (d / 'manifest.json').exists():
             continue
+        if d.name in runs:
+            raise SystemExit(f'run {d.name} exists in several roots')
         m = json.loads((d / 'manifest.json').read_text(encoding='utf-8'))
         cfg = m.get('final_config')
         if cfg is None or m.get('final_stage') != stage:
             raise SystemExit(f'{d} is not a {stage} run of experiments.final')
         verify_manifest(m, cfg)
         shas.add(m['git_head']); budgets.add(int(m['steps']))
-        ck = final_model(d)
+        digest, source = model_hash(d)
         runs[d.name] = {'config': cfg, 'display': reg['trained'][cfg]['display'], 'seed': int(m['seed']), 'git_head': m['git_head'],
-                        'steps': int(m['steps']), 'model': str(ck.relative_to(root)), 'model_sha256': sha256(ck),
-                        'finished': (d / 'finished.json').exists(), 'episodes': str((d / 'episodes.json').relative_to(root)),
-                        'tensorboard': str((d / 'tb').relative_to(root))}
+                        'steps': int(m['steps']), 'location': R.rel(d), 'model_sha256': digest, 'model_hash_source': source,
+                        'finished': (d / 'finished.json').exists()}
     if len(shas) > 1:
         raise SystemExit(f'runs from different science SHAs: {sorted(shas)}')
     if len(budgets) > 1 or (budgets and budgets != {int(st['steps'])}):
@@ -296,31 +338,33 @@ def resolve(stage: str, root: Path) -> dict:
 
 
 def cmd_resolve(a):
-    res = resolve(a.stage, Path(a.root))
+    res = resolve(a.stage, a.root)
     Path(a.output).write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding='utf-8')
     print(json.dumps({'science_sha': res['science_sha'], 'runs': len(res['runs'])}))
 
 
-def check_stage(root: Path, stage: str) -> dict:
-    st = stage_of(stage)
+def check_stage(root, stage: str) -> dict:
+    st = stage_of(stage); R = Roots(root)
     report = {'stage': stage, 'missing_runs': [], 'unfinished_runs': [], 'missing_tensorboard': [], 'evaluations': {},
               'screens': {}, 'errors': []}
     ops = block(st['eval_openings'])
 
     def check_group(folder, label):
-        directory = root / folder / label
-        actual = {p.name for p in directory.glob('*.json')}
+        files = [p for r in R.roots for p in (r / folder / label).glob('*.json')]
+        names = [p.name for p in files]
+        actual = set(names)
         expected = {f'{label}_{o}.json' for o in ops}
-        report['errors'].extend(str(directory / p) for p in sorted(actual - expected))
+        report['errors'].extend(f'unexpected: {R.rel(p)}' for p in files if p.name not in expected)
+        report['errors'].extend(f'duplicate in several roots: {folder}/{label}/{n}' for n in sorted(actual) if names.count(n) > 1)
         report['evaluations' if folder == 'C' else 'screens'][label] = {'files': len(actual & expected), 'expected': len(expected)}
 
     report['conditional_not_run'] = []
     for config in st['trained']:
-        if config in st.get('conditional', {}) and not any((root / 'B' / f'TRAIN_{config}_s{s}').exists() for s in st['seeds']):
+        if config in st.get('conditional', {}) and not any(R.find('B', f'TRAIN_{config}_s{s}').exists() for s in st['seeds']):
             report['conditional_not_run'].append(config)    # a conditional session that has not been triggered
             continue
         for seed in st['seeds']:
-            run = root / 'B' / f'TRAIN_{config}_s{seed}'
+            run = R.find('B', f'TRAIN_{config}_s{seed}')
             if not (run / 'manifest.json').is_file():
                 report['missing_runs'].append(run.name)
             elif not (run / 'finished.json').is_file() or json.loads(
@@ -340,7 +384,7 @@ def check_stage(root: Path, stage: str) -> dict:
 
 
 def cmd_check(a):
-    rep = check_stage(Path(a.root), a.stage)
+    rep = check_stage(a.root, a.stage)
     print(json.dumps(rep, indent=1))
     if a.output:
         Path(a.output).write_text(json.dumps(rep, indent=1), encoding='utf-8')
@@ -376,22 +420,30 @@ def cmd_preflight(a):
     raise SystemExit(0 if ok else 1)
 
 
-def _result_md(stage: str, summary: dict, resolved: dict, root: Path) -> str:
+def _result_md(stage: str, summary: dict, resolved: dict, root) -> str:
+    R = Roots(root)
     lines = [f'# 交付：{stage} 阶段（自动生成，`experiments.final pack`）', '',
-             f'- 科学提交：`{resolved["science_sha"]}`；步数 {resolved["steps"]}；评估初始条件 {resolved["eval_openings"]}', '']
-    pre = root / 'PREFLIGHT.json'
-    if pre.is_file():
-        p = json.loads(pre.read_text(encoding='utf-8'))
-        lines += [f'- 开跑前：pytest 退出码 {p.get("pytest", {}).get("exit_code")}（{p.get("pytest", {}).get("summary", "")}），'
-                  f'工作树干净 {p.get("clean_tree")}，逻辑核 {p.get("logical_cores")}，开始 {p.get("started")}', '']
-    lines += ['| 配置 | 种子 | 捕获 | 超时 | 不安全 | 其他 | 平均真实回报 | 训练墙钟 (h) |', '|---|---|---|---|---|---|---|---|']
+             f'- 科学提交：`{resolved["science_sha"]}`；步数 {resolved["steps"]}；评估初始条件 {resolved["eval_openings"]}',
+             f'- 结果目录：{", ".join(str(r) for r in R.roots)}', '']
+    for r in R.roots:
+        pre = r / 'PREFLIGHT.json'
+        if pre.is_file():
+            p = json.loads(pre.read_text(encoding='utf-8'))
+            lines += [f'- 开跑前（{r.name}）：pytest 退出码 {p.get("pytest", {}).get("exit_code")}（{p.get("pytest", {}).get("summary", "")}），'
+                      f'工作树干净 {p.get("clean_tree")}，逻辑核 {p.get("logical_cores")}，开始 {p.get("started")}']
+    lines += ['']
+    multi = len(R.roots) > 1
+    lines += ['| 配置 | 种子 | 捕获 | 超时 | 不安全 | 其他 | 平均真实回报 | 训练墙钟 (h) |' + (' 机器 |' if multi else ''),
+              '|---|---|---|---|---|---|---|---|' + ('---|' if multi else '')]
     for cfg, c in summary['configs'].items():
         for seed, r in c['per_seed'].items():
-            fin = root / 'B' / f'TRAIN_{cfg}_s{seed}' / 'finished.json'
+            run = R.find('B', f'TRAIN_{cfg}_s{seed}')
+            fin = run / 'finished.json'
             wall = json.loads(fin.read_text(encoding='utf-8'))['wall_s'] / 3600 if fin.is_file() else float('nan')
             ret = r['mean_true_return']
             lines.append(f'| {cfg} | {seed} | {r["captures"]}/{r["episodes"]} | {r["timeouts"]} | {r["unsafe"]} | '
-                         f'{r["resource_exhausted"] + r["other"]} | {"—" if ret is None else f"{ret:.1f}"} | {wall:.2f} |')
+                         f'{r["resource_exhausted"] + r["other"]} | {"—" if ret is None else f"{ret:.1f}"} | {wall:.2f} |'
+                         + (f' {R.rel(run).split("/")[0]}' if len(R.roots) > 1 else ''))
     if summary.get('paired_mechanism'):
         pm = summary['paired_mechanism']
         lines += ['', f'- 配对机制检验：价值仲裁 {pm["captures_on"]}，最近规则 {pm["captures_off"]}，'
@@ -402,44 +454,53 @@ def _result_md(stage: str, summary: dict, resolved: dict, root: Path) -> str:
     return '\n'.join(lines)
 
 
-def pack(stage: str, root: Path, out: Path) -> dict:
-    """One delivery: completeness check (must pass), resolved registry with model SHA-256, readout and verdict, the
-    small per-run files (manifest, finished, episodes, TensorBoard events), RAW_SHA256SUMS of everything that stays on
-    the machine (evaluation JSON, final models), SHA256SUMS of the delivery and an auto-filled RESULT.md."""
+def pack(stage: str, root, out: Path) -> dict:
+    """One delivery from one or several result roots (local and cloud): completeness check (must pass), resolved
+    registry with model SHA-256, readout and verdict, the small per-run files (manifest, finished, episodes, TensorBoard
+    events), RAW_SHA256SUMS of everything that stays on the machines (evaluation JSON, final models), SHA256SUMS of the
+    delivery and an auto-filled RESULT.md."""
     import shutil
-    rep = check_stage(root, stage)
+    R = Roots(root)
+    out = Path(out)
+    rep = check_stage(R, stage)
     out.mkdir(parents=True, exist_ok=True)
     (out / 'CHECK.json').write_text(json.dumps(rep, indent=1), encoding='utf-8')
     if not rep['complete']:
         raise SystemExit(f'incomplete ({out / "CHECK.json"}): rerun the missing items with the same commands, then pack again')
-    resolved = resolve(stage, root)
+    resolved = resolve(stage, R)
     (out / 'REGISTRY_RESOLVED.json').write_text(json.dumps(resolved, indent=1, ensure_ascii=False), encoding='utf-8')
-    from experiments import r2_dev_readout as R
-    summary, table = R.readout(root, stage)
+    from experiments import r2_dev_readout as RO
+    summary, table = RO.readout(R, stage)
     if stage == 'dev':
-        summary['paired_mechanism'] = R.paired(root, stage)
-        summary['verdict'] = R.feedback_verdict(summary, summary['paired_mechanism'])
+        summary['paired_mechanism'] = RO.paired(R, stage)
+        summary['verdict'] = RO.feedback_verdict(summary, summary['paired_mechanism'])
     (out / 'SUMMARY.json').write_text(json.dumps(summary, indent=1), encoding='utf-8')
-    R.write_episodes_csv(out / 'EPISODES.csv', table)
-    if (root / 'PREFLIGHT.json').is_file():
-        shutil.copy2(root / 'PREFLIGHT.json', out / 'PREFLIGHT.json')
-    for run in sorted((root / 'B').glob('TRAIN_*')):
+    RO.write_episodes_csv(out / 'EPISODES.csv', table)
+    for r in R.roots:
+        if (r / 'PREFLIGHT.json').is_file():
+            shutil.copy2(r / 'PREFLIGHT.json', out / ('PREFLIGHT.json' if len(R.roots) == 1 else f'PREFLIGHT_{r.name}.json'))
+    for run in R.glob('B/TRAIN_*'):
         dst = out / 'runs' / run.name; (dst / 'tb').mkdir(parents=True, exist_ok=True)
         for name in ('manifest.json', 'finished.json', 'episodes.json'):
             if (run / name).is_file():
                 shutil.copy2(run / name, dst / name)
         for ev in (run / 'tb').glob('events.out.tfevents.*'):
             shutil.copy2(ev, dst / 'tb' / ev.name)
-    raw = sorted([*root.glob('C/*/*.json'), *root.glob('S/*/*.json'), *root.glob('B/TRAIN_*/final.zip')])
-    (out / 'RAW_SHA256SUMS').write_text(''.join(f'{sha256(f)}  {f.relative_to(root).as_posix()}\n' for f in raw), encoding='utf-8')
-    (out / 'RESULT.md').write_text(_result_md(stage, summary, resolved, root), encoding='utf-8')
+    raw = [*R.glob('C/*/*.json'), *R.glob('S/*/*.json')]
+    rows = [f'{sha256(f)}  {R.rel(f)}\n' for f in raw]
+    for run in R.glob('B/TRAIN_*'):
+        if (run / 'manifest.json').is_file():
+            digest, source = model_hash(run)
+            rows.append(f'{digest}  {R.rel(run / "final.zip")}' + ('' if source == 'final.zip' else '  (recorded)') + '\n')
+    (out / 'RAW_SHA256SUMS').write_text(''.join(rows), encoding='utf-8')
+    (out / 'RESULT.md').write_text(_result_md(stage, summary, resolved, R), encoding='utf-8')
     files = sorted(f for f in out.rglob('*') if f.is_file() and f.name != 'SHA256SUMS')
     (out / 'SHA256SUMS').write_text(''.join(f'{sha256(f)}  {f.relative_to(out).as_posix()}\n' for f in files), encoding='utf-8')
-    return {'delivered_files': len(files) + 1, 'raw_files_hashed': len(raw), 'verdict': summary.get('verdict')}
+    return {'delivered_files': len(files) + 1, 'raw_files_hashed': len(rows), 'verdict': summary.get('verdict')}
 
 
 def cmd_pack(a):
-    print(json.dumps(pack(a.stage, Path(a.root), Path(a.output)), indent=1, ensure_ascii=False))
+    print(json.dumps(pack(a.stage, a.root, Path(a.output)), indent=1, ensure_ascii=False))
 
 
 def main():
@@ -455,10 +516,12 @@ def main():
     c.add_argument('--workers', type=int, default=4); c.add_argument('--openings'); c.add_argument('--verify-existing', type=Path)
     j = s.add_parser('traj'); j.add_argument('--entry', action='append', required=True); j.add_argument('--openings', required=True)
     j.add_argument('--output', required=True); j.add_argument('--switch')
-    r = s.add_parser('resolve'); r.add_argument('--stage', required=True); r.add_argument('--root', required=True); r.add_argument('--output', required=True)
-    k = s.add_parser('check'); k.add_argument('--stage', required=True); k.add_argument('--root', required=True); k.add_argument('--output')
+    r = s.add_parser('resolve'); r.add_argument('--stage', required=True); r.add_argument('--root', action='append', required=True)
+    r.add_argument('--output', required=True)
+    k = s.add_parser('check'); k.add_argument('--stage', required=True); k.add_argument('--root', action='append', required=True); k.add_argument('--output')
     f = s.add_parser('preflight'); f.add_argument('--root', required=True); f.add_argument('--no-tests', action='store_true')
-    q = s.add_parser('pack'); q.add_argument('--stage', required=True); q.add_argument('--root', required=True); q.add_argument('--output', required=True)
+    q = s.add_parser('pack'); q.add_argument('--stage', required=True); q.add_argument('--output', required=True)
+    q.add_argument('--root', action='append', required=True, help='result root; repeat for several machines (local, cloud copy)')
     a = p.parse_args()
     {'train': cmd_train, 'eval': cmd_eval, 'screen': cmd_screen, 'traj': cmd_traj, 'resolve': cmd_resolve, 'check': cmd_check,
      'preflight': cmd_preflight, 'pack': cmd_pack}[a.cmd](a)
