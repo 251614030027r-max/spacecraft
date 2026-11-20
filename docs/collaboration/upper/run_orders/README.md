@@ -4,6 +4,7 @@
 
 | 文件 | 内容 |
 |---|---|
+| `RUN_R2_FB.md` | 第二轮反馈机制开发：`ECC` 对 `ECC_FB`（有条件第三场 `ECC_EQ`），dev 阶段 3000 步 × 种子 0–2，预登记判定；等用户开场指令 |
 | `RUN_R2_DEV.md` | 第二轮势函数开发检查（`ECC` 对 `ECC_LEAD24`）：撤销，未执行（用户 2026-11-20） |
 | `RUN_CLEANUP.md` | 工程收尾的下层部分：归档标签、Windows 全量 pytest 与逐位回归、本机资产整理 |
 | `RUN_ECC_LE.md` | 远场入口：最终 ECC（ECC_LE）与 SAC_LE（已交付） |
