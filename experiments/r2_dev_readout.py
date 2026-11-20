@@ -9,7 +9,8 @@ episodes.json (training record) for every configuration of the stage, and writes
 * ``SUMMARY.json`` -- per configuration and seed: captures, timeouts, unsafe, other outcomes, mean true return, and the
   training record in its first and last quarter (capture share, timeout share, mean true return; the hover signal of
   DEAD_ENDS D03 is a rising return with a rising timeout share). Missing or error files are listed and the
-  configuration is marked incomplete. For the feedback-mechanism round, ``verdict`` applies the pre-registered rule of
+  configuration is marked incomplete. For the feedback-mechanism round, ``paired_mechanism`` compares the ECC_FB models
+  with and without the ``nearest_arbitration`` switch, and ``verdict`` applies the pre-registered rules P and M of
   ``docs/final_method/FEEDBACK_DEV.md`` section 4.
 """
 import argparse
@@ -84,38 +85,63 @@ def readout(root: Path, stage: str = 'dev') -> tuple[dict, list[dict]]:
     return summary, table
 
 
-#: FEEDBACK_DEV.md section 4: captures(X) >= captures(ECC) + 5, unsafe(X) <= unsafe(ECC) + 1, and X >= ECC on >= 2 seeds
-FB_CAPTURE_MARGIN, FB_UNSAFE_TOLERANCE, FB_SEEDS_NOT_WORSE = 5, 1, 2
+#: FEEDBACK_DEV.md section 4 (revised 2026-11-20): primary P and paired mechanism check M
+P_CAPTURE_MARGIN, P_UNSAFE_TOLERANCE, P_SEEDS_NOT_WORSE = 10, 1, 2
+M_CAPTURE_MARGIN, M_FLIP_RATIO, M_UNSAFE_TOLERANCE = 3, 2, 1
 
 
-def feedback_verdict(summary: dict) -> dict | None:
-    """The pre-registered decision of the feedback-mechanism round, or None while the baseline is incomplete."""
-    cfg = summary['configs']
-    base = cfg.get('ECC')
-    if base is None or not base['complete']:
+def paired(root: Path, stage: str = 'dev', config: str = 'ECC_FB', switch: str = 'nearest_arbitration') -> dict | None:
+    """The same models evaluated with and without the switch: captures, unsafe and flips per opening and seed."""
+    st = stage_of(stage)
+    ops = block(st['eval_openings'])
+    on_rows, off_rows, missing = [], [], 0
+    for seed in st['seeds']:
+        a, ma = episodes(root, config, seed, ops)
+        b, mb = _switch_rows(root, config, seed, switch, ops)
+        missing += len(ma) + len(mb)
+        on_rows += a; off_rows += b
+    if missing or not on_rows:
         return None
-    out = {'rule': f'captures(X) >= captures(ECC) + {FB_CAPTURE_MARGIN}, unsafe(X) <= unsafe(ECC) + {FB_UNSAFE_TOLERANCE}, '
-                   f'captures(X, seed) >= captures(ECC, seed) on >= {FB_SEEDS_NOT_WORSE} seeds'}
-    for x in ('ECC_FB', 'ECC_EQ'):
-        c = cfg.get(x)
-        if c is None or not c['complete'] or not c['total']['episodes']:
-            out[x] = None; continue
-        seeds_ok = sum(c['per_seed'][s]['captures'] >= base['per_seed'][s]['captures'] for s in base['per_seed'])
-        passed = (c['total']['captures'] >= base['total']['captures'] + FB_CAPTURE_MARGIN
-                  and c['total']['unsafe'] <= base['total']['unsafe'] + FB_UNSAFE_TOLERANCE and seeds_ok >= FB_SEEDS_NOT_WORSE)
-        out[x] = {'captures': c['total']['captures'], 'baseline_captures': base['total']['captures'], 'unsafe': c['total']['unsafe'],
-                  'baseline_unsafe': base['total']['unsafe'], 'seeds_not_worse': seeds_ok, 'pass': passed}
-    fb, eq = out.get('ECC_FB'), out.get('ECC_EQ')
-    if fb is None:
-        out['formal_ecc'] = None
-    elif fb['pass']:
-        out['formal_ecc'] = 'ECC_FB'
-    elif eq is None:
-        out['formal_ecc'] = None                       # run ECC_EQ (conditional session)
-        out['next'] = 'run ECC_EQ'
-    else:
-        out['formal_ecc'] = 'ECC_EQ' if eq['pass'] else 'ECC'
-    return out
+    key = lambda r: (r['seed'], r['opening'])
+    off = {key(r): r for r in off_rows}
+    both = [(r, off[key(r)]) for r in on_rows if key(r) in off]
+    only_on = sum(r['event'] == 'success' and o['event'] != 'success' for r, o in both)
+    only_off = sum(o['event'] == 'success' and r['event'] != 'success' for r, o in both)
+    return {'pairs': len(both), 'captures_on': sum(r['event'] == 'success' for r, _ in both),
+            'captures_off': sum(o['event'] == 'success' for _, o in both), 'only_on': only_on, 'only_off': only_off,
+            'unsafe_on': sum(r['event'] == 'unsafe' for r, _ in both), 'unsafe_off': sum(o['event'] == 'unsafe' for _, o in both),
+            'arbitration_changed_on': sum(r['arbitration_changed'] for r, _ in both)}
+
+
+def _switch_rows(root: Path, config: str, seed: int, switch: str, ops: list[int]):
+    rows, missing = [], []
+    for o in ops:
+        f = root / 'C' / f'{config}_s{seed}_{switch}' / f'{config}_s{seed}_{switch}_{o}.json'
+        if not f.is_file():
+            missing.append(o); continue
+        r = json.loads(f.read_text(encoding='utf-8'))
+        if r.get('event') == 'error':
+            missing.append(o); continue
+        rows.append({'seed': seed, 'opening': o, 'event': r['event'], 'arbitration_changed': int(r.get('arbitration_changed', 0))})
+    return rows, missing
+
+
+def feedback_verdict(summary: dict, pair: dict | None) -> dict | None:
+    """The pre-registered decision of the feedback-mechanism round, or None while results are incomplete."""
+    cfg = summary['configs']
+    base, fb = cfg.get('ECC'), cfg.get('ECC_FB')
+    if base is None or fb is None or not base['complete'] or not fb['complete'] or pair is None:
+        return None
+    seeds_ok = sum(fb['per_seed'][s]['captures'] >= base['per_seed'][s]['captures'] for s in base['per_seed'])
+    p = (fb['total']['captures'] >= base['total']['captures'] + P_CAPTURE_MARGIN
+         and fb['total']['unsafe'] <= base['total']['unsafe'] + P_UNSAFE_TOLERANCE and seeds_ok >= P_SEEDS_NOT_WORSE)
+    m = (pair['captures_on'] >= pair['captures_off'] + M_CAPTURE_MARGIN and pair['only_on'] >= M_FLIP_RATIO * pair['only_off']
+         and pair['unsafe_on'] <= pair['unsafe_off'] + M_UNSAFE_TOLERANCE)
+    return {'P': {'captures': fb['total']['captures'], 'baseline_captures': base['total']['captures'], 'unsafe': fb['total']['unsafe'],
+                  'baseline_unsafe': base['total']['unsafe'], 'seeds_not_worse': seeds_ok, 'pass': p},
+            'M': {**pair, 'pass': m},
+            'conclusion': 'adopt ECC_FB' if p else ('report: mechanism effective, training bar not met' if m else 'keep ECC'),
+            'formal_ecc': 'ECC_FB' if p else (None if m else 'ECC')}
 
 
 def main():
@@ -124,7 +150,11 @@ def main():
     a = p.parse_args()
     out = Path(a.output); out.mkdir(parents=True, exist_ok=True)
     summary, table = readout(Path(a.root), a.stage)
-    summary['verdict'] = feedback_verdict(summary) if a.stage == 'dev' else None
+    if a.stage == 'dev':
+        summary['paired_mechanism'] = paired(Path(a.root), a.stage)
+        summary['verdict'] = feedback_verdict(summary, summary['paired_mechanism'])
+    else:
+        summary['verdict'] = None
     (out / 'SUMMARY.json').write_text(json.dumps(summary, indent=1), encoding='utf-8')
     with open(out / 'EPISODES.csv', 'w', newline='', encoding='utf-8') as f:
         w = csv.DictWriter(f, fieldnames=['config', 'seed', 'opening', 'event', 'return', 'time_s', 'delta_v', 'corrections',

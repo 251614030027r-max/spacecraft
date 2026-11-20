@@ -73,20 +73,6 @@
    "window": true,
    "role": "feedback-mechanism candidate (docs/final_method/FEEDBACK_DEV.md): the critic ranks the executor-certified critical intents; execution-equivalent proposals share the real transition",
    "color": "#5b2c6f"
-  },
-  "ECC_EQ": {
-   "display": "ECC with equivalence experience",
-   "algo": "sac",
-   "coordination": true,
-   "correction": true,
-   "long_entry": true,
-   "potential": "opportunity",
-   "arbitration": "nearest",
-   "equivalence": true,
-   "geometry": true,
-   "window": true,
-   "role": "feedback-mechanism fallback (FEEDBACK_DEV.md): nearest rule, execution-equivalent proposals share the real transition",
-   "color": "#a569bd"
   }
  },
  "eval_switches": {
@@ -99,6 +85,16 @@
     "long_entry": false
    },
    "role": "evaluation-time removal of the direct-entry opportunity (the auxiliary mechanism)"
+  },
+  "nearest_arbitration": {
+   "display": "ECC_FB evaluated with the nearest rule",
+   "applies_to": [
+    "ECC_FB"
+   ],
+   "env": {
+    "arbitration": "nearest"
+   },
+   "role": "paired mechanism check (FEEDBACK_DEV.md section 4): the same ECC_FB models with the first-draft nearest choice"
   }
  },
  "fixed": {
@@ -140,18 +136,16 @@
      1,
      2
     ],
-    "eval_openings": "295300-295395",
+    "eval_openings": "295300-295491",
     "trained": [
      "ECC",
-     "ECC_FB",
-     "ECC_EQ"
+     "ECC_FB"
     ],
     "fixed": [],
-    "eval_switches": [],
-    "authorised_by": "docs/final_method/FEEDBACK_DEV.md section 4",
-    "conditional": {
-     "ECC_EQ": "run only if ECC_FB fails the FEEDBACK_DEV.md section 4 criterion"
-    }
+    "eval_switches": [
+     "nearest_arbitration"
+    ],
+    "authorised_by": "docs/final_method/FEEDBACK_DEV.md section 4"
    }
   }
  }

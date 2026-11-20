@@ -175,7 +175,6 @@ def test_registry_feedback_configurations():
     from experiments import final
     t = final.registry()['trained']
     assert (t['ECC_FB']['arbitration'], t['ECC_FB']['equivalence']) == ('value', True)
-    assert (t['ECC_EQ']['arbitration'], t['ECC_EQ']['equivalence']) == ('nearest', True)
-    assert all((c['arbitration'], c['equivalence']) == ('nearest', False) for k, c in t.items() if k not in ('ECC_FB', 'ECC_EQ'))
+    assert all((c['arbitration'], c['equivalence']) == ('nearest', False) for k, c in t.items() if k != 'ECC_FB')
     assert all(final.env_kwargs(t['ECC_FB'])[k] == final.env_kwargs(t['ECC'])[k] for k in ('coordination', 'correction', 'long_entry', 'potential'))
-    assert final.stage_of('dev')['trained'] == ['ECC', 'ECC_FB', 'ECC_EQ']
+    assert final.stage_of('dev')['trained'] == ['ECC', 'ECC_FB'] and final.stage_of('dev')['eval_switches'] == ['nearest_arbitration']
