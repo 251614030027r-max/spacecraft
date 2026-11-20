@@ -13,14 +13,15 @@
 | 方法收敛 | 已完成：协调写成一个机会集加一条规则，与第一稿 ECC_LE 执行逐位一致（`evidence/R2_EQUIV/`，12/12 回合） |
 | 奖励 | 已实现并直接采用：机会可达性势函数（引理 1 窗口 + 命题 1 经过时机 + 制动包络 + 期限）；不单独做开发验证（用户 2026-11-20） |
 | 反馈机制 | 已设计并实现（科学 `docs/final_method/FEEDBACK_DEV.md`）：执行落地的价值仲裁（关键窗口时评价器在执行层的可兑现候选里择优）+ 执行等价经验（被映射到同一执行动作的提议共享真实转移，只进评价器回归）；默认关闭时与第二轮 ECC 逐位一致；冒烟通过 |
-| 下一步 | [RUN_R2_FB](upper/run_orders/RUN_R2_FB.md)（等用户开场指令）→ 按预登记判定确定正式 ECC 的形式 → 正式实验设计 |
+| 下一步 | [RUN_R2_FB2](upper/run_orders/RUN_R2_FB2.md)（等用户开场指令）→ 按预登记判定（P 方法层面、M 配对机制）确定正式 ECC 的形式 → 正式实验设计 |
 | 运行中 | 无 |
 
 ## 2. 执行书（方法线，按时间倒序）
 
 | 状态 | 执行书 |
 |---|---|
-| 待开场（用户指令） | [RUN_R2_FB](upper/run_orders/RUN_R2_FB.md)：反馈机制开发轮 |
+| 待开场（用户指令） | [RUN_R2_FB2](upper/run_orders/RUN_R2_FB2.md)：反馈机制开发轮（修订版） |
+| 作废，未执行 | [RUN_R2_FB](upper/run_orders/RUN_R2_FB.md) |
 | 撤销，未执行（用户 2026-11-20） | [RUN_R2_DEV](upper/run_orders/RUN_R2_DEV.md)：势函数开发检查 |
 | 已交付（collab `fa7506d4`，科学 `6d3d6baa`；上层复核通过） | [RUN_CLEANUP](upper/run_orders/RUN_CLEANUP.md)：归档标签、Windows 逐位核验、本机资产整理 |
 | 已交付（科学 `af61a48b`） | [RUN_PAPER_FIGS](upper/run_orders/RUN_PAPER_FIGS.md)：论文两张案例图的重放导出 |
