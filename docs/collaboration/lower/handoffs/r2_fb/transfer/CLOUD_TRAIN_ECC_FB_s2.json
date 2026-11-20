@@ -1,0 +1,149 @@
+{
+  "run_order": "RUN_R2_FB2",
+  "scientific_sha": "b47eb660ca579c77074308e7876ba508379643d7",
+  "run_order_sha": "d552d8b63dee20f52a0dce547a418f9ecc49b793",
+  "registry_sha256": "c5a939b524db63fd17b9c577c8dcb0800fad30ecee8176324e58f90124577e1a",
+  "scope": {
+    "stage": "dev",
+    "config": "ECC_FB",
+    "seed": 2,
+    "decisions": 3000,
+    "collection_workers": 2,
+    "from_scratch": true,
+    "scheduling": "parallel",
+    "evaluation": "cloud dev, openings 295300-295491; ECC_FB also nearest_arbitration"
+  },
+  "scheduling": {
+    "execution_mode": "parallel",
+    "changed_at_utc": "2026-11-20T09:19:18.267611+00:00",
+    "reason": "Latest user direction requested both cloud configurations run concurrently.",
+    "actual_cpu_quota": 2.0,
+    "memory_max_bytes": 8589934592,
+    "collection_workers_per_run": 2,
+    "status_files": {
+      "ECC": "/workspace/spacecraft-r2-fb2/STATUS_ECC_s2.json",
+      "ECC_FB": "/workspace/spacecraft-r2-fb2/STATUS_ECC_FB_s2.json"
+    },
+    "first_learner_continued": true,
+    "ECC_original_supervisor_pid": 1314,
+    "ECC_current_supervisor_pid": 1510,
+    "ECC_learner_pid": 1324,
+    "ECC_FB_supervisor_pid": 1476,
+    "ECC_FB_learner_pid": 1486
+  },
+  "environment": {
+    "provider": "Codex Cloud",
+    "environment_id": "ccarenv_b64_Y2NhcmVudl9lODJkYzI4OTFkMzQ4MTkxYjg3YTg1Mzg3Yjc5ODdmYQ",
+    "hostname": "182afcc1f647",
+    "kernel": "6.18.57",
+    "architecture": "x86_64",
+    "boot_id": "37fc5373-a7a7-4277-8602-0a9ef28cd9af",
+    "execution_entry": "setsid detached supervisor in frozen checkout",
+    "detach_probe_passed": true,
+    "persistence": "workspace readback proved across commands on this instance; retention or execution across platform recycling is not guaranteed"
+  },
+  "verified_boot_id": "37fc5373-a7a7-4277-8602-0a9ef28cd9af",
+  "launch": {
+    "config": "ECC_FB",
+    "seed": 2,
+    "steps_requested": 3000,
+    "collection_workers": 2,
+    "started_utc": "2026-11-20T09:18:39.045200+00:00",
+    "train_pid": 1486,
+    "command": [
+      "/workspace/spacecraft-r2-fb2-venv/bin/python",
+      "-B",
+      "-m",
+      "experiments.final",
+      "train",
+      "--stage",
+      "dev",
+      "--config",
+      "ECC_FB",
+      "--seed",
+      "2",
+      "--output",
+      "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2"
+    ],
+    "out": "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2",
+    "log": "/workspace/spacecraft-r2-fb2/logs/TRAIN_ECC_FB_s2.log"
+  },
+  "training_exit": {
+    "exit_code": 0,
+    "started_utc": "2026-11-20T09:18:39.045200+00:00",
+    "finished_utc": "2026-11-20T20:06:53.606502+00:00"
+  },
+  "verification": {
+    "finish_marker": "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2/finished.json",
+    "decisions": 3000,
+    "updates": 5602,
+    "wall_s": 38887.66827869415,
+    "decisions_per_second": 0.07714527851091667,
+    "episodes": 773,
+    "episodes_by_outcome": {
+      "success": 638,
+      "timeout": 134,
+      "unsafe": 1
+    },
+    "decisions_by_collector": {
+      "0": 1531,
+      "1": 1469
+    },
+    "model_load_verified_on_cpu": true,
+    "model_sha256": "699ceda8eea7d24c451c42b28821dd9f3dec108c0c6f192c96a995d33cad5515",
+    "native_tensorboard_scalar_tags": [
+      "episode/capture",
+      "episode/outcome",
+      "episode/return_true",
+      "episode/return_shaped",
+      "episode/time_s",
+      "episode/delta_v",
+      "episode/corrections",
+      "episode/long_entries",
+      "episode/equivalent_samples",
+      "episode/value_arbitrations",
+      "episode/arbitration_changed",
+      "rolling/capture_rate_100",
+      "train/real_td",
+      "train/actor_loss",
+      "train/q_pi_mean",
+      "train/equivalence_batch"
+    ],
+    "episode_exec_stats_totals": {
+      "value_arbitrations": 838,
+      "arbitration_changed": 244,
+      "equivalent_samples": 6839
+    },
+    "equivalence_samples": 6867
+  },
+  "evidence": {
+    "run_directory": "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2",
+    "final_model_retained_in_cloud": "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2/final.zip",
+    "model_sha256_file": "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2/final.zip.sha256",
+    "manifest": "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2/manifest.json",
+    "finished": "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2/finished.json",
+    "episodes": "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2/episodes.json",
+    "heartbeat": "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2/heartbeat.json",
+    "rolling_progress": "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2/progress.jsonl",
+    "rolling_episodes": "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2/episodes.live.jsonl",
+    "training_log": "/workspace/spacecraft-r2-fb2/logs/TRAIN_ECC_FB_s2.log",
+    "process_log": "/workspace/spacecraft-r2-fb2/logs/TRAIN_ECC_FB_s2.processes.jsonl",
+    "tensorboard": [
+      "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2/tb/events.out.tfevents.1795166324.182afcc1f647.1486.0"
+    ],
+    "interrupted_attempts": []
+  },
+  "delivery": {
+    "name": "TRAIN_ECC_FB_s2",
+    "workspace_path": "/workspace/spacecraft-r2-fb2/RUN_R2_FB2_CLOUD/B/TRAIN_ECC_FB_s2",
+    "file_sha256": {
+      "manifest.json": "efda2fdb7da5d932f20287d0b0b49e762a1453c8db0f700f8277d4f0fdd9e1a9",
+      "finished.json": "fbab705bcc6ff365fdde35759bce90c874feec338f88bffdf03db0e732a1da6e",
+      "episodes.json": "128a17eb132911602ee0a15e203b4531d9248ed1241cb6360e3c8cfaf275d600",
+      "final.zip.sha256": "66920ef1c3b7d892a34e8d295457f2a837cd2e4f16c178903fb3b8b4d34df425",
+      "tb/events.out.tfevents.1795166324.182afcc1f647.1486.0": "13f0886a5142cc55bb7f3e21ccd223fe44c4b4594e6a609966e4e5396cded06f"
+    },
+    "model_sha256": "699ceda8eea7d24c451c42b28821dd9f3dec108c0c6f192c96a995d33cad5515",
+    "access": "originating private Codex chat workspace"
+  }
+}
