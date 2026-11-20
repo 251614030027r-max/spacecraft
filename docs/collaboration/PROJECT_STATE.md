@@ -9,19 +9,20 @@
 | 第一稿 | 完成：ECC_LE 251/288，论文数据 `evidence/PAPER_READOUT/`，代码 = 科学 `72a8d41` |
 | 第二轮方向（用户 2026-11-19） | 正式组：ECC、无反馈（SAC–MPC）、无核心（关修正，附加归因）、TD3–MPC、MPC；无副机制只在评估时关直接入口；6000 步、3 种子、只用限时任务；最终模型只评估 6000 步；学习曲线用 TensorBoard；泛化蒙特卡洛最后再定 |
 | 规格 | 科学 `docs/final_method/ROUND2.md`（清理、方法收敛、机会可达性势函数、开发检查判据），先于实现入库；实现与证据在科学 `3a8fc970` |
+| 协作流程 | 快速通道（[WORKFLOW.md](WORKFLOW.md)）：开跑 `preflight`、交付 `pack`（本地与云端合并），不自制核验文件，执行书开跑前原地修改 |
 | 清理 | 已完成：删去评价器输入 z（DEAD_ENDS D46）与经济任务；17 项观测；第一轮专用脚本删除；27 个开发期证据目录移出工作树（`c15ece12` 可取回） |
 | 方法收敛 | 已完成：协调写成一个机会集加一条规则，与第一稿 ECC_LE 执行逐位一致（`evidence/R2_EQUIV/`，12/12 回合） |
 | 奖励 | 已实现并直接采用：机会可达性势函数（引理 1 窗口 + 命题 1 经过时机 + 制动包络 + 期限）；不单独做开发验证（用户 2026-11-20） |
 | 反馈机制 | 已设计并实现（科学 `docs/final_method/FEEDBACK_DEV.md`）：执行落地的价值仲裁（关键窗口时评价器在执行层的可兑现候选里择优）+ 执行等价经验（被映射到同一执行动作的提议共享真实转移，只进评价器回归）；默认关闭时与第二轮 ECC 逐位一致；冒烟通过 |
-| 下一步 | [RUN_R2_FB3](upper/run_orders/RUN_R2_FB3.md)（等用户开场指令）→ 按预登记判定（P 方法层面、M 配对机制）确定正式 ECC 的形式 → 正式实验设计 |
-| 运行中 | 无 |
+| 下一步 | 等 RUN_R2_FB2 交付 → 按预登记判定（P 方法层面、M 配对机制）确定正式 ECC 的形式 → 正式实验设计 |
+| 运行中 | [RUN_R2_FB2](upper/run_orders/RUN_R2_FB2.md)：本地 4 个运行 + 云端 2 个运行（2026-11-20 起） |
 
 ## 2. 执行书（方法线，按时间倒序）
 
 | 状态 | 执行书 |
 |---|---|
-| 待开场（用户指令） | [RUN_R2_FB3](upper/run_orders/RUN_R2_FB3.md)：反馈机制开发轮（交付简化） |
-| 作废，未执行 | [RUN_R2_FB2](upper/run_orders/RUN_R2_FB2.md) |
+| 执行中（本地 4 + 云端 2） | [RUN_R2_FB2](upper/run_orders/RUN_R2_FB2.md)：反馈机制开发轮；交付用 `pack`（文首追加） |
+| 撤回 | [RUN_R2_FB3](upper/run_orders/RUN_R2_FB3.md)（并入 FB2 追加） |
 | 作废，未执行 | [RUN_R2_FB](upper/run_orders/RUN_R2_FB.md) |
 | 撤销，未执行（用户 2026-11-20） | [RUN_R2_DEV](upper/run_orders/RUN_R2_DEV.md)：势函数开发检查 |
 | 已交付（collab `fa7506d4`，科学 `6d3d6baa`；上层复核通过） | [RUN_CLEANUP](upper/run_orders/RUN_CLEANUP.md)：归档标签、Windows 逐位核验、本机资产整理 |

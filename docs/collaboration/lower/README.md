@@ -4,12 +4,7 @@
 
 新交付放 `handoffs/<主题>/`，写 `RESULT.md`，大文件与模型留本机、登记 SHA。
 
-**交付纪律（2026-11-20 起，用户要求精简）：**
-- 开跑前只运行 `python -B -m experiments.final preflight`；
-- 交付只运行 `python -B -m experiments.final pack`，它会生成完整性检查、模型与原始结果的哈希、读数与判定、RESULT.md；
-- 不再自制额外核验文件（VERIFIED、EXIT_RECEIPTS、SCOPE、历史对照哈希、TensorBoard 比对、旧证据重算哈希等）；
-- 只有异常（缺项、报错、中断、重复进程）才手写一两句；
-- 执行书要求以外的核验，一律不做。
+**开跑与交付：** 按 [WORKFLOW.md](../WORKFLOW.md)（快速通道）：开跑前 `preflight`，交付 `pack`（可合并本地与云端结果）；不自制额外核验文件；只手写异常。
 
 | 交付 | 对应执行书 |
 |---|---|
