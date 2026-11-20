@@ -8,6 +8,8 @@ budget, opening block and evaluation switch comes from ``docs/final_method/METHO
     python -B -m experiments.final traj     --entry NAME=RUN_DIR|NAME=pure --openings A,B --output DIR [--switch NAME]
     python -B -m experiments.final resolve  --stage STAGE --root ROOT --output REGISTRY_RESOLVED.json
     python -B -m experiments.final check    --stage STAGE --root ROOT [--output CHECK.json]
+    python -B -m experiments.final preflight --root ROOT [--no-tests]
+    python -B -m experiments.final pack     --stage STAGE --root ROOT --output DELIVERY_DIR
 
 ``train`` runs ``train.t2_mve_sac.train`` with the registered algorithm and executor configuration of NAME and the
 stage's budget; a seed outside the stage's list is refused (``--smoke-steps`` runs a short check with a seed outside
@@ -15,7 +17,9 @@ every stage and lifts that rule). ``eval`` evaluates a run's final model determi
 under the executor configuration the run was trained with, or with a registered evaluation switch; results go to
 ROOT/C/<config>_s<seed>[_<switch>]. ``screen`` flies the fixed baseline into ROOT/S/<policy>. ``traj`` re-flies episodes
 serially and records the truth every 2 s (case figures). ``resolve`` writes the registry resolved with the science SHA of
-every run and the model SHA-256; ``check`` reports completeness.
+every run and the model SHA-256; ``check`` reports completeness. ``preflight`` records the pre-run state (science SHA,
+clean tree, cores, versions, pytest exit code); ``pack`` builds the whole delivery in one step (check, resolve, readout,
+small run files, hash lists, auto-filled RESULT.md) -- no other bookkeeping is needed.
 """
 import argparse, hashlib, json, os
 from pathlib import Path
@@ -342,6 +346,102 @@ def cmd_check(a):
         Path(a.output).write_text(json.dumps(rep, indent=1), encoding='utf-8')
 
 
+# ---------------------------------------------------------------------- preflight / pack (the lower window's whole bookkeeping)
+def preflight(root: Path, run_tests: bool = True) -> dict:
+    """Pre-run record: science SHA, clean tree, logical cores, versions, and the pytest exit code."""
+    import platform, subprocess, sys
+    from datetime import datetime
+    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True, cwd=ROOT).strip()
+    dirty = subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], text=True, cwd=ROOT).strip()
+    rec = {'science_sha': head, 'clean_tree': not dirty, 'logical_cores': os.cpu_count(), 'python': platform.python_version(),
+           'platform': platform.platform(), 'started': datetime.now().astimezone().isoformat(timespec='seconds')}
+    try:
+        import torch, stable_baselines3, cvxpy
+        rec['versions'] = {'torch': torch.__version__, 'stable_baselines3': stable_baselines3.__version__, 'cvxpy': cvxpy.__version__}
+    except ImportError as error:
+        rec['versions'] = {'import_error': repr(error)}
+    if run_tests:
+        r = subprocess.run([sys.executable, '-B', '-m', 'pytest', '-q'], cwd=ROOT, capture_output=True, text=True)
+        lines = [x for x in r.stdout.strip().splitlines() if x.strip()]
+        rec['pytest'] = {'exit_code': r.returncode, 'summary': lines[-1] if lines else ''}
+    root.mkdir(parents=True, exist_ok=True)
+    (root / 'PREFLIGHT.json').write_text(json.dumps(rec, indent=1), encoding='utf-8')
+    return rec
+
+
+def cmd_preflight(a):
+    rec = preflight(Path(a.root), run_tests=not a.no_tests)
+    print(json.dumps(rec, indent=1))
+    ok = rec['clean_tree'] and rec.get('pytest', {'exit_code': 0})['exit_code'] == 0
+    raise SystemExit(0 if ok else 1)
+
+
+def _result_md(stage: str, summary: dict, resolved: dict, root: Path) -> str:
+    lines = [f'# 交付：{stage} 阶段（自动生成，`experiments.final pack`）', '',
+             f'- 科学提交：`{resolved["science_sha"]}`；步数 {resolved["steps"]}；评估初始条件 {resolved["eval_openings"]}', '']
+    pre = root / 'PREFLIGHT.json'
+    if pre.is_file():
+        p = json.loads(pre.read_text(encoding='utf-8'))
+        lines += [f'- 开跑前：pytest 退出码 {p.get("pytest", {}).get("exit_code")}（{p.get("pytest", {}).get("summary", "")}），'
+                  f'工作树干净 {p.get("clean_tree")}，逻辑核 {p.get("logical_cores")}，开始 {p.get("started")}', '']
+    lines += ['| 配置 | 种子 | 捕获 | 超时 | 不安全 | 其他 | 平均真实回报 | 训练墙钟 (h) |', '|---|---|---|---|---|---|---|---|']
+    for cfg, c in summary['configs'].items():
+        for seed, r in c['per_seed'].items():
+            fin = root / 'B' / f'TRAIN_{cfg}_s{seed}' / 'finished.json'
+            wall = json.loads(fin.read_text(encoding='utf-8'))['wall_s'] / 3600 if fin.is_file() else float('nan')
+            ret = r['mean_true_return']
+            lines.append(f'| {cfg} | {seed} | {r["captures"]}/{r["episodes"]} | {r["timeouts"]} | {r["unsafe"]} | '
+                         f'{r["resource_exhausted"] + r["other"]} | {"—" if ret is None else f"{ret:.1f}"} | {wall:.2f} |')
+    if summary.get('paired_mechanism'):
+        pm = summary['paired_mechanism']
+        lines += ['', f'- 配对机制检验：价值仲裁 {pm["captures_on"]}，最近规则 {pm["captures_off"]}，'
+                      f'只有前者捕获 {pm["only_on"]}，只有后者捕获 {pm["only_off"]}（{pm["pairs"]} 对）']
+    if summary.get('verdict') is not None:
+        lines += ['', '## 预登记判定（读数脚本给出）', '', '```', json.dumps(summary['verdict'], indent=1, ensure_ascii=False), '```']
+    lines += ['', '## 异常与补跑（下层手填；没有就写"无"）', '', '无', '']
+    return '\n'.join(lines)
+
+
+def pack(stage: str, root: Path, out: Path) -> dict:
+    """One delivery: completeness check (must pass), resolved registry with model SHA-256, readout and verdict, the
+    small per-run files (manifest, finished, episodes, TensorBoard events), RAW_SHA256SUMS of everything that stays on
+    the machine (evaluation JSON, final models), SHA256SUMS of the delivery and an auto-filled RESULT.md."""
+    import shutil
+    rep = check_stage(root, stage)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / 'CHECK.json').write_text(json.dumps(rep, indent=1), encoding='utf-8')
+    if not rep['complete']:
+        raise SystemExit(f'incomplete ({out / "CHECK.json"}): rerun the missing items with the same commands, then pack again')
+    resolved = resolve(stage, root)
+    (out / 'REGISTRY_RESOLVED.json').write_text(json.dumps(resolved, indent=1, ensure_ascii=False), encoding='utf-8')
+    from experiments import r2_dev_readout as R
+    summary, table = R.readout(root, stage)
+    if stage == 'dev':
+        summary['paired_mechanism'] = R.paired(root, stage)
+        summary['verdict'] = R.feedback_verdict(summary, summary['paired_mechanism'])
+    (out / 'SUMMARY.json').write_text(json.dumps(summary, indent=1), encoding='utf-8')
+    R.write_episodes_csv(out / 'EPISODES.csv', table)
+    if (root / 'PREFLIGHT.json').is_file():
+        shutil.copy2(root / 'PREFLIGHT.json', out / 'PREFLIGHT.json')
+    for run in sorted((root / 'B').glob('TRAIN_*')):
+        dst = out / 'runs' / run.name; (dst / 'tb').mkdir(parents=True, exist_ok=True)
+        for name in ('manifest.json', 'finished.json', 'episodes.json'):
+            if (run / name).is_file():
+                shutil.copy2(run / name, dst / name)
+        for ev in (run / 'tb').glob('events.out.tfevents.*'):
+            shutil.copy2(ev, dst / 'tb' / ev.name)
+    raw = sorted([*root.glob('C/*/*.json'), *root.glob('S/*/*.json'), *root.glob('B/TRAIN_*/final.zip')])
+    (out / 'RAW_SHA256SUMS').write_text(''.join(f'{sha256(f)}  {f.relative_to(root).as_posix()}\n' for f in raw), encoding='utf-8')
+    (out / 'RESULT.md').write_text(_result_md(stage, summary, resolved, root), encoding='utf-8')
+    files = sorted(f for f in out.rglob('*') if f.is_file() and f.name != 'SHA256SUMS')
+    (out / 'SHA256SUMS').write_text(''.join(f'{sha256(f)}  {f.relative_to(out).as_posix()}\n' for f in files), encoding='utf-8')
+    return {'delivered_files': len(files) + 1, 'raw_files_hashed': len(raw), 'verdict': summary.get('verdict')}
+
+
+def cmd_pack(a):
+    print(json.dumps(pack(a.stage, Path(a.root), Path(a.output)), indent=1, ensure_ascii=False))
+
+
 def main():
     os.environ.setdefault('OMP_NUM_THREADS', '1'); os.environ.setdefault('MKL_NUM_THREADS', '1'); os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
     p = argparse.ArgumentParser(description=__doc__); s = p.add_subparsers(dest='cmd', required=True)
@@ -357,8 +457,11 @@ def main():
     j.add_argument('--output', required=True); j.add_argument('--switch')
     r = s.add_parser('resolve'); r.add_argument('--stage', required=True); r.add_argument('--root', required=True); r.add_argument('--output', required=True)
     k = s.add_parser('check'); k.add_argument('--stage', required=True); k.add_argument('--root', required=True); k.add_argument('--output')
+    f = s.add_parser('preflight'); f.add_argument('--root', required=True); f.add_argument('--no-tests', action='store_true')
+    q = s.add_parser('pack'); q.add_argument('--stage', required=True); q.add_argument('--root', required=True); q.add_argument('--output', required=True)
     a = p.parse_args()
-    {'train': cmd_train, 'eval': cmd_eval, 'screen': cmd_screen, 'traj': cmd_traj, 'resolve': cmd_resolve, 'check': cmd_check}[a.cmd](a)
+    {'train': cmd_train, 'eval': cmd_eval, 'screen': cmd_screen, 'traj': cmd_traj, 'resolve': cmd_resolve, 'check': cmd_check,
+     'preflight': cmd_preflight, 'pack': cmd_pack}[a.cmd](a)
 
 
 if __name__ == '__main__':

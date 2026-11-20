@@ -26,6 +26,8 @@ python -B -m experiments.final eval    --stage dev --run ROOT/B/TRAIN_ECC_s0 --o
 python -B -m experiments.final screen  --stage STAGE --policy pure --output ROOT          # 阶段登记了 pure 时
 python -B -m experiments.final eval    --stage STAGE --run RUN --switch no_long_entry --output ROOT   # 阶段登记了该开关时
 python -B -m experiments.final traj    --entry ECC=RUN --openings A,B --output DIR
+python -B -m experiments.final preflight --root ROOT                                     # 开跑前记录（SHA、干净工作树、核数、pytest）
+python -B -m experiments.final pack    --stage dev --root ROOT --output evidence/R2_FB  # 一步交付（检查、哈希、读数、判定、RESULT.md）
 python -B -m experiments.final check   --stage dev --root ROOT --output ROOT/CHECK.json
 python -B -m experiments.final resolve --stage dev --root ROOT --output ROOT/REGISTRY_RESOLVED.json
 tensorboard --logdir ROOT/B                                                              # 学习曲线（每个运行的 tb/）

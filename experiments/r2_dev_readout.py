@@ -144,6 +144,16 @@ def feedback_verdict(summary: dict, pair: dict | None) -> dict | None:
             'formal_ecc': 'ECC_FB' if p else (None if m else 'ECC')}
 
 
+EPISODE_FIELDS = ['config', 'seed', 'opening', 'event', 'return', 'time_s', 'delta_v', 'corrections', 'long_entries',
+                  'arbitration_changed', 'deadline_s']
+
+
+def write_episodes_csv(path: Path, table: list[dict]) -> None:
+    with open(path, 'w', newline='', encoding='utf-8') as f:
+        w = csv.DictWriter(f, fieldnames=EPISODE_FIELDS)
+        w.writeheader(); w.writerows(table)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--root', required=True); p.add_argument('--output', required=True); p.add_argument('--stage', default='dev')
@@ -156,10 +166,7 @@ def main():
     else:
         summary['verdict'] = None
     (out / 'SUMMARY.json').write_text(json.dumps(summary, indent=1), encoding='utf-8')
-    with open(out / 'EPISODES.csv', 'w', newline='', encoding='utf-8') as f:
-        w = csv.DictWriter(f, fieldnames=['config', 'seed', 'opening', 'event', 'return', 'time_s', 'delta_v', 'corrections',
-                                          'long_entries', 'arbitration_changed', 'deadline_s'])
-        w.writeheader(); w.writerows(table)
+    write_episodes_csv(out / 'EPISODES.csv', table)
     print(json.dumps({'totals': {c: v['total'] for c, v in summary['configs'].items()}, 'verdict': summary['verdict']}, indent=1))
 
 
