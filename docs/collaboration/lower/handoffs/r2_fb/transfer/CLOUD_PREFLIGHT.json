@@ -1,0 +1,156 @@
+{
+  "run_order": "RUN_R2_FB2",
+  "recorded_at_utc": "2026-11-20T09:12:28.482868+00:00",
+  "repository": "251614030027r-max/spacecraft",
+  "scientific_sha": "b47eb660ca579c77074308e7876ba508379643d7",
+  "run_order_sha": "d552d8b63dee20f52a0dce547a418f9ecc49b793",
+  "run_order_path": "docs/collaboration/upper/run_orders/RUN_R2_FB2.md",
+  "run_order_blob_sha": "b62a16e861477e932ca629d127eae30c00e531e3",
+  "registry_sha256": "c5a939b524db63fd17b9c577c8dcb0800fad30ecee8176324e58f90124577e1a",
+  "worktree": "/workspace/spacecraft-frozen",
+  "worktree_clean": true,
+  "run_scope": {
+    "stage": "dev",
+    "configurations": [
+      "ECC",
+      "ECC_FB"
+    ],
+    "seed": 2,
+    "steps_per_config": 3000,
+    "collection_workers_per_config": 2,
+    "updates_per_transition": 2,
+    "from_scratch": true,
+    "evaluation": "pending later local/cloud assignment",
+    "commands": {
+      "ECC": [
+        "python",
+        "-B",
+        "-m",
+        "experiments.final",
+        "train",
+        "--stage",
+        "dev",
+        "--config",
+        "ECC",
+        "--seed",
+        "2",
+        "--output",
+        "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_s2"
+      ],
+      "ECC_FB": [
+        "python",
+        "-B",
+        "-m",
+        "experiments.final",
+        "train",
+        "--stage",
+        "dev",
+        "--config",
+        "ECC_FB",
+        "--seed",
+        "2",
+        "--output",
+        "/workspace/spacecraft-r2-fb2/B/TRAIN_ECC_FB_s2"
+      ]
+    }
+  },
+  "scheduling": {
+    "mode": "serial",
+    "order": [
+      "ECC",
+      "ECC_FB"
+    ],
+    "reason": "2 effective CPUs for two collectors plus learner per run"
+  },
+  "environment": {
+    "provider": "Codex Cloud",
+    "environment_id": "ccarenv_b64_Y2NhcmVudl9lODJkYzI4OTFkMzQ4MTkxYjg3YTg1Mzg3Yjc5ODdmYQ",
+    "hostname": "182afcc1f647",
+    "kernel": "6.18.57",
+    "architecture": "x86_64",
+    "boot_id": "37fc5373-a7a7-4277-8602-0a9ef28cd9af",
+    "execution_entry": "setsid detached supervisor in frozen checkout",
+    "detach_probe_passed": true,
+    "persistence": "workspace readback proved across commands on this instance; retention or execution across platform recycling is not guaranteed"
+  },
+  "hardware": {
+    "affinity_cpu_ids": [
+      0,
+      1,
+      2
+    ],
+    "cpuset_cpus_effective": "0-2",
+    "cpu_max": "200000 100000",
+    "effective_cpu_quota": 2,
+    "memory_max_bytes": 8589934592,
+    "memory_current_bytes": 2479181824,
+    "memory_peak_bytes": 2686087168,
+    "memory_events": {
+      "low": "0",
+      "high": "0",
+      "max": "0",
+      "oom": "0",
+      "oom_kill": "0",
+      "oom_group_kill": "0"
+    },
+    "disk_free_bytes": 6029651968,
+    "workspace_filesystem": "overlay"
+  },
+  "dependencies": {
+    "python": "3.12.14",
+    "executable": "/workspace/spacecraft-r2-fb2-venv/bin/python",
+    "pip_check": "No broken requirements found.",
+    "versions": {
+      "torch": "2.9.1+cpu",
+      "numpy": "2.3.4",
+      "scipy": "1.16.3",
+      "gymnasium": "1.2.2",
+      "stable_baselines3": "2.7.1",
+      "tensorboard": "2.20.0",
+      "pytest": "9.1.1",
+      "cvxpy": "1.9.1"
+    },
+    "freeze_path": "/workspace/spacecraft-r2-fb2/preflight/python-freeze.txt",
+    "freeze_sha256": "6cf6fc822ab3c55385f5e77584aa4ed73d28cd6ddbdd2d6c7cd5a10989130ecf"
+  },
+  "pytest": {
+    "command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q"
+    ],
+    "exit_code": 0,
+    "passed": 171,
+    "duration_s": 66.84,
+    "started_utc": "2026-11-20T09:10:01Z",
+    "finished_utc": "2026-11-20T09:11:10Z",
+    "log_path": "/workspace/spacecraft-r2-fb2/preflight/pytest.log",
+    "log_sha256": "f309f7e12dc26ea23e833c3a9cfc792d6699092626ecfab1d19c8c6d450ac354"
+  },
+  "evidence": {
+    "root": "/workspace/spacecraft-r2-fb2",
+    "status": "/workspace/spacecraft-r2-fb2/STATUS.json",
+    "native_run_dir": "/workspace/spacecraft-r2-fb2/B",
+    "archive_dir": "/workspace/spacecraft-r2-fb2/transfer"
+  },
+  "transfer": {
+    "probe": {
+      "name": "RUN_R2_FB2_TRANSFER_PROBE.txt",
+      "workspace_path": "/workspace/spacecraft-r2-fb2/preflight/RUN_R2_FB2_TRANSFER_PROBE.txt",
+      "bytes": 81,
+      "sha256": "1cf1803bba9248cf818873d456f14952f609b7063af9baac5201691053db727c",
+      "workspace_readback": "verified",
+      "codex_file_view": "queued",
+      "recipient_download": "unverified"
+    },
+    "github_draft": {
+      "id": 452472801,
+      "draft": true,
+      "upload_http_status": 401,
+      "asset_uploaded": false
+    },
+    "fallback": "Codex originating chat workspace download for the user; package available while workspace files are retained"
+  }
+}
