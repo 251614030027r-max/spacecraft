@@ -449,7 +449,7 @@ class T2StageEnv(gym.Env):
         self.coordination = bool(coordination)
         #: critical intent opportunities O_I (the grid correction); off: "w/o core" (keep and direct entry only)
         self.correction = bool(correction)
-        #: the direct-entry opportunity O_L at the last usable pass; off: "w/o long-range entry"
+        #: the direct-entry opportunity O_L at the last usable pass (part of the coordination; switchable for tests)
         self.long_entry = bool(long_entry)
         if arbitration not in ARBITRATIONS:
             raise ValueError(f"unknown arbitration {arbitration!r}: {ARBITRATIONS}")

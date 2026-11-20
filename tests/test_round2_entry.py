@@ -14,9 +14,11 @@ def test_registered_configurations_match_the_spec():
     assert t['ECC'] == {**t['ECC'], 'algo': 'sac', 'coordination': True, 'correction': True, 'long_entry': True, 'potential': 'opportunity'}
     assert t['ECC_NO_CORE']['correction'] is False and t['ECC_NO_CORE']['long_entry'] is True
     assert not t['SAC_MPC']['coordination'] and t['TD3_MPC']['algo'] == 'td3' and not t['TD3_MPC']['coordination']
-    assert set(t) == {'ECC', 'ECC_NO_CORE', 'SAC_MPC', 'TD3_MPC', 'ECC_FB'} and {c['potential'] for c in t.values()} == {'opportunity'}
-    assert reg['eval_switches']['no_long_entry']['env'] == {'long_entry': False}
-    assert reg['fixed'] == {'pure': reg['fixed']['pure']}
+    assert set(t) == {'ECC', 'ECC_NO_CORE', 'SAC_MPC', 'TD3_MPC', 'ECC_FB', 'ECC_NO_RWG'} and {c['potential'] for c in t.values()} == {'opportunity'}
+    assert t['ECC_NO_RWG']['geometry'] is False and all(final.env_kwargs(t['ECC_NO_RWG'])[k] == final.env_kwargs(t['ECC'])[k]
+                                                         for k in ('coordination', 'correction', 'long_entry', 'window', 'arbitration'))
+    assert 'no_long_entry' not in reg['eval_switches']                       # the long-range entry belongs to the coordination
+    assert reg['eval_switches']['rigid_entry']['env'] == {'window': False} and set(reg['fixed']) == {'pure', 'c_10_0', 'b_10'}
     dev = final.stage_of('dev')
     assert dev['steps'] == 3000 and dev['seeds'] == [0, 1, 2] and dev['trained'] == ['ECC', 'ECC_FB']
     assert final.block(dev['eval_openings']) == list(range(295300, 295492))
@@ -52,13 +54,13 @@ def test_evaluation_openings_and_smoke_boundaries():
 def test_switches_and_smoke_seeds(tmp_path):
     st = final.stage_of('dev')
     with pytest.raises(SystemExit):
-        final.switch_env(st, 'ECC', 'no_long_entry')            # not registered for the development stage
+        final.switch_env(st, 'ECC', 'rigid_entry')              # not registered for the development stage
     assert final.switch_env(st, 'ECC_FB', 'nearest_arbitration') == {'arbitration': 'nearest'}
     with pytest.raises(SystemExit):
         final.switch_env(st, 'ECC', 'nearest_arbitration')
-    assert final.switch_env({**st, 'eval_switches': ['no_long_entry']}, 'ECC', 'no_long_entry') == {'long_entry': False}
+    assert final.switch_env({**st, 'eval_switches': ['rigid_entry']}, 'ECC', 'rigid_entry') == {'window': False}
     with pytest.raises(SystemExit):
-        final.switch_env({**st, 'eval_switches': ['no_long_entry']}, 'SAC_MPC', 'no_long_entry')
+        final.switch_env({**st, 'eval_switches': ['rigid_entry']}, 'SAC_MPC', 'rigid_entry')
     for seed in (0, 20):
         with pytest.raises(SystemExit):
             final.cmd_train(Namespace(stage='dev', config='ECC', seed=seed, output=str(tmp_path / f's{seed}'), workers=1, smoke_steps=4))
@@ -97,3 +99,12 @@ def test_completeness_report_requires_runs_results_and_tensorboard(tmp_path):
                 for o in range(295300, 295492):
                     (c / f'{label}_{o}.json').write_text('{}')
     assert final.check_stage(tmp_path, 'dev')['complete']
+
+
+def test_rwg_fixed_intent_pair_differs_only_in_rotation_guidance():
+    from experiments.t2 import fixed_intent
+    import numpy as np
+    a, geo = fixed_intent('c_10_0'); b, nogeo = fixed_intent('b_10')
+    assert np.array_equal(a, b) and np.array_equal(a, [1.0, 0.0]) and geo is True and nogeo is False
+    with pytest.raises(ValueError):
+        fixed_intent('rally')

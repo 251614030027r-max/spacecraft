@@ -24,7 +24,8 @@ python -B -m pytest -q
 python -B -m experiments.final train   --stage dev --config ECC --seed 0 --output ROOT/B/TRAIN_ECC_s0
 python -B -m experiments.final eval    --stage dev --run ROOT/B/TRAIN_ECC_s0 --output ROOT
 python -B -m experiments.final screen  --stage STAGE --policy pure --output ROOT          # 阶段登记了 pure 时
-python -B -m experiments.final eval    --stage STAGE --run RUN --switch no_long_entry --output ROOT   # 阶段登记了该开关时
+python -B -m experiments.final eval    --stage STAGE --run RUN --switch rigid_entry --output ROOT     # 阶段登记了该开关时（RWG 重定时检验）
+python -B -m experiments.final screen  --stage STAGE --policy c_10_0 --output ROOT        # RWG 旋转引导检验（与 b_10 配对）
 python -B -m experiments.final traj    --entry ECC=RUN --openings A,B --output DIR
 python -B -m experiments.final preflight --root ROOT                                     # 开跑前记录（SHA、干净工作树、核数、pytest）
 python -B -m experiments.final pack    --stage dev --root ROOT --output evidence/R2_FB  # 一步交付（检查、哈希、读数、判定、RESULT.md）

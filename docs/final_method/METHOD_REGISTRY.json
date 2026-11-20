@@ -73,19 +73,23 @@
    "window": true,
    "role": "feedback-mechanism candidate (docs/final_method/FEEDBACK_DEV.md): the critic ranks the executor-certified critical intents; execution-equivalent proposals share the real transition",
    "color": "#5b2c6f"
+  },
+  "ECC_NO_RWG": {
+   "display": "ECC w/o RWG (rotation guidance)",
+   "algo": "sac",
+   "coordination": true,
+   "correction": true,
+   "long_entry": true,
+   "potential": "opportunity",
+   "arbitration": "nearest",
+   "equivalence": false,
+   "geometry": false,
+   "window": true,
+   "role": "optional RWG ablation in the learning loop (ROUND2.md section 2): stage intents close along the line of sight, no latitude law, a_z inactive; entry rule, re-timing and coordination unchanged",
+   "color": "#16a085"
   }
  },
  "eval_switches": {
-  "no_long_entry": {
-   "display": "ECC w/o long-range entry",
-   "applies_to": [
-    "ECC"
-   ],
-   "env": {
-    "long_entry": false
-   },
-   "role": "evaluation-time removal of the direct-entry opportunity (the auxiliary mechanism)"
-  },
   "nearest_arbitration": {
    "display": "ECC_FB evaluated with the nearest rule",
    "applies_to": [
@@ -95,12 +99,31 @@
     "arbitration": "nearest"
    },
    "role": "paired mechanism check (FEEDBACK_DEV.md section 4): the same ECC_FB models with the first-draft nearest choice"
+  },
+  "rigid_entry": {
+   "display": "ECC with rigid entry commitment (no entry re-timing)",
+   "applies_to": [
+    "ECC",
+    "ECC_FB"
+   ],
+   "env": {
+    "window": false
+   },
+   "role": "RWG check (ROUND2.md section 2): entry re-timing off at evaluation, paired on the same models"
   }
  },
  "fixed": {
   "pure": {
    "display": "MPC",
    "role": "non-learning baseline: the frozen MPC alone, same task and truth judge"
+  },
+  "c_10_0": {
+   "display": "Fixed intent (1, 0) with rotation guidance",
+   "role": "RWG check: rotation-synchronized fixed intent, no learning"
+  },
+  "b_10": {
+   "display": "Fixed intent (1, 0) without rotation guidance",
+   "role": "RWG check: the same closing intent along the line of sight (geometry off), no learning"
   }
  },
  "protocol": {

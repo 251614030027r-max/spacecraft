@@ -3,7 +3,8 @@
 * ``evaluate``: a trained model (final), deterministic actor (mean action), one result file per opening; the executor
   configuration (coordination, correction, direct entry, pass-window commitment, rotation guidance) is read from the
   run's manifest, with registered evaluation switches applied on top (``env`` overrides).
-* ``screen``: the fixed non-learning baseline ``pure`` (the frozen MPC alone, no stage layer).
+* ``screen``: fixed non-learning policies: ``pure`` (the frozen MPC alone, no stage layer) and the RWG check pair
+  ``c_10_0`` / ``b_10`` (the same intent with and without rotation guidance).
 
 Every result file holds the outcome, true return, time, delta-v, executor statistics and the per-decision log; with
 ``audit`` also the initial state, the read-only decision diagnostics and the terminal / margin record.
@@ -64,14 +65,31 @@ def guarded(fn):
     return run
 
 
+#: fixed non-learning policies (``docs/final_method/ROUND2.md`` section 2): ``pure`` (the frozen MPC alone),
+#: ``c_PP_AA`` (constant intent (PP/10, AA/10) with rotation guidance), ``b_PP`` (constant closing PP/10 along the line of
+#: sight, rotation guidance off); no coordination
+def fixed_intent(policy: str):
+    if policy.startswith('c_'):
+        _, p, a = policy.split('_'); return np.array([int(p) / 10.0, int(a) / 10.0]), True
+    if policy.startswith('b_'):
+        return np.array([int(policy.split('_')[1]) / 10.0, 0.0]), False
+    raise ValueError(f'unknown fixed policy {policy}')
+
+
 def screen_job(job):
     opening, policy, out = job['opening'], job['label'], job['out']
-    if policy != 'pure':
-        raise ValueError(f'unknown fixed policy {policy}')
     import torch; torch.set_num_threads(1)
     file = Path(out) / f'{policy}_{opening}.json'
     if file.exists(): return json.loads(file.read_text(encoding='utf-8'))
     from env.t2_stage import T2StageEnv
+    if policy != 'pure':
+        action, geometry = fixed_intent(policy)
+        env = T2StageEnv(openings=[opening], shaping=False, geometry=geometry)
+        env.audit_logging = bool(job.get('audit', False))
+        res = run_episode(env, opening, lambda e, o: action)
+        res.update(policy=policy, geometry=geometry, entries_lost=env.stats.get('entries_lost', 0),
+                   window_recoveries=env.generator.bridge.recovery_log)
+        dump(file, res); return res
     env = T2StageEnv(openings=[opening], shaping=False)
     env.audit_logging = bool(job.get('audit', False))
     # the frozen MPC alone (fixed terminal set-point, no stage layer, no entry planner): same task, deadline, weights,
