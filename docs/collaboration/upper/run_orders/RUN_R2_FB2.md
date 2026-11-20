@@ -1,6 +1,6 @@
 # 执行书：RUN_R2_FB2（第二轮反馈机制开发，修订版；替代 RUN_R2_FB）
 
-**状态：** 已写好，**等用户开场指令**。
+**状态：作废，未执行（2026-11-20），由 [RUN_R2_FB3](RUN_R2_FB3.md) 替代（试验相同，交付简化）。**
 
 **依据：** 科学分支 `docs/final_method/FEEDBACK_DEV.md`（第 4 节为修订后的判据）、`docs/final_method/ROUND2.md`。
 
