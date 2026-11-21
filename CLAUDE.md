@@ -11,7 +11,8 @@ otherwise flies the critical opportunity of least change (nearest grid intent at
 entry at the last usable pass); the frozen planners and MPC fly entry, descent and capture. Standard SAC (actor and
 critics read the same 17-value observation; the first draft's critic inputs z are removed, DEAD_ENDS D46); single
 time-limited task (deadline U(140, 200) s, 3.0 m/s); training potential = opportunity-reachability potential.
-Configurations `ECC`, `ECC_NO_CORE`, `SAC_MPC`, `TD3_MPC`; RWG checks: evaluation switch `rigid_entry`, fixed-intent pair
+Configurations `ECC` (or `ECC_FINE`, the fine opportunity lattice, if the short check of `FORMAL.md` section 8
+passes), `ECC_NO_CORE`, `SAC_MPC`, `TD3_MPC`; RWG checks: evaluation switch `rigid_entry`, fixed-intent pair
 `c_10_0` / `b_10`. The feedback-development candidate `ECC_FB` was not adopted (DEAD_ENDS D47; code at science `b47eb660`).
 
 **State (2026-11-19):** first draft done (`evidence/PAPER_READOUT/`, paper `docs/paper/latex/`, ECC_LE 251/288; that
