@@ -42,3 +42,5 @@ python -B scripts/compare.py REF1.json REF2.json -- NEW1.json NEW2.json
 **复核（2026-11-21，正式实验代码 `0ede5def`，FB 代码删除后）：**
 - 全部 12 个回合（6 个初始条件 × 两条意图序列）与参照逐行一致，含 13 次修正、3 次直接入口；
 - 原始记录：`sandbox/recheck_formal_*.json`。
+
+**复核（2026-11-21，加入 `extended_lattice` 开关后，默认关闭）：** 294302、294305 的四条序列与参照逐行一致（`sandbox/recheck_extended_lattice_switch_294302_294305.json`）。
