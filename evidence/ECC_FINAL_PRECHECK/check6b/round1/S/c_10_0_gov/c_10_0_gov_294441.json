@@ -1,0 +1,441 @@
+{
+ "opening": 294441,
+ "event": "timeout",
+ "return": -133.6397174844046,
+ "time_s": 176.1,
+ "delta_v": 1.602971748440459,
+ "stages": 12,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 95,
+ "macro": null,
+ "mission": {
+  "deadline_s": 176.1,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 58.07848763465881,
+ "decisions": [
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 13.203709309903624,
+   "planned_dv": 0.16880660401051575,
+   "executed_dv": 0.16859516558931864,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.5808948949998012
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 10.654708175568206,
+   "planned_dv": 0.06952881183697132,
+   "executed_dv": 0.06938531757925007,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 16.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "successor",
+    "critical": true,
+    "n_admissible": 1,
+    "act": true,
+    "tau_min": 46.0,
+    "own_event": 0,
+    "own_kind": null,
+    "own_t": 48.0,
+    "own_admissible": false,
+    "successor_by": [
+     1.0,
+     1.0
+    ],
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.7808053819990164
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.929498835487572,
+   "planned_dv": 0.04168885123182299,
+   "executed_dv": 0.041566781996231955,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 32.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "successor",
+    "critical": true,
+    "n_admissible": 2,
+    "act": true,
+    "tau_min": 32.0,
+    "own_event": 0,
+    "own_kind": null,
+    "own_t": 48.0,
+    "own_admissible": false,
+    "successor_by": [
+     1.0,
+     1.0
+    ],
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.7505559990004258
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 64.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.13385942710069,
+   "planned_dv": 0.2032255709792539,
+   "executed_dv": 0.2278322707323368,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 48.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "replace",
+    "critical": true,
+    "n_admissible": 2,
+    "act": true,
+    "tau_min": 20.0,
+    "own_event": 0,
+    "own_kind": null,
+    "own_t": 48.0,
+    "own_admissible": false,
+    "alt": [
+     1.0,
+     1.0
+    ],
+    "alt_t": 20.0,
+    "alt_kind": "entry",
+    "alt_incumbent": false,
+    "a_exec": [
+     1.0,
+     1.0
+    ],
+    "wall_s": 1.6333489610005927
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 80.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 8.237311937628167,
+   "planned_dv": 0.16880660401152964,
+   "executed_dv": 0.2891552116195544,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 64.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 7,
+    "act": true,
+    "tau_min": 6.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 6.0,
+    "own_admissible": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.7746426639987476
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 96.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.086903252202228,
+   "planned_dv": 0.15369934186212578,
+   "executed_dv": 0.14550003232871744,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 80.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 4,
+    "act": true,
+    "tau_min": 34.0,
+    "own_event": 1,
+    "own_kind": "descent",
+    "own_t": 46.0,
+    "own_admissible": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 2.0555827320004028
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 112.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.017315444398545,
+   "planned_dv": 0.20485572111021252,
+   "executed_dv": 0.21085060965569113,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 96.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 3,
+    "act": true,
+    "tau_min": 30.0,
+    "own_event": 1,
+    "own_kind": "descent",
+    "own_t": 30.0,
+    "own_admissible": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 1.5345432029989752
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 128.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.226318053667674,
+   "planned_dv": 0.16880660383015722,
+   "executed_dv": 0.1559926889835861,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 112.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 3,
+    "act": true,
+    "tau_min": 16.0,
+    "own_event": 1,
+    "own_kind": "descent",
+    "own_t": 16.0,
+    "own_admissible": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.4600641449997056
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 144.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.165402137996526,
+   "planned_dv": 0.06160154757422538,
+   "executed_dv": 0.07863181406954167,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 128.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.23038489100144943
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 160.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.272423172996929,
+   "planned_dv": 0.09538506029677692,
+   "executed_dv": 0.12698816056019147,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 144.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.42426315100055945
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 176.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.320144677811414,
+   "planned_dv": 0.04931254844449665,
+   "executed_dv": 0.08642570468359478,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 160.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.258536584000467
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 176.1,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.319916534968046,
+   "planned_dv": 0.08046186672699637,
+   "executed_dv": 0.0020479906424446526,
+   "model": "off",
+   "event": "timeout",
+   "gov": {
+    "t": 176.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.12151193399949989
+   }
+  }
+ ],
+ "coordination": "gov",
+ "cert_interventions": 0,
+ "gov_replacements": 1,
+ "gov_decisions": 12,
+ "gov_wall_s": 9.605134540999643,
+ "policy": "c_10_0_gov",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": []
+}

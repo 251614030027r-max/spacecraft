@@ -1,0 +1,191 @@
+{
+ "opening": 295115,
+ "event": "success",
+ "return": 35.57218648055843,
+ "time_s": 160.5,
+ "delta_v": 1.530445337986041,
+ "stages": 4,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 1,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 331.3,
+  "urgent": false,
+  "budget_m_s": 2.0,
+  "time_cost_per_s": 0.02,
+  "fuel_cost_per_m_s": 40.0
+ },
+ "wall_s": 135.3682041168213,
+ "decisions": [
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.045186908962641,
+   "planned_dv": 0.1688066041003848,
+   "executed_dv": 0.1690663209993561,
+   "model": "off",
+   "event": null,
+   "t_start": 0.0,
+   "remaining_s": 331.3,
+   "remaining_dv": 2.0,
+   "phase_rad": 5.067302259173915,
+   "time_to_pass_s": 127.01914242370235,
+   "lat_err_deg": -61.49453637542865,
+   "macro_end": "stage_complete",
+   "true_mode_event_t": null
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 9.395421905457965,
+   "planned_dv": 0.04475297664618602,
+   "executed_dv": 0.044856790761265086,
+   "model": "off",
+   "event": null,
+   "t_start": 16.0,
+   "remaining_s": 315.3,
+   "remaining_dv": 1.8309336790006439,
+   "phase_rad": 4.358830324075739,
+   "time_to_pass_s": 109.19998833837408,
+   "lat_err_deg": -51.47609462013544,
+   "macro_end": "stage_complete",
+   "true_mode_event_t": null
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 7.126485588195689,
+   "planned_dv": 0.03370611987862442,
+   "executed_dv": 0.048196975175025025,
+   "model": "off",
+   "event": null,
+   "t_start": 32.0,
+   "remaining_s": 299.3,
+   "remaining_dv": 1.786076888239379,
+   "phase_rad": 3.7446965858371573,
+   "time_to_pass_s": 93.76644655115363,
+   "lat_err_deg": -34.37810592605594,
+   "macro_end": "stage_complete",
+   "true_mode_event_t": null
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 160.5,
+   "mode": "descent",
+   "held": false,
+   "range_m": 2.9931138596597195,
+   "planned_dv": 0.13005110391472566,
+   "executed_dv": 1.2683252510503948,
+   "model": "off",
+   "event": "success",
+   "t_start": 48.0,
+   "remaining_s": 283.3,
+   "remaining_dv": 1.7378799130643539,
+   "phase_rad": 3.1390306241969923,
+   "time_to_pass_s": 78.57145232401533,
+   "lat_err_deg": -12.155128424732268,
+   "macro_end": "entry",
+   "true_mode_event_t": 52.0
+  }
+ ],
+ "initial": {
+  "q": [
+   -9.951472323387861,
+   -8.337978186009815,
+   -3.423319603981815
+  ],
+  "v": [
+   0.029645597024759596,
+   -0.02211908296067122,
+   0.015895517871285847
+  ],
+  "rotation": [
+   [
+    0.4026552078958576,
+    0.12754654610084026,
+    -0.906421900735022
+   ],
+   [
+    0.25790598346569665,
+    -0.9659340427341944,
+    -0.021352488842456024
+   ],
+   [
+    -0.8782672072023046,
+    -0.22517394090995874,
+    -0.42183339020061306
+   ]
+  ],
+  "omega": [
+   -0.004537732658610429,
+   0.009732370223621604,
+   0.038421628799324085
+  ],
+  "axis": [
+   -1.0,
+   0.0,
+   0.0
+  ]
+ },
+ "budget_m_s": 2.0,
+ "min_margins": {
+  "collision_clearance_m": 0.5024949731030517,
+  "union_margin_m": 0.4826682093553245,
+  "fov_margin_deg": 25.337687647761193,
+  "radial_envelope_margin_m_s": 0.009893610767156141,
+  "total_speed_margin_m_s": 0.21339493829030912,
+  "axial_envelope_margin_m_s": 0.01703172402710043
+ },
+ "terminal": {
+  "position_error_m": 0.23717443809815672,
+  "speed_m_s": 0.013739918141182741,
+  "attitude_error_rad": 0.060016191729276816,
+  "angular_velocity_error_rad_s": 0.0062320745249189275,
+  "in_cone": true
+ },
+ "cert_wall_s_total": 0,
+ "cert_decisions": 0,
+ "condition": "prescreen",
+ "policy": "c_10_0",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 70.0,
+   "slip_s": 2.0,
+   "reserve": false,
+   "phase_deg": 4.579039334886146
+  },
+  {
+   "t": 82.0,
+   "slip_s": 8.0,
+   "reserve": false,
+   "phase_deg": 18.315292781436533
+  },
+  {
+   "t": 102.0,
+   "slip_s": 8.0,
+   "reserve": false,
+   "phase_deg": 18.309403365524652
+  }
+ ]
+}

@@ -1,0 +1,150 @@
+{
+ "opening": 295127,
+ "event": "success",
+ "return": 52.41405231881989,
+ "time_s": 103.3,
+ "delta_v": 1.1379986920295024,
+ "stages": 3,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 15,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 302.0,
+  "urgent": false,
+  "budget_m_s": 2.0,
+  "time_cost_per_s": 0.02,
+  "fuel_cost_per_m_s": 40.0
+ },
+ "wall_s": 77.80946278572083,
+ "decisions": [
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 11.112352022063725,
+   "planned_dv": 0.1688066042406671,
+   "executed_dv": 0.16880162222886366,
+   "model": "off",
+   "event": null,
+   "t_start": 0.0,
+   "remaining_s": 302.0,
+   "remaining_dv": 2.0,
+   "phase_rad": 1.98932514060155,
+   "time_to_pass_s": 46.00647469095669,
+   "lat_err_deg": 36.52606653852804,
+   "macro_end": "stage_complete",
+   "true_mode_event_t": null
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 8.628138355758391,
+   "planned_dv": 0.07182287416663023,
+   "executed_dv": 0.07183520244283151,
+   "model": "off",
+   "event": null,
+   "t_start": 16.0,
+   "remaining_s": 286.0,
+   "remaining_dv": 1.8311983777711363,
+   "phase_rad": 1.277295205488417,
+   "time_to_pass_s": 29.55017593777905,
+   "lat_err_deg": 37.51645600632777,
+   "macro_end": "stage_complete",
+   "true_mode_event_t": null
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 103.3,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.00226144527917,
+   "planned_dv": 0.0784652687672983,
+   "executed_dv": 0.8973618673578072,
+   "model": "off",
+   "event": "success",
+   "t_start": 32.0,
+   "remaining_s": 270.0,
+   "remaining_dv": 1.7593631753283048,
+   "phase_rad": 0.5579191539475021,
+   "time_to_pass_s": 12.913142144420021,
+   "lat_err_deg": 28.640468685073273,
+   "macro_end": "descent",
+   "true_mode_event_t": 46.0
+  }
+ ],
+ "initial": {
+  "q": [
+   -7.78418296109885,
+   -4.5273959962100525,
+   8.106826255449583
+  ],
+  "v": [
+   -0.007110785256513282,
+   0.002081619196360407,
+   0.009272778262129577
+  ],
+  "rotation": [
+   [
+    0.4450576838193019,
+    0.8917870850826988,
+    0.08148283839620347
+   ],
+   [
+    0.3296125980224094,
+    -0.24773869839822046,
+    0.9110329700624853
+   ],
+   [
+    0.8326338891123253,
+    -0.37860445348101635,
+    -0.40420226929846037
+   ]
+  ],
+  "omega": [
+   0.007557767477587398,
+   0.006276713094785519,
+   0.042109266807406454
+  ],
+  "axis": [
+   -1.0,
+   0.0,
+   0.0
+  ]
+ },
+ "budget_m_s": 2.0,
+ "min_margins": {
+  "collision_clearance_m": 0.5115132490164758,
+  "union_margin_m": 0.47417685621367134,
+  "fov_margin_deg": 23.402038888903824,
+  "radial_envelope_margin_m_s": 0.029076891458709897,
+  "total_speed_margin_m_s": 0.18780754568060795,
+  "axial_envelope_margin_m_s": 0.01565478763652728
+ },
+ "terminal": {
+  "position_error_m": 0.23615844156113214,
+  "speed_m_s": 0.013950854376712079,
+  "attitude_error_rad": 0.018925253090363307,
+  "angular_velocity_error_rad_s": 0.0019649773188552223,
+  "in_cone": true
+ },
+ "cert_wall_s_total": 0,
+ "cert_decisions": 0,
+ "condition": "prescreen",
+ "policy": "c_10_0",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": []
+}

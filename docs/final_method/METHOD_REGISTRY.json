@@ -1,0 +1,185 @@
+{
+ "method": "ECC",
+ "method_long": "Execution-feedback closed-loop coordination with rotation-synchronized window guidance",
+ "note": "The only configuration source of round 2 (docs/final_method/ROUND2.md, formal round FORMAL.md): experiments/final.py launches registered configurations only. First-draft (round-1) registry: docs/archive/registry/METHOD_REGISTRY_ROUND1_20261119.json; development-period registry: docs/archive/registry/METHOD_REGISTRY_20261111.json.",
+ "method_behaviour_reference": "e0a617532008dac02e2d50f7e859aca613e03e5e",
+ "trained": {
+  "ECC": {
+   "display": "ECC",
+   "algo": "sac",
+   "coordination": true,
+   "correction": true,
+   "long_entry": true,
+   "potential": "opportunity",
+   "geometry": true,
+   "window": true,
+   "role": "proposed method: opportunity coordination (keep / critical-window correction / direct entry) with standard SAC",
+   "color": "#8e44ad",
+   "extended_lattice": false
+  },
+  "ECC_NO_CORE": {
+   "display": "ECC w/o critical-window correction",
+   "algo": "sac",
+   "coordination": true,
+   "correction": false,
+   "long_entry": true,
+   "potential": "opportunity",
+   "geometry": true,
+   "window": true,
+   "role": "attribution: keep and direct entry only (no grid correction)",
+   "color": "#c0392b",
+   "extended_lattice": false
+  },
+  "SAC_MPC": {
+   "display": "SAC-MPC",
+   "algo": "sac",
+   "coordination": false,
+   "correction": false,
+   "long_entry": false,
+   "potential": "opportunity",
+   "geometry": true,
+   "window": true,
+   "role": "w/o feedback: the policy's intent is flown as proposed (same executor, network, reward)",
+   "color": "#eb6834",
+   "extended_lattice": false
+  },
+  "TD3_MPC": {
+   "display": "TD3-MPC",
+   "algo": "td3",
+   "coordination": false,
+   "correction": false,
+   "long_entry": false,
+   "potential": "opportunity",
+   "geometry": true,
+   "window": true,
+   "role": "matched deterministic actor-critic baseline (TD3 standard configuration)",
+   "color": "#0072b2",
+   "extended_lattice": false
+  },
+  "ECC_FINE": {
+   "display": "ECC",
+   "algo": "sac",
+   "coordination": true,
+   "correction": true,
+   "long_entry": true,
+   "potential": "opportunity",
+   "geometry": true,
+   "window": true,
+   "role": "proposed method with the fine opportunity lattice (FORMAL.md section 8); fills the ECC slot of the formal stage if the short check passes",
+   "color": "#8e44ad",
+   "extended_lattice": true
+  }
+ },
+ "eval_switches": {
+  "rigid_entry": {
+   "display": "ECC with rigid entry commitment (no entry re-timing)",
+   "applies_to": [
+    "ECC",
+    "ECC_FINE"
+   ],
+   "env": {
+    "window": false
+   },
+   "role": "RWG check (ROUND2.md section 2): entry re-timing off at evaluation, paired on the same models"
+  },
+  "extended_lattice": {
+   "display": "ECC with the fine opportunity lattice (evaluation only)",
+   "applies_to": [
+    "ECC"
+   ],
+   "env": {
+    "extended_lattice": true
+   },
+   "role": "short check (FORMAL.md section 8): the dev ECC models, paired with their existing results"
+  }
+ },
+ "fixed": {
+  "pure": {
+   "display": "MPC",
+   "role": "non-learning baseline: the frozen MPC alone, same task and truth judge"
+  },
+  "c_10_0": {
+   "display": "Fixed intent (1, 0) with rotation guidance",
+   "role": "RWG check: rotation-synchronized fixed intent, no learning"
+  },
+  "b_10": {
+   "display": "Fixed intent (1, 0) without rotation guidance",
+   "role": "RWG check: the same closing intent along the line of sight (geometry off), no learning"
+  }
+ },
+ "protocol": {
+  "workers": 2,
+  "updates_per_transition": 2.0,
+  "task": {
+   "deadline_s": [
+    140.0,
+    200.0
+   ],
+   "budget_m_s": 3.0,
+   "time_cost_per_s": 0.1,
+   "fuel_cost_per_m_s": 10.0
+  },
+  "reserved": {
+   "dev_block": "294000-299999",
+   "formal_block": "300000-999999",
+   "training_openings": "1000000 (seed + 1) + 100000 rank + episode",
+   "never_reuse": {
+    "seeds": [
+     20,
+     21,
+     22
+    ],
+    "openings": "300000-300295"
+   }
+  },
+  "stages": {
+   "dev": {
+    "steps": 3000,
+    "seeds": [
+     0,
+     1,
+     2
+    ],
+    "eval_openings": "295300-295491",
+    "trained": [
+     "ECC"
+    ],
+    "fixed": [],
+    "eval_switches": [
+     "extended_lattice"
+    ],
+    "authorised_by": "docs/final_method/FEEDBACK_DEV.md (completed 2026-11-21; ECC_FB not adopted, code at science b47eb660)"
+   },
+   "formal": {
+    "steps": 6000,
+    "seeds": [
+     30,
+     31,
+     32
+    ],
+    "eval_openings": "301000-301191",
+    "trained": [
+     "ECC",
+     "SAC_MPC",
+     "ECC_NO_CORE",
+     "TD3_MPC"
+    ],
+    "fixed": [
+     "pure",
+     "c_10_0",
+     "b_10"
+    ],
+    "eval_switches": [
+     "rigid_entry"
+    ],
+    "authorised_by": "docs/final_method/FORMAL.md",
+    "variants": {
+     "ECC": [
+      "ECC",
+      "ECC_FINE"
+     ]
+    }
+   }
+  }
+ }
+}

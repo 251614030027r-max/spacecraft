@@ -1,0 +1,63 @@
+\documentclass{IEEEtaes}
+
+% Packages kept to the template set plus standard math/figure packages that
+% are available in every TeX Live distribution used by Overleaf.
+\usepackage{color,array,amsthm}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\jvol{XX}
+\jnum{XX}
+\jmonth{XXXXX}
+\paper{1234567}
+\pubyear{2026}
+\doiinfo{TAES.2026.Doi Number}
+
+\newtheorem{assumption}{Assumption}
+\newtheorem{definition}{Definition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{property}{Property}
+\newtheorem{remark}{Remark}
+\setcounter{page}{1}
+% Cross-references to subsections read ``Section~III-C''.
+\makeatletter
+\renewcommand{\p@subsection}{\thesection-}
+\makeatother
+
+\input{macros}
+
+\raggedbottom
+\begin{document}
+
+\title{Execution-Feedback Closed-Loop Coordination of Reinforcement Learning and Model Predictive Control for Pre-Capture Approach to a Fast-Tumbling Target}
+
+\author{\todo{AUTHOR NAMES}}
+\affil{Hohai University, Changzhou, China}
+
+\receiveddate{Manuscript received XXXXX 00, 0000; revised XXXXX 00, 0000; accepted XXXXX 00, 0000.\\
+\todo{Funding information.}}
+
+\corresp{\todo{Corresponding author.}}
+
+\authoraddress{\todo{Author affiliations and e-mail addresses.}}
+
+\markboth{AUTHOR ET AL.}{EXECUTION-FEEDBACK RL--MPC COORDINATION FOR TUMBLING-TARGET PRE-CAPTURE}
+\maketitle
+
+\input{sections/00_abstract}
+\input{sections/01_introduction}
+\input{sections/02_problem}
+\input{sections/03_framework_rwg}
+\input{sections/04_ecc}
+\input{sections/05_experiments}
+\input{sections/06_conclusion}
+\input{sections/appendix}
+
+\bibliographystyle{IEEEtaes}
+\bibliography{refs}
+
+\end{document}

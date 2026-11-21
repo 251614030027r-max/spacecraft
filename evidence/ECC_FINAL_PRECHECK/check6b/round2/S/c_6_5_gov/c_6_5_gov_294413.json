@@ -1,0 +1,124 @@
+{
+ "opening": 294413,
+ "event": "success",
+ "return": 70.53242578114819,
+ "time_s": 141.7,
+ "delta_v": 1.5297574218851795,
+ "stages": 2,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 1,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 158.2,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 57.498830795288086,
+ "decisions": [
+  {
+   "a": [
+    0.6,
+    0.5
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 13.005061630355273,
+   "planned_dv": 0.1688066039475188,
+   "executed_dv": 0.16862693627866668,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.6,
+     0.5
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 2,
+    "act": true,
+    "commit_before": null,
+    "tau_min": 26.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 26.0,
+    "own_admissible": true,
+    "commit_after": 26.0,
+    "a_exec": [
+     0.6,
+     0.5
+    ],
+    "wall_s": 0.8593039569987013
+   }
+  },
+  {
+   "a": [
+    0.6,
+    0.5
+   ],
+   "t": 141.7,
+   "mode": "descent",
+   "held": false,
+   "range_m": 2.9974073255865123,
+   "planned_dv": 0.020287760675956074,
+   "executed_dv": 1.3611304856065127,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 16.0,
+    "a": [
+     0.6,
+     0.5
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 7,
+    "act": true,
+    "commit_before": 26.0,
+    "tau_min": 8.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 10.0,
+    "own_admissible": true,
+    "commit_after": 26.0,
+    "a_exec": [
+     0.6,
+     0.5
+    ],
+    "wall_s": 0.5868860730006418
+   }
+  }
+ ],
+ "coordination": "gov",
+ "cert_interventions": 0,
+ "gov_replacements": 0,
+ "gov_decisions": 2,
+ "gov_wall_s": 1.446190029999343,
+ "policy": "c_6_5_gov",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 42.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 10.313626047929347
+  },
+  {
+   "t": 52.0,
+   "slip_s": 8.0,
+   "reserve": false,
+   "phase_deg": 20.62125825303698
+  },
+  {
+   "t": 68.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 10.30766307207986
+  }
+ ]
+}

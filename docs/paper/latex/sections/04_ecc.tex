@@ -1,0 +1,146 @@
+\section{EXECUTION-FEEDBACK CLOSED-LOOP COORDINATION}\label{sec:ecc}
+
+This section addresses the second question of Section~\ref{sec:mission}. The framework of Section~\ref{sec:framework} separates long-horizon decisions from constrained execution, but it also separates the information available to the two layers, and a decision layer trained only on realized transitions faces three mismatches with its executor. 1)~\textit{Information:} whether an intent is converted into an entry is determined within the execution layer, whereas the policy must infer it from sparse terminal outcomes; the state-level channel of Section~\ref{sec:feedback} passes this information to the critics. 2)~\textit{Time scale:} decisions are taken once per stage, while passes recur once per spin period; the mode prediction of the execution layer spans $\Tp$, which covers a pass, and the action-level channel of Section~\ref{sec:screening} uses it at every decision. 3)~\textit{Consequence:} when $\eta<1$, neighboring intents can lead to capture and timeout, respectively, so that the value exhibits cliffs located by executor rules; the action-level channel keeps, corrects, or replaces a proposal that would miss the last pass. Learning itself remains off-policy temporal-difference learning on real transitions.
+
+\subsection{Macro-Step Decision Process}\label{sec:mdp}
+
+Decisions are taken at the instants $t_{k}$ at which a macro step begins in mode $\modeS$ or $\modeH$, with the decision state $x_{k}$ of Definition~\ref{def:interface}. The policy reads the observation
+\begin{equation}\label{eq:obs}
+\begin{aligned}
+\bo=\bigl[&\rho,\ (\bR_{\mathrm{s}}^{\T}\bv)^{\T},\ \psi,\ \dlat,\ \sin\varphi,\ \cos\varphi,\ \Omega,\ \Td-t,\\
+&\iota,\ \Delta v,\ \Bmax-\Delta v,\ \vmg,\ \beta,\ (\bR_{\mathrm{s}}^{\T}\bn)^{\T}\bigr]^{\T},
+\end{aligned}
+\end{equation}
+where $\bR_{\mathrm{s}}=[\er,\epol,\eaz]$ resolves the relative velocity and the port direction in the basis of Section~\ref{sec:geometry} and $\iota\in\{0,1\}$ is a mission indicator that identifies the cost weights. The observation thus expresses the sweep-cone geometry directly, together with the remaining time and propellant; each entry is normalized by a fixed physical scale. The relative attitude is regulated by the execution layer and is not observed by the policy.
+
+The intent $\ba_{k}\in\Aset$ is proposed by the policy and executed, after the coordination of Section~\ref{sec:screening}, until the macro step ends. The reward of the macro step is
+\begin{equation}\label{eq:reward}
+r_{k}=\sum_{j\in\mathcal{J}_{k}}\bigl(-c_{\mathrm{t}}\Delta t-c_{\mathrm{f}}\Delta v_{j}\bigr)+r_{\mathrm{term}},
+\end{equation}
+where $\mathcal{J}_{k}$ collects the control periods $[t_{j},t_{j+1})$ of the macro step, $\Delta v_{j}=\Delta v(t_{j+1})-\Delta v(t_{j})$, and $r_{\mathrm{term}}$ is $+100$ at capture, $-100$ at timeout ($t\ge\Td$), $-100$ at fuel exhaustion ($\Delta v\ge\Bmax$), $-150$ at an unsafe state ($X\notin\Sset$), and $0$ otherwise. Each of the four events terminates the process, which is indicated by $\chi_{k+1}=1$. For a captured task, the return $G=\sum_{k}r_{k}$ equals $100$ minus the cost of Problem~1, so that maximizing $\E[G]$ is the penalty form of \eqref{eq:problem}, in which terminal penalties take the place of the deadline, budget, and safety constraints. A constant discount $\gamma$ is applied per decision. Training uses the potential-based shaped reward
+\begin{equation}\label{eq:shaping}
+\rtil_{k}=r_{k}+\gamma\Phi(x_{k+1})-\Phi(x_{k}),
+\end{equation}
+where the potential $\Phi(x)$ is the negative distance from $\brho$ to the mouth point predicted a fixed time ahead, capped at a fixed value, and $\Phi=0$ at termination. The shaping attracts the chaser toward the mouth point and leaves the optimal policies unchanged \cite{ng1999shaping}; all evaluations report the return $G$ of the unshaped reward \eqref{eq:reward}.
+
+\subsection{State-Level Channel: Execution Feedback}\label{sec:feedback}
+
+The execution feedback of Definition~\ref{def:interface} consists of three opportunity judgments and three execution-status quantities,
+\begin{equation}\label{eq:zE}
+\bz=\bigl[\taup,\ \min_{\tau\in\Tset}\hat\psi(\tau),\ \Td-t-\taup-T_{\mathrm{o}},\ d_{\rho},\ d_{v},\ i_{\modeH}\bigr]^{\T}.
+\end{equation}
+The first item is the time $\taup=\varphi/\Omega$ to the next pass, the second is the closest predicted port alignment over the candidate arrival times of \eqref{eq:entry}, and the third is the deadline margin left after the pass once a fixed time $T_{\mathrm{o}}$ for the final phase is deducted; it differs from $\eta\Ts$ in \eqref{eq:eta} only by the constant $T_{\mathrm{o}}-\Tr$. The remaining items are the position and velocity deviations $d_{\rho}$ and $d_{v}$ of the previous stage from its plan and the indicator $i_{\modeH}\in\{0,1\}$ of the hold mode. Following the asymmetric actor--critic structure \cite{pinto2018asymmetric}, the actor and the two critics are
+\begin{equation}\label{eq:asym}
+\pi_{\vect{\theta}}(\ba\,|\,\bo),\qquad Q_{\vect{\zeta}_{i}}(\bo,\bz,\ba),\quad i=1,2.
+\end{equation}
+Unlike \cite{pinto2018asymmetric}, where the critic reads the full simulator state, the additional input here is the short-horizon judgment of the execution layer itself. For the same observation, $\bz$ distinguishes whether an opportunity actually exists and whether the previous intent was executed as planned, so that the critics can represent values closer to the realized consequences of execution. The feedback enters only the critics; the policy acts on $\bo$ alone.
+
+\subsection{Action-Level Channel: Execution-Opportunity Coordination}\label{sec:screening}
+
+\begin{definition}[Mode prediction]\label{def:pred}
+The mode prediction is the map $\Mpred:\Xset\times\Aset\to\{0,1\}\times[0,\Tp]\times\R_{\ge0}$, $(x,\bb)\mapsto(\ehat,\tauhat,\dvhat)$, where $\ehat=1$ if and only if, under the prediction \eqref{eq:pred} and with the intent $\bb$ held, the rules of the execution layer produce the terminal descent or a feasible entry within $\Tp$, $\tauhat$ is the time of this event or the time at which the prediction stops, and $\dvhat$ is the planned velocity increment up to the event, including the entry plan.
+\end{definition}
+
+For the execution layer of Section~\ref{sec:framework}, the prediction rolls out the stage goals \eqref{eq:goal} and the stage plans of Problem~2 for up to $\Tp/h$ stages, treating a rejected stage as a hold, and applies the descent condition of Table~\ref{tab:modes} and the entry condition \eqref{eq:entry} every $\Tm$ along the planned path. It stops at the first event, at $\Tp$, at the deadline, or when the planned propellant exhausts the budget. It runs on separate planner instances, so that $\Mpred$ is a deterministic function of $(x,\bb)$ and leaves $x$ unchanged.
+
+Let $\Gset\subset\Aset$ be a finite set of candidate intents; this article uses the uniform grid $\Gset=\{-1,0,1\}^{2}$, which covers the action box with its center, edge midpoints, and vertices. The admissible candidate set is
+\begin{equation}\label{eq:admissible}
+\begin{aligned}
+\Ga(x)=\bigl\{\bb\in\Gset:\ & \ehat(x,\bb)=1,\\
+& t+\tauhat(x,\bb)+\Ts>\te,\\
+& \Delta v+\dvhat(x,\bb)\le\Bmax\bigr\}.
+\end{aligned}
+\end{equation}
+The three conditions require that the candidate trigger an entry or a descent, that the event belong to a critical window, and that the candidate be affordable. The second condition is the predicted counterpart of $\eta<1$ in \eqref{eq:eta}: with the predicted event in place of the pass center, it states that missing the event leaves no further pass before $\te$ (Fig.~\ref{fig:screen}(b)).
+
+The candidates in $\Gset$ reach an entry only through the entry condition \eqref{eq:entry}, which is tried within the range $\rho_{\mathrm{E}}$ and over the short arrival times $\Tset$. When the approach leaves the chaser outside these limits as the last pass arrives, $\Ga(x)$ is empty although an entry may still be feasible. The execution layer therefore offers a second, long-range opportunity: the same entry planner, applied from the current state over the longer arrival times $\TsetL$,
+\begin{equation}\label{eq:longentry}
+\tauL(x)=\min\bigl\{\tau\in\TsetL:\ t+\tau\le\te,\ \text{\eqref{eq:plan}--\eqref{eq:entryterm} feasible with }\bar f_{0}\bigr\},
+\end{equation}
+without the range and alignment gates of \eqref{eq:entry}. It is evaluated only at the last usable pass,
+\begin{equation}\label{eq:lastpass}
+\kappa(x)\iff \taup\le h\ \ \text{and}\ \ t+\taup+\Ts>\te,
+\end{equation}
+that is, when the port passes within the current stage and no further pass follows before $\te$. Launching the long-range entry, denoted $\launch(\tauL)$, starts the entry transfer toward $\brhom(t+\tauL)$, which then proceeds as any entry transfer, including re-planning and the fallback to hold.
+
+The coordination map selects the executed action among keeping the proposal, correcting it, and launching the long-range entry:
+\begin{equation}\label{eq:correction}
+\Cmap(x,\ba)=
+\begin{cases}
+\ba, & \ehat(x,\ba)=1,\\
+\ba^{\star}(x,\ba), & \ehat(x,\ba)=0,\ \Ga(x)\neq\emptyset,\\
+\launch(\tauL(x)), & \ehat(x,\ba)=0,\ \Ga(x)=\emptyset,\ \kappa(x),\ \tauL(x)\ \text{exists},\\
+\ba, & \text{otherwise},
+\end{cases}
+\end{equation}
+where $\ba^{\star}(x,\ba)$ minimizes $\norm{\bb-\ba}$ over $\Ga(x)$, with ties broken by the smaller $\tauhat(x,\bb)$ and then by a fixed order of $\Gset$. The executed action is $\atil=\Cmap(x,\ba)$ (Fig.~\ref{fig:screen}(a)); it applies to the current macro step only. Since $\Mpred$ and the entry planner are deterministic and the ties are broken uniquely, $\Cmap$ is a deterministic function of $(x,\ba)$.
+
+\begin{property}\label{prop:correction}
+For every $x\in\Xset$ and $\ba\in\Aset$: (i)~if $\ehat(x,\ba)=1$, then $\Cmap(x,\ba)=\ba$; (ii)~if $\Cmap(x,\ba)$ is an intent other than $\ba$, then $\Cmap(x,\ba)\in\Ga(x)$ and $\norm{\Cmap(x,\ba)-\ba}=\min_{\bb\in\Ga(x)}\norm{\bb-\ba}$; (iii)~$\Cmap$ differs from the map without the long-range opportunity only at states with $\kappa(x)$ at which neither the proposal nor any candidate of $\Gset$ is predicted to trigger an event before $\te$.
+\end{property}
+
+Items~(i) and~(ii) follow from \eqref{eq:correction}; item~(iii) holds because the third case is reached only when the first two do not apply. Coordination thus keeps every proposal that reaches an event by itself, changes an intent only at a critical window and as little as the candidate set allows, and launches the long-range entry only when the last pass would otherwise be lost. Each decision requires $|\Gset|+1$ mode predictions; the long-range entry adds at most $|\TsetL|$ entry plans, and only at the last usable pass.
+
+\begin{remark}\label{rem:design}
+Coordination intervenes only at a critical window. When further passes remain before $\te$, waiting for a later pass can save propellant or suit the mission weights better, and this trade-off is left to the policy; when the next pass is the last one, the execution layer, which resolves entry feasibility, settles the choice. The nearest admissible candidate preserves as much of the proposed pace and timing as the candidate set allows, and the long-range entry is used only after the stage-level candidates are exhausted, so that the approach before the last pass remains determined by the policy.
+\end{remark}
+
+\subsection{Learning in the Coordinated Closed Loop}\label{sec:learning}
+
+Coordination is a fixed part of the closed loop: every decision is coordinated before it is executed. Shielding corrects actions to enforce safety specifications \cite{alshiekh2018shielding}; the coordination here targets execution opportunities instead, with a criterion derived from the time structure of the task and computed from the prediction and the planner of the executor itself. With coordination, the macro-step kernel of the closed loop is
+\begin{equation}\label{eq:PC}
+\PC(x',r\,|\,x,\ba)=\PE\bigl(x',r\,|\,x,\Cmap(x,\ba)\bigr),
+\end{equation}
+and the replay buffer stores the proposed intent $\ba$, not $\atil$, together with the reward and the successor obtained by executing $\atil$. Unlike schemes that learn from the corrected action or from a mixture of corrected and original actions \cite{lu2025eaai}, the critics thus learn what happens when the policy proposes $\ba$.
+
+For a policy $\pi$ and a function $Q$ on $\Xset\times\Aset$, the soft Bellman operator of the coordinated process is, with $\ba'\sim\pi(\cdot\,|\,\bo')$,
+\begin{equation}\label{eq:bellman}
+\begin{aligned}
+(\mathcal{B}^{\pi}Q)(x,\ba)&=\E_{\PC}\bigl[\rtil+\gamma(1-\chi')U^{\pi}_{Q}(x')\bigr],\\
+U^{\pi}_{Q}(x')&=\E_{\pi}\bigl[Q(x',\ba')-\alpha\log\pi(\ba'|\bo')\bigr].
+\end{aligned}
+\end{equation}
+
+\begin{proposition}[Coordinated decision process]\label{prop:screen}
+Let transitions be collected by proposing $\ba_{k}\sim\pi(\cdot\,|\,\bo_{k})$, executing $\Cmap(x_{k},\ba_{k})$, and storing $(\bo_{k},\bz_{k},\ba_{k},\rtil_{k},\bo_{k+1},\bz_{k+1},\chi_{k+1})$.
+\begin{enumerate}
+\item The stored transitions are generated by the decision process $(\Xset,\Aset,\PC,\rtil,\gamma)$, and the temporal-difference target formed from a stored transition is a sample of $\mathcal{B}^{\pi}Q$ in \eqref{eq:bellman}.
+\item Let $Q^{\pi}_{\mathcal{C}}$ be the fixed point of \eqref{eq:bellman}. If $\Cmap(x,\ba_{1})=\Cmap(x,\ba_{2})$, then $\PC(\cdot\,|\,x,\ba_{1})=\PC(\cdot\,|\,x,\ba_{2})$ and $Q^{\pi}_{\mathcal{C}}(x,\ba_{1})=Q^{\pi}_{\mathcal{C}}(x,\ba_{2})$ for every policy $\pi$.
+\end{enumerate}
+\end{proposition}
+
+\textit{Proof:} (i)~By Definition~\ref{def:interface}, $x_{k}$ determines the evolution over a macro step once the executed intent is fixed. The mode prediction leaves $x_{k}$ unchanged, and $\Cmap$ is a deterministic function of $(x_{k},\ba_{k})$. Hence, conditioned on $(x_{k},\ba_{k})$, the pair $(x_{k+1},r_{k})$ is distributed according to $\PE(\cdot\,|\,x_{k},\Cmap(x_{k},\ba_{k}))=\PC(\cdot\,|\,x_{k},\ba_{k})$, regardless of how $\ba_{k}$ was sampled. The shaped reward is a function of $(x_{k},r_{k},x_{k+1})$ and $\chi_{k+1}$ a function of $x_{k+1}$, so the stored transitions are generated by this decision process, and the target formed from $(\rtil_{k},x_{k+1},\chi_{k+1})$ with $\ba'\sim\pi(\cdot\,|\,\bo_{k+1})$ is a sample of \eqref{eq:bellman} at $(x_{k},\ba_{k})$. (ii)~By \eqref{eq:PC}, $\PC(\cdot\,|\,x,\ba)$ depends on $\ba$ only through $\Cmap(x,\ba)$, and so does the right-hand side of \eqref{eq:bellman} and hence its fixed point. \hfill$\square$
+
+By Proposition~\ref{prop:screen}(ii), proposals mapped to the same candidate have the same value, so the policy need not learn to emit the corrected intent itself; policy and correction act as one decision rule.
+
+\begin{remark}\label{rem:scope}
+Proposition~\ref{prop:screen} concerns the learning target on the decision state $x$; the actor on $\bo$ and the critics on $(\bo,\bz)$ are function approximations of it, and the convergence of SAC is not addressed. Coordination relies on the model of the execution layer and guarantees neither safety, which is judged only on the dynamics \eqref{eq:kin}--\eqref{eq:fg}, nor capture. Its effect on the closed loop is quantified in Section~\ref{sec:experiments}.
+\end{remark}
+
+The decision layer is trained with soft actor--critic (SAC) \cite{haarnoja2018sac} in the asymmetric form \eqref{eq:asym}. The policy is a Gaussian squashed by $\tanh$ onto $\Aset$, and the actor and the critics are fully connected networks with separate input layers. With target critics $Q_{\vect{\zeta}_{i}^{-}}$, the critic target and the losses are
+\begin{align}
+Q_{\mathrm{tg}}&=\rtil+\gamma(1-\chi')\Bigl[\min_{i}Q_{\vect{\zeta}_{i}^{-}}(\bo',\bz',\ba')\nonumber\\
+&\qquad\qquad-\alpha\log\pi_{\vect{\theta}}(\ba'\,|\,\bo')\Bigr],\label{eq:target}\\
+\mathcal{L}(\vect{\zeta}_{i})&=\E\bigl[(Q_{\vect{\zeta}_{i}}(\bo,\bz,\ba)-Q_{\mathrm{tg}})^{2}\bigr],\label{eq:qloss}\\
+\mathcal{L}(\vect{\theta})&=\E\Bigl[\alpha\log\pi_{\vect{\theta}}(\ba_{\vect{\theta}}\,|\,\bo)-\min_{i}Q_{\vect{\zeta}_{i}}(\bo,\bz,\ba_{\vect{\theta}})\Bigr],\label{eq:piloss}
+\end{align}
+where $\ba'\sim\pi_{\vect{\theta}}(\cdot\,|\,\bo')$, $\ba_{\vect{\theta}}\sim\pi_{\vect{\theta}}(\cdot\,|\,\bo)$, $\alpha$ is a fixed temperature, and the expectations are taken over the replay buffer. Algorithm~\ref{alg:ecc} summarizes the decision and learning loop; when the trained policy is evaluated, its mean is used.
+
+\begin{algorithm}[t]
+\caption{ECC Decision and Learning Loop}
+\label{alg:ecc}
+\small
+\begin{algorithmic}[1]
+\State Initialize $\pi_{\vect{\theta}}$, $Q_{\vect{\zeta}_{1}},Q_{\vect{\zeta}_{2}}$, targets, and buffer $\mathcal{B}$ \Comment{T}
+\For{each decision in mode $\modeS$ or $\modeH$}
+  \State Observe $\bo$ and $\bz$; propose $\ba\sim\pi_{\vect{\theta}}(\cdot\,|\,\bo)$
+  \State Evaluate $\Mpred(x,\bb)$ for $\bb\in\Gset\cup\{\ba\}$; form $\Ga(x)$ by \eqref{eq:admissible}
+  \If{$\ehat(x,\ba)=0$, $\Ga(x)=\emptyset$, and $\kappa(x)$} solve \eqref{eq:longentry} \EndIf
+  \State Set $\atil\gets\Cmap(x,\ba)$ by \eqref{eq:correction}
+  \State Execute $\atil$ (an intent or the launched entry) until the macro step ends
+  \State Store $(\bo,\bz,\ba,\rtil,\bo',\bz',\chi')$ in $\mathcal{B}$ \Comment{T}
+  \State Update the critics and the actor by \eqref{eq:target}--\eqref{eq:piloss} \Comment{T}
+\EndFor
+\end{algorithmic}
+\textit{Note:} Steps marked T are learning updates; they are omitted when the trained policy is evaluated.
+\end{algorithm}

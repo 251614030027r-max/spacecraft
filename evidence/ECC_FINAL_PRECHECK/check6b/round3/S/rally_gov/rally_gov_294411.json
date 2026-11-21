@@ -1,0 +1,112 @@
+{
+ "opening": 294411,
+ "event": "success",
+ "return": 79.76459725661084,
+ "time_s": 98.0,
+ "delta_v": 1.0435402743389148,
+ "stages": 2,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 5,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 153.9,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 39.560216665267944,
+ "decisions": [
+  {
+   "a": [
+    0.5419731100416589,
+    1.0
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.219335676879046,
+   "planned_dv": 0.16880660406430403,
+   "executed_dv": 0.16896468451026453,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.5419731100416589,
+     1.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 4,
+    "act": true,
+    "commit_before": null,
+    "tau_min": 16.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 22.0,
+    "own_admissible": true,
+    "commit_after": 22.0,
+    "a_exec": [
+     0.5419731100416589,
+     1.0
+    ],
+    "wall_s": 0.9436282249989745
+   }
+  },
+  {
+   "a": [
+    0.3918228471677457,
+    1.0
+   ],
+   "t": 98.0,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.1186249230827725,
+   "planned_dv": 0.047185756472840505,
+   "executed_dv": 0.8745755898286502,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 16.0,
+    "a": [
+     0.3918228471677457,
+     1.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 10,
+    "act": true,
+    "commit_before": 22.0,
+    "tau_min": 4.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 6.0,
+    "own_admissible": true,
+    "commit_after": 22.0,
+    "a_exec": [
+     0.3918228471677457,
+     1.0
+    ],
+    "wall_s": 0.7503029710005649
+   }
+  }
+ ],
+ "coordination": "gov",
+ "cert_interventions": 0,
+ "gov_replacements": 0,
+ "gov_decisions": 2,
+ "gov_wall_s": 1.6939311959995393,
+ "policy": "rally_gov",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 48.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 10.345587802119015
+  }
+ ]
+}

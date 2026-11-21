@@ -15,7 +15,7 @@ def _vector3(value: ArrayLike, name: str) -> FloatArray:
     array = np.asarray(value, dtype=np.float64)
     if array.shape != (3,):
         raise ValueError(f"{name} 必须是 shape=(3,)；实际为 {array.shape}")
-    if not np.all(np.isfinite(array)):
+    if not np.isfinite(array).all():
         raise ValueError(f"{name} 含有非有限数")
     return array.copy()
 
@@ -24,7 +24,7 @@ def _matrix3(value: ArrayLike, name: str) -> FloatArray:
     array = np.asarray(value, dtype=np.float64)
     if array.shape != (3, 3):
         raise ValueError(f"{name} 必须是 shape=(3,3)；实际为 {array.shape}")
-    if not np.all(np.isfinite(array)):
+    if not np.isfinite(array).all():
         raise ValueError(f"{name} 含有非有限数")
     return array.copy()
 

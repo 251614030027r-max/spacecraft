@@ -1,0 +1,105 @@
+{
+ "opening": 294420,
+ "event": "success",
+ "return": 79.3376970524154,
+ "time_s": 103.9,
+ "delta_v": 1.0272302947584602,
+ "stages": 2,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 5,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 179.4,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 36.532278299331665,
+ "decisions": [
+  {
+   "a": [
+    1.0,
+    1.0
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 14.313036097879335,
+   "planned_dv": 0.16880660379225762,
+   "executed_dv": 0.16861526615633418,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     1.0,
+     1.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 3,
+    "act": true,
+    "commit_before": null,
+    "tau_min": 28.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 32.0,
+    "own_admissible": true,
+    "commit_after": 32.0,
+    "a_exec": [
+     1.0,
+     1.0
+    ],
+    "wall_s": 0.8309893519999605
+   }
+  },
+  {
+   "a": [
+    0.9501429594344895,
+    1.0
+   ],
+   "t": 103.9,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.116922424243215,
+   "planned_dv": 0.08125916680410318,
+   "executed_dv": 0.858615028602126,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 16.0,
+    "a": [
+     0.9501429594344895,
+     1.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 4,
+    "act": true,
+    "commit_before": 32.0,
+    "tau_min": 16.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 16.0,
+    "own_admissible": true,
+    "commit_after": 32.0,
+    "a_exec": [
+     0.9501429594344895,
+     1.0
+    ],
+    "wall_s": 1.0817538649989729
+   }
+  }
+ ],
+ "coordination": "gov",
+ "cert_interventions": 0,
+ "gov_replacements": 0,
+ "gov_decisions": 2,
+ "gov_wall_s": 1.9127432169989333,
+ "policy": "rally_gov",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": []
+}

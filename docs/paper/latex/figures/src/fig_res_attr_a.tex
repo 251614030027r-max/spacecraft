@@ -1,0 +1,19 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Coordination added step by step (all methods trained from scratch), and the critic inputs z.
+\begin{tikzpicture}[>=Stealth,font=\footnotesize,
+  cell/.style={draw=gray!60,rounded corners=2pt,minimum width=2.2cm,minimum height=1.05cm,align=center},
+  eff/.style={font=\scriptsize,align=center,inner sep=1pt}]
+  \node[cell,fill=cNOCO!16] (noco) at (0,0) {w/o coordination\\$211$ ($73.3\%$)};
+  \node[cell,fill=cNOLE!14] (nole) at (3.6,0) {w/o long-range\\entry $236$ ($81.9\%$)};
+  \node[cell,fill=cECC!22,very thick,draw=cECC] (ecc) at (7.2,0) {\textbf{ECC}\\$251$ ($87.2\%$)};
+  \node[cell,fill=cNOIN!16] (noin) at (7.2,-2.1) {w/o execution\\inputs $248$ ($86.1\%$)};
+  \draw[->,thick,actcol] (noco) -- node[eff,above=3pt] {$+8.7$\\{}[$4.5$, $12.8$]} (nole);
+  \draw[->,thick,actcol] (nole) -- node[eff,above=3pt] {$+5.2$\\{}[$1.0$, $9.4$]} (ecc);
+  \draw[->,thick,stcol] (noin) -- node[eff,right,text width=1.5cm,align=left] {$+1.0$\\{}[$-2.4$, $4.5$]} (ecc);
+  \node[actcol,anchor=south] at (1.8,1.15) {$+$ keep/correct};
+  \node[actcol,anchor=south] at (5.4,1.15) {$+$ long-range entry};
+  \node[stcol,anchor=east,align=right] at (5.95,-2.1) {$+$ critic\\inputs $\bz$};
+\end{tikzpicture}
+\end{document}

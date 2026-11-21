@@ -1,0 +1,114 @@
+{
+ "opening": 294446,
+ "event": "success",
+ "return": 75.36353816583501,
+ "time_s": 129.6,
+ "delta_v": 1.1676461834165004,
+ "stages": 2,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 2,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 190.0,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 49.565025806427,
+ "decisions": [
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 14.273457238583664,
+   "planned_dv": 0.1688066039221922,
+   "executed_dv": 0.16888302861877513,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 3,
+    "act": true,
+    "tau_min": 30.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 30.0,
+    "own_admissible": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 1.116916996999862
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 129.6,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.0499329050995407,
+   "planned_dv": 0.032395493235745365,
+   "executed_dv": 0.9987631547977253,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 16.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 7,
+    "act": true,
+    "tau_min": 14.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 14.0,
+    "own_admissible": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.5361979909994261
+   }
+  }
+ ],
+ "coordination": "gov",
+ "cert_interventions": 0,
+ "gov_replacements": 0,
+ "gov_decisions": 2,
+ "gov_wall_s": 1.6531149879992881,
+ "policy": "c_10_0_gov",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 54.0,
+   "slip_s": 2.0,
+   "reserve": false,
+   "phase_deg": 5.139326477116122
+  },
+  {
+   "t": 72.0,
+   "slip_s": 8.0,
+   "reserve": false,
+   "phase_deg": 20.544875913755607
+  }
+ ]
+}
