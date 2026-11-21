@@ -14,14 +14,16 @@ def test_registered_configurations_match_the_spec():
     assert t['ECC'] == {**t['ECC'], 'algo': 'sac', 'coordination': True, 'correction': True, 'long_entry': True, 'potential': 'opportunity'}
     assert t['ECC_NO_CORE']['correction'] is False and t['ECC_NO_CORE']['long_entry'] is True
     assert not t['SAC_MPC']['coordination'] and t['TD3_MPC']['algo'] == 'td3' and not t['TD3_MPC']['coordination']
-    assert set(t) == {'ECC', 'ECC_NO_CORE', 'SAC_MPC', 'TD3_MPC', 'ECC_FB', 'ECC_NO_RWG'} and {c['potential'] for c in t.values()} == {'opportunity'}
-    assert t['ECC_NO_RWG']['geometry'] is False and all(final.env_kwargs(t['ECC_NO_RWG'])[k] == final.env_kwargs(t['ECC'])[k]
-                                                         for k in ('coordination', 'correction', 'long_entry', 'window', 'arbitration'))
+    assert set(t) == {'ECC', 'ECC_NO_CORE', 'SAC_MPC', 'TD3_MPC'} and {c['potential'] for c in t.values()} == {'opportunity'}
     assert 'no_long_entry' not in reg['eval_switches']                       # the long-range entry belongs to the coordination
     assert reg['eval_switches']['rigid_entry']['env'] == {'window': False} and set(reg['fixed']) == {'pure', 'c_10_0', 'b_10'}
     dev = final.stage_of('dev')
-    assert dev['steps'] == 3000 and dev['seeds'] == [0, 1, 2] and dev['trained'] == ['ECC', 'ECC_FB']
+    assert dev['steps'] == 3000 and dev['seeds'] == [0, 1, 2] and dev['trained'] == ['ECC']
     assert final.block(dev['eval_openings']) == list(range(295300, 295492))
+    fo = final.stage_of('formal')
+    assert fo['steps'] == 6000 and fo['seeds'] == [30, 31, 32] and fo['trained'] == ['ECC', 'SAC_MPC', 'ECC_NO_CORE', 'TD3_MPC']
+    assert final.block(fo['eval_openings']) == list(range(301000, 301192)) and fo['fixed'] == ['pure', 'c_10_0', 'b_10']
+    assert fo['eval_switches'] == ['rigid_entry'] and reg['eval_switches']['rigid_entry']['applies_to'] == ['ECC']
 
 
 def test_stage_blocks_and_seeds_avoid_the_first_draft():
@@ -55,9 +57,7 @@ def test_switches_and_smoke_seeds(tmp_path):
     st = final.stage_of('dev')
     with pytest.raises(SystemExit):
         final.switch_env(st, 'ECC', 'rigid_entry')              # not registered for the development stage
-    assert final.switch_env(st, 'ECC_FB', 'nearest_arbitration') == {'arbitration': 'nearest'}
-    with pytest.raises(SystemExit):
-        final.switch_env(st, 'ECC', 'nearest_arbitration')
+    assert final.switch_env(final.stage_of('formal'), 'ECC', 'rigid_entry') == {'window': False}
     assert final.switch_env({**st, 'eval_switches': ['rigid_entry']}, 'ECC', 'rigid_entry') == {'window': False}
     with pytest.raises(SystemExit):
         final.switch_env({**st, 'eval_switches': ['rigid_entry']}, 'SAC_MPC', 'rigid_entry')
@@ -88,13 +88,13 @@ def test_resume_verifies_existing_bytes_before_skip(tmp_path):
 
 def test_completeness_report_requires_runs_results_and_tensorboard(tmp_path):
     rep = final.check_stage(tmp_path, 'dev')
-    assert not rep['complete'] and len(rep['missing_runs']) == 6 and len(rep['evaluations']) == 9
-    for cfg in ('ECC', 'ECC_FB'):
+    assert not rep['complete'] and len(rep['missing_runs']) == 3 and len(rep['evaluations']) == 3
+    for cfg in ('ECC',):
         for seed in (0, 1, 2):
             run = tmp_path / 'B' / f'TRAIN_{cfg}_s{seed}'; (run / 'tb').mkdir(parents=True)
             (run / 'manifest.json').write_text('{}'); (run / 'finished.json').write_text(json.dumps({'steps': 3000}))
             (run / 'tb' / 'events.out.tfevents.1').write_text('x')
-            for label in [f'{cfg}_s{seed}'] + ([f'{cfg}_s{seed}_nearest_arbitration'] if cfg == 'ECC_FB' else []):
+            for label in [f'{cfg}_s{seed}']:
                 c = tmp_path / 'C' / label; c.mkdir(parents=True)
                 for o in range(295300, 295492):
                     (c / f'{label}_{o}.json').write_text('{}')

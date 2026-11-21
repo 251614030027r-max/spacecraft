@@ -1,7 +1,7 @@
 {
  "method": "ECC",
  "method_long": "Execution-feedback closed-loop coordination with rotation-synchronized window guidance",
- "note": "The only configuration source of round 2 (docs/final_method/ROUND2.md): experiments/final.py launches registered configurations only. First-draft (round-1) registry: docs/archive/registry/METHOD_REGISTRY_ROUND1_20261119.json; development-period registry: docs/archive/registry/METHOD_REGISTRY_20261111.json.",
+ "note": "The only configuration source of round 2 (docs/final_method/ROUND2.md, formal round FORMAL.md): experiments/final.py launches registered configurations only. First-draft (round-1) registry: docs/archive/registry/METHOD_REGISTRY_ROUND1_20261119.json; development-period registry: docs/archive/registry/METHOD_REGISTRY_20261111.json.",
  "method_behaviour_reference": "e0a617532008dac02e2d50f7e859aca613e03e5e",
  "trained": {
   "ECC": {
@@ -11,8 +11,6 @@
    "correction": true,
    "long_entry": true,
    "potential": "opportunity",
-   "arbitration": "nearest",
-   "equivalence": false,
    "geometry": true,
    "window": true,
    "role": "proposed method: opportunity coordination (keep / critical-window correction / direct entry) with standard SAC",
@@ -25,8 +23,6 @@
    "correction": false,
    "long_entry": true,
    "potential": "opportunity",
-   "arbitration": "nearest",
-   "equivalence": false,
    "geometry": true,
    "window": true,
    "role": "attribution: keep and direct entry only (no grid correction)",
@@ -39,8 +35,6 @@
    "correction": false,
    "long_entry": false,
    "potential": "opportunity",
-   "arbitration": "nearest",
-   "equivalence": false,
    "geometry": true,
    "window": true,
    "role": "w/o feedback: the policy's intent is flown as proposed (same executor, network, reward)",
@@ -53,58 +47,17 @@
    "correction": false,
    "long_entry": false,
    "potential": "opportunity",
-   "arbitration": "nearest",
-   "equivalence": false,
    "geometry": true,
    "window": true,
    "role": "matched deterministic actor-critic baseline (TD3 standard configuration)",
    "color": "#0072b2"
-  },
-  "ECC_FB": {
-   "display": "ECC with execution-grounded value arbitration and equivalence experience",
-   "algo": "sac",
-   "coordination": true,
-   "correction": true,
-   "long_entry": true,
-   "potential": "opportunity",
-   "arbitration": "value",
-   "equivalence": true,
-   "geometry": true,
-   "window": true,
-   "role": "feedback-mechanism candidate (docs/final_method/FEEDBACK_DEV.md): the critic ranks the executor-certified critical intents; execution-equivalent proposals share the real transition",
-   "color": "#5b2c6f"
-  },
-  "ECC_NO_RWG": {
-   "display": "ECC w/o RWG (rotation guidance)",
-   "algo": "sac",
-   "coordination": true,
-   "correction": true,
-   "long_entry": true,
-   "potential": "opportunity",
-   "arbitration": "nearest",
-   "equivalence": false,
-   "geometry": false,
-   "window": true,
-   "role": "optional RWG ablation in the learning loop (ROUND2.md section 2): stage intents close along the line of sight, no latitude law, a_z inactive; entry rule, re-timing and coordination unchanged",
-   "color": "#16a085"
   }
  },
  "eval_switches": {
-  "nearest_arbitration": {
-   "display": "ECC_FB evaluated with the nearest rule",
-   "applies_to": [
-    "ECC_FB"
-   ],
-   "env": {
-    "arbitration": "nearest"
-   },
-   "role": "paired mechanism check (FEEDBACK_DEV.md section 4): the same ECC_FB models with the first-draft nearest choice"
-  },
   "rigid_entry": {
    "display": "ECC with rigid entry commitment (no entry re-timing)",
    "applies_to": [
-    "ECC",
-    "ECC_FB"
+    "ECC"
    ],
    "env": {
     "window": false
@@ -161,14 +114,35 @@
     ],
     "eval_openings": "295300-295491",
     "trained": [
-     "ECC",
-     "ECC_FB"
+     "ECC"
     ],
     "fixed": [],
-    "eval_switches": [
-     "nearest_arbitration"
+    "eval_switches": [],
+    "authorised_by": "docs/final_method/FEEDBACK_DEV.md (completed 2026-11-21; ECC_FB not adopted, code at science b47eb660)"
+   },
+   "formal": {
+    "steps": 6000,
+    "seeds": [
+     30,
+     31,
+     32
     ],
-    "authorised_by": "docs/final_method/FEEDBACK_DEV.md section 4"
+    "eval_openings": "301000-301191",
+    "trained": [
+     "ECC",
+     "SAC_MPC",
+     "ECC_NO_CORE",
+     "TD3_MPC"
+    ],
+    "fixed": [
+     "pure",
+     "c_10_0",
+     "b_10"
+    ],
+    "eval_switches": [
+     "rigid_entry"
+    ],
+    "authorised_by": "docs/final_method/FORMAL.md"
    }
   }
  }

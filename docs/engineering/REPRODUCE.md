@@ -30,6 +30,8 @@ python -B -m experiments.final traj    --entry ECC=RUN --openings A,B --output D
 python -B -m experiments.final preflight --root ROOT                                     # 开跑前记录（SHA、干净工作树、核数、pytest）
 python -B -m experiments.final pack    --stage dev --root ROOT --output evidence/R2_FB  # 一步交付（检查、哈希、读数、判定、RESULT.md）
 python -B -m experiments.final pack    --stage dev --root LOCAL --root CLOUD --output evidence/R2_FB   # 本机与云端结果合并交付
+python -B -m experiments.final pack    --stage formal --root LOCAL --root CLOUD --output evidence/R2_FORMAL   # 正式实验交付（含全部论文图表数据）
+python -B -m experiments.formal_r2_readout --root LOCAL --root CLOUD --output OUT                         # 只重算正式读数
 python -B -m experiments.final check   --stage dev --root ROOT --output ROOT/CHECK.json
 python -B -m experiments.final resolve --stage dev --root ROOT --output ROOT/REGISTRY_RESOLVED.json
 tensorboard --logdir ROOT/B                                                              # 学习曲线（每个运行的 tb/）
@@ -55,5 +57,7 @@ python -B -m experiments.r2_dev_readout --root ROOT --output ROOT/READOUT       
 | 295200–295223 | 第一稿验证曲线（强制紧急） |
 | **295300–295491** | **第二轮反馈机制开发（`dev` 阶段，192 个）** |
 | 300000–300295 | 第一稿正式块（U / E / N），第二轮起不再使用 |
-| 300296–999999 | 正式块的未用部分，从未访问 |
+| 300296–300999 | 正式块的未用部分 |
+| **301000–301191** | **第二轮正式实验测试（192 个，`FORMAL.md`）** |
+| 301192–999999 | 正式块的未用部分，从未访问 |
 | ≥ 1,000,000 | 训练开局：1,000,000·(seed + 1) + 进程序号 × 100,000 + 回合序号；开发期种子 0、1、10、11，第一稿正式种子 20、21、22（不再使用），第二轮开发种子 0、1、2 |

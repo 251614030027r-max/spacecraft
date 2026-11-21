@@ -9,9 +9,8 @@ episodes.json (training record) for every configuration of the stage, and writes
 * ``SUMMARY.json`` -- per configuration and seed: captures, timeouts, unsafe, other outcomes, mean true return, and the
   training record in its first and last quarter (capture share, timeout share, mean true return; the hover signal of
   DEAD_ENDS D03 is a rising return with a rising timeout share). Missing or error files are listed and the
-  configuration is marked incomplete. For the feedback-mechanism round, ``paired_mechanism`` compares the ECC_FB models
-  with and without the ``nearest_arbitration`` switch, and ``verdict`` applies the pre-registered rules P and M of
-  ``docs/final_method/FEEDBACK_DEV.md`` section 4.
+  configuration is marked incomplete. (The feedback-mechanism round's paired check and verdict, FEEDBACK_DEV.md
+  section 4, are at science b47eb660; the formal round uses ``experiments/formal_r2_readout.py``.)
 """
 import argparse
 import csv
@@ -33,8 +32,7 @@ def episodes(root, config: str, seed: int, openings: list[int]) -> tuple[list[di
             missing.append(o); continue
         rows.append({'config': config, 'seed': seed, 'opening': o, 'event': r['event'], 'return': float(r['return']),
                      'time_s': float(r['time_s']), 'delta_v': float(r['delta_v']), 'corrections': int(r.get('corrections', 0)),
-                     'long_entries': int(r.get('long_entries', 0)), 'arbitration_changed': int(r.get('arbitration_changed', 0)),
-                     'deadline_s': float(r['mission']['deadline_s'])})
+                     'long_entries': int(r.get('long_entries', 0)), 'deadline_s': float(r['mission']['deadline_s'])})
     return rows, missing
 
 
@@ -79,75 +77,13 @@ def readout(root, stage: str = 'dev') -> tuple[dict, list[dict]]:
                                    'training': training(Roots(root).find('B', f'TRAIN_{config}_s{seed}'))}
             incomplete |= bool(missing)
             rows_all += rows
-        summary['configs'][config] = {'per_seed': per_seed, 'total': outcome(rows_all), 'complete': not incomplete,
-                                      'arbitration_changed_per_episode': (sum(r['arbitration_changed'] for r in rows_all) / len(rows_all)
-                                                                          if rows_all else None)}
+        summary['configs'][config] = {'per_seed': per_seed, 'total': outcome(rows_all), 'complete': not incomplete}
         table += rows_all
     return summary, table
 
 
-#: FEEDBACK_DEV.md section 4 (revised 2026-11-20): primary P and paired mechanism check M
-P_CAPTURE_MARGIN, P_UNSAFE_TOLERANCE, P_SEEDS_NOT_WORSE = 10, 1, 2
-M_CAPTURE_MARGIN, M_FLIP_RATIO, M_UNSAFE_TOLERANCE = 3, 2, 1
-
-
-def paired(root, stage: str = 'dev', config: str = 'ECC_FB', switch: str = 'nearest_arbitration') -> dict | None:
-    """The same models evaluated with and without the switch: captures, unsafe and flips per opening and seed."""
-    st = stage_of(stage)
-    ops = block(st['eval_openings'])
-    on_rows, off_rows, missing = [], [], 0
-    for seed in st['seeds']:
-        a, ma = episodes(root, config, seed, ops)
-        b, mb = _switch_rows(root, config, seed, switch, ops)
-        missing += len(ma) + len(mb)
-        on_rows += a; off_rows += b
-    if missing or not on_rows:
-        return None
-    key = lambda r: (r['seed'], r['opening'])
-    off = {key(r): r for r in off_rows}
-    both = [(r, off[key(r)]) for r in on_rows if key(r) in off]
-    only_on = sum(r['event'] == 'success' and o['event'] != 'success' for r, o in both)
-    only_off = sum(o['event'] == 'success' and r['event'] != 'success' for r, o in both)
-    return {'pairs': len(both), 'captures_on': sum(r['event'] == 'success' for r, _ in both),
-            'captures_off': sum(o['event'] == 'success' for _, o in both), 'only_on': only_on, 'only_off': only_off,
-            'unsafe_on': sum(r['event'] == 'unsafe' for r, _ in both), 'unsafe_off': sum(o['event'] == 'unsafe' for _, o in both),
-            'arbitration_changed_on': sum(r['arbitration_changed'] for r, _ in both)}
-
-
-def _switch_rows(root, config: str, seed: int, switch: str, ops: list[int]):
-    rows, missing = [], []
-    R = Roots(root)
-    for o in ops:
-        f = R.find('C', f'{config}_s{seed}_{switch}', f'{config}_s{seed}_{switch}_{o}.json')
-        if not f.is_file():
-            missing.append(o); continue
-        r = json.loads(f.read_text(encoding='utf-8'))
-        if r.get('event') == 'error':
-            missing.append(o); continue
-        rows.append({'seed': seed, 'opening': o, 'event': r['event'], 'arbitration_changed': int(r.get('arbitration_changed', 0))})
-    return rows, missing
-
-
-def feedback_verdict(summary: dict, pair: dict | None) -> dict | None:
-    """The pre-registered decision of the feedback-mechanism round, or None while results are incomplete."""
-    cfg = summary['configs']
-    base, fb = cfg.get('ECC'), cfg.get('ECC_FB')
-    if base is None or fb is None or not base['complete'] or not fb['complete'] or pair is None:
-        return None
-    seeds_ok = sum(fb['per_seed'][s]['captures'] >= base['per_seed'][s]['captures'] for s in base['per_seed'])
-    p = (fb['total']['captures'] >= base['total']['captures'] + P_CAPTURE_MARGIN
-         and fb['total']['unsafe'] <= base['total']['unsafe'] + P_UNSAFE_TOLERANCE and seeds_ok >= P_SEEDS_NOT_WORSE)
-    m = (pair['captures_on'] >= pair['captures_off'] + M_CAPTURE_MARGIN and pair['only_on'] >= M_FLIP_RATIO * pair['only_off']
-         and pair['unsafe_on'] <= pair['unsafe_off'] + M_UNSAFE_TOLERANCE)
-    return {'P': {'captures': fb['total']['captures'], 'baseline_captures': base['total']['captures'], 'unsafe': fb['total']['unsafe'],
-                  'baseline_unsafe': base['total']['unsafe'], 'seeds_not_worse': seeds_ok, 'pass': p},
-            'M': {**pair, 'pass': m},
-            'conclusion': 'adopt ECC_FB' if p else ('report: mechanism effective, training bar not met' if m else 'keep ECC'),
-            'formal_ecc': 'ECC_FB' if p else (None if m else 'ECC')}
-
-
 EPISODE_FIELDS = ['config', 'seed', 'opening', 'event', 'return', 'time_s', 'delta_v', 'corrections', 'long_entries',
-                  'arbitration_changed', 'deadline_s']
+                  'deadline_s']
 
 
 def write_episodes_csv(path: Path, table: list[dict]) -> None:
@@ -162,11 +98,7 @@ def main():
     a = p.parse_args()
     out = Path(a.output); out.mkdir(parents=True, exist_ok=True)
     summary, table = readout(a.root, a.stage)
-    if a.stage == 'dev':
-        summary['paired_mechanism'] = paired(a.root, a.stage)
-        summary['verdict'] = feedback_verdict(summary, summary['paired_mechanism'])
-    else:
-        summary['verdict'] = None
+    summary['verdict'] = None
     (out / 'SUMMARY.json').write_text(json.dumps(summary, indent=1), encoding='utf-8')
     write_episodes_csv(out / 'EPISODES.csv', table)
     print(json.dumps({'totals': {c: v['total'] for c, v in summary['configs'].items()}, 'verdict': summary['verdict']}, indent=1))

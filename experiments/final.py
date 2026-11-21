@@ -52,8 +52,7 @@ def stage_of(name: str) -> dict:
 
 def env_kwargs(config: dict) -> dict:
     """``T2StageEnv`` keyword arguments of a registered trained configuration."""
-    return {k: config[k] for k in ('geometry', 'window', 'coordination', 'correction', 'long_entry', 'potential', 'arbitration',
-                                   'equivalence')}
+    return {k: config[k] for k in ('geometry', 'window', 'coordination', 'correction', 'long_entry', 'potential')}
 
 
 def _all_stage_seeds() -> set:
@@ -196,7 +195,7 @@ def fly(opening: int, name: str, src: str, env_override: dict | None = None) -> 
     import torch; torch.set_num_threads(1)
     from env.t1_p_stage import relative_inertial
     from env.t2_stage import T2StageEnv, angle_deg, frame_now
-    from experiments.t2 import attach_ranker, exec_config_of, load_checkpoint
+    from experiments.t2 import exec_config_of, load_checkpoint
     model = None
     if src == 'pure':
         env = T2StageEnv(openings=[opening], shaping=False)
@@ -204,7 +203,6 @@ def fly(opening: int, name: str, src: str, env_override: dict | None = None) -> 
         ck = final_model(Path(src))
         env = T2StageEnv(openings=[opening], shaping=False, **{**exec_config_of(ck), **(env_override or {})})
         model = load_checkpoint(ck)
-        attach_ranker(env, model)
     env.audit_logging = True
     env.env.audit_controls = True
     obs, _ = env.reset(options={'opening': opening})
@@ -420,7 +418,8 @@ def cmd_preflight(a):
     raise SystemExit(0 if ok else 1)
 
 
-def _result_md(stage: str, summary: dict, resolved: dict, root) -> str:
+def _result_md(stage: str, table: list[dict], extra: list[str], resolved: dict, root) -> str:
+    """RESULT.md: run identity, pre-run records, the outcome table, stage-specific lines, the anomaly section."""
     R = Roots(root)
     lines = [f'# 交付：{stage} 阶段（自动生成，`experiments.final pack`）', '',
              f'- 科学提交：`{resolved["science_sha"]}`；步数 {resolved["steps"]}；评估初始条件 {resolved["eval_openings"]}',
@@ -431,34 +430,36 @@ def _result_md(stage: str, summary: dict, resolved: dict, root) -> str:
             p = json.loads(pre.read_text(encoding='utf-8'))
             lines += [f'- 开跑前（{r.name}）：pytest 退出码 {p.get("pytest", {}).get("exit_code")}（{p.get("pytest", {}).get("summary", "")}），'
                       f'工作树干净 {p.get("clean_tree")}，逻辑核 {p.get("logical_cores")}，开始 {p.get("started")}']
-    lines += ['']
-    multi = len(R.roots) > 1
-    lines += ['| 配置 | 种子 | 捕获 | 超时 | 不安全 | 其他 | 平均真实回报 | 训练墙钟 (h) |' + (' 机器 |' if multi else ''),
-              '|---|---|---|---|---|---|---|---|' + ('---|' if multi else '')]
-    for cfg, c in summary['configs'].items():
-        for seed, r in c['per_seed'].items():
-            run = R.find('B', f'TRAIN_{cfg}_s{seed}')
-            fin = run / 'finished.json'
-            wall = json.loads(fin.read_text(encoding='utf-8'))['wall_s'] / 3600 if fin.is_file() else float('nan')
-            ret = r['mean_true_return']
-            lines.append(f'| {cfg} | {seed} | {r["captures"]}/{r["episodes"]} | {r["timeouts"]} | {r["unsafe"]} | '
-                         f'{r["resource_exhausted"] + r["other"]} | {"—" if ret is None else f"{ret:.1f}"} | {wall:.2f} |'
-                         + (f' {R.rel(run).split("/")[0]}' if len(R.roots) > 1 else ''))
-    if summary.get('paired_mechanism'):
-        pm = summary['paired_mechanism']
-        lines += ['', f'- 配对机制检验：价值仲裁 {pm["captures_on"]}，最近规则 {pm["captures_off"]}，'
-                      f'只有前者捕获 {pm["only_on"]}，只有后者捕获 {pm["only_off"]}（{pm["pairs"]} 对）']
-    if summary.get('verdict') is not None:
-        lines += ['', '## 预登记判定（读数脚本给出）', '', '```', json.dumps(summary['verdict'], indent=1, ensure_ascii=False), '```']
-    lines += ['', '## 异常与补跑（下层手填；没有就写"无"）', '', '无', '']
+    lines += ['', '| 组 | 种子 | 捕获 | 超时 | 不安全 | 其他 | 平均真实回报 | 训练墙钟 (h) | 位置 |', '|---|---|---|---|---|---|---|---|---|']
+    for row in table:
+        run = R.find('B', f'TRAIN_{row["arm"]}_s{row["seed"]}')
+        fin = run / 'finished.json'
+        wall = f'{json.loads(fin.read_text(encoding="utf-8"))["wall_s"] / 3600:.2f}' if fin.is_file() else '—'
+        where = R.rel(run).split('/')[0] if len(R.roots) > 1 and run.exists() else ''
+        ret = row['mean_return']
+        lines.append(f'| {row["arm"]} | {row["seed"]} | {row["capture"]}/{row["n"]} | {row["timeout"]} | {row["unsafe"]} | '
+                     f'{row["other"] + row["resource_exhausted"]} | {"—" if ret is None else f"{ret:.1f}"} | {wall} | {where} |')
+    lines += [''] + extra + ['', '## 异常与补跑（下层手填；没有就写"无"）', '', '无', '']
     return '\n'.join(lines)
+
+
+def _case_commands(root, cases: dict) -> list[str]:
+    """``traj`` commands for the pre-registered case openings (FORMAL.md section 3)."""
+    R = Roots(root); s = cases['seed']
+    ops = [o for o in (cases.get('case_A_typical'), cases.get('case_B_correction')) if o is not None]
+    if not ops:
+        return []
+    ecc, sac = R.find('B', f'TRAIN_ECC_s{s}'), R.find('B', f'TRAIN_SAC_MPC_s{s}')
+    return [f'python -B -m experiments.final traj --entry ECC={ecc} --entry SAC_MPC={sac} '
+            f'--openings {",".join(map(str, ops))} --output <OUT>/traj']
 
 
 def pack(stage: str, root, out: Path) -> dict:
     """One delivery from one or several result roots (local and cloud): completeness check (must pass), resolved
-    registry with model SHA-256, readout and verdict, the small per-run files (manifest, finished, episodes, TensorBoard
+    registry with model SHA-256, the readout (formal: every paper figure source, ``experiments/formal_r2_readout.py``;
+    other stages: per-configuration outcomes), the small per-run files (manifest, finished, episodes, TensorBoard
     events), RAW_SHA256SUMS of everything that stays on the machines (evaluation JSON, final models), SHA256SUMS of the
-    delivery and an auto-filled RESULT.md."""
+    delivery and an auto-filled RESULT.md. Files already in OUT (e.g. ``traj/``) are kept and hashed."""
     import shutil
     R = Roots(root)
     out = Path(out)
@@ -469,13 +470,27 @@ def pack(stage: str, root, out: Path) -> dict:
         raise SystemExit(f'incomplete ({out / "CHECK.json"}): rerun the missing items with the same commands, then pack again')
     resolved = resolve(stage, R)
     (out / 'REGISTRY_RESOLVED.json').write_text(json.dumps(resolved, indent=1, ensure_ascii=False), encoding='utf-8')
-    from experiments import r2_dev_readout as RO
-    summary, table = RO.readout(R, stage)
-    if stage == 'dev':
-        summary['paired_mechanism'] = RO.paired(R, stage)
-        summary['verdict'] = RO.feedback_verdict(summary, summary['paired_mechanism'])
-    (out / 'SUMMARY.json').write_text(json.dumps(summary, indent=1), encoding='utf-8')
-    RO.write_episodes_csv(out / 'EPISODES.csv', table)
+    extra, verdict = [], None
+    if stage == 'formal':
+        from experiments import formal_r2_readout as FR
+        readout = FR.write_all(R, out, stage)
+        table = [{'arm': a, 'seed': s, **v} for a, o in readout['outcomes'].items() for s, v in o['per_seed'].items()]
+        cmds = _case_commands(R, readout['cases'])
+        (out / 'CASE_COMMANDS.txt').write_text('\n'.join(cmds) + '\n', encoding='utf-8')
+        cap = readout['paired'].get('ECC vs SAC_MPC', {}).get('capture')
+        if cap:
+            extra.append(f'- 主比较 ECC 对 SAC_MPC：捕获率差 {100 * cap["estimate"]:+.1f} 个百分点 '
+                         f'[{100 * cap["ci95"][0]:+.1f}, {100 * cap["ci95"][1]:+.1f}]，翻转 {cap["flips"]["a_only"]} : {cap["flips"]["b_only"]}')
+        extra.append(f'- 案例（种子 {readout["cases"]["seed"]}）：A = {readout["cases"]["case_A_typical"]}，'
+                     f'B = {readout["cases"]["case_B_correction"]}；重放命令见 CASE_COMMANDS.txt')
+    else:
+        from experiments import r2_dev_readout as RO
+        summary, rows = RO.readout(R, stage)
+        (out / 'SUMMARY.json').write_text(json.dumps(summary, indent=1), encoding='utf-8')
+        RO.write_episodes_csv(out / 'EPISODES.csv', rows)
+        table = [{'arm': c, 'seed': s, 'n': v['episodes'], 'capture': v['captures'], 'timeout': v['timeouts'], 'unsafe': v['unsafe'],
+                  'other': v['other'], 'resource_exhausted': v['resource_exhausted'], 'mean_return': v['mean_true_return']}
+                 for c, cc in summary['configs'].items() for s, v in cc['per_seed'].items()]
     for r in R.roots:
         if (r / 'PREFLIGHT.json').is_file():
             shutil.copy2(r / 'PREFLIGHT.json', out / ('PREFLIGHT.json' if len(R.roots) == 1 else f'PREFLIGHT_{r.name}.json'))
@@ -487,16 +502,16 @@ def pack(stage: str, root, out: Path) -> dict:
         for ev in (run / 'tb').glob('events.out.tfevents.*'):
             shutil.copy2(ev, dst / 'tb' / ev.name)
     raw = [*R.glob('C/*/*.json'), *R.glob('S/*/*.json')]
-    rows = [f'{sha256(f)}  {R.rel(f)}\n' for f in raw]
+    rows_ = [f'{sha256(f)}  {R.rel(f)}\n' for f in raw]
     for run in R.glob('B/TRAIN_*'):
         if (run / 'manifest.json').is_file():
             digest, source = model_hash(run)
-            rows.append(f'{digest}  {R.rel(run / "final.zip")}' + ('' if source == 'final.zip' else '  (recorded)') + '\n')
-    (out / 'RAW_SHA256SUMS').write_text(''.join(rows), encoding='utf-8')
-    (out / 'RESULT.md').write_text(_result_md(stage, summary, resolved, R), encoding='utf-8')
+            rows_.append(f'{digest}  {R.rel(run / "final.zip")}' + ('' if source == 'final.zip' else '  (recorded)') + '\n')
+    (out / 'RAW_SHA256SUMS').write_text(''.join(rows_), encoding='utf-8')
+    (out / 'RESULT.md').write_text(_result_md(stage, table, extra, resolved, R), encoding='utf-8')
     files = sorted(f for f in out.rglob('*') if f.is_file() and f.name != 'SHA256SUMS')
     (out / 'SHA256SUMS').write_text(''.join(f'{sha256(f)}  {f.relative_to(out).as_posix()}\n' for f in files), encoding='utf-8')
-    return {'delivered_files': len(files) + 1, 'raw_files_hashed': len(rows), 'verdict': summary.get('verdict')}
+    return {'delivered_files': len(files) + 1, 'raw_files_hashed': len(rows_), 'verdict': verdict}
 
 
 def cmd_pack(a):
