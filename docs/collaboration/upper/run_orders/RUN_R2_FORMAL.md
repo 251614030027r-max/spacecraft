@@ -10,7 +10,7 @@
 
 | 项 | 值 |
 |---|---|
-| 科学提交 | `c6f6cc3c`（本机与云端必须相同；短检查结束后不换提交） |
+| 科学提交 | `41601520`（本机与云端必须相同；短检查结束后不换提交） |
 | 阶段 | `formal`：种子 30、31、32；6000 次决策；测试初始条件 301000–301191（192 个） |
 | 训练（12 个运行） | ECC 位（`ECC` 或 `ECC_FINE`，由短检查决定）、`SAC_MPC`、`ECC_NO_CORE`、`TD3_MPC`，各 3 个种子 |
 | 只评估 | ECC 位的 3 个模型加 `rigid_entry` |
@@ -20,7 +20,7 @@
 ## 0. 开跑前（两台机器各一次）
 
 1. 确认没有遗留的 Python 进程。
-2. 检出 `c6f6cc3c`。
+2. 检出 `41601520`。
 3. 本机运行 `python -B -m experiments.final preflight --root $L`，云端运行 `... --root $C`。退出码为 0 才继续（沙箱 171 passed）。
 
 ## 1. 分工：每台机器负责完整的组
@@ -111,7 +111,7 @@ python -B -m experiments.final eval --stage formal --run $L\B\TRAIN_<ECC位配�
    - 只有出现异常时，才在 `RESULT.md` 末尾写一两句；
    - `git add -f evidence/R2_FORMAL`，提交并推送；
    - 把 `RESULT.md` 复制到协作分支 `docs/collaboration/lower/handoffs/r2_formal/RESULT.md`，提交并推送；
-   - 归档标签 `archive/r2-formal-code` 指向 `c6f6cc3c`。
+   - 归档标签 `archive/r2-formal-code` 指向 `41601520`。
 
 **不做：** 自制额外核验文件、重算旧证据哈希、跨机器比较比特。
 
