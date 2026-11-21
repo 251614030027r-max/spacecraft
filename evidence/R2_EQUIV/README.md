@@ -38,3 +38,7 @@ python -B scripts/compare.py REF1.json REF2.json -- NEW1.json NEW2.json
 - `FEEDBACK_DEV.md` 的新开关默认关闭（`arbitration='nearest'`、`equivalence=False`）；
 - 用加入开关后的代码重跑 294302、294305 两个初始条件的四条序列（含修正与直接入口），与参照 `ref_*.json` 中对应回合逐行一致；
 - 原始记录：`sandbox/recheck_feedback_switches_294302_294305.json`。
+
+**复核（2026-11-21，正式实验代码 `0ede5def`，FB 代码删除后）：**
+- 全部 12 个回合（6 个初始条件 × 两条意图序列）与参照逐行一致，含 13 次修正、3 次直接入口；
+- 原始记录：`sandbox/recheck_formal_*.json`。
