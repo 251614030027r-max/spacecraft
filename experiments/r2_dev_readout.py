@@ -82,6 +82,41 @@ def readout(root, stage: str = 'dev') -> tuple[dict, list[dict]]:
     return summary, table
 
 
+#: FORMAL.md section 8: captures(switch) >= captures(base) + 5, only-switch >= 2 x only-base, unsafe(switch) <= unsafe(base) + 1
+SW_CAPTURE_MARGIN, SW_FLIP_RATIO, SW_UNSAFE_TOLERANCE = 5, 2, 1
+
+
+def paired_switch(root, stage: str = 'dev', config: str = 'ECC', switch: str = 'extended_lattice') -> dict | None:
+    """The same models evaluated without and with an evaluation switch (paired per seed and opening), with the
+    pre-registered decision of FORMAL.md section 8; None while results are incomplete."""
+    st = stage_of(stage); ops = block(st['eval_openings']); R = Roots(root)
+    base, on, missing = {}, {}, 0
+    for seed in st['seeds']:
+        for o in ops:
+            for store, label in ((base, f'{config}_s{seed}'), (on, f'{config}_s{seed}_{switch}')):
+                f = R.find('C', label, f'{label}_{o}.json')
+                r = json.loads(f.read_text(encoding='utf-8')) if f.is_file() else None
+                if r is None or r.get('event') == 'error':
+                    missing += 1; continue
+                store[(seed, o)] = r
+    if missing:
+        return None
+    keys = sorted(base)
+    cap = lambda d: sum(d[k]['event'] == 'success' for k in keys)
+    uns = lambda d: sum(d[k]['event'] == 'unsafe' for k in keys)
+    only_on = sum(on[k]['event'] == 'success' and base[k]['event'] != 'success' for k in keys)
+    only_base = sum(base[k]['event'] == 'success' and on[k]['event'] != 'success' for k in keys)
+    res = {'switch': switch, 'pairs': len(keys), 'captures_base': cap(base), 'captures_switch': cap(on), 'only_switch': only_on,
+           'only_base': only_base, 'unsafe_base': uns(base), 'unsafe_switch': uns(on),
+           'fine_corrections': sum(1 for r in on.values() for d in (r.get('decisions') or []) if (d.get('coord') or {}).get('lattice') == 'fine'),
+           'per_seed': {str(s): {'base': sum(base[(s, o)]['event'] == 'success' for o in ops),
+                                 'switch': sum(on[(s, o)]['event'] == 'success' for o in ops)} for s in st['seeds']}}
+    res['pass'] = (res['captures_switch'] >= res['captures_base'] + SW_CAPTURE_MARGIN and only_on >= SW_FLIP_RATIO * only_base
+                   and res['unsafe_switch'] <= res['unsafe_base'] + SW_UNSAFE_TOLERANCE)
+    res['formal_ecc'] = 'ECC_FINE' if res['pass'] else 'ECC'
+    return res
+
+
 EPISODE_FIELDS = ['config', 'seed', 'opening', 'event', 'return', 'time_s', 'delta_v', 'corrections', 'long_entries',
                   'deadline_s']
 
@@ -95,7 +130,14 @@ def write_episodes_csv(path: Path, table: list[dict]) -> None:
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--root', action='append', required=True); p.add_argument('--output', required=True); p.add_argument('--stage', default='dev')
+    p.add_argument('--paired-switch', help='evaluation switch to pair against the same models (FORMAL.md section 8: extended_lattice)')
     a = p.parse_args()
+    if a.paired_switch:
+        res = paired_switch(a.root, a.stage, switch=a.paired_switch)
+        out = Path(a.output); out.mkdir(parents=True, exist_ok=True)
+        (out / f'PAIRED_{a.paired_switch}.json').write_text(json.dumps(res, indent=1), encoding='utf-8')
+        print(json.dumps(res, indent=1))
+        return
     out = Path(a.output); out.mkdir(parents=True, exist_ok=True)
     summary, table = readout(a.root, a.stage)
     summary['verdict'] = None

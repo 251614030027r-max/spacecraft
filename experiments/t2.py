@@ -131,7 +131,7 @@ def exec_config_of(checkpoint) -> dict:
     d = run_manifest(checkpoint)
     if d.get('obs_dim') is None or 'coordination' not in d:
         raise ValueError(f'{checkpoint}: not a round-2 run (first-draft models load at science 72a8d41)')
-    return {k: bool(d[k]) for k in EXEC_KEYS}
+    return {**{k: bool(d[k]) for k in EXEC_KEYS}, 'extended_lattice': bool(d.get('extended_lattice', False))}
 
 
 def load_checkpoint(checkpoint):

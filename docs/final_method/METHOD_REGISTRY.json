@@ -14,7 +14,8 @@
    "geometry": true,
    "window": true,
    "role": "proposed method: opportunity coordination (keep / critical-window correction / direct entry) with standard SAC",
-   "color": "#8e44ad"
+   "color": "#8e44ad",
+   "extended_lattice": false
   },
   "ECC_NO_CORE": {
    "display": "ECC w/o critical-window correction",
@@ -26,7 +27,8 @@
    "geometry": true,
    "window": true,
    "role": "attribution: keep and direct entry only (no grid correction)",
-   "color": "#c0392b"
+   "color": "#c0392b",
+   "extended_lattice": false
   },
   "SAC_MPC": {
    "display": "SAC-MPC",
@@ -38,7 +40,8 @@
    "geometry": true,
    "window": true,
    "role": "w/o feedback: the policy's intent is flown as proposed (same executor, network, reward)",
-   "color": "#eb6834"
+   "color": "#eb6834",
+   "extended_lattice": false
   },
   "TD3_MPC": {
    "display": "TD3-MPC",
@@ -50,19 +53,44 @@
    "geometry": true,
    "window": true,
    "role": "matched deterministic actor-critic baseline (TD3 standard configuration)",
-   "color": "#0072b2"
+   "color": "#0072b2",
+   "extended_lattice": false
+  },
+  "ECC_FINE": {
+   "display": "ECC",
+   "algo": "sac",
+   "coordination": true,
+   "correction": true,
+   "long_entry": true,
+   "potential": "opportunity",
+   "geometry": true,
+   "window": true,
+   "role": "proposed method with the fine opportunity lattice (FORMAL.md section 8); fills the ECC slot of the formal stage if the short check passes",
+   "color": "#8e44ad",
+   "extended_lattice": true
   }
  },
  "eval_switches": {
   "rigid_entry": {
    "display": "ECC with rigid entry commitment (no entry re-timing)",
    "applies_to": [
-    "ECC"
+    "ECC",
+    "ECC_FINE"
    ],
    "env": {
     "window": false
    },
    "role": "RWG check (ROUND2.md section 2): entry re-timing off at evaluation, paired on the same models"
+  },
+  "extended_lattice": {
+   "display": "ECC with the fine opportunity lattice (evaluation only)",
+   "applies_to": [
+    "ECC"
+   ],
+   "env": {
+    "extended_lattice": true
+   },
+   "role": "short check (FORMAL.md section 8): the dev ECC models, paired with their existing results"
   }
  },
  "fixed": {
@@ -117,7 +145,9 @@
      "ECC"
     ],
     "fixed": [],
-    "eval_switches": [],
+    "eval_switches": [
+     "extended_lattice"
+    ],
     "authorised_by": "docs/final_method/FEEDBACK_DEV.md (completed 2026-11-21; ECC_FB not adopted, code at science b47eb660)"
    },
    "formal": {
@@ -142,7 +172,13 @@
     "eval_switches": [
      "rigid_entry"
     ],
-    "authorised_by": "docs/final_method/FORMAL.md"
+    "authorised_by": "docs/final_method/FORMAL.md",
+    "variants": {
+     "ECC": [
+      "ECC",
+      "ECC_FINE"
+     ]
+    }
    }
   }
  }

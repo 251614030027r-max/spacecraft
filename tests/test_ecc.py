@@ -501,3 +501,28 @@ def test_cvxpy_fast_path_stores_the_same_values_and_keeps_attribute_checks():
     nonneg = cp.Parameter(3, nonneg=True)
     with pytest.raises(ValueError):
         nonneg.value = np.array([1.0, -1.0, 0.0])                 # attributed leaves still go through CVXPY's check
+
+
+def test_fine_lattice_is_the_16_intermediate_intents_and_acts_only_where_nothing_else_does(monkeypatch):
+    """FORMAL.md section 8: off by default; evaluated only when the 3x3 lattice and the direct entry offer nothing."""
+    import env.t2_stage as T
+    from env.t2_probe import PROBE_GRID
+    assert len(T.FINE_GRID) == 16 and not set(T.FINE_GRID) & set(PROBE_GRID) and (0.5, -0.5) in T.FINE_GRID
+    assert T2StageEnv(openings=[1000004]).extended_lattice is False
+    env, set_rows, grid = _coordination_env(extended_lattice=True)
+    monkeypatch.setattr(env, '_pass_clock', lambda: (150.0, 1e9))
+
+    class Fine(_Own):
+        def probe_intent(self, x, *args):
+            if tuple(x) == (0.5, 0.0):
+                return {'event': 1, 't': 10.0, 'kind': 'entry', 'dv': 0.1}
+            return super().probe_intent(x, *args)
+    env.prober = Fine(0)
+    set_rows({})
+    x, rec = env._coordinate(np.array([0.2, 0.1]))
+    assert rec['kind'] == 'correct' and rec['lattice'] == 'fine' and tuple(x) == (0.5, 0.0) and env.stats['fine_corrections'] == 1
+    set_rows({grid.index((0.0, 0.0)): 30.0})                                      # the 3x3 lattice comes first
+    x, rec = env._coordinate(np.array([0.2, 0.1]))
+    assert tuple(x) == (0.0, 0.0) and 'lattice' not in rec
+    env.extended_lattice = False; set_rows({})
+    assert env._coordinate(np.array([0.2, 0.1]))[1]['kind'] == 'none'

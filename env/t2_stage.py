@@ -140,6 +140,9 @@ POTENTIAL_RATE_PER_S = TIME_COST_PER_S # the task's time cost per second of the 
 NOMINAL_STEP_S = 0.5
 NOMINAL_HORIZON_S = 400.0
 POTENTIALS = ("opportunity", "lead24")
+#: the 16 intents of the 5x5 lever lattice {-1, -0.5, 0, 0.5, 1}^2 that are not on the 3x3 lattice (FORMAL.md section 8)
+FINE_GRID = tuple((float(p), float(z)) for p in (-1.0, -0.5, 0.0, 0.5, 1.0) for z in (-1.0, -0.5, 0.0, 0.5, 1.0)
+                  if not (p in (-1.0, 0.0, 1.0) and z in (-1.0, 0.0, 1.0)))
 
 
 def nominal_entry_time(r: float, lat_deg: float, task) -> float:
@@ -440,7 +443,8 @@ class T2StageEnv(gym.Env):
 
     def __init__(self, openings: list[int] | None = None, seed_base: int = 1_000_000, mission: T2Mission = T2Mission(),
                  shaping: bool = True, geometry: bool = True, window: bool = True, coordination: bool = False,
-                 correction: bool = True, long_entry: bool = True, potential: str = "opportunity") -> None:
+                 correction: bool = True, long_entry: bool = True, potential: str = "opportunity",
+                 extended_lattice: bool = False) -> None:
         self.geometry = bool(geometry)
         self.window = bool(window)
         #: ECC coordination (``_coordinate``): the same map in training and execution
@@ -449,6 +453,9 @@ class T2StageEnv(gym.Env):
         self.correction = bool(correction)
         #: the direct-entry opportunity O_L at the last usable pass (part of the coordination; switchable for tests)
         self.long_entry = bool(long_entry)
+        #: fine opportunity lattice (``docs/final_method/FORMAL.md`` section 8): at a last-chance state where neither the
+        #: 3x3 lattice nor the direct entry offers an opportunity, the other 16 intents of the 5x5 lattice are evaluated
+        self.extended_lattice = bool(extended_lattice)
         if potential not in POTENTIALS:
             raise ValueError(f"unknown potential {potential!r}: {POTENTIALS}")
         #: training potential: 'opportunity' (round 2) or 'lead24' (first draft; kept only to reproduce evidence/R2_EQUIV)
@@ -743,8 +750,32 @@ class T2StageEnv(gym.Env):
                 self._bridge = {"t": self.env.time_s, "tau": float(self.generator.bridge.plan["tau_s"])}
                 rec["kind"] = "launch"
                 return done(a)
+        if self.extended_lattice and opp is not None:
+            fine = self._fine_opportunities(opp)
+            if fine:
+                best = min(fine, key=lambda c: (float(np.linalg.norm(np.asarray(c[1]) - a)), float(c[2]["t"]), c[0]))
+                self.stats["corrections"] = self.stats.get("corrections", 0) + 1
+                self.stats["fine_corrections"] = self.stats.get("fine_corrections", 0) + 1
+                rec.update(kind="correct", lattice="fine", a_exec=[float(x) for x in best[1]], alt_t=float(best[2]["t"]),
+                           alt_kind=best[2]["kind"])
+                return done(np.asarray(best[1], np.float64))
         rec["kind"] = "none"
         return done(a)
+
+    def _fine_opportunities(self, opp: dict) -> list:
+        """Critical opportunities among the 16 intents of the 5x5 lattice outside the 3x3 one (same criticality and
+        resource conditions as ``_opportunity_eval``; evaluated only when that one offers none)."""
+        if "fine_rows" not in opp:
+            e = self.env
+            budget, used = float(self.mission["budget_m_s"]), float(e._delta_v)
+            rows = []
+            for b in FINE_GRID:
+                d = self.prober.probe_intent(np.asarray(b, np.float64), *opp["args"])
+                d["critical"] = bool(d["event"] and opp["t"] + d["t"] + opp["period"] > opp["latest"]
+                                     and used + d["dv"] + d.get("dv_entry", 0.0) <= budget)
+                rows.append(d)
+            opp["fine_rows"] = rows
+        return [(i, b, d) for i, (b, d) in enumerate(zip(FINE_GRID, opp["fine_rows"])) if d["critical"]]
 
 
     # ---------------------------------------------------------------- read-only diagnostics (formal runs)

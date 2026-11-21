@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from experiments.final import Roots, block, registry, stage_of
+from experiments.final import Roots, block, registry, slot_config, stage_of
 
 DRAWS = 10_000
 RNG_SEED = 20261121
@@ -50,8 +50,9 @@ def _episode(path: Path) -> dict | None:
             'descent_correction': any(c.get('kind') == 'correct' and c.get('alt_kind') == 'descent' for c in coords)}
 
 
-def load(root, stage: str = 'formal') -> tuple[dict, list[str], list[int]]:
-    """rows[(arm, seed, opening)] -> episode; arms: trained configurations, '<cfg>+<switch>', fixed policies."""
+def load(root, stage: str = 'formal') -> tuple[dict, list[str], list[int], dict]:
+    """rows[(arm, seed, opening)] -> episode; arms: trained slots (named by the slot, e.g. 'ECC', whichever variant
+    fills it), '<slot>+<switch>', fixed policies; also the missing files, the openings and the slot -> configuration map."""
     R, st_ = Roots(root), stage_of(stage)
     ops, seeds = block(st_['eval_openings']), [str(s) for s in st_['seeds']]
     reg = registry()
@@ -66,19 +67,22 @@ def load(root, stage: str = 'formal') -> tuple[dict, list[str], list[int]]:
             else:
                 rows[(arm, seed, o)] = e
 
-    for cfg in st_['trained']:
+    slots = {}
+    for slot in st_['trained']:
+        cfg = slot_config(R, st_, slot)[0] or slot
+        slots[slot] = cfg
         for s in seeds:
-            take(cfg, s, 'C', f'{cfg}_s{s}')
+            take(slot, s, 'C', f'{cfg}_s{s}')
             for sw in st_.get('eval_switches', []):
                 if cfg in reg['eval_switches'][sw]['applies_to']:
-                    take(f'{cfg}+{sw}', s, 'C', f'{cfg}_s{s}_{sw}')
+                    take(f'{slot}+{sw}', s, 'C', f'{cfg}_s{s}_{sw}')
     for pol in st_.get('fixed', []):
         take(pol, FIXED_SEED, 'S', pol)
-    return rows, missing, ops
+    return rows, missing, ops, slots
 
 
 def arms_of(rows) -> list[str]:
-    return sorted({k[0] for k in rows}, key=lambda a: (a not in registry()['trained'], a))
+    return sorted({k[0] for k in rows}, key=lambda a: ('+' in a or a not in registry()['trained'], a))
 
 
 # ---------------------------------------------------------------------- statistics
@@ -150,7 +154,8 @@ def paired(rows, a, b, metric) -> dict | None:
 def training_curves(root, stage='formal', window=100) -> list[dict]:
     R, st_ = Roots(root), stage_of(stage)
     out = []
-    for cfg in st_['trained']:
+    for slot in st_['trained']:
+        cfg = slot_config(R, st_, slot)[0] or slot
         for s in st_['seeds']:
             f = R.find('B', f'TRAIN_{cfg}_s{s}', 'episodes.json')
             if not f.is_file():
@@ -158,7 +163,7 @@ def training_curves(root, stage='formal', window=100) -> list[dict]:
             eps = sorted(json.loads(f.read_text(encoding='utf-8')), key=lambda e: e['steps'])
             for i in range(0, len(eps) - window + 1, window // 2):
                 w = eps[i:i + window]
-                out.append({'config': cfg, 'seed': s, 'episode_end': i + window, 'decisions': int(w[-1]['steps']),
+                out.append({'config': slot, 'variant': cfg, 'seed': s, 'episode_end': i + window, 'decisions': int(w[-1]['steps']),
                             'capture_rate': sum(e['event'] == 'success' for e in w) / window,
                             'mean_true_return': st.mean(e['return_true'] for e in w),
                             'corrections_per_episode': st.mean((e.get('exec_stats') or {}).get('corrections', 0) for e in w),
@@ -264,7 +269,7 @@ def write_csv(path: Path, rows: list[dict]) -> None:
 
 def write_all(root, out: Path, stage: str = 'formal') -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    rows, missing, ops = load(root, stage)
+    rows, missing, ops, slots = load(root, stage)
     arms = arms_of(rows)
     outcomes = {a: outcome(rows, a) for a in arms}
     comps = [c for c in COMPARISONS if c[0] in arms and c[1] in arms]
@@ -283,8 +288,8 @@ def write_all(root, out: Path, stage: str = 'formal') -> dict:
     write_csv(out / 'COMPUTE.csv', compute(rows))
     (out / 'SAFETY.json').write_text(json.dumps(safety(rows), indent=1), encoding='utf-8')
     (out / 'CASES.json').write_text(json.dumps(case, indent=1), encoding='utf-8')
-    readout = {'stage': stage, 'openings': f'{ops[0]}-{ops[-1]}', 'missing_or_error': missing, 'outcomes': outcomes,
-               'paired': pairs, 'cases': case}
+    readout = {'stage': stage, 'openings': f'{ops[0]}-{ops[-1]}', 'slots': slots, 'missing_or_error': missing,
+               'outcomes': outcomes, 'paired': pairs, 'cases': case}
     (out / 'READOUT.json').write_text(json.dumps(readout, indent=1), encoding='utf-8')
     return readout
 

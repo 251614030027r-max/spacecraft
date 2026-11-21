@@ -50,9 +50,32 @@ def stage_of(name: str) -> dict:
     return s[name]
 
 
+#: executor switches a manifest records, with the value runs from before a switch existed implicitly had
+ENV_KEYS = {'geometry': None, 'window': None, 'coordination': None, 'correction': None, 'long_entry': None, 'potential': None,
+            'extended_lattice': False}
+
+
 def env_kwargs(config: dict) -> dict:
     """``T2StageEnv`` keyword arguments of a registered trained configuration."""
-    return {k: config[k] for k in ('geometry', 'window', 'coordination', 'correction', 'long_entry', 'potential')}
+    return {k: config.get(k, default) for k, default in ENV_KEYS.items()}
+
+
+def stage_slots(stage: dict) -> dict:
+    """slot -> admissible configurations; a slot with ``variants`` is filled by exactly one of them (FORMAL.md 8)."""
+    v = stage.get('variants', {})
+    return {slot: list(v.get(slot, [slot])) for slot in stage['trained']}
+
+
+def stage_configs(stage: dict) -> set:
+    return {c for cs in stage_slots(stage).values() for c in cs}
+
+
+def slot_config(R, stage: dict, slot: str) -> tuple[str | None, list[str]]:
+    """The configuration that fills a slot in these results (the one with any run directory), and the problems."""
+    present = [c for c in stage_slots(stage)[slot] if any(R.find('B', f'TRAIN_{c}_s{s}').exists() for s in stage['seeds'])]
+    if len(present) > 1:
+        return None, [f'slot {slot} filled by several configurations: {present}']
+    return (present[0] if present else stage_slots(stage)[slot][0]), []
 
 
 def _all_stage_seeds() -> set:
@@ -79,8 +102,8 @@ def cmd_train(a):
     if a.smoke_steps is None:
         if a.seed not in st['seeds']:
             raise SystemExit(f'seed {a.seed} is not a {a.stage} seed {st["seeds"]}')
-        if a.config not in st['trained']:
-            raise SystemExit(f'{a.config} is not trained in the {a.stage} stage ({st["trained"]})')
+        if a.config not in stage_configs(st):
+            raise SystemExit(f'{a.config} is not trained in the {a.stage} stage ({sorted(stage_configs(st))})')
     elif a.seed in _all_stage_seeds():
         raise SystemExit('a smoke run may not use a registered or reserved seed')
     steps = int(a.smoke_steps) if a.smoke_steps is not None else int(st['steps'])
@@ -98,7 +121,8 @@ def verify_manifest(m: dict, config: str) -> None:
     """A run's manifest against its registered configuration."""
     c = registry()['trained'][config]
     want = {'algo': c['algo'], **env_kwargs(c)}
-    bad = {k: (m.get(k), v) for k, v in want.items() if m.get(k) != v}
+    got = {**{k: d for k, d in ENV_KEYS.items() if d is not None}, **m}     # runs from before a switch carry its default
+    bad = {k: (got.get(k), v) for k, v in want.items() if got.get(k) != v}
     if bad:
         raise SystemExit(f'manifest of {config} does not match the registry: {bad}')
 
@@ -163,7 +187,7 @@ def cmd_eval(a):
     if config is None:
         raise SystemExit(f'{run} was not trained through experiments.final')
     verify_manifest(m, config)
-    if not smoke and (m.get('final_stage') != a.stage or steps != st['steps'] or seed not in st['seeds'] or config not in st['trained']):
+    if not smoke and (m.get('final_stage') != a.stage or steps != st['steps'] or seed not in st['seeds'] or config not in stage_configs(st)):
         raise SystemExit('model is not registered for evaluation in this stage')
     ops = checked_openings(a, st, smoke)
     env = switch_env(st, config, a.switch)
@@ -357,7 +381,11 @@ def check_stage(root, stage: str) -> dict:
         report['evaluations' if folder == 'C' else 'screens'][label] = {'files': len(actual & expected), 'expected': len(expected)}
 
     report['conditional_not_run'] = []
-    for config in st['trained']:
+    for slot in st['trained']:
+        config, problems = slot_config(R, st, slot)
+        report['errors'].extend(problems)
+        if config is None:
+            continue
         if config in st.get('conditional', {}) and not any(R.find('B', f'TRAIN_{config}_s{s}').exists() for s in st['seeds']):
             report['conditional_not_run'].append(config)    # a conditional session that has not been triggered
             continue
@@ -432,7 +460,7 @@ def _result_md(stage: str, table: list[dict], extra: list[str], resolved: dict, 
                       f'工作树干净 {p.get("clean_tree")}，逻辑核 {p.get("logical_cores")}，开始 {p.get("started")}']
     lines += ['', '| 组 | 种子 | 捕获 | 超时 | 不安全 | 其他 | 平均真实回报 | 训练墙钟 (h) | 位置 |', '|---|---|---|---|---|---|---|---|---|']
     for row in table:
-        run = R.find('B', f'TRAIN_{row["arm"]}_s{row["seed"]}')
+        run = R.find('B', f'TRAIN_{row.get("config", row["arm"])}_s{row["seed"]}')
         fin = run / 'finished.json'
         wall = f'{json.loads(fin.read_text(encoding="utf-8"))["wall_s"] / 3600:.2f}' if fin.is_file() else '—'
         where = R.rel(run).split('/')[0] if len(R.roots) > 1 and run.exists() else ''
@@ -443,15 +471,20 @@ def _result_md(stage: str, table: list[dict], extra: list[str], resolved: dict, 
     return '\n'.join(lines)
 
 
-def _case_commands(root, cases: dict) -> list[str]:
-    """``traj`` commands for the pre-registered case openings (FORMAL.md section 3)."""
+def _case_commands(root, cases: dict, slots: dict) -> list[str]:
+    """``traj`` commands for the pre-registered case openings (FORMAL.md section 3), one per model, run on the machine
+    that holds the model (its result root is named in the comment)."""
     R = Roots(root); s = cases['seed']
     ops = [o for o in (cases.get('case_A_typical'), cases.get('case_B_correction')) if o is not None]
     if not ops:
         return []
-    ecc, sac = R.find('B', f'TRAIN_ECC_s{s}'), R.find('B', f'TRAIN_SAC_MPC_s{s}')
-    return [f'python -B -m experiments.final traj --entry ECC={ecc} --entry SAC_MPC={sac} '
-            f'--openings {",".join(map(str, ops))} --output <OUT>/traj']
+    out = []
+    for name in ('ECC', 'SAC_MPC'):
+        run = R.find('B', f'TRAIN_{slots.get(name, name)}_s{s}')
+        where = R.rel(run).split('/')[0] if len(R.roots) > 1 else str(R.roots[0])
+        out.append(f'# on the machine of {where} (model {run.name}; use that machine\'s path to the run directory)')
+        out.append(f'python -B -m experiments.final traj --entry {name}={run} --openings {",".join(map(str, ops))} --output <OUT>/traj')
+    return out
 
 
 def pack(stage: str, root, out: Path) -> dict:
@@ -474,8 +507,9 @@ def pack(stage: str, root, out: Path) -> dict:
     if stage == 'formal':
         from experiments import formal_r2_readout as FR
         readout = FR.write_all(R, out, stage)
-        table = [{'arm': a, 'seed': s, **v} for a, o in readout['outcomes'].items() for s, v in o['per_seed'].items()]
-        cmds = _case_commands(R, readout['cases'])
+        table = [{'arm': a, 'seed': s, 'config': readout['slots'].get(a, a), **v} for a, o in readout['outcomes'].items()
+                 for s, v in o['per_seed'].items()]
+        cmds = _case_commands(R, readout['cases'], readout['slots'])
         (out / 'CASE_COMMANDS.txt').write_text('\n'.join(cmds) + '\n', encoding='utf-8')
         cap = readout['paired'].get('ECC vs SAC_MPC', {}).get('capture')
         if cap:

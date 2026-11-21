@@ -27,9 +27,9 @@ def _event(arm, k):
     return 'timeout' if k % n == 0 else 'success'
 
 
-def _fake_formal(root, skip=None):
+def _fake_formal(root, skip=None, ecc='ECC'):
     reg = final.registry(); st = final.stage_of('formal'); ops = final.block(st['eval_openings'])
-    for cfg in st['trained']:
+    for cfg in [ecc if c == 'ECC' else c for c in st['trained']]:
         for seed in st['seeds']:
             run = root / 'B' / f'TRAIN_{cfg}_s{seed}'; (run / 'tb').mkdir(parents=True)
             m = {'algo': reg['trained'][cfg]['algo'], **final.env_kwargs(reg['trained'][cfg]), 'seed': seed, 'steps': st['steps'],
@@ -41,7 +41,8 @@ def _fake_formal(root, skip=None):
             (run / 'episodes.json').write_text(json.dumps(eps))
             (run / 'tb' / 'events.out.tfevents.1').write_bytes(b'tb')
             (run / 'final.zip').write_bytes(f'{cfg}{seed}'.encode())
-            arms = [(cfg, f'{cfg}_s{seed}')] + ([('ECC+rigid_entry', f'{cfg}_s{seed}_rigid_entry')] if cfg == 'ECC' else [])
+            slot = 'ECC' if cfg in ('ECC', 'ECC_FINE') else cfg
+            arms = [(slot, f'{cfg}_s{seed}')] + ([('ECC+rigid_entry', f'{cfg}_s{seed}_rigid_entry')] if slot == 'ECC' else [])
             for arm, label in arms:
                 d = root / 'C' / label; d.mkdir(parents=True)
                 for k, o in enumerate(ops):
@@ -160,9 +161,10 @@ def test_pack_dev_stage_still_works(tmp_path):
         (run / 'finished.json').write_text(json.dumps({'steps': st['steps'], 'wall_s': 10.0}))
         (run / 'episodes.json').write_text(json.dumps([{'event': 'success', 'return_true': 1.0}] * 8))
         (run / 'tb' / 'events.out.tfevents.1').write_bytes(b'tb'); (run / 'final.zip').write_bytes(b'm')
-        d = root / 'C' / f'ECC_s{seed}'; d.mkdir(parents=True)
-        for k, o in enumerate(final.block(st['eval_openings'])):
-            (d / f'ECC_s{seed}_{o}.json').write_text(json.dumps(_result('success', k)))
+        for label in (f'ECC_s{seed}', f'ECC_s{seed}_extended_lattice'):
+            d = root / 'C' / label; d.mkdir(parents=True)
+            for k, o in enumerate(final.block(st['eval_openings'])):
+                (d / f'{label}_{o}.json').write_text(json.dumps(_result('success', k)))
     final.pack('dev', root, tmp_path / 'OUT')
     assert (tmp_path / 'OUT' / 'SUMMARY.json').is_file() and '| ECC | 0 |' in (tmp_path / 'OUT' / 'RESULT.md').read_text()
 
@@ -171,3 +173,40 @@ def test_preflight_records_the_state(tmp_path):
     rec = final.preflight(tmp_path, run_tests=False)
     assert {'science_sha', 'clean_tree', 'logical_cores', 'versions', 'started'} <= rec.keys()
     assert json.loads((tmp_path / 'PREFLIGHT.json').read_text())['science_sha'] == rec['science_sha']
+
+
+def test_the_ecc_slot_may_be_filled_by_the_fine_lattice_variant(tmp_path):
+    root, out = tmp_path / 'R', tmp_path / 'OUT'
+    _fake_formal(root, ecc='ECC_FINE')
+    assert final.check_stage(root, 'formal')['complete']
+    final.pack('formal', root, out)
+    r = json.loads((out / 'READOUT.json').read_text())
+    assert r['slots']['ECC'] == 'ECC_FINE' and r['outcomes']['ECC']['pooled']['n'] == 576
+    assert 'TRAIN_ECC_FINE_s30' in (out / 'CASE_COMMANDS.txt').read_text()
+    (root / 'B' / 'TRAIN_ECC_s30').mkdir()                                           # both variants present: refused
+    assert not final.check_stage(root, 'formal')['complete']
+
+
+def test_old_manifests_without_the_new_switch_still_verify():
+    m = {'algo': 'sac', **{k: v for k, v in final.env_kwargs(final.registry()['trained']['ECC']).items() if k != 'extended_lattice'}}
+    final.verify_manifest(m, 'ECC')
+    with pytest.raises(SystemExit):
+        final.verify_manifest(m, 'ECC_FINE')
+
+
+def test_paired_switch_follows_the_registered_rule(tmp_path):
+    from experiments import r2_dev_readout as RO
+    st = final.stage_of('dev'); ops = final.block(st['eval_openings'])
+    for seed in st['seeds']:
+        for label, cap in ((f'ECC_s{seed}', 150), (f'ECC_s{seed}_extended_lattice', 153)):
+            d = tmp_path / 'C' / label; d.mkdir(parents=True)
+            for k, o in enumerate(ops):
+                r = _result('success' if k < cap else 'timeout', k)
+                if label.endswith('lattice') and 150 <= k < cap:
+                    r['decisions'] = [{'coord': {'kind': 'correct', 'lattice': 'fine'}}]
+                (d / f'{label}_{o}.json').write_text(json.dumps(r))
+    res = RO.paired_switch(tmp_path)
+    assert (res['captures_base'], res['captures_switch'], res['only_switch'], res['only_base']) == (450, 459, 9, 0)
+    assert res['pass'] and res['formal_ecc'] == 'ECC_FINE' and res['fine_corrections'] == 9
+    (tmp_path / 'C' / 'ECC_s1_extended_lattice' / f'ECC_s1_extended_lattice_{ops[0]}.json').unlink()
+    assert RO.paired_switch(tmp_path) is None

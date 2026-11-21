@@ -14,7 +14,10 @@ def test_registered_configurations_match_the_spec():
     assert t['ECC'] == {**t['ECC'], 'algo': 'sac', 'coordination': True, 'correction': True, 'long_entry': True, 'potential': 'opportunity'}
     assert t['ECC_NO_CORE']['correction'] is False and t['ECC_NO_CORE']['long_entry'] is True
     assert not t['SAC_MPC']['coordination'] and t['TD3_MPC']['algo'] == 'td3' and not t['TD3_MPC']['coordination']
-    assert set(t) == {'ECC', 'ECC_NO_CORE', 'SAC_MPC', 'TD3_MPC'} and {c['potential'] for c in t.values()} == {'opportunity'}
+    assert set(t) == {'ECC', 'ECC_NO_CORE', 'SAC_MPC', 'TD3_MPC', 'ECC_FINE'} and {c['potential'] for c in t.values()} == {'opportunity'}
+    assert t['ECC_FINE']['extended_lattice'] is True and all(final.env_kwargs(t['ECC_FINE'])[k] == final.env_kwargs(t['ECC'])[k]
+                                                               for k in ('coordination', 'correction', 'long_entry', 'potential', 'window'))
+    assert not any(c['extended_lattice'] for k, c in t.items() if k != 'ECC_FINE')
     assert 'no_long_entry' not in reg['eval_switches']                       # the long-range entry belongs to the coordination
     assert reg['eval_switches']['rigid_entry']['env'] == {'window': False} and set(reg['fixed']) == {'pure', 'c_10_0', 'b_10'}
     dev = final.stage_of('dev')
@@ -23,7 +26,8 @@ def test_registered_configurations_match_the_spec():
     fo = final.stage_of('formal')
     assert fo['steps'] == 6000 and fo['seeds'] == [30, 31, 32] and fo['trained'] == ['ECC', 'SAC_MPC', 'ECC_NO_CORE', 'TD3_MPC']
     assert final.block(fo['eval_openings']) == list(range(301000, 301192)) and fo['fixed'] == ['pure', 'c_10_0', 'b_10']
-    assert fo['eval_switches'] == ['rigid_entry'] and reg['eval_switches']['rigid_entry']['applies_to'] == ['ECC']
+    assert fo['eval_switches'] == ['rigid_entry'] and reg['eval_switches']['rigid_entry']['applies_to'] == ['ECC', 'ECC_FINE']
+    assert fo['variants'] == {'ECC': ['ECC', 'ECC_FINE']} and dev['eval_switches'] == ['extended_lattice']
 
 
 def test_stage_blocks_and_seeds_avoid_the_first_draft():
@@ -57,6 +61,7 @@ def test_switches_and_smoke_seeds(tmp_path):
     st = final.stage_of('dev')
     with pytest.raises(SystemExit):
         final.switch_env(st, 'ECC', 'rigid_entry')              # not registered for the development stage
+    assert final.switch_env(st, 'ECC', 'extended_lattice') == {'extended_lattice': True}
     assert final.switch_env(final.stage_of('formal'), 'ECC', 'rigid_entry') == {'window': False}
     assert final.switch_env({**st, 'eval_switches': ['rigid_entry']}, 'ECC', 'rigid_entry') == {'window': False}
     with pytest.raises(SystemExit):
@@ -88,13 +93,13 @@ def test_resume_verifies_existing_bytes_before_skip(tmp_path):
 
 def test_completeness_report_requires_runs_results_and_tensorboard(tmp_path):
     rep = final.check_stage(tmp_path, 'dev')
-    assert not rep['complete'] and len(rep['missing_runs']) == 3 and len(rep['evaluations']) == 3
+    assert not rep['complete'] and len(rep['missing_runs']) == 3 and len(rep['evaluations']) == 6
     for cfg in ('ECC',):
         for seed in (0, 1, 2):
             run = tmp_path / 'B' / f'TRAIN_{cfg}_s{seed}'; (run / 'tb').mkdir(parents=True)
             (run / 'manifest.json').write_text('{}'); (run / 'finished.json').write_text(json.dumps({'steps': 3000}))
             (run / 'tb' / 'events.out.tfevents.1').write_text('x')
-            for label in [f'{cfg}_s{seed}']:
+            for label in [f'{cfg}_s{seed}', f'{cfg}_s{seed}_extended_lattice']:
                 c = tmp_path / 'C' / label; c.mkdir(parents=True)
                 for o in range(295300, 295492):
                     (c / f'{label}_{o}.json').write_text('{}')
