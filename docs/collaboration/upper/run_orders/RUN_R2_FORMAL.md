@@ -1,132 +1,112 @@
-# 执行书：RUN_R2_FORMAL（第二轮正式实验：论文最终数据）
+# 执行书：RUN_R2_FORMAL（第二轮正式实验，论文最终数据）
 
-**状态：** 等用户开场指令。
+**状态：** 等用户开场指令。一次性完成，结果直接用于论文。
 
-**依据：** 科学分支 `docs/final_method/FORMAL.md`：
-- 组、协议、预登记的报告量、案例规则、图表来源；
-- 第 8 节：按整组分工，以及只影响 ECC 的短检查。
+**依据：** 科学分支 `docs/final_method/FORMAL.md`（组、协议、预登记的报告量、案例规则、图表来源）。短检查已完成，ECC 位用 `ECC`（第 8.1 节）。交付方式见 [WORKFLOW.md](../../WORKFLOW.md)。
 
-交付方式见 [WORKFLOW.md](../../WORKFLOW.md)。
+## 0. 固定设置
 
 | 项 | 值 |
 |---|---|
-| 科学提交 | `41601520`（本机与云端必须相同；短检查结束后不换提交） |
-| 阶段 | `formal`：种子 30、31、32；6000 次决策；测试初始条件 301000–301191（192 个） |
-| 训练（12 个运行） | ECC 位（`ECC` 或 `ECC_FINE`，由短检查决定）、`SAC_MPC`、`ECC_NO_CORE`、`TD3_MPC`，各 3 个种子 |
-| 只评估 | ECC 位的 3 个模型加 `rigid_entry` |
-| 非学习 | `pure`、`c_10_0`、`b_10` |
-| 结果目录 | 本机 `C:\Users\35884\Documents\Spacecraft\过程文件\R2_FORMAL\`（`$L`）；云端 `<云端>/R2_FORMAL`（`$C`） |
+| 科学提交 | `41601520`。所有机器检出同一提交；不同提交的结果打包时会被拒绝 |
+| 阶段 | `formal` |
+| 种子 | 30、31、32 |
+| 训练 | 6000 次高层决策，从零开始，每个运行 2 个采集进程 |
+| 测试初始条件 | 301000–301191（192 个） |
+| 评估 | 只评估最终模型，确定性策略 |
 
-## 0. 开跑前（两台机器各一次）
+**全部工作量：**
+
+| 类别 | 内容 | 数量 |
+|---|---|---|
+| 训练 | `ECC`、`SAC_MPC`、`ECC_NO_CORE`、`TD3_MPC` × 种子 30、31、32 | 12 个运行 |
+| 评估 | 12 个模型各 192 个初始条件 | 2304 回合 |
+| 只评估对照 | `ECC` 的 3 个模型加 `rigid_entry` | 576 回合 |
+| 非学习 | `pure`、`c_10_0`、`b_10` 各 192 个初始条件 | 576 回合 |
+| 案例重放 | 种子 30 的 `ECC` 与 `SAC_MPC`，各 2 个初始条件 | 4 条轨迹 |
+
+## 1. 开跑前（每台机器一次）
 
 1. 确认没有遗留的 Python 进程。
 2. 检出 `41601520`。
-3. 本机运行 `python -B -m experiments.final preflight --root $L`，云端运行 `... --root $C`。退出码为 0 才继续（沙箱 171 passed）。
+3. 运行下面的命令，退出码为 0 才继续（沙箱 171 passed）：
 
-## 1. 顺序与分工（用户 2026-11-21：先做短检查，快速定案，再完整开跑）
+   ```
+   python -B -m experiments.final preflight --root <ROOT>
+   ```
 
-**第一步：** 只做第 2 节的短检查（本机种子 0、1，云端种子 2，约 1 小时），先不开任何训练。
+   `<ROOT>` 是这台机器的结果目录，如本机 `C:\Users\35884\Documents\Spacecraft\过程文件\R2_FORMAL`。
 
-**第二步：** 读到 `formal_ecc` 后，两台机器同时开全部训练。每台机器负责完整的组：
-
-| 机器 | 训练 |
-|---|---|
-| 云端 | `SAC_MPC` s30、s31、s32，`TD3_MPC` s30、s31、s32，按云端可并行数排队 |
-| 本机 | ECC 位（`formal_ecc` 指定的配置）s30、s31、s32，`ECC_NO_CORE` s30、s31、s32；非学习策略用空闲核 |
-
-- 每个运行 2 个采集进程，约占 2.3 个核；本机 12 核同时跑 5 个，第 6 个在任一运行结束后接上。
-- 每台机器只评估自己训练的模型。
-
-**训练命令：**
+## 2. 训练
 
 ```
 python -B -m experiments.final train --stage formal --config <CFG> --seed <S> --output <ROOT>\B\TRAIN_<CFG>_s<S>
 ```
 
-## 2. 短检查：细格机会（本机种子 0、1 + 云端种子 2；只评估，不训练）
+**分配：** 由用户与下层商定，只需遵守三条：
+- 每个运行占约 2.3 个核（2 个采集进程加学习进程）；
+- 训练优先，空闲核用于评估和非学习策略；
+- 同一个运行的训练、评估、轨迹重放在同一台机器上完成。
 
-用反馈机制开发轮已训练的 `ECC` 模型。它们的已有结果在本机 `R2_FB` 与云端，作为配对基线，不重跑。
+## 3. 评估与非学习策略（用空闲核，随时可以开始）
 
-```
-python -B -m experiments.final eval --stage dev --run <R2_FB>\B\TRAIN_ECC_s<S> --switch extended_lattice --output <R2_FB> --workers W
-```
-
-- `<S>`：本机 0、1，云端 2。
-- 结果写到 `<R2_FB>\C\ECC_s<S>_extended_lattice\`。
-- 云端把 `C\ECC_s2\` 和 `C\ECC_s2_extended_lattice\` 带回本机目录 `$FB_CLOUD`。
-
-然后在本机运行：
-
-```
-python -B -m experiments.r2_dev_readout --root <本机 R2_FB> --root $FB_CLOUD --paired-switch extended_lattice --output <本机 R2_FB>\READOUT
-```
-
-读 `PAIRED_extended_lattice.json` 的 `formal_ecc`：
-
-| `formal_ecc` | ECC 位用的配置 |
-|---|---|
-| `ECC_FINE` | `ECC_FINE` |
-| `ECC` | `ECC` |
-
-判据事先写死（`FORMAL.md` 第 8 节），下层只按结果执行。把这个 JSON 一并放进正式交付（第 4 节）。
-
-## 3. 空闲核与评估
-
-**非学习策略（本机）：**
-
-```
-python -B -m experiments.final screen --stage formal --policy pure   --output $L --workers 2
-python -B -m experiments.final screen --stage formal --policy c_10_0 --output $L --workers 2
-python -B -m experiments.final screen --stage formal --policy b_10   --output $L --workers 2
-```
-
-**评估（每个模型训练完立即在它所在的机器上做）：**
+**每个模型训练完，立即在同一台机器上评估：**
 
 ```
 python -B -m experiments.final eval --stage formal --run <ROOT>\B\TRAIN_<CFG>_s<S> --output <ROOT> --workers W
 ```
 
-ECC 位的模型再加一条：
+**`ECC` 的模型再加一条：**
 
 ```
-python -B -m experiments.final eval --stage formal --run $L\B\TRAIN_<ECC位配置>_s<S> --switch rigid_entry --output $L --workers W
+python -B -m experiments.final eval --stage formal --run <ROOT>\B\TRAIN_ECC_s<S> --switch rigid_entry --output <ROOT> --workers W
 ```
 
-评估逐回合确定，并行数不影响结果。全部训练结束后，剩余评估用满所有核。
+**非学习策略（不需要模型，开跑即可开始，放在任一台机器上）：**
 
-## 4. 合并交付（本机）
+```
+python -B -m experiments.final screen --stage formal --policy pure   --output <ROOT> --workers W
+python -B -m experiments.final screen --stage formal --policy c_10_0 --output <ROOT> --workers W
+python -B -m experiments.final screen --stage formal --policy b_10   --output <ROOT> --workers W
+```
 
-1. **云端带回到本机 `$CB`：**
-   - 每个 `B\TRAIN_*` 目录里的 `manifest.json`、`finished.json`、`episodes.json`、`tb\`，以及一行哈希的 `final.zip.sha256`（`<SHA-256>  final.zip`），模型不必回传；
-   - 云端 `C\` 下的全部评估结果。
+`W` 按空闲核数取。评估逐回合确定，并行数不影响结果。中断后用同一命令续跑，已有结果会被跳过。
+
+## 4. 合并、案例重放与提交
+
+1. **汇总到一台机器：** 其他机器的结果带到这台机器的某个目录，每台机器一个，记为 `<ROOT2>`、`<ROOT3>`……需要带的内容：
+   - 每个 `B\TRAIN_*` 目录里的 `manifest.json`、`finished.json`、`episodes.json`、`tb\`；
+   - 模型：`final.zip`，或者一行哈希的 `final.zip.sha256`（`<SHA-256>  final.zip`），模型本身不必搬运；
+   - `C\` 与 `S\` 下的全部结果；
+   - 各自的 `PREFLIGHT.json`。
+
 2. **打包：**
 
    ```
-   python -B -m experiments.final pack --stage formal --root $L --root $CB --output evidence\R2_FORMAL
+   python -B -m experiments.final pack --stage formal --root <ROOT> --root <ROOT2> [...] --output evidence\R2_FORMAL
    ```
 
-   失败就看 `CHECK.json`，补跑缺项后再 pack。
-3. **案例重放：** `evidence\R2_FORMAL\CASE_COMMANDS.txt` 里有两条命令。
-   - ECC 那条在本机跑，SAC–MPC 那条在云端跑；`<OUT>` 换成各自的输出目录；
-   - 云端把 `traj\` 带回，放到 `evidence\R2_FORMAL\traj\`；
+   失败就看 `evidence\R2_FORMAL\CHECK.json`，用第 2、3 节的同一命令补跑缺项，再 pack。
+
+3. **案例重放：** `evidence\R2_FORMAL\CASE_COMMANDS.txt` 里每个模型一条命令，在该模型所在的机器上运行。
+   - `<OUT>` 换成那台机器上的目录；
+   - 生成的 `traj\*.json` 放进 `evidence\R2_FORMAL\traj\`；
    - 然后再 pack 一次，把轨迹计入哈希。
+
 4. **提交：**
    - 把短检查的 `PAIRED_extended_lattice.json` 复制到 `evidence\R2_FORMAL\`；
-   - 只有出现异常时，才在 `RESULT.md` 末尾写一两句；
-   - `git add -f evidence/R2_FORMAL`，提交并推送；
+   - 只有出现异常时（缺项、报错、中断、重复进程），才在 `evidence\R2_FORMAL\RESULT.md` 末尾写一两句；
+   - `git add -f evidence/R2_FORMAL`，提交并推送到科学分支；
    - 把 `RESULT.md` 复制到协作分支 `docs/collaboration/lower/handoffs/r2_formal/RESULT.md`，提交并推送；
-   - 归档标签 `archive/r2-formal-code` 指向 `41601520`。
+   - 打归档标签 `archive/r2-formal-code` 指向 `41601520`。
 
 **不做：** 自制额外核验文件、重算旧证据哈希、跨机器比较比特。
 
-## 5. 预计耗时
+## 5. 参考耗时
 
-- 每个 6000 步的训练约 17–20 小时。
-- **云端：** 6 个运行。能同时跑 6 个，约 20 小时；只能同时跑 3 个，约 40 小时；只能同时跑 2 个，约 60 小时。
-- **本机：** 无核心 3 个立即开，ECC 位 3 个在短检查后（约 1 小时）开；两组同时跑约 20 小时，评估用空闲核。
-- 总时长取决于云端可并行数：云端只能同时跑 2 个时，建议把 `TD3_MPC` 的一个种子移回本机。
-- 训练结束后，评估约 1–2 小时，打包与重放约 1 小时。
+- 一个 6000 步的训练约 17–20 小时（开发轮 3000 步约 8.5–10 小时）。
+- 总时长 ≈ 一台机器上排队的训练批数 × 约 20 小时，再加评估约 1–2 小时、打包与重放约 1 小时。
 
 ## 6. 交付后（上层）
 
-上层读 `READOUT.json` 等，更新事实稿 08，按 `FORMAL.md` 第 4 节给出全部图表数据。泛化蒙特卡洛另写规格，只评估这批最终模型。
+上层读交付中的 `READOUT.json`、`PAIRED.csv` 等，更新事实稿 08，并按 `FORMAL.md` 第 4 节给出全部论文图表数据。泛化蒙特卡洛另写规格，只评估这批最终模型。
