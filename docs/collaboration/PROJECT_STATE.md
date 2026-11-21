@@ -14,13 +14,14 @@
 | 方法收敛 | 已完成：协调写成一个机会集加一条规则，与第一稿 ECC_LE 执行逐位一致（`evidence/R2_EQUIV/`，12/12 回合） |
 | 奖励 | 已实现并直接采用：机会可达性势函数（引理 1 窗口 + 命题 1 经过时机 + 制动包络 + 期限）；不单独做开发验证（用户 2026-11-20） |
 | 反馈机制 | 开发轮已交付并判定（2026-11-21，科学 `32128666`）：`ECC_FB` 472/576 对 `ECC` 472/576；同一模型改回最近规则 469，翻转 8 : 5；P、M 均未通过 → 正式 ECC 保持 `ECC`（DEAD_ENDS D47） |
-| 下一步 | 正式实验设计（待用户确认 RWG 检验方式与每种子初始条件数）→ 正式执行书 |
+| 下一步 | [RUN_R2_FORMAL](upper/run_orders/RUN_R2_FORMAL.md)（等用户开场指令；科学 `81d43f55`，规格 `docs/final_method/FORMAL.md`）→ 交付后上层出全部论文图表数据 → 泛化蒙特卡洛（只评估） |
 | 运行中 | 无 |
 
 ## 2. 执行书（方法线，按时间倒序）
 
 | 状态 | 执行书 |
 |---|---|
+| 待开场（用户指令） | [RUN_R2_FORMAL](upper/run_orders/RUN_R2_FORMAL.md)：第二轮正式实验 |
 | 已交付（本机 `f211789a`、云端 `1568df1e`；上层判定 `32128666`） | [RUN_R2_FB2](upper/run_orders/RUN_R2_FB2.md)：反馈机制开发轮，P、M 未通过，正式 ECC 保持 `ECC` |
 | 撤回 | [RUN_R2_FB3](upper/run_orders/RUN_R2_FB3.md)（并入 FB2 追加） |
 | 作废，未执行 | [RUN_R2_FB](upper/run_orders/RUN_R2_FB.md) |
