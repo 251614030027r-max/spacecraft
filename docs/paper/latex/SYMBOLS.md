@@ -37,7 +37,6 @@ bar = upper bound; tilde = transformed; Δ = increment only; upright subscripts 
 | S, H, E, D (upright) | execution modes | III-A |
 | x, 𝒳 | decision state, its space | III-A |
 | P_E, r | macro-step kernel, macro-step reward | III-A |
-| 𝓜, z | mode prediction, execution feedback | III-A |
 | β, λ, δ, φ | sweep-cone half-angle, line-of-sight polar angle, latitude offset, phase | III-B |
 | e_r, e_pol, e_az | spin-adapted basis | III-B |
 | ψ, ψ̂(τ), ψ̄, φ_w | current and predicted port–line-of-sight angle, entry gate, window half-width | III-B |
@@ -52,13 +51,13 @@ bar = upper bound; tilde = transformed; Δ = increment only; upright subscripts 
 | t_0, σ, 𝒟, f̄_0, f̄_1 | arrival instant, shift, shift set, entry thrust bounds | III-C |
 | u, q, q_ref, N_c, W_q, W_u, W_N, A, B, w_0, ū, h_n, ε (bold), w_ε | MPC input, state, reference, horizon, weights, linear model, bounds, linearized margins, slack | III-D |
 | t_k, k, j, 𝒥_k | decision instant/index, control-period index, periods of a macro step | IV-A |
-| o, R_s, ι | observation, spin-basis matrix, mission indicator | IV-A |
+| o, R_s | observation (17 entries, policy and critics), spin-basis matrix | IV-A |
 | r_term, χ, G, γ | terminal reward, termination flag, return, per-decision discount | IV-A |
-| r̃, Φ | shaped reward, potential | IV-A |
-| T_o, d_ρ, d_v, i_H | feedback offset, previous-stage deviations, hold indicator | IV-B |
-| π_θ, Q_ζi, ζ_i^- | policy, critics, target-critic parameters | IV-B |
-| ε̂, τ̂, Δv̂ | predicted event indicator, event time, propellant | IV-C |
-| 𝒢, 𝒢_a, 𝒞, ã, a* | candidate set, admissible set, correction map, executed intent, minimizer | IV-C |
-| P_C, 𝓑^π, Q^π_C, Υ | closed-loop kernel with screening, soft Bellman operator, its fixed point; Υ feedback law in Problem 1 (II-C) | IV-D |
-| α, Q_tg, 𝓛, ℬ, U | SAC temperature, critic target, losses, replay buffer, soft value | IV-D |
+| r̃, Φ, T_go, c, Φ̄ | shaped reward, opportunity-reachability potential, reachability time, weight, bound | IV-A |
+| π_θ, Q_ζi, ζ_i^- | policy, critics, target-critic parameters | IV-C |
+| 𝓜, ε̂, τ̂, Δv̂ | mode prediction, predicted event indicator, event time, propellant | IV-B |
+| 𝒢, 𝒢_c, 𝒞, ã, a* | candidate set, critical candidate set, coordination map, executed intent, nearest critical candidate | IV-B |
+| 𝒯_L, τ_L, ℓ(τ_L), 𝒳_lp | long-range arrival times, long-range arrival time, launch command, last-usable-pass states | IV-B |
+| P_C, 𝓑^π, Q^π_C, Υ | coordinated kernel, soft Bellman operator, its fixed point; Υ feedback law in Problem 1 (II-C) | IV-C |
+| α, Q_tg, 𝓛, ℬ, U | SAC temperature, critic target, losses, replay buffer, soft value | IV-C |
 | k_1, k_2, φ_r, c_w | auxiliary unit vectors, line-of-sight azimuth, cosine argument (proofs) | App |

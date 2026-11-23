@@ -15,8 +15,8 @@
   \node[anchor=north,inner sep=2pt] at (0,-0.08) {$t$};
   % latest entry time and deadline
   \fill[pattern=north east lines,pattern color=gray!55] (4.6,0) rectangle (6.9,0.5);
-  \draw[thick,densely dashed] (4.6,0) -- (4.6,1.85) node[anchor=south,inner sep=1pt] {$\te$};
-  \draw[thick] (6.9,0) -- (6.9,1.85) node[anchor=south,inner sep=1pt] {$\Td$};
+  \draw[thick,densely dashed] (4.6,0) -- (4.6,1.85) node[anchor=south east,inner sep=1pt] {$\te=\Td-\Tr$};
+  \draw[thick] (6.9,0) -- (6.9,1.85) node[anchor=south west,inner sep=1pt] {$\Td$};
   \draw[<->] (4.6,1.5) -- node[above,inner sep=1pt] {$\Tr$} (6.9,1.5);
   % dimensions below the axis
   \draw[<->] (0,-0.55) -- node[below,inner sep=2pt] {$\taup$} (1.8,-0.55);
