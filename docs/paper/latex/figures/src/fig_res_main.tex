@@ -1,0 +1,23 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Paired capture-rate differences of ECC against each compared method (PAIRED.csv): pooled estimate with 95% CI
+% (black) and the three seeds (gray); the right column lists the tasks captured only by ECC / only by the other method.
+\begin{tikzpicture}[font=\footnotesize]
+\begin{axis}[resstyle,width=5.5cm,height=3.3cm,xmin=-5,xmax=50,ymin=-0.6,ymax=2.6,
+  ytick={0,1,2},yticklabels={{ECC vs MPC},{ECC vs TD3--MPC},{ECC vs SAC--MPC}},
+  xtick={0,10,20,30,40,50},
+  xlabel={Capture-rate difference (pp)},xlabel style={yshift=3pt},ymajorgrids=false,clip=false]
+\draw[gray!70!black,densely dashed] (axis cs:0,-0.6) -- (axis cs:0,2.6);
+\addplot[only marks,mark=o,mark size=1.3pt,gray] table[x=s30,y expr=\thisrow{y}+0.24]{data/r2_forest.dat};
+\addplot[only marks,mark=square,mark size=1.2pt,gray] table[x=s31,y expr=\thisrow{y}+0.24]{data/r2_forest.dat};
+\addplot[only marks,mark=triangle,mark size=1.5pt,gray] table[x=s32,y expr=\thisrow{y}+0.24]{data/r2_forest.dat};
+\addplot[only marks,mark=*,mark size=1.8pt,black,error bars/.cd,x dir=both,x explicit,error bar style={thick}]
+  table[x=est,y=y,x error plus expr=\thisrow{hi}-\thisrow{est},x error minus expr=\thisrow{est}-\thisrow{lo}]{data/r2_forest.dat};
+\node[font=\scriptsize,anchor=west] at (axis cs:51,2) {90/23};
+\node[font=\scriptsize,anchor=west] at (axis cs:51,1) {142/18};
+\node[font=\scriptsize,anchor=west] at (axis cs:51,0) {289/52};
+\node[font=\scriptsize,anchor=south west,align=left,inner sep=1pt] at (axis cs:51,2.35) {Only ECC/\\only other};
+\end{axis}
+\end{tikzpicture}
+\end{document}

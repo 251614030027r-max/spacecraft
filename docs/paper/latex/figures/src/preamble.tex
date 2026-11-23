@@ -16,11 +16,9 @@
 % Results figures: methods and outcomes, Okabe--Ito palette
 \usepgfplotslibrary{fillbetween}
 \definecolor{cECC}{HTML}{D55E00}    % ECC
-\definecolor{cNOIN}{HTML}{E69F00}   % ECC w/o execution inputs (critic on the policy view)
-\definecolor{cNOLE}{HTML}{0072B2}   % ECC w/o long-range entry (keep / correct only)
-\definecolor{cNOCO}{HTML}{56B4E9}   % ECC w/o coordination
 \definecolor{cSAC}{HTML}{555555}    % SAC--MPC
-\definecolor{cTD3}{HTML}{000000}    % TD3--MPC
+\definecolor{cTD3}{HTML}{0072B2}    % TD3--MPC
+\definecolor{cMPC}{HTML}{CC79A7}    % MPC
 \definecolor{oCap}{HTML}{009E73}
 \definecolor{oTime}{HTML}{BBBBBB}
 \definecolor{oFuel}{HTML}{56B4E9}
@@ -29,8 +27,8 @@
   legend style={font=\scriptsize,draw=none,fill=none},grid=major,grid style={gray!15},axis line style={gray!70!black}}}
 % \band{group key}{color}{low column}{high column}: min--max band over seeds
 \newcommand{\band}[4]{%
-  \addplot[name path=lo#1#3,draw=none,forget plot] table[x=x,y=#3]{data/train_#1.dat};
-  \addplot[name path=hi#1#3,draw=none,forget plot] table[x=x,y=#4]{data/train_#1.dat};
+  \addplot[name path=lo#1#3,draw=none,forget plot] table[x=x,y=#3]{data/r2_train_#1.dat};
+  \addplot[name path=hi#1#3,draw=none,forget plot] table[x=x,y=#4]{data/r2_train_#1.dat};
   \addplot[#2,fill opacity=0.15,forget plot] fill between[of=lo#1#3 and hi#1#3];}
 % Case figures: execution modes (Table II)
 \definecolor{cStage}{HTML}{0072B2}
