@@ -15,8 +15,9 @@
   \foreach \s in {2,4,8}{\fill[blue!70!black] (18+\s,0.45) circle (1.5pt);}
   \node[blue!70!black,font=\large,inner sep=0pt] at (18,0.45) {$\times$};
   \foreach \s in {0,2,4,8}{\fill[orange!85!black] (18+\s,-0.45) circle (1.5pt);}
-  \node[font=\scriptsize,blue!70!black,anchor=east,inner sep=1pt] at (15.2,0.45) {$\bar f_{0}$};
-  \node[font=\scriptsize,orange!85!black,anchor=east,inner sep=1pt] at (15.2,-0.45) {$\bar f_{1}$};
+  \node[font=\scriptsize,blue!70!black,anchor=east,inner sep=1pt] at (16.0,0.45) {$\bar f_{0}$};
+  \node[font=\scriptsize,orange!85!black,anchor=east,inner sep=1pt] at (16.0,-0.45) {$\bar f_{1}$};
+  \draw[->,thin,gray!70!black] (11.5,0.32) to[out=-120,in=120] node[left,font=\tiny,inner sep=1pt,align=right,text=black] {none\\feasible} (11.5,-0.32);
   \draw[|<->|,thin] (18,-0.98) -- (26,-0.98) node[right,font=\scriptsize,inner sep=2pt] {$\sigma\in\{0\}\cup\mathcal{D}$};
   \draw[->,thick,densely dashed,gray!70!black] (18,1.25) to[out=20,in=160] node[above,font=\scriptsize,text=black,inner sep=1pt] {abandon the pass: $\approx\Ts$} (52,1.25);
 \end{tikzpicture}

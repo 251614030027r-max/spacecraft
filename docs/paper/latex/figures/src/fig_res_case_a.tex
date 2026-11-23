@@ -3,10 +3,10 @@
 \begin{document}
 % Representative capture: chaser trajectory in the target body frame, colored by execution mode.
 \begin{tikzpicture}[font=\footnotesize]
-\begin{axis}[resstyle,view={-20}{58},width=8.6cm,height=8.6cm,unit vector ratio=1 1 1,
-  xmin=-16,xmax=12,ymin=-10,ymax=14,zmin=-11,zmax=6,
+\begin{axis}[resstyle,view={-20}{58},width=6.75cm,height=6.75cm,unit vector ratio=1 1 1,
+  xmin=-13,xmax=12,ymin=-10,ymax=14,zmin=-7,zmax=4,
   xlabel={$x$ (m)},ylabel={$y$ (m)},zlabel={$z$ (m)},
-  xtick={-10,0,10},ytick={-10,0,10},ztick={-10,0},
+  xtick={-10,0,10},ytick={-10,0,10},ztick={-5,0},
   xlabel style={sloped,yshift=5pt},ylabel style={sloped,yshift=5pt},zlabel style={yshift=-8pt},
   grid=major,grid style={gray!12},clip=false]
 % operation sphere (equator and two meridians)
@@ -17,16 +17,16 @@
 \addplot3[cDesc!70!black,thin] coordinates {(-10.5,6.302,0) (-1.5,0,0) (-10.5,-6.302,0)};
 \addplot3[cDesc!70!black,thin] coordinates {(-10.5,0,6.302) (-1.5,0,0) (-10.5,0,-6.302)};
 % port axis
-\addplot3[black,densely dashed,thin] coordinates {(-1.5,0,0) (-15,0,0)};
+\addplot3[black,densely dashed,thin] coordinates {(-1.5,0,0) (-13,0,0)};
 % target body (box) and grapple rod
 \addplot3[black,fill=gray!35,thin] coordinates {(-0.62,-0.51,0.37) (0.62,-0.51,0.37) (0.62,0.51,0.37) (-0.62,0.51,0.37) (-0.62,-0.51,0.37)};
 \addplot3[black,thin] coordinates {(-0.62,-0.51,-0.37) (0.62,-0.51,-0.37) (0.62,0.51,-0.37) (-0.62,0.51,-0.37) (-0.62,-0.51,-0.37)};
 \addplot3[black,thick] coordinates {(-0.62,0,0) (-1.5,0,0)};
 % trajectory by execution mode
-\input{data/case_traj}
-\input{data/case_marks}
+\input{data/caseA_traj}
+\input{data/caseA_marks}
 \addplot3[only marks,mark=square*,mark size=1.6pt,black] coordinates {(-3,0,0)};
-\node[anchor=south,inner sep=2pt,font=\scriptsize] at (axis cs:-13.5,0,0.3) {port axis};
+\node[anchor=south,inner sep=2pt,font=\scriptsize] at (axis cs:-12,0,0.3) {port axis};
 \end{axis}
 \end{tikzpicture}
 \end{document}

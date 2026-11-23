@@ -11,3 +11,22 @@
 (ii)~With $v_{\mathrm{pol}}=\mathrm{sgn}(\dlat)\min\{k_{\lambda}\rho|\dlat|,\bar v_{\mathrm{lat}}\}$, item~(i) gives $\dd|\dlat|/\dd t=-\min\{k_{\lambda}|\dlat|,\bar v_{\mathrm{lat}}/\rho\}<0$ for $\dlat\neq0$. Let $\bar\dlat=\bar v_{\mathrm{lat}}/(k_{\lambda}\bar\rho)$. Since $\rho\le\bar\rho$, while $|\dlat|>\bar\dlat$, $\dd|\dlat|/\dd t\le-\bar v_{\mathrm{lat}}/\bar\rho$, so $|\dlat|$ reaches $\bar\dlat$ within $(|\dlat(0)|-\bar\dlat)\bar\rho/\bar v_{\mathrm{lat}}$. Once $|\dlat|\le\bar\dlat$, $k_{\lambda}\rho|\dlat|\le\bar v_{\mathrm{lat}}$, the law is unsaturated, and $\dot{\dlat}=-k_{\lambda}\dlat$; since $|\dlat|$ keeps decreasing, the set is not left.
 
 (iii)~With $\rho$, $\lambda$, and $v_{\mathrm{az}}=v_{\mathrm{sw}}$ constant, item~(i) gives $\dot\varphi=-\Omega(1+\kappa)$. Because $\lambda$ and $\beta$ are constant, the predicted port--line-of-sight angle obeys \eqref{eq:theta} with $\Omega\tau$ replaced by $\Omega(1+\kappa)\tau$, and Lemma~\ref{lem:window} applies with the rate $\Omega(1+\kappa)>0$. \hfill$\square$
+
+\section{ECC WITHOUT CRITICAL-WINDOW CORRECTION}\label{app:nocorr}
+
+The variant keeps a proposal that triggers an event by itself and launches the long-range entry at the last usable pass, but never corrects an intent; it is trained and evaluated as the other methods. Table~\ref{tab:nocorr} lists its captures. ECC captures $2.3$~pp $[-4.2, -0.3]$ fewer tasks than the variant, with $-8$, $-1$, and $-4$ captures in the three seeds and $10$ against $23$ tasks captured by one method only, and the variant exceeds SAC--MPC by $13.9$~pp $[10.4, 17.2]$. With the long-range entry available, the critical-window correction adds no captures, and both forms of coordination clearly improve on SAC--MPC without coordination.
+
+\begin{table}[h]
+\caption{ECC Without Critical-Window Correction}
+\label{tab:nocorr}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{8.5pc}cc@{}}
+\hline
+Method & Captures & Per seed\\
+\hline
+ECC & 492/576 (85.4\%) & 156/169/167\\
+ECC w/o critical-window correction & 505/576 (87.7\%) & 164/170/171\\
+SAC--MPC & 425/576 (73.8\%) & 149/131/145\\
+\hline
+\end{tabular*}
+\end{table}

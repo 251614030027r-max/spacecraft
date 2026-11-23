@@ -1,66 +1,62 @@
 \documentclass[border=1pt]{standalone}
 \input{preamble}
 \begin{document}
-% Execution-aware hierarchical framework with the execution-layer interface (Definition 1),
-% the action-level channel (orange) and the state-level channel (blue).
+% Hierarchical framework with execution-opportunity coordination (Section IV) and learning on the coordinated loop.
 \begin{tikzpicture}[>=Stealth,font=\footnotesize,
   blk/.style={draw,rounded corners=2pt,align=center,inner sep=3pt,fill=white},
-  pol/.style={blk,fill=gray!6,text width=2.1cm,minimum height=1.15cm},
-  act/.style={blk,draw=actcol,fill=actfill,text width=2.3cm,minimum height=1.15cm},
-  itf/.style={blk,text width=2.25cm,minimum height=0.8cm},
-  exe/.style={blk,fill=exefill,text width=2.9cm,minimum height=0.72cm},
+  pol/.style={blk,fill=gray!6,text width=1.85cm,minimum height=1.1cm},
+  crd/.style={blk,draw=actcol,text width=3.05cm,minimum height=0.9cm},
+  exe/.style={blk,fill=exefill,text width=2.6cm,minimum height=0.78cm},
   lbl/.style={font=\scriptsize,inner sep=1.5pt},
   arr/.style={->,thick},
   trn/.style={->,thick,densely dashed}]
 
   % ---------------- decision layer
-  \node[pol] (pi) at (0,0.6) {Policy\\$\pi_{\vect{\theta}}(\ba\,|\,\bo)$};
-  \node[act] (C) at (3.35,0.6) {Correction map\\$\atil=\Cmap(x,\ba)$};
+  \node[pol] (pi) at (0,0.5) {Policy\\$\pi_{\vect{\theta}}(\ba\,|\,\bo)$};
 
-  % ---------------- execution layer
-  \node[itf,draw=actcol] (M) at (6.75,1.75) {Mode prediction\\$\Mpred(x,\bb)$};
-  \node[itf] (X) at (6.75,0.6) {Execution of\\the intent $\atil$};
-  \node[itf,draw=stcol] (Z) at (6.75,-0.55) {Execution\\feedback $\bz(x)$};
-  \node[exe] (r1) at (10.2,1.75) {Sweep-cone stage goal\\and stage plan};
-  \node[exe] (r2) at (10.2,0.6) {Entry condition,\\entry plan, re-timing};
-  \node[exe] (r3) at (10.2,-0.55) {Tracking law,\\near-field MPC};
+  % ---------------- coordination (Section IV-B)
+  \node[crd] (M) at (3.7,1.25) {Short-range opportunities\\$\Mpred(x,\bb),\ \bb\in\Gset\cup\{\ba\}$};
+  \node[crd] (L) at (3.7,-0.25) {Long-range entry $\tauL(x)$\\at the last usable pass};
+  \node[blk,draw=actcol,fill=actfill,very thick,text width=1.35cm,minimum height=2.3cm] (R) at (6.55,0.5) {Rule:\\keep,\\correct,\\or launch};
+  \draw[->,actcol] (M.east) -- (M.east -| R.west);
+  \draw[->,actcol] (L.east) -- (L.east -| R.west);
+  \node[lbl,gray!40!black] (cl) at (4.75,2.05) {execution-opportunity coordination};
+  \node[draw=actcol,rounded corners=3pt,inner sep=4pt,fit=(M)(L)(R)(cl)] (crdbox) {};
+
+  % ---------------- execution layer (RWG and controllers)
+  \node[exe] (r1) at (10.55,1.6) {RWG stage goal\\and stage plan};
+  \node[exe] (r2) at (10.55,0.5) {Entry condition, entry\\plan, and re-timing};
+  \node[exe] (r3) at (10.55,-0.6) {Tracking law and\\near-field MPC};
   \draw[->] (r1) -- (r2); \draw[->] (r2) -- (r3);
-  \node[lbl,gray!40!black] (il) at (6.75,2.42) {interface (Definition~1)};
-  \node[lbl,gray!40!black] (rl) at (10.2,2.42) {RWG and constrained control};
-  \node[draw,gray!70!black,rounded corners=3pt,inner sep=4pt,fit=(M)(Z)(r1)(r3)(il)(rl)] (exe) {};
-  \node[lbl,anchor=south west] at (exe.north west) {Execution layer};
-  \draw[gray!60,densely dotted] ($(M.north east)!0.5!(r1.north west)+(0,0.25)$) -- ($(Z.south east)!0.5!(r3.south west)+(0,-0.08)$);
-  \draw[->] (X) -- (r2.west);
+  \node[lbl,gray!40!black] (rl) at (10.55,2.35) {execution layer (Section III)};
+  \node[draw,gray!70!black,rounded corners=3pt,inner sep=4pt,fit=(r1)(r3)(rl)] (exebox) {};
 
-  \node[blk,fill=gray!14,text width=1.9cm,minimum height=1.15cm] (dyn) at (14.05,0.6) {6-DOF\\dynamics on $\SE$};
+  \node[blk,fill=gray!14,text width=1.6cm,minimum height=1.1cm] (dyn) at (13.85,0.5) {6-DOF\\dynamics\\on $\SE$};
 
-  % ---------------- training-only blocks
-  \node[blk,draw=stcol,fill=stfill,text width=2.1cm,minimum height=0.9cm] (Q) at (0,-2.35) {Critics\\$Q_{\vect{\zeta}_{i}}(\bo,\bz,\ba)$};
-  \node[blk,fill=gray!6,text width=3.4cm,minimum height=0.9cm] (D) at (4.3,-2.35) {Replay buffer\\$(\bo,\bz,\ba,\rtil,\bo',\bz',\chi')$};
+  % ---------------- decision and execution paths
+  \draw[arr] (pi.east) -- node[lbl,above,pos=0.45] {$\ba$} (pi.east -| crdbox.west);
+  \coordinate (br) at ($(R.east)+(1.0,0)$);
+  \draw[arr,actcol] (R.east) -- (br) |- node[lbl,above,pos=0.78] {intent} (r1.west);
+  \draw[arr,actcol] (br) -- node[lbl,below,pos=0.5] {launch} (r2.west);
+  \node[lbl,actcol,anchor=south] at ($(R.east)!0.5!(br)$) {$\Cmap(x,\ba)$};
+  \draw[arr] (exebox.east |- dyn) -- node[lbl,above] {wrench} (dyn);
+  \coordinate (top) at ($(dyn.north)+(0,1.85)$);
+  \draw[arr] (dyn.north) -- (top) -| node[lbl,above,pos=0.22] {state $x$, observation $\bo$} (pi.north);
+  \draw[arr] (crdbox.north |- top) -- node[lbl,right,pos=0.45] {$x$} (crdbox.north);
 
-  % ---------------- execution paths (solid)
-  \draw[arr] (pi) -- node[lbl,above] {$\ba$} (C);
-  \draw[arr,actcol] (C) -- node[lbl,above] {$\atil$} (X);
-  \draw[arr,actcol] (M.west) -| node[lbl,above,pos=0.28] {$(\ehat,\tauhat,\dvhat)$} (C.north);
-  \draw[arr] (exe.east |- dyn) -- node[lbl,above=2pt,pos=0.45] {wrench} (dyn);
-  \draw[arr] (dyn.north) -- ++(0,2.05) -| node[lbl,above,pos=0.25] {observation $\bo$} (pi.north);
-  \coordinate (top) at ($(dyn.north)+(0,2.05)$);
-  \coordinate (cx) at ($(C.north)+(-0.7,0)$);
-  \draw[arr] (cx |- top) -- node[lbl,left,pos=0.35] {state $x$} (cx);
-
-  % ---------------- training-only paths (dashed)
-  \draw[trn] (dyn.south) |- node[lbl,below,pos=0.7] {$\rtil$ and successor of executing $\atil$} (D.east);
-  \draw[trn] ($(pi.south)+(0.6,0)$) -- ++(0,-0.75) -| node[lbl,above,pos=0.25] {stores proposal $\ba$} ($(D.north)+(-0.8,0)$);
-  \draw[trn] (D.west) -- (Q.east);
-  \draw[trn] ($(Q.north)+(-0.55,0)$) -- node[lbl,left] {actor update} ($(pi.south)+(-0.55,0)$);
-  \draw[trn,stcol] (Z.south) -- ++(0,-2.75) -| node[lbl,below,pos=0.25] {state-level channel: $\bz$ to the critics only} (Q.south);
+  % ---------------- learning (dashed)
+  \node[blk,fill=gray!6,text width=3.0cm,minimum height=0.85cm] (D) at (4.75,-2.2) {Replay buffer\\$(\bo,\ba,\rtil,\bo',\chi')$};
+  \node[blk,fill=gray!6,text width=1.85cm,minimum height=0.85cm] (Q) at (0,-2.2) {Critics\\$Q_{\vect{\zeta}_{i}}(\bo,\ba)$};
+  \draw[trn] (dyn.south) |- node[lbl,above,pos=0.73] {$\rtil$ and successor of executing $\Cmap(x,\ba)$} (D.east);
+  \draw[trn] ($(pi.east)+(0.45,0)$) |- node[lbl,above,pos=0.75] {proposal $\ba$} ($(D.west)+(0,0.2)$);
+  \draw[trn] ($(D.west)+(0,-0.2)$) -- ($(Q.east)+(0,-0.2)$);
+  \draw[trn] (Q.north) -- node[lbl,left] {actor update} (pi.south);
 
   % ---------------- legend
-  \begin{scope}[shift={(8.3,-2.95)}]
-    \draw[arr] (0,0) -- (0.6,0) node[lbl,right] {decision and execution};
-    \draw[trn] (3.6,0) -- (4.2,0) node[lbl,right] {learning updates};
-    \draw[arr,actcol] (0,-0.45) -- (0.6,-0.45) node[lbl,right,text=black] {action-level channel};
-    \draw[trn,stcol] (3.6,-0.45) -- (4.2,-0.45) node[lbl,right,text=black] {state-level channel};
+  \begin{scope}[shift={(2.8,-3.15)}]
+    \draw[arr] (0,0) -- (0.55,0) node[lbl,right] {decision and execution};
+    \draw[arr,actcol] (3.45,0) -- (4.0,0) node[lbl,right,text=black] {coordination};
+    \draw[trn] (6.0,0) -- (6.55,0) node[lbl,right] {learning updates (training only)};
   \end{scope}
 \end{tikzpicture}
 \end{document}

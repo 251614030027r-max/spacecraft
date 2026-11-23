@@ -57,8 +57,28 @@ w(r"\fill[blue!9] " + " -- ".join(f(P(p)) for p in cpts) + " -- cycle;")
 w(r"\draw[blue!55] " + " -- ".join(f(P(p)) for p in cpts) + " -- cycle;")
 for s in csil:
     w(r"\draw[blue!55] " + f(P(port)) + " -- " + f(P(s)) + ";")
+# mouth region: band of the cone between the operation sphere and the sphere of radius rho_s + l_m
+def cone_sphere(rho, k=240):
+    pts = []
+    _, a1, b1 = circle3(port, [-1, 0, 0], 1.0, 4)
+    for th in np.linspace(0, 2*np.pi, k, endpoint=False):
+        d = np.cos(np.radians(35))*np.array([-1.0, 0, 0]) + np.sin(np.radians(35))*(np.cos(th)*a1 + np.sin(th)*b1)
+        pb = float(np.dot(port, d)); tt = -pb + np.sqrt(pb*pb - (np.dot(port, port) - rho*rho))
+        pts.append(port + tt*d)
+    return pts
+m0, m1 = cone_sphere(6.0), cone_sphere(6.5)
+w(r"\fill[blue!22,even odd rule] " + " -- ".join(f(P(p)) for p in m1) + " -- cycle " + " -- ".join(f(P(p)) for p in m0) + " -- cycle;")
+w(r"\draw[blue!60,thin] " + " -- ".join(f(P(p)) for p in m0) + " -- cycle;")
+w(r"\draw[blue!60,thin] " + " -- ".join(f(P(p)) for p in m1) + " -- cycle;")
+# half-angle of the cone: upper generator and arc at the port
+gen = np.cos(np.radians(35))*np.array([-1.0, 0, 0]) + np.sin(np.radians(35))*np.array([0, 0, -1.0])
+arc = [port + 3.0*(np.cos(np.radians(s))*np.array([-1.0, 0, 0]) + np.sin(np.radians(s))*np.array([0, 0, -1.0])) for s in np.linspace(0, 35, 20)]
+w(r"\draw[blue!70!black,densely dashed] " + f(P(port)) + " -- " + f(P(port + 5.4*gen)) + ";")
+w(r"\draw[blue!70!black] " + " -- ".join(f(P(p)) for p in arc) + ";")
+ax_, ay_ = P(port + 3.45*(np.cos(np.radians(19))*np.array([-1.0, 0, 0]) + np.sin(np.radians(20))*np.array([0, 0, -1.0])))
+w(rf"\node[blue!70!black,inner sep=1pt] at ({ax_:.3f},{ay_:.3f}) {{$\vartheta_{{\mathrm{{c}}}}$}};")
 # port axis and points
-w(r"\draw[->,thick,blue!70!black] " + f(P(port)) + " -- " + f(P(port + np.array([-2.9, 0, 0]))) + r" node[anchor=north,inner sep=2pt] {$\bnp$};")
+w(r"\draw[->,thick,blue!70!black] " + f(P(port)) + " -- " + f(P(port + np.array([-2.9, 0, 0]))) + r" node[anchor=south east,inner sep=1pt] {$\bnp$};")
 mouth = np.array([-6.3, 0, 0])
 w(r"\fill[blue!70!black] " + f(P(mouth)) + " circle (1.6pt);")
 # target box
@@ -93,7 +113,8 @@ def lab(p, txt, anchor, dx=0, dy=0, style=""):
 lab(port, r"$\bpport$", "north", 0.12, -0.20)
 lab(cap, r"$\bpcap$", "south", 0.0, 0.10, "red!75!black,")
 lab(mouth, r"$\brhom$", "south", 0.05, 0.08, "blue!70!black,")
-lab(cbase + np.array([0, 0, 4.9]), r"approach cone $\Kset$\\(half-angle $\vartheta_{\mathrm{c}}$)", "south", 0.0, 0.0, "blue!70!black,")
+lab(cbase + np.array([0, 0, 4.9]), r"approach cone $\Kset$", "south", 0.0, 0.0, "blue!70!black,")
+lab(m1[60], r"mouth region $\Km$\\(width $\ell_{\mathrm{m}}$)", "north", 0.0, -0.08, "blue!70!black,")
 lab(np.array([0, 0, 0]), r"operation sphere\\(radius $\rhos$)", "south west", 1.45, 1.95, "gray!80!black,")
 lab(O, r"$\FT$", "north west", 0.55, -0.42)
 lab(ch, r"chaser, $\FC$", "north", 0.0, -0.14)

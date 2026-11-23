@@ -2,41 +2,29 @@
 \input{preamble}
 \usepgfplotslibrary{groupplots}
 \begin{document}
+% Training process (TRAINING_CURVES.csv): (a) capture rate over windows of 100 training tasks, mean and range over
+% three seeds; (b) corrections and launched long-range entries per training task of ECC.
 \begin{tikzpicture}[font=\footnotesize]
-\begin{groupplot}[group style={group size=1 by 3,vertical sep=6pt,xticklabels at=edge bottom},
-  resstyle,width=8.9cm,height=3.3cm,xmin=700,xmax=5200,xtick={1000,2000,3000,4000,5000},xticklabels={1k,2k,3k,4k,5k},
+\begin{groupplot}[group style={group size=1 by 2,vertical sep=6pt,xticklabels at=edge bottom},
+  resstyle,width=8.9cm,height=3.5cm,xmin=800,xmax=5850,xtick={1000,2000,3000,4000,5000},xticklabels={1k,2k,3k,4k,5k},
   ylabel style={yshift=-3pt},legend cell align=left]
-\nextgroupplot[ymin=20,ymax=95,ytick={30,50,70,90},ylabel={Capture (\%)},
-  legend style={at={(0.5,1.03)},anchor=south,legend columns=3,column sep=6pt,row sep=-1pt}]
+\nextgroupplot[ymin=15,ymax=100,ytick={20,40,60,80,100},ylabel={Capture (\%)},
+  legend style={at={(0.5,1.03)},anchor=south,legend columns=3,column sep=6pt}]
 \band{td3}{cTD3}{caplo}{caphi}
 \band{sac}{cSAC}{caplo}{caphi}
-\band{noco}{cNOCO}{caplo}{caphi}
-\band{nole}{cNOLE}{caplo}{caphi}
-\band{noin}{cNOIN}{caplo}{caphi}
 \band{ecc}{cECC}{caplo}{caphi}
-\addplot[cECC,very thick] table[x=x,y=cap]{data/train_ecc.dat}; \addlegendentry{ECC}
-\addplot[cNOIN,thick,dashed] table[x=x,y=cap]{data/train_noin.dat}; \addlegendentry{w/o execution inputs}
-\addplot[cNOLE,thick,dashdotted] table[x=x,y=cap]{data/train_nole.dat}; \addlegendentry{w/o long-range entry}
-\addplot[cNOCO,thick,densely dotted] table[x=x,y=cap]{data/train_noco.dat}; \addlegendentry{w/o coordination}
-\addplot[cSAC,thick,dotted] table[x=x,y=cap]{data/train_sac.dat}; \addlegendentry{SAC--MPC}
-\addplot[cTD3,thin] table[x=x,y=cap]{data/train_td3.dat}; \addlegendentry{TD3--MPC}
-\node[anchor=north west,inner sep=2pt] at (rel axis cs:0,1) {(a)};
-\nextgroupplot[ymin=0,ymax=2.5,ytick={0,0.5,1.0,1.5,2.0},ylabel={Per task},yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=1,/pgf/number format/fixed zerofill},
-  legend style={at={(0.5,0.98)},anchor=north,legend columns=3,column sep=4pt,font=\tiny}]
-\band{nole}{cNOLE}{intlo}{inthi}
-\band{ecc}{cECC}{intlo}{inthi}
-\addplot[cECC,very thick] table[x=x,y=int]{data/train_ecc.dat}; \addlegendentry{corrections, ECC}
-\addplot[cNOLE,thick,dashdotted] table[x=x,y=int]{data/train_nole.dat}; \addlegendentry{corrections, w/o long-range}
-\addplot[cECC,thick,densely dashed] table[x=x,y=le]{data/train_ecc.dat}; \addlegendentry{long-range entries, ECC}
-\node[anchor=north west,inner sep=2pt] at (rel axis cs:0,1) {(b)};
-\nextgroupplot[ymin=8,ymax=24,ytick={10,14,18,22},ylabel={Captures},xlabel={Decisions},xlabel style={yshift=3pt}]
-\addplot[cTD3,thin] table[x=x,y=mean]{data/val_td3.dat};
-\addplot[cSAC,thick,dotted] table[x=x,y=mean]{data/val_sac.dat};
-\addplot[cNOLE,thick,dashdotted] table[x=x,y=mean]{data/val_nole.dat};
-\addplot[cNOIN,thick,dashed] table[x=x,y=mean]{data/val_noin.dat};
-\addplot[cECC,very thick] table[x=x,y=mean]{data/val_ecc.dat};
-\addplot[only marks,mark=*,mark size=1.3pt,cECC] table[x=x,y=mean]{data/val_ecc.dat};
-\node[anchor=north west,inner sep=2pt] at (rel axis cs:0,1) {(c)};
+\addplot[cECC,very thick] table[x=x,y=cap]{data/r2_train_ecc.dat}; \addlegendentry{ECC}
+\addplot[cSAC,thick,dashed] table[x=x,y=cap]{data/r2_train_sac.dat}; \addlegendentry{SAC--MPC}
+\addplot[cTD3,thick,dashdotted] table[x=x,y=cap]{data/r2_train_td3.dat}; \addlegendentry{TD3--MPC}
+\node[anchor=north east,inner sep=2pt] at (rel axis cs:1,0.23) {(a)};
+\nextgroupplot[ymin=0,ymax=1.9,ytick={0,0.5,1.0,1.5},ylabel={Per task},xlabel={Decisions},xlabel style={yshift=3pt},
+  yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=1,/pgf/number format/fixed zerofill},
+  legend style={at={(0.01,0.99)},anchor=north west,legend columns=2,column sep=4pt}]
+\band{ecc}{cECC}{corlo}{corhi}
+\band{ecc}{cECC!50!black}{lnglo}{lnghi}
+\addplot[cECC,very thick] table[x=x,y=cor]{data/r2_train_ecc.dat}; \addlegendentry{corrections}
+\addplot[cECC!50!black,thick,densely dotted] table[x=x,y=lng]{data/r2_train_ecc.dat}; \addlegendentry{launched long-range entries}
+\node[anchor=north east,inner sep=2pt] at (rel axis cs:1,1) {(b)};
 \end{groupplot}
 \end{tikzpicture}
 \end{document}

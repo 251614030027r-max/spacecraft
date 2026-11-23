@@ -7,22 +7,22 @@
 \begin{groupplot}[group style={group size=1 by 3,vertical sep=5pt,xticklabels at=edge bottom},
   resstyle,width=5.85cm,height=2.75cm,xmin=0,xmax=180,xtick={0,40,80,120,160},grid=none,ylabel style={yshift=-3pt},ytick pos=left,xtick pos=bottom]
 \nextgroupplot[ymode=log,ymin=0.3,ymax=400,ytick={1,10,100},yticklabels={$1$,$10$,$100$},ylabel={$e_{\mathrm{att}}$ (deg)}]
-\input{data/case_modes}
+\input{data/caseA_modes}
 \draw[gray,densely dashed] (axis cs:0,10) -- (axis cs:180,10);
-\addplot[black,thick,unbounded coords=jump] table[x=t,y=att]{data/case_ts.dat};
-\draw[black] (axis cs:168.3,0.3) -- (axis cs:168.3,400);
-\draw[black,densely dotted] (axis cs:171.8,0.3) -- (axis cs:171.8,400);
+\addplot[black,thick,unbounded coords=jump] table[x=t,y=att]{data/caseA_ts.dat};
+\draw[black] (axis cs:143.6,0.3) -- (axis cs:143.6,400);
+\draw[black,densely dotted] (axis cs:176.2,0.3) -- (axis cs:176.2,400);
 \nextgroupplot[ymode=log,ymin=0.0005,ymax=0.3,ytick={0.001,0.01,0.1},yticklabels={$10^{-3}$,$10^{-2}$,$10^{-1}$},ylabel={$e_{\omega}$ (rad/s)}]
-\input{data/case_modes}
+\input{data/caseA_modes}
 \draw[gray,densely dashed] (axis cs:0,0.02) -- (axis cs:180,0.02);
-\addplot[black,thick,unbounded coords=jump] table[x=t,y=w]{data/case_ts.dat};
-\draw[black] (axis cs:168.3,0.0005) -- (axis cs:168.3,0.3);
-\draw[black,densely dotted] (axis cs:171.8,0.0005) -- (axis cs:171.8,0.3);
+\addplot[black,thick,unbounded coords=jump] table[x=t,y=w]{data/caseA_ts.dat};
+\draw[black] (axis cs:143.6,0.0005) -- (axis cs:143.6,0.3);
+\draw[black,densely dotted] (axis cs:176.2,0.0005) -- (axis cs:176.2,0.3);
 \nextgroupplot[ymin=0,ymax=2.4,ytick={0,1,2},ylabel={$\Delta v$ (m/s)},xlabel={Time (s)},xlabel style={yshift=3pt}]
-\input{data/case_modes}
-\addplot[black,thick] table[x=t,y=dv]{data/case_ts.dat};
-\draw[black] (axis cs:168.3,0) -- (axis cs:168.3,2.4);
-\draw[black,densely dotted] (axis cs:171.8,0) -- (axis cs:171.8,2.4);
+\input{data/caseA_modes}
+\addplot[black,thick] table[x=t,y=dv]{data/caseA_ts.dat};
+\draw[black] (axis cs:143.6,0) -- (axis cs:143.6,2.4);
+\draw[black,densely dotted] (axis cs:176.2,0) -- (axis cs:176.2,2.4);
 \end{groupplot}
 \end{tikzpicture}
 \end{document}
