@@ -70,11 +70,13 @@ def load(name):
 
 
 def intervals(rows, t_end):
-    """Mode intervals; a switch is placed at the first 2-s row that shows the new mode."""
+    """Mode intervals. A row shows the mode before the check at its instant, so a switch is placed 2 s before the
+    first row that shows the new mode (equal to the event times in the decision records)."""
     out, cur, t0 = [], rows[0]['mode'], rows[0]['t']
     for r in rows[1:]:
         if r['mode'] != cur:
-            out.append((cur, t0, r['t'])); cur, t0 = r['mode'], r['t']
+            ts = r['t'] - 2.0
+            out.append((cur, t0, ts)); cur, t0 = r['mode'], ts
     out.append((cur, t0, t_end))
     return [(m, a, b) for m, a, b in out if b > a]
 
