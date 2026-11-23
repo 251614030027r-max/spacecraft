@@ -1,6 +1,6 @@
 \section{PROBLEM FORMULATION}\label{sec:problem}
 
-The pre-capture phase starts with the chaser at a range of the order of ten meters from a freely tumbling, noncooperative target and ends when the chaser holds a capture pose in front of the target docking port. This section states the dynamics and the prediction model available to the chaser, the capture geometry and the safety constraints, and the resulting optimization problem, and it closes with an analysis of the features that shape the methods of Sections~\ref{sec:framework} and~\ref{sec:ecc}.
+The pre-capture phase starts with the chaser at a range of the order of ten meters from a freely tumbling, noncooperative target and ends when the chaser holds a capture pose in front of the target docking port. This section states the dynamics and the prediction model available to the chaser, the capture geometry and the safety constraints, and the resulting optimization problem, and it closes with the opportunity structure of the problem and the two difficulties addressed in Sections~\ref{sec:framework} and~\ref{sec:ecc}.
 
 \subsection{Dynamics and Prediction Model}\label{sec:dynamics}
 
@@ -26,7 +26,7 @@ The control wrench of the chaser is held constant over each control period $\Del
 The relative state and the attitude and angular velocity of the target are measured; the inertia of the target is unknown to the chaser.
 \end{assumption}
 
-Under Assumption~\ref{ass:info}, every prediction of the target attitude used for decision and planning holds the current angular velocity constant,
+The truth model integrates \eqref{eq:kin}--\eqref{eq:fg} with the actual inertia of the target. Under Assumption~\ref{ass:info}, every prediction of the target attitude used for decision and planning instead holds the current angular velocity constant,
 \begin{equation}\label{eq:pred}
 \hat{\bR}_{\mathrm{T}}(t+\tau)=\bR_{\mathrm{T}}(t)\exp\bigl(\tau\,\bw_{\mathrm{T}}(t)^{\times}\bigr),\qquad \tau\ge0,
 \end{equation}
@@ -34,7 +34,7 @@ which is the torque-free motion of a body with isotropic inertia. The prediction
 \begin{equation}\label{eq:di}
 \ddot{\brho}=\bff_{\mathrm{I}}/\mC,\qquad \bff_{\mathrm{I}}=\bR_{\mathrm{C}}\bff,
 \end{equation}
-in inertial axes, which neglects the differential gravity over the short ranges considered.
+in inertial axes, which neglects the differential gravity over the short ranges considered. Plans built on \eqref{eq:pred} and \eqref{eq:di} therefore deviate from the truth motion over time, which the entry logic of Section~\ref{sec:entry} accounts for.
 
 \begin{figure}[t]
 \centering
@@ -64,17 +64,17 @@ Constraint & Region & Condition\\
 Collision & All & $d_{\mathrm{clr}}\ge0$\\
 Corridor & All & $\rho\ge\rhos$ or $\brhoT\in\Kset$\\
 Field of view & All & $\angle(\bR_{\mathrm{C}}\vect{e}_{\mathrm{C}},\,\bR_{\mathrm{T}}\bpport-\brho)\le\vartheta_{\mathrm{fov}}$\\
+Range & All & $\rho\le\bar\rho$\\
 Radial braking & $\brhoT\notin\Km$ & $\vmg\ge0$\\
 Relative speed & $\brhoT\in\Km$ & $\norm{\dot{\brho}_{\mathrm{T}}}\le\bar v_{\mathrm{m}}$\\
 Axial braking & $\brhoT\in\Km$ & $-\bnp^{\T}\dot{\brho}_{\mathrm{T}}\le\vb\bigl(\bnp^{\T}(\brhoT-\bpcap)\bigr)$\\
-Range & All & $\rho\le\bar\rho$\\
 \hline
 \end{tabular*}
 \end{table}
 
-\subsection{Problem Statement and Analysis}\label{sec:mission}
+\subsection{Problem Statement and Opportunity Structure}\label{sec:mission}
 
-Each task carries mission parameters drawn from a mission distribution: a deadline $\Td$, a velocity-increment budget $\Bmax$, and weights $c_{\mathrm{t}}$ and $c_{\mathrm{f}}$ that price time and propellant. Let $\Upsilon$ denote a feedback law that maps the measurements of Assumption~\ref{ass:info} to the control wrench of the chaser.
+Each task specifies a deadline $\Td$, a velocity-increment budget $\Bmax$, and weights $c_{\mathrm{t}}$ and $c_{\mathrm{f}}$ that price time and propellant. Let $\Upsilon$ denote a feedback law that maps the measurements of Assumption~\ref{ass:info} to the control wrench of the chaser.
 
 \noindent\textit{Problem~1:}
 \begin{equation}\label{eq:problem}
@@ -85,7 +85,7 @@ Each task carries mission parameters drawn from a mission distribution: a deadli
 & \tc\le\Td,\qquad \Delta v(\tc)\le\Bmax,
 \end{aligned}
 \end{equation}
-where the expectation is taken over the target state, the initial relative state, and the mission parameters. With $\tc=\infty$ for a task that is not captured, $\tc\le\Td$ requires capture before the deadline.
+where the expectation is taken over the target state, the initial relative state, and the deadline. With $\tc=\infty$ for a task that is not captured, $\tc\le\Td$ requires capture before the deadline.
 
 Problem~1 has a temporal structure that a short-horizon constrained optimization does not capture. By \eqref{eq:pred}, the port direction $\bn$ sweeps periodically about $\bs$, and a safe approach along the port axis is possible only while $\bn$ points toward the chaser. These passes recur with period $\Ts$, and the final approach along the port axis must begin by the latest admissible time $\te=\Td-\Tr$, where the reserve $\Tr$ leaves time to reach the capture point. With $\taup(t)$ the time to the center of the next pass, the opportunity margin
 \begin{equation}\label{eq:eta}
@@ -100,6 +100,4 @@ measures, in spin periods, the time that remains after the next pass (Fig.~\ref{
 \label{fig:timeline}
 \end{figure}
 
-Four features of Problem~1 shape the methods. 1)~Whether a pass is usable depends on how closely the line of sight approaches the sweep of the port, and when it occurs depends on the phase of the port. 2)~An approach toward the moving port, planned with the prediction \eqref{eq:pred}, is sensitive to tracking deviations, and abandoning a pass costs about one spin period. 3)~Whether a maneuver toward the port is feasible is decided by constraints acting over seconds, whereas its consequence, capture or timeout, appears tens of seconds later. 4)~When $\eta<1$, the outcome is discontinuous in the decision: neighboring decisions can lead to capture and timeout, respectively.
-
-Features 1 and 2 raise the question of how a low-dimensional decision can make passes usable, time them, and preserve them during execution; Section~\ref{sec:framework} introduces a hierarchical framework and answers this question with rotation-synchronized window guidance. Features 3 and 4 raise the question of how long-horizon decisions can account for the short-horizon feasibility that decides the outcome when opportunities are scarce; Section~\ref{sec:ecc} answers it with execution-feedback closed-loop coordination.
+Two difficulties follow from this structure. 1)~Whether a pass is usable depends on how closely the line of sight approaches the sweep of the port, and when it occurs depends on the phase of the port; a missed pass costs about one spin period, which is comparable to the deadline. 2)~Whether an intent toward the port is converted into an entry is decided by the planning, gates, and tracking of the execution over seconds, whereas decisions are taken every few tens of seconds and their consequence, capture or timeout, appears later still; when $\eta<1$, neighboring decisions can lead to capture and to timeout, respectively. Section~\ref{sec:framework} addresses the first difficulty with a hierarchical framework and rotation-synchronized window guidance, and Section~\ref{sec:ecc} addresses the second with execution-feedback closed-loop coordination.
