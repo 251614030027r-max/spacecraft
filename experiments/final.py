@@ -294,7 +294,8 @@ class Roots:
     relative path must exist in at most one root."""
 
     def __init__(self, roots):
-        roots = [roots] if isinstance(roots, (str, Path)) else list(roots.roots if isinstance(roots, Roots) else roots)
+        # duck-typed: under ``python -m experiments.final`` the class exists twice (__main__ and experiments.final)
+        roots = [roots] if isinstance(roots, (str, Path)) else list(getattr(roots, 'roots', roots))
         self.roots = [Path(r) for r in roots]
 
     def find(self, *parts) -> Path:

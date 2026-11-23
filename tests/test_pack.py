@@ -210,3 +210,10 @@ def test_paired_switch_follows_the_registered_rule(tmp_path):
     assert res['pass'] and res['formal_ecc'] == 'ECC_FINE' and res['fine_corrections'] == 9
     (tmp_path / 'C' / 'ECC_s1_extended_lattice' / f'ECC_s1_extended_lattice_{ops[0]}.json').unlink()
     assert RO.paired_switch(tmp_path) is None
+
+
+def test_roots_accepts_a_roots_object_from_another_module_copy(tmp_path):
+    class Other:                                    # what a second copy of experiments.final hands over
+        roots = [tmp_path / 'a', tmp_path / 'b']
+    assert final.Roots(Other()).roots == [tmp_path / 'a', tmp_path / 'b']
+    assert final.Roots(final.Roots([tmp_path])).roots == [tmp_path]
