@@ -50,7 +50,7 @@ For the execution layer of Section~\ref{sec:framework}, the prediction rolls out
 & \Delta v+\dvhat(x,\bb)\le\Bmax\bigr\}.
 \end{aligned}
 \end{equation}
-The second condition is the predicted counterpart of $\eta<1$ in \eqref{eq:eta}: with the predicted event in place of the pass center, missing the event leaves no further pass before $\te$ (Fig.~\ref{fig:screen}(b)).
+The second condition is the predicted counterpart of $\eta<1$ in \eqref{eq:eta}: with the predicted event in place of the pass center, missing the event leaves no further pass before $\te$.
 
 The candidates in $\Gset$ reach an entry only through the entry condition \eqref{eq:entry}, which is tried within the range $\rho_{\mathrm{E}}$ and over the short arrival times $\Tset$. When the approach leaves the chaser outside these limits as the last pass arrives, $\Ga(x)$ is empty although an entry may still be feasible. The second kind of opportunity covers this case: the same entry planner, applied from the current state over longer arrival times $\TsetL$,
 \begin{equation}\label{eq:longentry}
@@ -75,7 +75,7 @@ that is, when the port passes within the current stage and no further pass follo
 \ba, & \text{otherwise},
 \end{cases}
 \end{equation}
-where $\ba^{\star}(x,\ba)=\argmin_{\bb\in\Ga(x)}\norm{\bb-\ba}$ is the critical candidate nearest to the proposal, with ties broken by the earlier predicted event. The four cases are referred to as keep, correct, launch, and no action. The executed object is either an intent in $\Aset$ or the launch command $\launch(\tauL)$, which is not an element of the action box; the kernel $\PE$ of Section~\ref{sec:integration} is defined for both. Coordination keeps every proposal that reaches an event by itself, so that the closing pace and the timing of the encounter remain those of the policy; it changes an intent only at a critical window, and then to the nearest critical candidate; and it launches the long-range entry only when the last pass would otherwise be lost. Since $\Mpred$ and the entry planner are deterministic, $\Cmap$ is a deterministic function of $(x,\ba)$. Each decision requires $|\Gset|+1$ mode predictions, and the long-range entry adds at most $|\TsetL|$ entry plans at the last usable pass.
+where $\ba^{\star}(x,\ba)=\argmin_{\bb\in\Ga(x)}\norm{\bb-\ba}$ is the critical candidate nearest to the proposal, with ties broken by the earlier predicted event. The four cases are referred to as keep, correct, launch, and no action (Fig.~\ref{fig:screen}). The executed object is either an intent in $\Aset$ or the launch command $\launch(\tauL)$, which is not an element of the action box; the kernel $\PE$ of Section~\ref{sec:integration} is defined for both. Coordination keeps every proposal that reaches an event by itself, so that the closing pace and the timing of the encounter remain those of the policy; it changes an intent only at a critical window, and then to the nearest critical candidate; and it launches the long-range entry only when the last pass would otherwise be lost. Since $\Mpred$ and the entry planner are deterministic, $\Cmap$ is a deterministic function of $(x,\ba)$. Each decision requires $|\Gset|+1$ mode predictions, and the long-range entry adds at most $|\TsetL|$ entry plans at the last usable pass.
 
 \begin{figure*}[t]
 \centering
@@ -85,7 +85,7 @@ where $\ba^{\star}(x,\ba)=\argmin_{\bb\in\Ga(x)}\norm{\bb-\ba}$ is the critical 
 \begin{minipage}[b]{0.46\textwidth}\centering
 \includegraphics{figures/fig_screen_b.pdf}\\[2pt]{\footnotesize (b)}
 \end{minipage}\hfill\mbox{}
-\caption{Execution-opportunity coordination. (a) Correction on the action box: the proposal $\ba$ triggers no mode event and is replaced by the nearest critical candidate $\atil$; the dotted circle is the distance level set through $\atil$. (b) Critical-window condition of \eqref{eq:admissible}: the event predicted at $t+\tauhat$ is critical because the next pass, one spin period later, falls after $\te$.}
+\caption{Execution-opportunity coordination. (a) Correction on the action box: the proposal $\ba$ triggers no mode event and is replaced by the nearest critical candidate $\atil$; the dotted circle is the distance level set through $\atil$. (b) Coordination rule \eqref{eq:correction}: the proposal is kept if it triggers an event by itself, corrected to the nearest critical candidate if one exists, and replaced by the long-range entry at the last usable pass.}
 \label{fig:screen}
 \end{figure*}
 
