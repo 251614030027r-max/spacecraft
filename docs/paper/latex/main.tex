@@ -31,6 +31,10 @@
 \input{macros}
 
 \raggedbottom
+% Float placement: allow several floats per page in the results section.
+\renewcommand{\topfraction}{0.9}\renewcommand{\bottomfraction}{0.6}\renewcommand{\textfraction}{0.08}
+\renewcommand{\floatpagefraction}{0.8}\renewcommand{\dbltopfraction}{0.9}\renewcommand{\dblfloatpagefraction}{0.8}
+\setcounter{topnumber}{3}\setcounter{bottomnumber}{2}\setcounter{totalnumber}{5}\setcounter{dbltopnumber}{2}
 \begin{document}
 
 \title{Execution-Feedback Closed-Loop Coordination of Reinforcement Learning and Model Predictive Control for Pre-Capture Approach to a Fast-Tumbling Target}

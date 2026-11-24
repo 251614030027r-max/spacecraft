@@ -8,10 +8,10 @@
   xlabel={$x$ (m)},ylabel={$y$ (m)},zlabel={$z$ (m)},
   xtick={-10,0,10},ytick={-10,0,10},ztick={-5,0},
   xlabel style={sloped,yshift=5pt},ylabel style={sloped,yshift=5pt},zlabel style={yshift=-8pt},
-  grid=major,grid style={gray!12},clip=false]
+  grid=major,grid style={gray!8},clip=false]
 % operation sphere (equator and two meridians)
-\addplot3[gray!55,thin,domain=0:360,samples=73,samples y=0] ({6*cos(x)},{6*sin(x)},0);
-\addplot3[gray!55,thin,domain=0:360,samples=73,samples y=0] ({6*cos(x)},0,{6*sin(x)});
+\addplot3[gray!40,thin,domain=0:360,samples=73,samples y=0] ({6*cos(x)},{6*sin(x)},0);
+\addplot3[gray!40,thin,domain=0:360,samples=73,samples y=0] ({6*cos(x)},0,{6*sin(x)});
 % approach cone about the port axis (apex at the port, half-angle 35 deg, drawn to l = 9 m)
 \addplot3[cDesc!70!black,thin,domain=0:360,samples=73,samples y=0] ({-1.5-9},{9*0.7002*cos(x)},{9*0.7002*sin(x)});
 \addplot3[cDesc!70!black,thin] coordinates {(-10.5,6.302,0) (-1.5,0,0) (-10.5,-6.302,0)};

@@ -3,7 +3,7 @@
 \usepgfplotslibrary{groupplots}
 \begin{document}
 % Training process (TRAINING_CURVES.csv): (a) capture rate over windows of 100 training tasks, mean and range over
-% three seeds; (b) corrections and launched long-range entries per training task of ECC.
+% three seeds; (b) corrections and launched long-range entries per decision of ECC.
 \begin{tikzpicture}[font=\footnotesize]
 \begin{groupplot}[group style={group size=1 by 2,vertical sep=6pt,xticklabels at=edge bottom},
   resstyle,width=8.9cm,height=3.5cm,xmin=800,xmax=5850,xtick={1000,2000,3000,4000,5000},xticklabels={1k,2k,3k,4k,5k},
@@ -17,7 +17,7 @@
 \addplot[cSAC,thick,dashed] table[x=x,y=cap]{data/r2_train_sac.dat}; \addlegendentry{SAC--MPC}
 \addplot[cTD3,thick,dashdotted] table[x=x,y=cap]{data/r2_train_td3.dat}; \addlegendentry{TD3--MPC}
 \node[anchor=north east,inner sep=2pt] at (rel axis cs:1,0.23) {(a)};
-\nextgroupplot[ymin=0,ymax=1.9,ytick={0,0.5,1.0,1.5},ylabel={Per task},xlabel={Decisions},xlabel style={yshift=3pt},
+\nextgroupplot[ymin=0,ymax=0.45,ytick={0,0.1,0.2,0.3,0.4},ylabel={Per decision},xlabel={Decisions},xlabel style={yshift=3pt},
   yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=1,/pgf/number format/fixed zerofill},
   legend style={at={(0.01,0.99)},anchor=north west,legend columns=2,column sep=4pt}]
 \band{ecc}{cECC}{corlo}{corhi}

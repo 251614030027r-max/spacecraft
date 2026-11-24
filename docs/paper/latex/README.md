@@ -8,10 +8,10 @@
   correction; the abstract, Section I (except the Notations paragraph) and Section VI are not written yet.
 - `figures/fig_*.pdf` — compiled figures included by the paper (Overleaf needs only these PDFs).
   Fig. 1 `fig_scene`; Fig. 2 `fig_timeline`; Fig. 3 `fig_framework`; Fig. 4 `fig_rwg_{a,b,c}`;
-  Fig. 5 `fig_screen_{a,b}`; Fig. 6 `fig_res_learn`; Fig. 7 `fig_res_case_{a,b,c}` (task A);
-  Fig. 8 `fig_res_scase_{a,b}` (task B); Fig. 9 `fig_res_main`; Fig. 10 `fig_res_strata`.
-- `figures/src/make_r2_data.py` — converts `evidence/R2_FORMAL/` (training curves, paired comparisons, strata, case
-  trajectories) into `figures/src/data/`; run it before `build.sh` when the evidence changes.
+  Fig. 5 `fig_screen_{a,b}`; Fig. 6 `fig_res_learn`; Fig. 7 `fig_res_case_{a,...,f}` (task A, complete process);
+  Fig. 8 `fig_res_caseB` (task B, ECC vs SAC–MPC); Fig. 9 `fig_res_strata`. Table cells marked in red (`\tbd`) and
+  `\todo{}` notes wait for the additional assets (0.1-s records of task A, terminal errors, out-of-distribution runs).
+- `figures/src/make_r2_data.py` — converts `evidence/R2_FORMAL/` (training curves, strata, case trajectories) into `figures/src/data/`; run it before `build.sh` when the evidence changes.
 - `figures/src/` — TikZ/pgfplots sources of the figures and `build.sh` (run `sh figures/src/build.sh` to rebuild all
   PDFs; `gen_scene.py` generates the 3-D projection of Fig. 1). Edit sources, then rebuild; never edit the PDFs.
 - `refs.bib` — references; entries preceded by `% TODO` must be verified.

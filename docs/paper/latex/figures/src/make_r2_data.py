@@ -1,8 +1,8 @@
 """Plot data of the Section V figures from the round-2 formal evidence (evidence/R2_FORMAL).
 
 Run from figures/src:  python3 make_r2_data.py   -> data/*.dat, data/*.tex (read by fig_res_*.tex) and a summary.
-Sources: TRAINING_CURVES.csv (training), PAIRED.csv (paired comparisons), STRATIFIED.csv (deadline strata),
-traj/traj_<method>_<task>.json (cases; rows every 2 s, decisions with the coordination record).
+Sources: TRAINING_CURVES.csv (training), STRATIFIED.csv (deadline strata),
+traj/traj_<method>_<task>.json (cases; rows every 2 s with margins, errors and wrench; decisions with the coordination record).
 """
 import csv
 import json
@@ -29,6 +29,9 @@ for cfg, key in (('ECC', 'ecc'), ('SAC_MPC', 'sac'), ('TD3_MPC', 'td3')):
         for seed in ('30', '31', '32'):
             r = [x for x in tc if x['config'] == cfg and x['seed'] == seed]
             xs = np.array([float(x['decisions']) for x in r]); y = np.array([float(x[name]) for x in r])
+            if name != 'capture_rate':  # per decision: 100 tasks per window, windows advance by 50 tasks
+                win = np.array([xs[0]] + [np.nan] + [xs[i] - xs[i - 2] for i in range(2, len(xs))])
+                keep = ~np.isnan(win); xs, y = xs[keep], (y * 100 / win)[keep]
             ys.append(np.interp(GRID, xs, y))
         ys = np.array(ys)
         cols[name] = (ys.mean(0), ys.min(0), ys.max(0))
@@ -39,18 +42,6 @@ for cfg, key in (('ECC', 'ecc'), ('SAC_MPC', 'sac'), ('TD3_MPC', 'td3')):
                 + [cols['long_entries_per_episode'][j][i] for j in range(3)]
             f.write(f'{x} ' + ' '.join(f'{u:.4f}' for u in v) + '\n')
     print('train', cfg, 'first/last mean capture', round(cols['capture_rate'][0][0], 3), round(cols['capture_rate'][0][-1], 3))
-
-# ------------------------------------------------------------------ paired comparisons (ECC vs baselines)
-pr = rd('PAIRED.csv')
-rows = [('ECC vs SAC_MPC', 'SAC--MPC'), ('ECC vs TD3_MPC', 'TD3--MPC'), ('ECC vs pure', 'MPC')]
-with open(OUT / 'r2_forest.dat', 'w') as f:
-    f.write('y est lo hi s30 s31 s32 a b\n')
-    for i, (cmp_, name) in enumerate(rows):
-        r = next(x for x in pr if x['comparison'] == cmp_ and x['metric'] == 'capture')
-        lo, hi = json.loads(r['ci95']); ps = json.loads(r['per_seed']); fl = json.loads(r['flips'])
-        f.write(f"{2 - i} {float(r['estimate'])*100:.3f} {lo*100:.3f} {hi*100:.3f} "
-                f"{ps['30']/192*100:.3f} {ps['31']/192*100:.3f} {ps['32']/192*100:.3f} {fl['a_only']} {fl['b_only']}\n")
-        print('paired', cmp_, round(float(r['estimate']) * 100, 1), [round(lo * 100, 1), round(hi * 100, 1)], ps, fl)
 
 # ------------------------------------------------------------------ deadline strata
 st = rd('STRATIFIED.csv')
@@ -100,13 +91,21 @@ def passes(rows, gate=35.0):
 # Case A: ECC on task 301001 (complete capture)
 d = load('ECC_301001'); rows = d['rows']; T = d['time_s']; Td = d['mission']['deadline_s']
 iv = intervals(rows, T)
+NAN = 'nan'
+fmt = lambda v, s=1.0, d=4: NAN if v is None else f'{v * s:.{d}f}'
 with open(OUT / 'caseA_ts.dat', 'w') as f:
-    f.write('t range psi vmg att w dv\n')
+    f.write('t range psi dv perr spd att w clr corr fov rad ax tot fx fy fz tx ty tz\n')
     for r in rows:
         m = r.get('margins') or {}; te = r.get('terminal') or {}
-        vmg = m.get('radial_envelope_margin_m_s'); att = te.get('attitude_error_rad'); w = te.get('angular_velocity_error_rad_s')
-        f.write(f"{r['t']:.1f} {r['range']:.4f} {r['port_los_deg']:.3f} {vmg if vmg is not None else 'nan'} "
-                f"{math.degrees(att) if att is not None else 'nan'} {w if w is not None else 'nan'} {r['dv']:.4f}\n")
+        fov = m.get('fov_margin_deg')
+        fF = r.get('force_n') or [None] * 3; tq = r.get('torque_nm') or [None] * 3
+        f.write(' '.join([f"{r['t']:.1f}", f"{r['range']:.4f}", f"{r['port_los_deg']:.3f}", f"{r['dv']:.4f}",
+                          fmt(te.get('position_error_m')), fmt(te.get('speed_m_s'), d=5),
+                          fmt(te.get('attitude_error_rad'), 180 / math.pi, 3), fmt(te.get('angular_velocity_error_rad_s'), d=5),
+                          fmt(m.get('collision_clearance_m')), fmt(m.get('union_margin_m')),
+                          NAN if fov is None else f'{50.0 - fov:.3f}',
+                          fmt(m.get('radial_envelope_margin_m_s')), fmt(m.get('axial_envelope_margin_m_s')),
+                          fmt(m.get('total_speed_margin_m_s'))] + [fmt(x) for x in fF] + [fmt(x) for x in tq]) + '\n')
 P = [np.asarray(r['rot']).T @ np.asarray(r['q']) for r in rows]
 frag = []
 for k, (m, a, b) in enumerate(iv):
@@ -135,48 +134,22 @@ print('  min vmg before descent', round(min(r['margins']['radial_envelope_margin
 s = load('SAC_MPC_301001')
 print('  SAC', s['event'], s['time_s'], round(s['delta_v'], 3), intervals(s['rows'], s['time_s']))
 
-# Case B: ECC and SAC-MPC on task 301025 (critical window)
+# Case B: ECC and SAC-MPC on task 301025 (critical window); rho, latitude offset and psi of both methods
 E, S = load('ECC_301025'), load('SAC_MPC_301025')
-dec = next(x for x in E['decisions'] if x['coord']['kind'] == 'correct')
-c = dec['coord']
-with open(OUT / 'caseB_cands.dat', 'w') as f:
-    f.write('ap as crit tau\n')
-    for cd in c['cands']:
-        f.write(f"{cd['b'][0]:.0f} {cd['b'][1]:.0f} {1 if cd['critical'] else 0} {cd['t']:.0f}\n")
-(OUT / 'caseB_point.tex').write_text(
-    f"\\def\\propA{{{c['a'][0]:.4f}}}\\def\\propB{{{c['a'][1]:.4f}}}\\def\\execA{{{c['a_exec'][0]:.0f}}}\\def\\execB{{{c['a_exec'][1]:.0f}}}\\def\\decT{{{dec['t']:.0f}}}\n")
-print('case B correction at', dec['t'], 'proposal', [round(v, 3) for v in c['a']], 'exec', c['a_exec'], 'pred', c['alt_t'],
-      'critical', [(cd['b'], cd['t']) for cd in c['cands'] if cd['critical']])
-
-
-def timeline(dd, y, screened):
-    rows = dd['rows']; T = dd['time_s']; s = []
-    for m, a, b in intervals(rows, T):
-        s.append(f'\\tlbar{{{a:.1f}}}{{{b:.1f}}}{{{y}}}{{{MODE[m]}}}')
-    for x in dd['decisions']:
-        cc = x.get('coord') or {}
-        k = cc.get('kind')
-        if screened and k == 'correct':
-            s.append(f'\\tldecS{{{x["t"]:.1f}}}{{{y}}}')
-            s.append(f'\\tlpred{{{x["t"]:.1f}}}{{{x["t"] + cc["alt_t"]:.1f}}}{{{y}}}')
-        elif screened and k == 'keep':
-            s.append(f'\\tldecK{{{x["t"]:.1f}}}{{{y}}}')
-            s.append(f'\\tlpredK{{{x["t"]:.1f}}}{{{x["t"] + cc["own_t"]:.1f}}}{{{y}}}')
-        else:
-            s.append(f'\\tldec{{{x["t"]:.1f}}}{{{y}}}')
-    for t0, t1 in passes(rows):
-        s.append(f'\\tlwin{{{t0:.1f}}}{{{t1:.1f}}}{{{y}}}')
-    s.append(('\\tlcap' if dd['event'] == 'success' else '\\tlfail') + f'{{{T:.1f}}}{{{y}}}')
-    return s, intervals(rows, T), passes(rows)
-
-
-sE, ivE, pE = timeline(E, 1, True)
-sS, ivS, pS = timeline(S, 0, False)
+for dd, key in ((E, 'ecc'), (S, 'sac')):
+    with open(OUT / f'caseB_ts_{key}.dat', 'w') as f:
+        f.write('t range lat psi\n')
+        for r in dd['rows']:
+            f.write(f"{r['t']:.1f} {r['range']:.4f} {r['lat_err_deg']:.3f} {r['port_los_deg']:.3f}\n")
+bars = []
+for dd, y in ((E, 1), (S, 0)):
+    for m, a_, b_ in intervals(dd['rows'], dd['time_s']):
+        bars.append(f'\\fill[{MODE[m]}!75] (axis cs:{a_:.1f},{y + 0.18:.2f}) rectangle (axis cs:{b_:.1f},{y + 0.82:.2f});')
 Td = E['mission']['deadline_s']
-(OUT / 'caseB_timeline.tex').write_text('\n'.join(sE + sS) + f'\n\\def\\tlTd{{{Td:.1f}}}\\def\\tlTe{{{Td - T_R:.1f}}}\n')
-print('ECC 301025', E['event'], E['time_s'], round(E['delta_v'], 3), ivE, 'gate', [(round(a, 1), round(b, 1)) for a, b in pE])
-print('  decisions', [(x['t'], x['coord']['kind'], x['coord'].get('own_t'), x['coord'].get('alt_t')) for x in E['decisions']],
-      're-timing', E['window_recoveries'])
-print('SAC 301025', S['event'], S['time_s'], round(S['delta_v'], 3), ivS, 'gate', [(round(a, 1), round(b, 1)) for a, b in pS])
-print('  terminal', S['rows'][-1]['terminal'], 'range at 52 s ECC', [round(r['range'], 2) for r in E['rows'] if r['t'] == 52.0])
+(OUT / 'caseB_modes.tex').write_text('\\def\\caseBbars{' + ''.join(bars) + '}' + f'\n\\def\\caseBTd{{{Td:.1f}}}\\def\\caseBTe{{{Td - T_R:.1f}}}\n')
+dec = next(x for x in E['decisions'] if x['coord']['kind'] == 'correct')
+print('case B correction at', dec['t'], 'proposal', [round(v, 3) for v in dec['coord']['a']], 'exec', dec['coord']['a_exec'],
+      'pred', dec['coord']['alt_t'])
+for dd, n in ((E, 'ECC'), (S, 'SAC')):
+    print(n, dd['event'], dd['time_s'], round(dd['delta_v'], 3), intervals(dd['rows'], dd['time_s']), 'terminal', dd['rows'][-1]['terminal'])
 print('Td', Td, 'te', Td - T_R)

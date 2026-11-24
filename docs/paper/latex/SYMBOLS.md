@@ -30,8 +30,6 @@ bar = upper bound; tilde = transformed; Δ = increment only; upright subscripts 
 | t̄_e, T_r | latest admissible entry time, terminal reserve | II-C |
 | τ_p, η | time to next pass center, opportunity margin | II-C |
 | h, a=[a_p,a_z], A | stage duration, stage intent, action box | III-A |
-| d̄_h | deviation threshold for hold | III-A |
-| ρ_f, ρ_D | far-field range, descent range | III-A |
 | T_ml, T_pr | mode-logic period, mode-prediction horizon | III-A |
 | ρ_m, ρ_m(t) (bold) | mouth radius (also planning keep-out radius), mouth point | III-A |
 | S, H, E, D (upright) | execution modes | III-A |
@@ -48,16 +46,18 @@ bar = upper bound; tilde = transformed; Δ = increment only; upright subscripts 
 | L_f, w | terminal cost, propellant weight in Problem 2 | III-C |
 | v_in, n̂ | entry closing speed, predicted port direction | III-C |
 | 𝒯, τ_e, ρ_E | arrival times, entry arrival time, entry range | III-C |
-| t_0, σ, 𝒟, f̄_0, f̄_1 | arrival instant, shift, shift set, entry thrust bounds | III-C |
-| u, q, q_ref, N_c, W_q, W_u, W_N, A, B, w_0, ū, h_n, ε (bold), w_ε | MPC input, state, reference, horizon, weights, linear model, bounds, linearized margins, slack | III-D |
+| f̄_0 | entry thrust bound (re-timing uses a larger bound, named in words) | III-C |
+| u, q, q̃_n, q_ref, N_c, W, w_u, w_N, A, B, d_0, ū, h_n, ε (bold), w_ε, ε̄ | MPC input, state, tracking error, reference, horizon, state-scale weight, input and terminal weights, linear model and offset, bounds, linearized margins, slack, slack weight and bound | III-D |
 | t_k, k, j, 𝒥_k | decision instant/index, control-period index, periods of a macro step | IV-A |
 | o, R_s | observation (17 entries, policy and critics), spin-basis matrix | IV-A |
 | r_term, χ, G, γ | terminal reward, termination flag, return, per-decision discount | IV-A |
-| r̃, Φ, T_go, c, Φ̄ | shaped reward, opportunity-reachability potential, reachability time, weight, bound | IV-A |
+| r̃, Φ, T_go, Φ̄, τ_m, κ̄, |·|_2π | shaped reward, opportunity-reachability potential (weight c_t), reachability time, cap, nominal closing time, phase-rate bound, wrapped angle | IV-A |
 | π_θ, Q_ζi, ζ_i^- | policy, critics, target-critic parameters | IV-C |
 | 𝓜, ε̂, τ̂, Δv̂ | mode prediction, predicted event indicator, event time, propellant | IV-B |
-| 𝒢, 𝒢_c, 𝒞, ã, a* | candidate set, critical candidate set, coordination map, executed intent, nearest critical candidate | IV-B |
-| 𝒯_L, τ_L, ℓ(τ_L), 𝒳_lp | long-range arrival times, long-range arrival time, launch command, last-usable-pass states | IV-B |
+| 𝒢, 𝒢_c, 𝒞, a* | candidate set, critical candidate set, coordination map, nearest critical candidate (corrected intent) | IV-B |
+| 𝒯_L, τ_L, launch(τ_L), 𝒳_lp | long-range arrival times, long-range arrival time, launch command, last-usable-pass states | IV-B |
 | P_C, 𝓑^π, Q^π_C, Υ | coordinated kernel, soft Bellman operator, its fixed point; Υ feedback law in Problem 1 (II-C) | IV-C |
 | α, Q_tg, 𝓛, ℬ, U | SAC temperature, critic target, losses, replay buffer, soft value | IV-C |
+| e_p, e_v, e_att, e_ω | position, velocity, attitude, angular-velocity errors w.r.t. the capture pose | V-C |
+| m_cor, m_ax, m_v, ϑ_v | corridor, axial-braking, relative-speed margins; boresight–port view angle (Fig. 7) | V-C |
 | k_1, k_2, φ_r, c_w | auxiliary unit vectors, line-of-sight azimuth, cosine argument (proofs) | App |

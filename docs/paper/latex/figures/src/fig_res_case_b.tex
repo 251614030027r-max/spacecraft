@@ -2,36 +2,26 @@
 \input{preamble}
 \usepgfplotslibrary{groupplots}
 \begin{document}
-% Representative capture: range, port--line-of-sight angle and radial braking margin; shading = execution mode.
+% Task A: range, port--line-of-sight angle, and propellant used; shading = execution mode.
 \begin{tikzpicture}[font=\footnotesize]
-\begin{groupplot}[group style={group size=1 by 3,vertical sep=5pt,xticklabels at=edge bottom},
-  resstyle,width=6.0cm,height=2.75cm,xmin=0,xmax=180,xtick={0,40,80,120,160},grid=none,
-  ylabel style={yshift=-3pt},ytick pos=left,xtick pos=bottom]
+\begin{groupplot}[group style={group size=1 by 3,vertical sep=4pt,xticklabels at=edge bottom},casestack]
 \nextgroupplot[ymin=0,ymax=18,ytick={6,12},ylabel={$\rho$ (m)},
-  legend style={at={(0.5,1.03)},anchor=south,legend columns=4,column sep=1pt,font=\tiny},legend image code/.code={\fill[#1] (0cm,-0.07cm) rectangle (0.22cm,0.09cm);}]
+  legend style={at={(0.5,1.03)},anchor=south,legend columns=3,column sep=3pt,font=\tiny},legend image code/.code={\fill[#1] (0cm,-0.07cm) rectangle (0.22cm,0.09cm);}]
 \addlegendimage{cStage!35}\addlegendentry{stage flight}
 \addlegendimage{cEntry!35}\addlegendentry{entry transfer}
-\addlegendimage{cHold!45}\addlegendentry{hold}
 \addlegendimage{cDesc!35}\addlegendentry{descent}
-\input{data/caseA_modes}
+\caseAev
 \draw[gray,densely dashed] (axis cs:0,6) -- (axis cs:180,6) node[pos=0.8,anchor=south,inner sep=1pt,font=\scriptsize,fill=white,fill opacity=0.7,text opacity=1] {$\rhos$};
 \addplot[black,thick] table[x=t,y=range]{data/caseA_ts.dat};
 \addplot[only marks,mark=triangle*,mark size=2pt,mark options={rotate=180},black] coordinates {(0.8,16.5) (16,16.5)};
 \addplot[only marks,mark=diamond*,mark size=2pt,cEntry!80!black] coordinates {(50,16.5) (62,16.5) (80,16.5)};
-\draw[black] (axis cs:143.6,0) -- (axis cs:143.6,18);
-\draw[black,densely dotted] (axis cs:176.2,0) -- (axis cs:176.2,18);
 \nextgroupplot[ymin=0,ymax=195,ytick={35,90,180},ylabel={$\psi$ (deg)}]
-\input{data/caseA_modes}
+\caseAev
 \draw[gray,densely dashed] (axis cs:0,35) -- (axis cs:180,35) node[pos=0.8,anchor=south,inner sep=1pt,font=\scriptsize,fill=white,fill opacity=0.7,text opacity=1] {$\psig$};
 \addplot[black,thick] table[x=t,y=psi]{data/caseA_ts.dat};
-\draw[black] (axis cs:143.6,0) -- (axis cs:143.6,195);
-\draw[black,densely dotted] (axis cs:176.2,0) -- (axis cs:176.2,195);
-\nextgroupplot[ymin=0,ymax=0.48,ytick={0,0.2,0.4},ylabel={$\vmg$ (m/s)},xlabel={Time (s)},xlabel style={yshift=3pt},
-  yticklabel style={/pgf/number format/fixed}]
-\input{data/caseA_modes}
-\addplot[black,thick,unbounded coords=jump] table[x=t,y=vmg]{data/caseA_ts.dat};
-\draw[black] (axis cs:143.6,0) -- (axis cs:143.6,0.48);
-\draw[black,densely dotted] (axis cs:176.2,0) -- (axis cs:176.2,0.48);
+\nextgroupplot[ymin=0,ymax=2.4,ytick={0,1,2},ylabel={$\Delta v$ (m/s)},xlabel={Time (s)},xlabel style={yshift=3pt}]
+\caseAev
+\addplot[black,thick] table[x=t,y=dv]{data/caseA_ts.dat};
 \end{groupplot}
 \end{tikzpicture}
 \end{document}

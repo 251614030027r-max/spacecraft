@@ -1,0 +1,38 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\usepgfplotslibrary{groupplots}
+\begin{document}
+% Task B: execution modes, range, latitude offset, and port--line-of-sight angle of ECC and SAC--MPC.
+\begin{tikzpicture}[font=\footnotesize]
+\input{data/caseB_modes}
+\newcommand{\caseBev}{\vtime{\caseBTe}{gray,densely dashed}\vtime{\caseBTd}{black,densely dotted}\vtime{133.0}{cECC}\vtime{16}{cECC,very thin}}
+\begin{groupplot}[group style={group size=1 by 4,vertical sep=4pt,xticklabels at=edge bottom},casestack,width=6.2cm,xmax=150,
+  xtick={0,25,50,75,100,125,150}]
+\nextgroupplot[height=0.55cm,ymin=0,ymax=2,ytick={0.5,1.5},yticklabels={SAC--MPC,ECC},axis line style={draw=none},
+  major tick length=0pt,yticklabel style={font=\scriptsize},
+  legend style={at={(0.5,1.08)},anchor=south,legend columns=3,column sep=3pt,font=\tiny},legend image code/.code={\fill[#1] (0cm,-0.07cm) rectangle (0.22cm,0.09cm);}]
+\addlegendimage{cStage!75}\addlegendentry{stage flight}
+\addlegendimage{cEntry!75}\addlegendentry{entry transfer}
+\addlegendimage{cDesc!75}\addlegendentry{descent}
+\caseBbars
+\addplot[only marks,mark=triangle*,mark size=2pt,mark options={rotate=180},cECC] coordinates {(16,1.95)};
+\caseBev
+\nextgroupplot[ymin=0,ymax=16,ytick={0,6,12},ylabel={$\rho$ (m)},
+  legend style={at={(0.98,0.95)},anchor=north east,legend columns=1,font=\tiny,fill=white,fill opacity=0.8,text opacity=1}]
+\caseBev
+\draw[gray,densely dashed] (axis cs:0,6) -- (axis cs:150,6);
+\addplot[cECC,thick] table[x=t,y=range]{data/caseB_ts_ecc.dat}; \addlegendentry{ECC}
+\addplot[cSAC,thick,dashed] table[x=t,y=range]{data/caseB_ts_sac.dat}; \addlegendentry{SAC--MPC}
+\nextgroupplot[ymin=-60,ymax=10,ytick={-50,-25,0},ylabel={$\dlat$ (deg)}]
+\caseBev
+\draw[gray,thin] (axis cs:0,0) -- (axis cs:150,0);
+\addplot[cECC,thick] table[x=t,y=lat]{data/caseB_ts_ecc.dat};
+\addplot[cSAC,thick,dashed] table[x=t,y=lat]{data/caseB_ts_sac.dat};
+\nextgroupplot[ymin=0,ymax=180,ytick={0,35,90,180},ylabel={$\psi$ (deg)},xlabel={Time (s)},xlabel style={yshift=3pt}]
+\caseBev
+\draw[gray,densely dashed] (axis cs:0,35) -- (axis cs:150,35);
+\addplot[cECC,thick] table[x=t,y=psi]{data/caseB_ts_ecc.dat};
+\addplot[cSAC,thick,dashed] table[x=t,y=psi]{data/caseB_ts_sac.dat};
+\end{groupplot}
+\end{tikzpicture}
+\end{document}

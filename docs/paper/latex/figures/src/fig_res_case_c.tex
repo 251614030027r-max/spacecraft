@@ -2,27 +2,25 @@
 \input{preamble}
 \usepgfplotslibrary{groupplots}
 \begin{document}
-% Representative capture: attitude and angular-velocity errors w.r.t. the capture pose, and propellant used.
+% Task A: position, velocity, attitude, and angular-velocity errors w.r.t. the moving capture pose; dashed = tolerance.
 \begin{tikzpicture}[font=\footnotesize]
-\begin{groupplot}[group style={group size=1 by 3,vertical sep=5pt,xticklabels at=edge bottom},
-  resstyle,width=5.85cm,height=2.75cm,xmin=0,xmax=180,xtick={0,40,80,120,160},grid=none,ylabel style={yshift=-3pt},ytick pos=left,xtick pos=bottom]
-\nextgroupplot[ymode=log,ymin=0.3,ymax=400,ytick={1,10,100},yticklabels={$1$,$10$,$100$},ylabel={$e_{\mathrm{att}}$ (deg)}]
-\input{data/caseA_modes}
+\begin{groupplot}[group style={group size=1 by 4,vertical sep=4pt,xticklabels at=edge bottom},casestack,height=0.9cm,ymode=log,unbounded coords=jump,ylabel style={font=\scriptsize,yshift=-2pt}]
+\nextgroupplot[ymin=0.08,ymax=30,ytick={0.1,10},yticklabels={$0.1$,$10$},ylabel={$e_{p}$ (m)}]
+\caseAev
+\draw[gray,densely dashed] (axis cs:0,0.25) -- (axis cs:180,0.25);
+\addplot[black,thick] table[x=t,y=perr]{data/caseA_ts.dat};
+\nextgroupplot[ymin=0.005,ymax=1.5,ytick={0.01,1},yticklabels={$10^{-2}$,$1$},ylabel={$e_{v}$ (m/s)}]
+\caseAev
+\draw[gray,densely dashed] (axis cs:0,0.05) -- (axis cs:180,0.05);
+\addplot[black,thick] table[x=t,y=spd]{data/caseA_ts.dat};
+\nextgroupplot[ymin=1,ymax=400,ytick={1,10,100},yticklabels={$1$,$10$,$100$},ylabel={$e_{\mathrm{att}}$ (deg)}]
+\caseAev
 \draw[gray,densely dashed] (axis cs:0,10) -- (axis cs:180,10);
-\addplot[black,thick,unbounded coords=jump] table[x=t,y=att]{data/caseA_ts.dat};
-\draw[black] (axis cs:143.6,0.3) -- (axis cs:143.6,400);
-\draw[black,densely dotted] (axis cs:176.2,0.3) -- (axis cs:176.2,400);
-\nextgroupplot[ymode=log,ymin=0.0005,ymax=0.3,ytick={0.001,0.01,0.1},yticklabels={$10^{-3}$,$10^{-2}$,$10^{-1}$},ylabel={$e_{\omega}$ (rad/s)}]
-\input{data/caseA_modes}
+\addplot[black,thick] table[x=t,y=att]{data/caseA_ts.dat};
+\nextgroupplot[ymin=0.002,ymax=0.4,ytick={0.01,0.1},yticklabels={$10^{-2}$,$10^{-1}$},ylabel={$e_{\omega}$ (rad/s)},xlabel={Time (s)},xlabel style={yshift=3pt}]
+\caseAev
 \draw[gray,densely dashed] (axis cs:0,0.02) -- (axis cs:180,0.02);
-\addplot[black,thick,unbounded coords=jump] table[x=t,y=w]{data/caseA_ts.dat};
-\draw[black] (axis cs:143.6,0.0005) -- (axis cs:143.6,0.3);
-\draw[black,densely dotted] (axis cs:176.2,0.0005) -- (axis cs:176.2,0.3);
-\nextgroupplot[ymin=0,ymax=2.4,ytick={0,1,2},ylabel={$\Delta v$ (m/s)},xlabel={Time (s)},xlabel style={yshift=3pt}]
-\input{data/caseA_modes}
-\addplot[black,thick] table[x=t,y=dv]{data/caseA_ts.dat};
-\draw[black] (axis cs:143.6,0) -- (axis cs:143.6,2.4);
-\draw[black,densely dotted] (axis cs:176.2,0) -- (axis cs:176.2,2.4);
+\addplot[black,thick] table[x=t,y=w]{data/caseA_ts.dat};
 \end{groupplot}
 \end{tikzpicture}
 \end{document}
