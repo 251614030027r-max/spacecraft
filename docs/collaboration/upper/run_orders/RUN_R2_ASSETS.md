@@ -62,7 +62,7 @@ python -B -m experiments.final traj --entry ECC=<ROOT_F>\B\TRAIN_ECC_s30 --entry
 1. **汇总到一台机器：**
    - 其他机器的 `<ROOT_A>` 整个带过来；
    - 正式结果 `<ROOT_F>`（各机器的）也要在场：读出用其中的 `C\`、`S\` 原始结果和 `B\TRAIN_*\manifest.json`。正式打包时已经带到一台机器的，直接用那一份。
-2. **读出：**
+2. **读出（读出前检出科学 `2d52d0f3`；评估结果不受影响，只是读出多两张表 `GEN_FAILURES.csv`、`GEN_REFERENCE.csv`，见 `FORMAL.md` 10.1）：**
 
    ```
    python -B -m experiments.final assets --root <ROOT_F> [--root <ROOT_F2> ...] --root <ROOT_A> [--root <ROOT_A2> ...] --output evidence\R2_ASSETS
