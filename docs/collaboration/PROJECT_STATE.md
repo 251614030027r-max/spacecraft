@@ -16,13 +16,13 @@
 | 反馈机制 | 开发轮已交付并判定（2026-11-21，科学 `32128666`）：`ECC_FB` 472/576 对 `ECC` 472/576；同一模型改回最近规则 469，翻转 8 : 5；P、M 均未通过 → 正式 ECC 保持 `ECC`（DEAD_ENDS D47） |
 | 正式实验 | 已交付并核查（科学 `36d443fb` 交付，上层核查 `3ad2dbd6`，`FORMAL.md` 第 9 节）：ECC 492/576 对 SAC–MPC 425/576，+11.6 [8.3, 15.1]；无核心 505/576（ECC 对无核心 −2.3 [−4.2, −0.3]）；RWG 重定时 +2.1、旋转引导 +20.3 |
 | 下一步 | 论文初稿（写作窗口按审查 R1 上层核实版改稿）；补充资产 [RUN_R2_ASSETS](upper/run_orders/RUN_R2_ASSETS.md)（只评估：转速 / 期限 / 章动泛化、案例逐 0.1 s 重放、终端误差；规格 `FORMAL.md` 第 10 节，科学 `9cde45f1`，沙箱 178 passed）；初稿整理完后针对无核心做一轮修复实验（另写规格） |
-| 运行中 | 无（RUN_R2_ASSETS 等用户开场指令） |
+| 运行中 | RUN_R2_ASSETS（用户 2026-11-24 授权） |
 
 ## 2. 执行书（方法线，按时间倒序）
 
 | 状态 | 执行书 |
 |---|---|
-| 等开场指令 | [RUN_R2_ASSETS](upper/run_orders/RUN_R2_ASSETS.md)：论文补充资产（只评估） |
+| 已授权，运行中（2026-11-24） | [RUN_R2_ASSETS](upper/run_orders/RUN_R2_ASSETS.md)：论文补充资产（只评估） |
 | 已交付并核查（`36d443fb` / `3ad2dbd6`） | [RUN_R2_FORMAL](upper/run_orders/RUN_R2_FORMAL.md)：第二轮正式实验 |
 | 已交付（本机 `f211789a`、云端 `1568df1e`；上层判定 `32128666`） | [RUN_R2_FB2](upper/run_orders/RUN_R2_FB2.md)：反馈机制开发轮，P、M 未通过，正式 ECC 保持 `ECC` |
 | 撤回 | [RUN_R2_FB3](upper/run_orders/RUN_R2_FB3.md)（并入 FB2 追加） |
