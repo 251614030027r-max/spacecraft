@@ -159,6 +159,8 @@ class T1Env:
         return {"metrics": metrics, "features": self.features(metrics)}
 
     audit_controls = False
+    #: read-only per-control-step record (case figures, ``traj --fine``): a list to append to, or None
+    audit_trace = None
 
     def metrics(self) -> T1Metrics:
         assert self.target_state is not None and self.chaser_state is not None
@@ -307,6 +309,9 @@ class T1Env:
             reward -= c.reward.time_cost_per_s * c.dt_s + c.reward.delta_v_cost_per_m_s * dv
             m = self.metrics()
             self._track(m)
+            if self.audit_trace is not None:
+                self.audit_trace.append({"t": self.time_s, "force_n": wrench[3:].tolist(), "torque_nm": wrench[:3].tolist(),
+                                         "delta_v": self._delta_v, **audit_metrics(m)})
             self._capture_streak = (
                 self._capture_streak + 1 if (m.instantaneous_capture and not m.hard_violation) else 0
             )

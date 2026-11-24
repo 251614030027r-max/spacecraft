@@ -5,7 +5,8 @@ budget, opening block and evaluation switch comes from ``docs/final_method/METHO
     python -B -m experiments.final eval     --stage STAGE --run DIR --output ROOT [--switch NAME] [--openings A-B]
                                             [--workers W] [--verify-existing SHA256SUMS]
     python -B -m experiments.final screen   --stage STAGE --policy pure --output ROOT [--openings A-B] [--workers W]
-    python -B -m experiments.final traj     --entry NAME=RUN_DIR|NAME=pure --openings A,B --output DIR [--switch NAME]
+    python -B -m experiments.final traj     --entry NAME=RUN_DIR|NAME=pure --openings A,B --output DIR [--switch NAME] [--fine]
+    python -B -m experiments.final assets   --root ROOT [--root ROOT2 ...] --output evidence/R2_ASSETS
     python -B -m experiments.final resolve  --stage STAGE --root ROOT [--root ROOT2] --output REGISTRY_RESOLVED.json
     python -B -m experiments.final check    --stage STAGE --root ROOT [--root ROOT2] [--output CHECK.json]
     python -B -m experiments.final preflight --root ROOT [--no-tests]
@@ -87,8 +88,9 @@ def _forbidden_eval(stage: str) -> set:
     """Openings an evaluation of ``stage`` may not use: the never-reused first-draft block and other stages' blocks."""
     p = registry()['protocol']
     bad = set(block(p['reserved']['never_reuse']['openings']))
+    own = p['stages'].get(stage, {}).get('models_from')
     for k, v in p['stages'].items():
-        if k != stage:
+        if k != stage and k != own and v.get('models_from') != stage:
             bad |= set(block(v['eval_openings']))
     return bad
 
@@ -187,7 +189,7 @@ def cmd_eval(a):
     if config is None:
         raise SystemExit(f'{run} was not trained through experiments.final')
     verify_manifest(m, config)
-    if not smoke and (m.get('final_stage') != a.stage or steps != st['steps'] or seed not in st['seeds'] or config not in stage_configs(st)):
+    if not smoke and (m.get('final_stage') != st.get('models_from', a.stage) or steps != st['steps'] or seed not in st['seeds'] or config not in stage_configs(st)):
         raise SystemExit('model is not registered for evaluation in this stage')
     ops = checked_openings(a, st, smoke)
     env = switch_env(st, config, a.switch)
@@ -212,7 +214,7 @@ def cmd_screen(a):
 
 
 # ---------------------------------------------------------------------- trajectories (case figures)
-def fly(opening: int, name: str, src: str, env_override: dict | None = None) -> dict:
+def fly(opening: int, name: str, src: str, env_override: dict | None = None, fine: bool = False) -> dict:
     """Re-fly one episode of a run directory (its manifest's executor configuration) or of ``pure``, recording the truth
     every 2 s and every decision."""
     import time
@@ -229,6 +231,7 @@ def fly(opening: int, name: str, src: str, env_override: dict | None = None) -> 
         model = load_checkpoint(ck)
     env.audit_logging = True
     env.env.audit_controls = True
+    trace = env.env.audit_trace = [] if fine else None     # every 0.1 s control step (read-only)
     obs, _ = env.reset(options={'opening': opening})
     axis = np.asarray(env.env.config.task.approach_axis); rows, decisions = [], []
 
@@ -263,7 +266,8 @@ def fly(opening: int, name: str, src: str, env_override: dict | None = None) -> 
             'time_s': env.env.time_s, 'delta_v': env.env._delta_v, 'mission': env.mission,
             'entries_lost': env.stats.get('entries_lost', 0) if env.stats else 0,
             'window_recoveries': getattr(env.generator.bridge, 'recovery_log', []) if env.generator is not None else [],
-            'approach_axis': axis.tolist(), 'decisions': decisions, 'rows': rows, 'wall_s': time.perf_counter() - t0}
+            'approach_axis': axis.tolist(), 'decisions': decisions, 'rows': rows, 'wall_s': time.perf_counter() - t0,
+            **({'trace': trace} if fine else {})}
 
 
 def cmd_traj(a):
@@ -272,10 +276,10 @@ def cmd_traj(a):
     for o in block(a.openings):
         for spec in a.entry:
             name, _, src = spec.partition('=')
-            f = out / f'traj_{name}{"_" + a.switch if a.switch else ""}_{o}.json'
+            f = out / f'traj_{name}{"_" + a.switch if a.switch else ""}{"_fine" if a.fine else ""}_{o}.json'
             if f.exists():
                 continue
-            res = fly(o, name, src or name, override)
+            res = fly(o, name, src or name, override, fine=bool(a.fine))
             f.write_text(json.dumps(res), encoding='utf-8')
             print(json.dumps({k: res[k] for k in ('opening', 'entry', 'event', 'return', 'time_s', 'delta_v', 'entries_lost')}), flush=True)
 
@@ -549,6 +553,14 @@ def pack(stage: str, root, out: Path) -> dict:
     return {'delivered_files': len(files) + 1, 'raw_files_hashed': len(rows_), 'verdict': verdict}
 
 
+def cmd_assets(a):
+    from experiments.r2_assets_readout import write_all
+    res = write_all(a.root, Path(a.output))
+    print(json.dumps(res, indent=1, ensure_ascii=False, default=str))
+    if res['verdict'] != 'complete':
+        raise SystemExit(1)
+
+
 def cmd_pack(a):
     print(json.dumps(pack(a.stage, a.root, Path(a.output)), indent=1, ensure_ascii=False))
 
@@ -566,15 +578,18 @@ def main():
     c.add_argument('--workers', type=int, default=4); c.add_argument('--openings'); c.add_argument('--verify-existing', type=Path)
     j = s.add_parser('traj'); j.add_argument('--entry', action='append', required=True); j.add_argument('--openings', required=True)
     j.add_argument('--output', required=True); j.add_argument('--switch')
+    j.add_argument('--fine', action='store_true', help='also record every 0.1 s control step (wrench, margins, errors)')
     r = s.add_parser('resolve'); r.add_argument('--stage', required=True); r.add_argument('--root', action='append', required=True)
     r.add_argument('--output', required=True)
     k = s.add_parser('check'); k.add_argument('--stage', required=True); k.add_argument('--root', action='append', required=True); k.add_argument('--output')
     f = s.add_parser('preflight'); f.add_argument('--root', required=True); f.add_argument('--no-tests', action='store_true')
     q = s.add_parser('pack'); q.add_argument('--stage', required=True); q.add_argument('--output', required=True)
     q.add_argument('--root', action='append', required=True, help='result root; repeat for several machines (local, cloud copy)')
+    w = s.add_parser('assets'); w.add_argument('--output', required=True)
+    w.add_argument('--root', action='append', required=True, help='result root with the formal and generalization results')
     a = p.parse_args()
     {'train': cmd_train, 'eval': cmd_eval, 'screen': cmd_screen, 'traj': cmd_traj, 'resolve': cmd_resolve, 'check': cmd_check,
-     'preflight': cmd_preflight, 'pack': cmd_pack}[a.cmd](a)
+     'preflight': cmd_preflight, 'pack': cmd_pack, 'assets': cmd_assets}[a.cmd](a)
 
 
 if __name__ == '__main__':

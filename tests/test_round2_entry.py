@@ -34,9 +34,15 @@ def test_stage_blocks_and_seeds_avoid_the_first_draft():
     reg = final.registry(); p = reg['protocol']
     old = set(final.block(p['reserved']['never_reuse']['openings']))
     assert old == set(range(300000, 300296)) and set(p['reserved']['never_reuse']['seeds']) == {20, 21, 22}
-    blocks = [set(final.block(st['eval_openings'])) for st in p['stages'].values()]
+    # stages that train their own models use disjoint blocks; an evaluation-only stage that takes its models from
+    # another stage (``models_from``, FORMAL.md section 10) evaluates on exactly that stage's block
+    own = {k: st for k, st in p['stages'].items() if 'models_from' not in st}
+    blocks = [set(final.block(st['eval_openings'])) for st in own.values()]
     for i, b in enumerate(blocks):
         assert not b & old and all(not b & c for c in blocks[i + 1:])
+    for st in p['stages'].values():
+        if 'models_from' in st:
+            assert st['eval_openings'] == own[st['models_from']]['eval_openings']
     for st in p['stages'].values():
         assert not set(st['seeds']) & {20, 21, 22}
 

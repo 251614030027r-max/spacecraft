@@ -444,7 +444,8 @@ class T2StageEnv(gym.Env):
     def __init__(self, openings: list[int] | None = None, seed_base: int = 1_000_000, mission: T2Mission = T2Mission(),
                  shaping: bool = True, geometry: bool = True, window: bool = True, coordination: bool = False,
                  correction: bool = True, long_entry: bool = True, potential: str = "opportunity",
-                 extended_lattice: bool = False) -> None:
+                 extended_lattice: bool = False, deadline_s: tuple | None = None,
+                 tumble_rate_deg_s: tuple | None = None, tumble_offset_deg: tuple | None = None) -> None:
         self.geometry = bool(geometry)
         self.window = bool(window)
         #: ECC coordination (``_coordinate``): the same map in training and execution
@@ -464,8 +465,16 @@ class T2StageEnv(gym.Env):
         self._opp = None                       # the decision state's opportunity evaluation (cached per decision)
         #: read-only decision / episode diagnostics in ``info`` (formal runs); never changes the trajectory
         self.audit_logging = False
+        #: evaluation-only distribution conditions (``docs/final_method/FORMAL.md`` section 10); None keeps the task
+        if deadline_s is not None:
+            mission = replace(mission, deadline_s=tuple(float(x) for x in deadline_s))
         self.mission_distribution = mission
         self.base_config = t2_env_config()
+        if tumble_rate_deg_s is not None or tumble_offset_deg is not None:
+            init = self.base_config.initial
+            init = replace(init, **({"tumble_rate_deg_s": tuple(float(x) for x in tumble_rate_deg_s)} if tumble_rate_deg_s is not None else {}),
+                           **({"tumble_offset_from_z_deg": tuple(float(x) for x in tumble_offset_deg)} if tumble_offset_deg is not None else {}))
+            self.base_config = replace(self.base_config, initial=init)
         self.env = T1Env(self.base_config)
         self.info_env = InfoEnv(self.env)
         self.openings, self.seed_base, self.shaping = openings, int(seed_base), bool(shaping)

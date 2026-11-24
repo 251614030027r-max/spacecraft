@@ -91,6 +91,62 @@
     "extended_lattice": true
    },
    "role": "short check (FORMAL.md section 8): the dev ECC models, paired with their existing results"
+  },
+  "gen_spin_low": {
+   "display": "target spin U(1.5, 2.1) deg/s (formal U(2.1, 2.7))",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "tumble_rate_deg_s": [
+     1.5,
+     2.1
+    ]
+   },
+   "role": "generalization, evaluation only (FORMAL.md section 10): the formal final models on the formal test openings"
+  },
+  "gen_spin_high": {
+   "display": "target spin U(2.7, 3.3) deg/s (formal U(2.1, 2.7))",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "tumble_rate_deg_s": [
+     2.7,
+     3.3
+    ]
+   },
+   "role": "generalization, evaluation only (FORMAL.md section 10): the formal final models on the formal test openings"
+  },
+  "gen_deadline_tight": {
+   "display": "deadline U(120, 140) s (formal U(140, 200))",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "deadline_s": [
+     120.0,
+     140.0
+    ]
+   },
+   "role": "generalization, evaluation only (FORMAL.md section 10): the formal final models on the formal test openings"
+  },
+  "gen_nutation": {
+   "display": "spin axis 20-40 deg from body z (formal 10-20 deg): stronger nutation",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "tumble_offset_deg": [
+     20.0,
+     40.0
+    ]
+   },
+   "role": "generalization, evaluation only (FORMAL.md section 10): the formal final models on the formal test openings"
   }
  },
  "fixed": {
@@ -179,6 +235,28 @@
       "ECC_FINE"
      ]
     }
+   },
+   "assets": {
+    "steps": 6000,
+    "seeds": [
+     30,
+     31,
+     32
+    ],
+    "eval_openings": "301000-301191",
+    "models_from": "formal",
+    "trained": [
+     "ECC",
+     "SAC_MPC"
+    ],
+    "fixed": [],
+    "eval_switches": [
+     "gen_spin_low",
+     "gen_spin_high",
+     "gen_deadline_tight",
+     "gen_nutation"
+    ],
+    "authorised_by": "docs/final_method/FORMAL.md section 10 (evaluation only; the formal models; no training)"
    }
   }
  }
