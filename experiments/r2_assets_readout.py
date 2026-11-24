@@ -6,7 +6,7 @@ The roots hold the formal results (``C/<cfg>_s<seed>``, ``S/pure``) and the gene
 (``C/<cfg>_s<seed>_gen_*``); the fine case replays are taken from ``<root>/traj_fine/*.json`` when present.
 Missing generalization or formal files block the read-out (``READOUT.json`` lists them, nothing else is written).
 
-Outputs: ``GEN_TABLE.csv`` (outcomes per condition, method and seed), ``GEN_PAIRED.csv`` (ECC vs SAC-MPC per condition:
+Outputs (``GEN_FAILURES.csv`` and ``GEN_REFERENCE.csv`` are the post-hoc items of FORMAL.md 10.1): ``GEN_TABLE.csv`` (outcomes per condition, method and seed), ``GEN_PAIRED.csv`` (ECC vs SAC-MPC per condition:
 capture, return, and on both-captured tasks time / delta-v), ``GEN_EPISODES.csv`` (per opening and seed),
 ``TERMINAL.csv`` (terminal errors of every formal episode), ``TERMINAL_SUMMARY.csv`` (median / 95th percentile on each
 method's own captures and on the ECC / SAC-MPC both-captured tasks), ``READOUT.json``, ``traj_fine/``, ``SHA256SUMS``.
@@ -108,6 +108,51 @@ def terminal_summary(term) -> list:
     return out
 
 
+def _reached_entry(raw: dict) -> bool:
+    """Did the episode ever enter the entry transfer or the terminal descent (decision records of the audit)?"""
+    for d in raw.get('decisions') or []:
+        if d.get('true_mode_event_t') is not None or d.get('macro_end') in ('entry', 'descent') \
+                or (d.get('coord') or {}).get('kind') == 'launch' or d.get('mode') in ('bridge', 'descent'):
+            return True
+    return False
+
+
+def failures(R) -> list:
+    """FORMAL.md 10.1: outcomes split by phase per condition, method and seed (from the raw records)."""
+    out = []
+    for c in conditions():
+        for m in METHODS:
+            for s in [str(x) for x in stage_of('assets')['seeds']]:
+                label = f'{m}_s{s}' + ('' if c == NOMINAL else f'_{c}')
+                n = {'capture': 0, 'timeout_no_entry': 0, 'timeout_after_entry': 0, 'unsafe': 0, 'other': 0, 'entries_lost': 0}
+                for o in block(stage_of('assets')['eval_openings']):
+                    raw = json.loads(R.find('C', label, f'{label}_{o}.json').read_text(encoding='utf-8'))
+                    ev = raw['event']
+                    key = ('capture' if ev == 'success' else 'unsafe' if ev == 'unsafe' else
+                           ('timeout_after_entry' if _reached_entry(raw) else 'timeout_no_entry') if ev == 'timeout' else 'other')
+                    n[key] += 1; n['entries_lost'] += int(raw.get('entries_lost', 0) or 0)
+                out.append({'condition': c, 'method': m, 'seed': s, **n})
+    return out
+
+
+def time_budget_reference(rows) -> list:
+    """FORMAL.md 10.1: nominal captures of the same model and opening that finish no later than the short-deadline
+    condition's deadline of that opening (a reference, not a bound)."""
+    sw = 'gen_deadline_tight'
+    out = []
+    for m in METHODS:
+        for s in sorted({k[1] for k in rows if k[0] == m}):
+            ref = tight = 0
+            for (a, ss, o), r in rows.items():
+                if a != m or ss != s or (f'{m}+{sw}', s, o) not in rows:
+                    continue
+                q = rows[(f'{m}+{sw}', s, o)]
+                ref += int(r['event'] == 'success' and r['time_s'] <= q['deadline_s'] + 1e-9)
+                tight += int(q['event'] == 'success')
+            out.append({'method': m, 'seed': s, 'nominal_captures_within_short_deadline': ref, 'short_deadline_captures': tight})
+    return out
+
+
 def write_all(roots, out: Path) -> dict:
     R = Roots(roots)
     rows, missing, ops, _ = load(R.roots, 'assets')
@@ -125,11 +170,13 @@ def write_all(roots, out: Path) -> dict:
     table, pairs, episodes = gen_tables(rows)
     write_csv(out / 'GEN_TABLE.csv', table); write_csv(out / 'GEN_PAIRED.csv', pairs); write_csv(out / 'GEN_EPISODES.csv', episodes)
     write_csv(out / 'TERMINAL.csv', term)
+    fails, refs = failures(R), time_budget_reference(rows)
+    write_csv(out / 'GEN_FAILURES.csv', fails); write_csv(out / 'GEN_REFERENCE.csv', refs)
     summ = terminal_summary(term); write_csv(out / 'TERMINAL_SUMMARY.csv', summ)
     (out / 'traj_fine').mkdir(exist_ok=True)
     for f in fine:
         shutil.copy2(f, out / 'traj_fine' / f.name)
-    readout.update(gen_paired=pairs, terminal_summary=summ,
+    readout.update(gen_paired=pairs, terminal_summary=summ, gen_failures=fails, gen_reference=refs,
                    gen_capture={f"{r['condition']}/{r['method']}": r['capture_rate'] for r in table if r['seed'] == 'all'})
     (out / 'READOUT.json').write_text(json.dumps(readout, indent=1, ensure_ascii=False, default=str), encoding='utf-8')
     files = sorted(f for f in out.rglob('*') if f.is_file() and f.name != 'SHA256SUMS')

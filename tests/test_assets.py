@@ -101,6 +101,12 @@ def test_assets_readout_writes_every_table(tmp_path):
     conds = {p['condition'] for p in r['gen_paired']}
     assert conds == {'nominal', *final.stage_of('assets')['eval_switches']}
     assert r['gen_capture']['gen_spin_high/ECC'] == pytest.approx(1 - 39 / 192)
+    assert {(f['condition'], f['method'], f['seed']) for f in r['gen_failures']} >= {('gen_nutation', 'ECC', '30'), ('nominal', 'SAC_MPC', '32')}
+    f0 = next(f for f in r['gen_failures'] if (f['condition'], f['method'], f['seed']) == ('gen_spin_high', 'ECC', '30'))
+    assert f0['capture'] + f0['timeout_no_entry'] + f0['timeout_after_entry'] + f0['unsafe'] + f0['other'] == 192
+    ref = {(x['method'], x['seed']): x for x in r['gen_reference']}
+    assert ref[('ECC', '30')]['short_deadline_captures'] == 192 - 39
+    assert 0 < ref[('ECC', '30')]['nominal_captures_within_short_deadline'] <= 192
     s = {(x['subset'], x['method']): x for x in r['terminal_summary']}
     assert s[('own captures', 'pure')]['attitude_error_deg_median'] == pytest.approx(np.degrees(0.05))
 
