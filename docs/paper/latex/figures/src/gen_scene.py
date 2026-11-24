@@ -48,7 +48,7 @@ port = np.array([-1.5, 0, 0]); cap = np.array([-3.0, 0, 0])
 cpts, csil, cbase = cone(port, [-1, 0, 0], 35, 5.2)
 w(r"\begin{tikzpicture}[>=Stealth,font=\footnotesize,line cap=round]")
 # operation sphere (silhouette) and equator
-w(rf"\draw[gray!70,densely dashed] (0,0) circle ({6*S:.3f});")
+w(rf"\draw[gray!50,densely dashed] (0,0) circle ({6*S:.3f});")
 eq, _, _ = circle3([0, 0, 0], [0, 0, 1], 6.0, 180)
 w(r"\draw[gray!45,densely dotted] " + " -- ".join(f(P(p)) for p in eq) + " -- cycle;")
 # cone body
@@ -72,10 +72,10 @@ w(r"\draw[blue!60,thin] " + " -- ".join(f(P(p)) for p in m0) + " -- cycle;")
 w(r"\draw[blue!60,thin] " + " -- ".join(f(P(p)) for p in m1) + " -- cycle;")
 # half-angle of the cone: upper generator and arc at the port
 gen = np.cos(np.radians(35))*np.array([-1.0, 0, 0]) + np.sin(np.radians(35))*np.array([0, 0, -1.0])
-arc = [port + 3.0*(np.cos(np.radians(s))*np.array([-1.0, 0, 0]) + np.sin(np.radians(s))*np.array([0, 0, -1.0])) for s in np.linspace(0, 35, 20)]
+arc = [port + 4.2*(np.cos(np.radians(s))*np.array([-1.0, 0, 0]) + np.sin(np.radians(s))*np.array([0, 0, -1.0])) for s in np.linspace(0, 35, 20)]
 w(r"\draw[blue!70!black,densely dashed] " + f(P(port)) + " -- " + f(P(port + 5.4*gen)) + ";")
 w(r"\draw[blue!70!black] " + " -- ".join(f(P(p)) for p in arc) + ";")
-ax_, ay_ = P(port + 3.45*(np.cos(np.radians(19))*np.array([-1.0, 0, 0]) + np.sin(np.radians(20))*np.array([0, 0, -1.0])))
+ax_, ay_ = P(port + 4.75*(np.cos(np.radians(21))*np.array([-1.0, 0, 0]) + np.sin(np.radians(20))*np.array([0, 0, -1.0])))
 w(rf"\node[blue!70!black,inner sep=1pt] at ({ax_:.3f},{ay_:.3f}) {{$\vartheta_{{\mathrm{{c}}}}$}};")
 # port axis and points
 w(r"\draw[->,thick,blue!70!black] " + f(P(port)) + " -- " + f(P(port + np.array([-2.9, 0, 0]))) + r" node[anchor=south east,inner sep=1pt] {$\bnp$};")
@@ -114,11 +114,13 @@ lab(port, r"$\bpport$", "north", 0.12, -0.20)
 lab(cap, r"$\bpcap$", "south", 0.0, 0.10, "red!75!black,")
 lab(mouth, r"$\brhom$", "south", 0.05, 0.08, "blue!70!black,")
 lab(cbase + np.array([0, 0, 4.9]), r"approach cone $\Kset$", "south", 0.0, 0.0, "blue!70!black,")
-lab(m1[60], r"mouth region $\Km$\\(width $\ell_{\mathrm{m}}$)", "north", 0.0, -0.08, "blue!70!black,")
+mx, my = P(m1[60]); lx, ly = mx + 0.75, my - 1.05
+w(rf"\draw[blue!70!black,thin] ({mx:.3f},{my:.3f}) -- ({lx-0.05:.3f},{ly+0.08:.3f});")
+w(rf"\node[blue!70!black,anchor=north west,inner sep=1pt,align=left] at ({lx-0.1:.3f},{ly+0.12:.3f}) {{mouth region $\Km$\\(band width $\ell_{{\mathrm{{m}}}}$)}};")
 lab(np.array([0, 0, 0]), r"operation sphere\\(radius $\rhos$)", "south west", 1.45, 1.95, "gray!80!black,")
-lab(O, r"$\FT$", "north west", 0.55, -0.42)
+lab(O, r"$\FT$", "north west", 0.95, -0.40)
 lab(ch, r"chaser, $\FC$", "north", 0.0, -0.14)
-w(rf"\node[green!40!black,anchor=east,inner sep=1pt] at ({cx-1.15:.3f},{cy+0.15:.3f}) {{FOV}};")
+w(rf"\node[green!40!black,anchor=center,inner sep=1pt] at ({cx-0.82:.3f},{cy+0.16:.3f}) {{FOV}};")
 lab((O + ch)/2, r"$\brho$", "north east", -0.02, 0.0)
 # inertial frame (screen corner)
 x0, y0 = P(np.array([-7.6, 3.0, -7.0]))

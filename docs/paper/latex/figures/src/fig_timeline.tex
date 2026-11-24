@@ -5,18 +5,19 @@
 \begin{tikzpicture}[>=Stealth,font=\footnotesize,x=0.95cm,y=1cm]
   % passes
   \fill[green!14] (1.2,0) rectangle (2.4,1.0);
-  \fill[green!14] (5.2,0) rectangle (6.4,1.0);
+  \filldraw[fill=gray!10,draw=gray!60,densely dashed] (5.2,0) rectangle (6.4,1.0);
   \node[green!35!black,anchor=south,inner sep=1pt] at (1.8,1.0) {next pass};
-  \node[green!35!black,anchor=south,inner sep=1pt] at (5.8,1.0) {following pass};
-  \draw[green!35!black,densely dotted] (1.8,0) -- (1.8,1.0) (5.8,0) -- (5.8,1.0);
+  \node[gray!60!black,anchor=south,inner sep=1pt] at (5.8,1.0) {following pass};
+  \draw[green!35!black,densely dotted] (1.8,0) -- (1.8,1.0);
+  \draw[gray!60!black,densely dotted] (5.8,0) -- (5.8,1.0);
   % axis
   \draw[->,thick] (-0.2,0) -- (7.6,0);
   \draw (0,-0.08) -- (0,0.08);
   \node[anchor=north,inner sep=2pt] at (0,-0.08) {$t$};
   % latest entry time and deadline
-  \fill[pattern=north east lines,pattern color=gray!55] (4.6,0) rectangle (6.9,0.5);
-  \draw[thick,densely dashed] (4.6,0) -- (4.6,1.85) node[anchor=south east,inner sep=1pt] {$\te=\Td-\Tr$};
-  \draw[thick] (6.9,0) -- (6.9,1.85) node[anchor=south west,inner sep=1pt] {$\Td$};
+  \fill[pattern=north east lines,pattern color=gray!40] (4.6,0) rectangle (6.9,1.0);
+  \draw[thick,densely dashed] (4.6,0) -- (4.6,1.85) node[anchor=south,inner sep=1pt] {$\te=\Td-\Tr$};
+  \draw[thick] (6.9,0) -- (6.9,1.85) node[anchor=south,inner sep=1pt] {$\Td$};
   \draw[<->] (4.6,1.5) -- node[above,inner sep=1pt] {$\Tr$} (6.9,1.5);
   % dimensions below the axis
   \draw[<->] (0,-0.55) -- node[below,inner sep=2pt] {$\taup$} (1.8,-0.55);

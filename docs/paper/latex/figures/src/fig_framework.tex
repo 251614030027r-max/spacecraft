@@ -17,32 +17,32 @@
   % ---------------- coordination (Section IV-B)
   \node[crd] (M) at (3.7,1.25) {Short-range opportunities\\$\Mpred(x,\bb),\ \bb\in\Gset\cup\{\ba\}$};
   \node[crd] (L) at (3.7,-0.25) {Long-range entry $\tauL(x)$\\at the last usable pass};
-  \node[blk,draw=actcol,fill=actfill,very thick,text width=1.35cm,minimum height=2.3cm] (R) at (6.55,0.5) {Rule:\\keep,\\correct,\\or launch};
+  \node[blk,draw=actcol,fill=actfill,very thick,text width=1.85cm,minimum height=2.3cm] (R) at (6.8,0.5) {Coordination\\map $\Cmap$};
   \draw[->,actcol] (M.east) -- (M.east -| R.west);
   \draw[->,actcol] (L.east) -- (L.east -| R.west);
   \node[lbl,gray!40!black] (cl) at (4.75,2.05) {execution-opportunity coordination};
   \node[draw=actcol,rounded corners=3pt,inner sep=4pt,fit=(M)(L)(R)(cl)] (crdbox) {};
 
   % ---------------- execution layer (RWG and controllers)
-  \node[exe] (r1) at (10.55,1.6) {RWG stage goal\\and stage plan};
-  \node[exe] (r2) at (10.55,0.5) {Entry condition, entry\\plan, and re-timing};
-  \node[exe] (r3) at (10.55,-0.6) {Tracking law and\\near-field MPC};
-  \draw[->] (r1) -- (r2); \draw[->] (r2) -- (r3);
-  \node[lbl,gray!40!black] (rl) at (10.55,2.35) {execution layer (Section III)};
+  \node[exe] (r1) at (11.25,1.8) {RWG stage goal\\and stage plan};
+  \node[exe] (r2) at (11.25,0.5) {Entry plan\\and re-timing};
+  \node[exe] (r3) at (11.25,-0.8) {Tracking law and\\near-field MPC};
+  \draw[->] (r1) -- node[lbl,right] {entry condition} (r2); \draw[->] (r2) -- (r3);
+  \node[lbl,gray!40!black] (rl) at (11.25,2.55) {execution layer (Section III)};
   \node[draw,gray!70!black,rounded corners=3pt,inner sep=4pt,fit=(r1)(r3)(rl)] (exebox) {};
 
-  \node[blk,fill=gray!14,text width=1.6cm,minimum height=1.1cm] (dyn) at (13.85,0.5) {6-DOF\\dynamics\\on $\SE$};
+  \node[blk,fill=gray!14,text width=1.6cm,minimum height=1.1cm] (dyn) at (14.5,0.5) {6-DOF\\dynamics\\on $\SE$};
 
   % ---------------- decision and execution paths
   \draw[arr] (pi.east) -- node[lbl,above,pos=0.45] {$\ba$} (pi.east -| crdbox.west);
-  \coordinate (br) at ($(R.east)+(1.0,0)$);
-  \draw[arr,actcol] (R.east) -- (br) |- node[lbl,above,pos=0.78] {intent} (r1.west);
-  \draw[arr,actcol] (br) -- node[lbl,below,pos=0.5] {launch} (r2.west);
-  \node[lbl,actcol,anchor=south] at ($(R.east)!0.5!(br)$) {$\Cmap(x,\ba)$};
+  \coordinate (br) at ($(R.east)+(1.45,0)$);
+  \draw[arr,actcol] (R.east) -- (br) |- node[lbl,left,pos=0.3] {intent} (r1.west);
+  \draw[arr,actcol] (br) -- node[lbl,below,pos=0.12] {launch} (r2.west);
+  \node[lbl,actcol,anchor=south] at ($(crdbox.east |- R.east)!0.5!(br)$) {$\Cmap(x,\ba)$};
   \draw[arr] (exebox.east |- dyn) -- node[lbl,above] {wrench} (dyn);
   \coordinate (top) at ($(dyn.north)+(0,1.85)$);
-  \draw[arr] (dyn.north) -- (top) -| node[lbl,above,pos=0.22] {state $x$, observation $\bo$} (pi.north);
-  \draw[arr] (crdbox.north |- top) -- node[lbl,right,pos=0.45] {$x$} (crdbox.north);
+  \draw[arr] (dyn.north) -- (top) -| node[lbl,above,pos=0.62] {observation $\bo$} (pi.north);
+  \draw[arr] (crdbox.north |- top) -- node[lbl,right,pos=0.45] {state $x$} (crdbox.north);
 
   % ---------------- learning (dashed)
   \node[blk,fill=gray!6,text width=3.0cm,minimum height=0.85cm] (D) at (4.75,-2.2) {Replay buffer\\$(\bo,\ba,\rtil,\bo',\chi')$};

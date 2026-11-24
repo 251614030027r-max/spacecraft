@@ -28,7 +28,8 @@
   \draw[very thick,red!70!black] plot[domain=\psip:\psil,samples=40] ({\R*cos(\x)},{\R*sin(\x)},{\H});
   \node[red!70!black,anchor=south] at ({\R*cos(262)},{\R*sin(262)},{\H+0.04}) {$\varphi$};
   % meridian of the line of sight (dotted)
-  \draw[densely dotted] plot[domain=0:90,samples=30] ({\L*sin(\x)*cos(\psil)},{\L*sin(\x)*sin(\psil)},{\L*cos(\x)});
+  \draw[densely dotted] plot[domain=0:\lam,samples=30] ({\L*sin(\x)*cos(\psil)},{\L*sin(\x)*sin(\psil)},{\L*cos(\x)});
+  \fill ({\L*sin(\bet)*cos(\psil)},{\L*sin(\bet)*sin(\psil)},{\L*cos(\bet)}) circle (1.3pt);
   % line of sight to the chaser
   \pgfmathsetmacro{\cx}{\D*sin(\lam)*cos(\psil)}
   \pgfmathsetmacro{\cy}{\D*sin(\lam)*sin(\psil)}

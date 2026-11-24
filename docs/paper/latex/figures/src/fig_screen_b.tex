@@ -1,18 +1,18 @@
 \documentclass[border=1pt]{standalone}
 \input{preamble}
 \begin{document}
-% Coordination rule (eq. correction): keep, correct, launch, or no action.
+% Coordination rule (eq. correction): keep, correct, launch, or pass through.
 \begin{tikzpicture}[>=Stealth,font=\footnotesize,
   q/.style={draw,rounded corners=6pt,align=center,inner sep=3pt,minimum width=3.65cm,minimum height=0.72cm,fill=gray!5},
   o/.style={draw=actcol,rounded corners=2pt,align=center,inner sep=3pt,minimum width=2.35cm,minimum height=0.72cm,fill=actfill},
   lbl/.style={font=\scriptsize,inner sep=1.5pt}]
   \node[q] (q1) at (0,0) {Own event: $\ehat(x,\ba)=1$?};
-  \node[q] (q2) at (0,-1.15) {Critical candidate:\\$\Ga(x)\neq\emptyset$?};
-  \node[q] (q3) at (0,-2.3) {Last usable pass $x\in\Xlp$\\and $\tauL(x)$ exists?};
-  \node[o] (o1) at (3.75,0) {\textbf{keep} $\ba$};
-  \node[o] (o2) at (3.75,-1.15) {\textbf{correct} to\\$\ba^{\star}(x,\ba)$};
-  \node[o] (o3) at (3.75,-2.3) {\textbf{launch} $\launch(\tauL)$};
-  \node[o,draw=black,fill=white] (o4) at (0,-3.45) {no action: $\ba$};
+  \node[q] (q2) at (0,-1.4) {Critical candidate:\\$\Ga(x)\neq\emptyset$?};
+  \node[q] (q3) at (0,-2.8) {Last usable pass $x\in\Xlp$\\and $\tauL(x)$ exists?};
+  \node[o,draw=black,fill=white] (o1) at (3.75,0) {\textbf{keep} $\ba$};
+  \node[o] (o2) at (3.75,-1.4) {\textbf{correct} to\\$\ba^{\star}(x,\ba)$};
+  \node[o] (o3) at (3.75,-2.8) {\textbf{launch} entry\\at $\tauL(x)$};
+  \node[o,draw=black,fill=white] (o4) at (0,-4.2) {\textbf{pass through} $\ba$};
   \draw[->,thick] (q1) -- node[lbl,above] {yes} (o1);
   \draw[->,thick] (q2) -- node[lbl,above] {yes} (o2);
   \draw[->,thick] (q3) -- node[lbl,above] {yes} (o3);
