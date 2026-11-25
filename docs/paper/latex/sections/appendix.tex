@@ -14,19 +14,4 @@
 
 \section{ECC WITHOUT CRITICAL-WINDOW CORRECTION}\label{app:nocorr}
 
-The variant keeps a proposal that reaches an event by itself and launches the long-range entry at the last usable pass, but never corrects an intent; it is trained from zero and evaluated on the same test tasks as the other methods (Table~\ref{tab:nocorr}). With the long-range entry available, adding the critical-window correction yields $13$ fewer captures net ($10$ tasks captured only by ECC, $23$ only by the variant; $-2.3$~pp $[-4.2,-0.3]$, per seed $-8$, $-1$, $-4$), where the two groups of policies are trained separately. Both forms of coordination improve on SAC--MPC; the variant by $13.9$~pp $[10.4,17.2]$.
-
-\begin{table}[h]
-\caption{ECC Without Critical-Window Correction}
-\label{tab:nocorr}
-\tablefont
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{8.5pc}cc@{}}
-\hline
-Method & Captures & Per seed\\
-\hline
-ECC & 492/576 (85.4\%) & 156/169/167\\
-ECC w/o critical-window correction & 505/576 (87.7\%) & 164/170/171\\
-SAC--MPC & 425/576 (73.8\%) & 149/131/145\\
-\hline
-\end{tabular*}
-\end{table}
+A variant of ECC that keeps a proposal reaching an event by itself and launches the long-range entry at the last usable pass, but never corrects an intent, was trained from zero with three seeds and evaluated on the same test tasks. It captures $505$ of $576$ tasks ($87.7\%$) against $492$ ($85.4\%$) for ECC, a paired difference of $-2.3$~pp $[-4.2,-0.3]$ for ECC, with the two groups of policies trained separately. Both forms of coordination improve clearly on SAC--MPC without coordination ($425$ captures).

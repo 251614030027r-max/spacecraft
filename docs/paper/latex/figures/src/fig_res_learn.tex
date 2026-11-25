@@ -1,30 +1,20 @@
 \documentclass[border=1pt]{standalone}
 \input{preamble}
-\usepgfplotslibrary{groupplots}
 \begin{document}
-% Training process (TRAINING_CURVES.csv): (a) capture rate over windows of 100 training tasks, mean and range over
-% three seeds; (b) corrections and launched long-range entries per decision of ECC.
+% Training capture rate over windows of 100 training tasks (TRAINING_CURVES.csv), on the common support of the three
+% seeds; lines are the mean, bands the range over three seeds. Behavior policies, including exploration.
 \begin{tikzpicture}[font=\footnotesize]
-\begin{groupplot}[group style={group size=1 by 2,vertical sep=6pt,xticklabels at=edge bottom},
-  resstyle,width=8.9cm,height=3.5cm,xmin=800,xmax=5850,xtick={1000,2000,3000,4000,5000},xticklabels={1k,2k,3k,4k,5k},
-  ylabel style={yshift=-3pt},legend cell align=left]
-\nextgroupplot[ymin=15,ymax=100,ytick={20,40,60,80,100},ylabel={Capture (\%)},
-  legend style={at={(0.5,1.03)},anchor=south,legend columns=3,column sep=6pt}]
+\begin{axis}[resstyle,scale only axis,width=6.55cm,height=4.4cm,xmin=900,xmax=5750,
+  xtick={1000,2000,3000,4000,5000},xticklabels={1000,2000,3000,4000,5000},
+  ymin=20,ymax=100,ytick={20,40,60,80,100},ylabel={Capture rate (\%)},xlabel={Decisions},
+  ylabel style={yshift=-2pt},legend cell align=left,
+  legend style={at={(0.5,1.02)},anchor=south,legend columns=3,column sep=8pt,font=\footnotesize}]
 \band{td3}{cTD3}{caplo}{caphi}
 \band{sac}{cSAC}{caplo}{caphi}
 \band{ecc}{cECC}{caplo}{caphi}
 \addplot[cECC,very thick] table[x=x,y=cap]{data/r2_train_ecc.dat}; \addlegendentry{ECC}
 \addplot[cSAC,thick,dashed] table[x=x,y=cap]{data/r2_train_sac.dat}; \addlegendentry{SAC--MPC}
 \addplot[cTD3,thick,dashdotted] table[x=x,y=cap]{data/r2_train_td3.dat}; \addlegendentry{TD3--MPC}
-\node[anchor=north east,inner sep=2pt] at (rel axis cs:1,0.23) {(a)};
-\nextgroupplot[ymin=0,ymax=0.45,ytick={0,0.1,0.2,0.3,0.4},ylabel={Per decision},xlabel={Decisions},xlabel style={yshift=3pt},
-  yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=1,/pgf/number format/fixed zerofill},
-  legend style={at={(0.01,0.99)},anchor=north west,legend columns=2,column sep=4pt}]
-\band{ecc}{cECC}{corlo}{corhi}
-\band{ecc}{cECC!50!black}{lnglo}{lnghi}
-\addplot[cECC,very thick] table[x=x,y=cor]{data/r2_train_ecc.dat}; \addlegendentry{corrections}
-\addplot[cECC!50!black,thick,densely dotted] table[x=x,y=lng]{data/r2_train_ecc.dat}; \addlegendentry{launched long-range entries}
-\node[anchor=north east,inner sep=2pt] at (rel axis cs:1,1) {(b)};
-\end{groupplot}
+\end{axis}
 \end{tikzpicture}
 \end{document}

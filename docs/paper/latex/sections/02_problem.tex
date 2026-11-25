@@ -1,6 +1,6 @@
 \section{PROBLEM FORMULATION}\label{sec:problem}
 
-The pre-capture phase starts with the chaser at a range of the order of ten meters from a freely tumbling, noncooperative target and ends when the chaser holds a capture pose in front of the target docking port. This section states the dynamics and the prediction model available to the chaser, the capture geometry and the safety constraints, and the resulting optimization problem, and it closes with the opportunity structure of the problem and the two difficulties addressed in Sections~\ref{sec:framework} and~\ref{sec:ecc}.
+The pre-capture phase starts with the chaser at a range of the order of ten meters from a freely tumbling, noncooperative target and ends when the chaser holds a capture pose in front of the target docking port. This section states the dynamics and the prediction model, the capture geometry and the constraints, and the optimization problem with its opportunity structure.
 
 \subsection{Dynamics and Prediction Model}\label{sec:dynamics}
 
@@ -49,9 +49,16 @@ The docking port $\bpport$, its approach axis $\bnp$, and the capture point $\bp
 \begin{equation}\label{eq:cone}
 \Kset=\bigl\{\vect{y}\in\R^{3}:\ \ell(\vect{y})\ge\ell_{\min},\ \norm{\vect{y}_{\perp}}\le\ell(\vect{y})\tan\vartheta_{\mathrm{c}}\bigr\},
 \end{equation}
-where $\vect{y}_{\perp}=\vect{y}-\bpport-\ell(\vect{y})\bnp$ is the lateral offset from the port axis. The operation sphere is the ball of radius $\rhos$ about the target center, and the mouth region $\Km=\{\brhoT\in\Kset:\rho<\rhos+\ell_{\mathrm{m}}\}$ is the part of the cone inside this sphere together with a band of width $\ell_{\mathrm{m}}$ outside it. Approach speeds are limited by the braking envelope $\vb(d)$ of the remaining distance $d$, a piecewise-linear inner approximation of the constant-deceleration profile $\sqrt{v_{\mathrm{f}}^{2}+2a_{\mathrm{b}}d}$ with the braking deceleration $a_{\mathrm{b}}=\fmax/(2\mC)$, half the thrust acceleration available per axis, and $\vb(d)=v_{\mathrm{f}}$ for $d\le0$. Every segment is a chord of this concave profile, so that $\vb$ is nowhere looser than it. Outside $\Km$, the radial braking margin $\vmg=\vb(\rho-\rhos)+\dot\rho$ must be nonnegative.
+where $\vect{y}_{\perp}=\vect{y}-\bpport-\ell(\vect{y})\bnp$ is the lateral offset from the port axis. The operation sphere is the ball of radius $\rhos$ about the target center, and the mouth region $\Km=\{\brhoT\in\Kset:\rho<\rhos+\ell_{\mathrm{m}}\}$ is the part of the cone inside this sphere together with a band of width $\ell_{\mathrm{m}}$ outside it. Approach speeds are limited by the braking envelope $\vb(d)$ of the remaining distance $d$, a piecewise-linear inner approximation of the constant-deceleration profile $\sqrt{v_{\mathrm{f}}^{2}+2a_{\mathrm{b}}d}$, where the floor speed $v_{\mathrm{f}}$ is the lowest admissible approach speed and $a_{\mathrm{b}}=\fmax/(2\mC)$, half the thrust acceleration available per axis, is the braking deceleration; $\vb(d)=v_{\mathrm{f}}$ for $d\le0$. Every segment is a chord of this concave profile, so that $\vb$ is nowhere looser than it. Outside $\Km$, the radial braking margin $\vmg=\vb(\rho-\rhos)+\dot\rho$ must be nonnegative.
 
-The safe set $\Sset$ is the set of joint states $X$ that satisfy the constraints of Table~\ref{tab:constraints}, where $d_{\mathrm{clr}}$ is the clearance between the envelope sphere of the chaser and the target body including its grapple rod. Following \cite{tian2024taes,xu2026ast}, the constraints restrict the motion, and actuator saturation is handled by the wrench bounds. The capture pose is located at $\bpcap$, faces the port, and moves with the target; the capture set $\Xcap$ contains the joint states with $\brhoT\in\Kset$ whose position, attitude, velocity, and angular-velocity errors with respect to this moving pose are within given tolerances. The capture time $\tc$ is the first instant at which the state has remained in $\Xcap$ for a holding time $T_{\mathrm{hold}}$, and $\tc=\infty$ if no such instant exists.
+The safe set $\Sset$ is the set of joint states $X$ that satisfy the constraints of Table~\ref{tab:constraints}, where $d_{\mathrm{clr}}$ is the clearance between the envelope sphere of the chaser and the target body including its grapple rod. Following \cite{tian2024taes,xu2026ast}, the constraints restrict the motion, and actuator saturation is handled by the wrench bounds. The capture pose moves with the target: its position is $\bpcap$ and its attitude is the docking attitude $\bR_{\mathrm{cap}}$ in $\FT$, with the boresight along $-\bnp$. With $\bR_{\mathrm{r}}$ the rotation part of $\bg_{\mathrm{r}}$, the capture errors are
+\begin{equation}\label{eq:errors}
+\begin{aligned}
+e_{p}&=\norm{\brhoT-\bpcap},& e_{v}&=\norm{\dot{\brho}_{\mathrm{T}}},\\
+e_{\mathrm{att}}&=\norm{\log(\bR_{\mathrm{cap}}^{\T}\bR_{\mathrm{r}})^{\vee}},& e_{\omega}&=\norm{\bw_{\mathrm{C}}-\bR_{\mathrm{r}}^{\T}\bw_{\mathrm{T}}},
+\end{aligned}
+\end{equation}
+that is, the distance to the capture point, the speed relative to the target body, the angle to the docking attitude, and the angular velocity relative to the target. The capture set $\Xcap$ contains the joint states with $\brhoT\in\Kset$ whose four errors are within given tolerances, and the capture time $\tc$ is the first instant at which the state has remained in $\Xcap$ for a holding time $T_{\mathrm{hold}}$; $\tc=\infty$ if no such instant exists.
 
 \begin{table}
 \caption{Safety Constraints}
@@ -74,7 +81,7 @@ Axial braking & $\brhoT\in\Km$ & $-\bnp^{\T}\dot{\brho}_{\mathrm{T}}\le\vb\bigl(
 
 \subsection{Problem Statement and Opportunity Structure}\label{sec:mission}
 
-Each task specifies a deadline $\Td$, a velocity-increment budget $\Bmax$, and weights $c_{\mathrm{t}}$ and $c_{\mathrm{f}}$ that price time and propellant. Let $\Upsilon$ denote a feedback law that maps the measurements of Assumption~\ref{ass:info} to the control wrench of the chaser.
+Each task specifies a deadline $\Td$, a velocity-increment budget $\Bmax$, and weights $c_{\mathrm{t}}$ and $c_{\mathrm{f}}$ that price time and propellant. Let $\Upsilon$ denote a feedback law that maps the current measurements of Assumption~\ref{ass:info}, the task parameters $(\Td,\Bmax)$, and the history of the execution to the control wrench of the chaser.
 
 \noindent\textit{Problem~1:}
 \begin{equation}\label{eq:problem}
@@ -87,17 +94,17 @@ Each task specifies a deadline $\Td$, a velocity-increment budget $\Bmax$, and w
 \end{equation}
 where the expectation is taken over the target state, the initial relative state, and the deadline. With $\tc=\infty$ for a task that is not captured, $\tc\le\Td$ requires capture before the deadline.
 
-Problem~1 has a temporal structure that a short-horizon constrained optimization does not capture. By \eqref{eq:pred}, the port direction $\bn$ sweeps periodically about $\bs$, and a safe approach along the port axis is possible only while $\bn$ points toward the chaser. These passes recur with period $\Ts$, and the chaser must arrive at the entrance of the final approach along the port axis by the latest admissible arrival time $\te=\Td-\Tr$, where the reserve $\Tr$ leaves time for the terminal descent. With $\taup(t)$ the time to the center of the next pass under \eqref{eq:pred}, the nominal opportunity margin
+Problem~1 has a temporal structure that a short-horizon constrained optimization does not capture. By \eqref{eq:pred}, the port direction $\bn$ sweeps periodically about $\bs$, and a safe approach along the port axis is possible only while $\bn$ points toward the chaser. These passes recur with period $\Ts$, and the chaser must arrive at the entrance of the final approach along the port axis by the latest admissible arrival time $\te=\Td-\Tr$, where the reserve $\Tr$ leaves time for the terminal descent. With the line of sight held fixed, the center of the next pass under \eqref{eq:pred} occurs after $\taup(t)=\varphi(t)/\Omega$, where $\varphi\in[0,2\pi)$ is the phase that the port still has to sweep about $\bs$ before it reaches the line of sight (Section~\ref{sec:geometry}). The nominal opportunity margin
 \begin{equation}\label{eq:eta}
 \eta(t)=\frac{\te-t-\taup(t)}{\Ts}
 \end{equation}
-measures, in spin periods, the time that remains after the next pass (Fig.~\ref{fig:timeline}). With the line of sight held fixed, exactly $\lfloor\eta\rfloor+1$ pass centers precede $\te$ when $\eta\ge0$, and for $0\le\eta<1$ the next pass is the last one; for $\eta<0$, the center of the next pass lies after $\te$, although its leading part may still be reachable. Opportunities are scarce when $\eta<1$.
+measures, in spin periods, the time that remains after the next pass (Fig.~\ref{fig:timeline}). Exactly $\lfloor\eta\rfloor+1$ pass centers precede $\te$ when $\eta\ge0$, and for $0\le\eta<1$ the next pass is the last one; for $\eta<0$, the center of the next pass lies after $\te$, although its leading part may still be reachable. Opportunities are scarce when $\eta<1$.
 
 \begin{figure}[t]
 \centering
 \includegraphics{figures/fig_timeline.pdf}
-\caption{Opportunity structure of Problem~1. Passes of the port recur with the spin period $\Ts$; the entry must arrive by $\te=\Td-\Tr$, and the hatched interval is the reserve $\Tr$ for the terminal descent. The nominal margin $\eta$ in \eqref{eq:eta} counts the spin periods between the next pass center and $\te$; in the case shown, $\eta<1$ and the next pass is the last usable one.}
+\caption{Opportunity structure of Problem~1. Passes of the port recur with the spin period $\Ts$; the entry must arrive by $\te=\Td-\Tr$, and the hatched interval is the reserve $\Tr$ for the terminal descent. The nominal margin $\eta$ in \eqref{eq:eta} counts the spin periods between the next pass center and $\te$; in the case shown, $0\le\eta<1$ and the next pass is the last usable one.}
 \label{fig:timeline}
 \end{figure}
 
-Two difficulties follow from this structure. 1)~Whether a pass is usable depends on how closely the line of sight approaches the sweep of the port, and when it occurs depends on the phase of the port; a missed pass costs about one spin period, which is comparable to the deadline. 2)~Whether a decision to approach the port actually starts the final approach is determined by planning, gating, and tracking over seconds, whereas the decisions that set up the encounter must be taken tens of seconds before the pass, and their consequence, capture or timeout, appears later still; when $\eta<1$, neighboring decisions can lead to capture and to timeout, respectively. Section~\ref{sec:framework} addresses the first difficulty with a hierarchical framework and rotation-synchronized window guidance, and Section~\ref{sec:ecc} addresses the second with execution-feedback closed-loop coordination.
+Two difficulties follow from this structure. 1)~A pass is usable only if the line of sight approaches the sweep of the port closely enough, and its timing depends on the phase of the port; a missed pass costs about one spin period. 2)~Whether a decision starts the final approach is resolved by planning, gating, and tracking within seconds, whereas the decisions that set up the encounter are taken tens of seconds before the pass and their outcome appears later still; for $\eta<1$, neighboring decisions can lead to capture and to timeout. Section~\ref{sec:framework} addresses the first difficulty with a hierarchical framework and RWG, and Section~\ref{sec:ecc} the second with ECC.

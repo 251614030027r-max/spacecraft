@@ -1,231 +1,141 @@
 \section{NUMERICAL SIMULATIONS}\label{sec:experiments}
 
-This section evaluates the method at four levels. Two representative tasks show the complete constrained pre-capture process and the action of coordination in a critical window (Section~\ref{sec:cases}); the test set compares ECC with learning-guided MPC on the same execution chain and with MPC alone (Section~\ref{sec:main}); controlled checks isolate RWG and the forms of coordination (Section~\ref{sec:mechanisms}); and the final models are evaluated across the task distribution and under conditions outside it (Section~\ref{sec:generalization}).
-
-\subsection{Simulation Setup}\label{sec:setup}
-
-\textit{1) Scenario:} The target flies on a $500$-km circular orbit with an inclination of $45^{\circ}$, and both spacecraft are propagated with \eqref{eq:kin}--\eqref{eq:fg} by an adaptive Runge--Kutta integrator. The target is a homogeneous box with a grapple rod leading to the port and tumbles freely at a spin rate between $2.1$ and $2.7^{\circ}$/s about an axis that deviates by $10$--$20^{\circ}$ from its body $z$-axis, so that $\Ts\in[133,171]$~s; its initial attitude is uniformly distributed on $\SO$. The chaser starts in a uniformly random direction at a range of $12$--$16$~m, with a relative speed of at most $0.05$~m/s, a boresight within $15^{\circ}$ of the port, and per-axis angular rates of at most $0.005$~rad/s. Each task draws its deadline from $\mathcal{U}(140,200)$~s, so that the latest entry arrival $\te$ lies between $95$ and $155$~s and is comparable to one spin period. Table~\ref{tab:params} lists the parameters.
-
-\textit{2) Compared methods:} SAC--MPC executes the proposed intent directly and differs from ECC only in the coordination; it is the main baseline. TD3--MPC replaces SAC by TD3 \cite{fujimoto2018td3}, with target-policy smoothing noise $0.2$ clipped at $0.5$, a policy delay of $2$, and Gaussian exploration noise of standard deviation $0.1$. The three learning methods share the execution layer, the observation \eqref{eq:obs}, the action space, the networks, the shaped reward \eqref{eq:shaping}, and the task distribution. MPC applies the near-field MPC of Section~\ref{sec:executor} from the initial instant with its reference at the capture point rotating with the target, without the decision, stage, and entry layers; the comparison with it concerns the architecture as a whole rather than the coordination alone.
+This section first shows the training process (Section~\ref{sec:learning-curves}) and the complete constrained pre-capture process in two representative tasks (Section~\ref{sec:cases}). It then compares ECC on the test set with learning-guided MPC on the same execution chain and with MPC alone (Section~\ref{sec:main}), checks the rotation-synchronized guidance and the entry re-timing (Section~\ref{sec:mechanisms}), and evaluates the final models across task conditions, including two conditions outside the training distribution (Section~\ref{sec:generalization}).
 
 \begin{table}
-\caption{Simulation Parameters}
+\caption{Main Simulation Parameters}
 \label{tab:params}
 \tablefont
 \setlength{\tabcolsep}{3pt}
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{9.5pc}>{\raggedright\arraybackslash}p{9.9pc}@{}}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{9.3pc}>{\raggedright\arraybackslash}p{10.1pc}@{}}
 \hline
 Parameter & Value\\
 \hline
-\multicolumn{2}{@{}l}{\textit{Spacecraft and constraints}}\\
-Target mass, inertia & $225$ kg, $\diag(30,39,48)$ kg$\cdot$m$^{2}$\\
-Target size; rod radius & $1.24\times1.02\times0.74$ m; $0.05$ m\\
-Chaser mass, inertia & $106$ kg, $\approx\diag(20.3,19.9,23.7)$ kg$\cdot$m$^{2}$\\
-Chaser envelope radius & $0.95$ m\\
+\multicolumn{2}{@{}l}{\textit{Spacecraft and task}}\\
+Target mass; inertia & $225$ kg; $\diag(30,39,48)$ kg$\cdot$m$^{2}$\\
+Chaser mass; envelope radius & $106$ kg; $0.95$ m\\
 Force, torque bounds; control period & $2$ N, $0.6$ N$\cdot$m per axis; $0.1$ s\\
-Port, capture point, port axis in $\FT$ & $[-1.5,0,0]^{\T}$ m, $[-3,0,0]^{\T}$ m, $[-1,0,0]^{\T}$\\
-Cone half-angle, minimum depth & $35^{\circ}$, $1$ m\\
-Sphere radius, mouth band width & $6$ m, $0.5$ m\\
-Field of view, range bound & $50^{\circ}$, $30$ m\\
-Mouth speed bound, final braking speed & $0.35$ m/s, $0.05$ m/s\\
-Capture tolerances; holding time & $0.25$ m, $10^{\circ}$, $0.05$ m/s, $0.02$ rad/s; $1$ s\\
+Cone half-angle; sphere radius; band & $35^{\circ}$; $6$ m; $0.5$ m\\
+Field of view; range bound; $\bar v_{\mathrm{m}}$; $v_{\mathrm{f}}$ & $50^{\circ}$; $30$ m; $0.35$ m/s; $0.05$ m/s\\
+Capture tolerances; holding time & $0.25$ m, $0.05$ m/s, $10^{\circ}$, $0.02$ rad/s; $1$ s\\
 Deadline; budget & $\mathcal{U}(140,200)$ s; $3.0$ m/s\\
-\multicolumn{2}{@{}l}{\textit{Stage and entry}}\\
-Stage duration; prediction horizon; mode-logic period & $16$ s; $48$ s; $2$ s\\
-Closing offset and scale $v_{0}$, $v_{\mathrm{a}}$ & $0.05$, $0.15$ m/s\\
-Latitude gain, saturation & $0.02$ s$^{-1}$, $0.12$ m/s\\
-Stage speed bound $\bar v_{\mathrm{st}}$ & $0.17$ m/s\\
-Planning thrust bound: stage; entry; re-timing & $1.6$ N; $1.6$ N; $1.9$ N\\
-Mouth-point range; inward speed & $6.3$ m; $0.02$ m/s\\
-Entry range, gate, terminal reserve & $12$ m, $35^{\circ}$, $45$ s\\
-Entry arrival times $\Tset$ & $\{15,20,25,30,40,50,60\}$ s\\
-Long-range arrival times $\TsetL$ & $\{20,30,\dots,120,140,\dots,220\}$ s\\
-Re-timing delays & $\{2,4,8\}$ s\\
-\multicolumn{2}{@{}l}{\textit{Planning and MPC}}\\
-Stage-plan weights (position, velocity; $w$) & $10$, $200$; $0.1$\\
-Range penalty above $20$ m; SCP iterations & $0.01$; $4$\\
+\multicolumn{2}{@{}l}{\textit{RWG and coordination}}\\
+Stage $h$; prediction horizon $\Tp$; $\Tm$ & $16$ s; $48$ s; $2$ s\\
+$v_{0}$; $v_{\mathrm{a}}$; $k_{\lambda}$; $\bar v_{\mathrm{lat}}$ & $0.05$ m/s; $0.15$ m/s; $0.02$ s$^{-1}$; $0.12$ m/s\\
+Planning bounds $\bar f_{\mathrm{pl}}$; $\bar f_{0}$; re-timing & $1.6$ N; $1.6$ N; $1.9$ N (Euclidean norm)\\
+Entry gate $\psig$; reserve $\Tr$; range $\rho_{\mathrm{E}}$ & $35^{\circ}$; $45$ s; $12$ m\\
+Arrival times $\Tset$; $\TsetL$ & $\{15,20,25,30,40,50,60\}$ s; $20$--$220$ s\\
+Candidate grid $\Gset$ & $\{-1,0,1\}^{2}$\\
+\multicolumn{2}{@{}l}{\textit{Control and learning}}\\
 MPC horizon & $35$ steps ($3.5$ s)\\
-State scales in $\vect{W}$ & $75^{\circ}$, $20$ m, $0.05$ rad/s, $1.1$ m/s\\
-$w_{\mathrm{u}}$, $w_{N}$, $w_{\varepsilon}$, $\bar\varepsilon$ & $0.01$, $1000$, $10^{4}$, $2$\\
-Cone faces; tightening & $8$; $0.02$\\
-\multicolumn{2}{@{}l}{\textit{Learning}}\\
 Rewards: capture; timeout, fuel; unsafe & $+100$; $-100$; $-150$\\
-$c_{\mathrm{t}}$, $c_{\mathrm{f}}$; potential cap $\bar\Phi$ & $0.10$ s$^{-1}$, $10$ s/m; $25$\\
-$\gamma$, $\alpha$ & $0.999^{8}\approx0.992$, $0.05$\\
-Hidden layers; learning rate & $[256,256]$; $3\times10^{-4}$\\
-Batch; buffer; warm-up & $256$; $10^{5}$; $200$ random decisions\\
-Updates per transition; target rate & $2$; $0.005$\\
-Training length & $6000$ decisions, $3$ seeds\\
+$c_{\mathrm{t}}$; $c_{\mathrm{f}}$; potential cap $\bar\Phi$ & $0.10$ s$^{-1}$; $10$ s/m; $25$\\
+$\gamma$; $\alpha$; hidden layers & $0.992$; $0.05$; $[256,256]$\\
+Training & $6000$ decisions, $3$ seeds\\
 \hline
 \end{tabular*}
-\vspace{2pt}
-
-\raggedright\footnotesize $\bar v_{\mathrm{st}}=0.7\,\bar f_{\mathrm{pl}}h/\mC$ is the velocity change of one stage at $70\%$ of the stage thrust bound.
 \end{table}
-
-\textit{3) Training and evaluation:} Each learning method is trained from zero with three seeds for $6000$ decisions. The test set consists of $192$ initial conditions that do not occur in training, drawn from the same distribution. The final model of each training run is evaluated on all of them without exploration noise, giving $576$ test tasks per learning method; MPC is evaluated once on the $192$ initial conditions and paired with each training run. All comparisons are paired on the initial conditions, and the $95\%$ confidence intervals of paired differences are obtained by a bootstrap that resamples the initial conditions within each training run ($10\,000$ resamples), so that they reflect the variation over tasks for the trained policies. The metrics are the capture rate and the causes of failure, the completion time and the velocity increment, the return $G$ of the unshaped reward \eqref{eq:reward}, the terminal errors, and the computation time of the coordination. Capture-rate differences are given in percentage points (pp).
 
 \begin{figure}[t]
 \centering
 \includegraphics{figures/fig_res_learn.pdf}
-\caption{Training process. (a) Capture rate of the behavior policies over windows of $100$ training tasks, which includes exploration; lines show the mean and bands the range over three seeds. (b) Corrections and launched long-range entries of ECC per decision.}
+\caption{Capture rate of the behavior policies during training over windows of $100$ training tasks, including exploration. Lines show the mean and bands the range over three seeds.}
 \label{fig:learning}
 \end{figure}
 
 \begin{figure*}[t]
 \centering
-\begin{minipage}[b]{0.345\textwidth}\centering
-\includegraphics{figures/fig_res_case_a.pdf}\\[1pt]{\footnotesize (a)}
+\begin{minipage}[b]{0.43\textwidth}\centering
+\includegraphics{figures/fig_res_caseA_traj.pdf}\\[1pt]{\footnotesize (a)}
 \end{minipage}\hfill
-\begin{minipage}[b]{0.325\textwidth}\centering
-\includegraphics{figures/fig_res_case_b.pdf}\\[1pt]{\footnotesize (b)}
-\end{minipage}\hfill
-\begin{minipage}[b]{0.325\textwidth}\centering
-\includegraphics{figures/fig_res_case_c.pdf}\\[1pt]{\footnotesize (c)}
-\end{minipage}\\[4pt]
-\begin{minipage}[b]{0.325\textwidth}\centering
-\includegraphics{figures/fig_res_case_d.pdf}\\[1pt]{\footnotesize (d)}
-\end{minipage}\hfill
-\begin{minipage}[b]{0.325\textwidth}\centering
-\includegraphics{figures/fig_res_case_e.pdf}\\[1pt]{\footnotesize (e)}
-\end{minipage}\hfill
-\begin{minipage}[b]{0.325\textwidth}\centering
-\includegraphics{figures/fig_res_case_f.pdf}\\[1pt]{\footnotesize (f)}
+\begin{minipage}[b]{0.565\textwidth}\centering
+\includegraphics{figures/fig_res_caseA_err.pdf}\\[1pt]{\footnotesize (b)}
 \end{minipage}
-\caption{Task~A: complete pre-capture by ECC (deadline $176.2$~s). (a) Trajectory in $\FT$, colored by execution mode, with the operation sphere (gray), the approach cone (green), the port axis (dashed), and the capture point (square). (b) Range, port--line-of-sight angle, and propellant used; triangles mark the two decisions, both kept, and diamonds the entry re-timings. (c) Position, velocity, attitude, and angular-velocity errors with respect to the moving capture pose, with the capture tolerances (dashed). (d) Collision clearance $d_{\mathrm{clr}}$, corridor margin $m_{\mathrm{cor}}$, and view angle $\vartheta_{\mathrm{v}}$ between boresight and port with the bound $\vartheta_{\mathrm{fov}}$. (e) Radial braking margin outside $\Km$, and axial braking margin $m_{\mathrm{ax}}$ and relative-speed margin $m_{v}$ inside it, each drawn where its constraint applies. (f) Body-frame force and torque with the per-axis bounds. Shading shows the execution mode; solid and dotted vertical lines mark the capture and the deadline. The time histories are sampled every $2$~s. \todo{replace (b)--(f) by the $0.1$-s records of the same run}}
-\label{fig:case}
+\caption{Task~A: complete pre-capture by ECC (deadline $176.2$~s). (a) Chaser trajectory in $\FT$, colored by execution mode, with the operation sphere (gray), the approach cone (green), the port axis (dashed), and the target body; dots mark the start, the beginning of the entry transfer and of the terminal descent, and the capture. (b) Position, velocity, attitude, and angular-velocity errors \eqref{eq:errors} with respect to the moving capture pose at every control period, with the capture tolerances (dashed); shading shows the execution mode and the vertical line the capture at $143.6$~s.}
+\label{fig:caseA}
 \end{figure*}
 
-\begin{table*}[t]
-\caption{Results on the Test Tasks}
-\label{tab:main}
-\tablefont
-\setlength{\tabcolsep}{1.5pt}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lccccccccccc@{}}
-\hline
- & \multicolumn{8}{c}{Outcomes} & \multicolumn{3}{c}{ECC minus method (paired)}\\
-\cline{2-9}\cline{10-12}
-Method & Captures & Per seed & Timeout & Unsafe & Fuel & $G$ & $t_{\mathrm{c}}$ (s) & $\Delta v$ (m/s) & Capture (pp) & Only & $G$\\
-\hline
-\textbf{ECC} & \textbf{492 (85.4\%)} & 156/169/167 & 83 & 1 & 0 & \textbf{45.4} & 119.5 & 1.22 & -- & -- & --\\
-SAC--MPC & 425 (73.8\%) & 149/131/145 & 151 & 0 & 0 & 21.4 & 120.9 & 1.19 & $+11.6$ $[8.3,15.1]$ & 90/23 & $+24.0$ $[17.0,31.1]$\\
-TD3--MPC & 368 (63.9\%) & 135/124/109 & 206 & 2 & 0 & 0.7 & 123.4 & 1.21 & $+21.5$ $[17.7,25.3]$ & 142/18 & $+44.8$ $[36.6,52.9]$\\
-MPC & 85 (44.3\%) & -- & 48 & 31 & 28 & $-53.8$ & 129.1 & 1.55 & $+41.1$ $[35.8,46.4]$ & 289/52 & $+99.2$ $[87.6,110.4]$\\
-\hline
-\end{tabular*}
-\vspace{2pt}
+\begin{figure*}[t]
+\centering
+\begin{minipage}[b]{0.5\textwidth}\centering
+\includegraphics{figures/fig_res_caseA_con.pdf}\\[1pt]{\footnotesize (a)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.48\textwidth}\centering
+\includegraphics{figures/fig_res_caseA_wr.pdf}\\[1pt]{\footnotesize (b)}
+\end{minipage}
+\caption{Task~A: constraints and control wrench. (a) Range $\rho$, collision clearance $d_{\mathrm{clr}}$, and corridor margin (distance from leaving the union of the region outside the operation sphere and the approach cone); port--line-of-sight angle $\psi$ with the entry gate $\psig$ and view angle $\vartheta_{\mathrm{v}}$ between boresight and port with the bound $\vartheta_{\mathrm{fov}}$; radial braking margin $\vmg$ outside $\Km$, and axial braking and relative-speed margins inside it, each drawn where its constraint applies. (b) Body-frame force and torque, held over each control period, with the per-axis bounds. $\rho$ and $\psi$ are sampled every $2$~s, all other quantities every control period; shading shows the execution mode and the vertical line the capture.}
+\label{fig:caseA-con}
+\end{figure*}
 
-\raggedright\footnotesize Learning methods: $576$ tasks; MPC: $192$ tasks. Fuel: fuel exhaustion; $G$: mean return; $t_{\mathrm{c}}$ and $\Delta v$: medians over the tasks captured by the method. Paired differences with $95\%$ confidence intervals over the $576$ paired tasks; Only: tasks captured only by ECC/only by the method; MPC is paired with each training run.
-\end{table*}
-
-\subsection{Training Process}\label{sec:learning-curves}
-
-
-Fig.~\ref{fig:learning}(a) shows the capture rate of the behavior policies during training. ECC captures more tasks from the beginning, since coordination acts on the proposals of the initial policy, and its three runs remain closer together than those of SAC--MPC and TD3--MPC; SAC--MPC improves more over training and spreads more across runs. The share of corrected decisions of ECC stays at about one fifth (Fig.~\ref{fig:learning}(b)); between the first and the last fifth of training it is unchanged in one run and decreases in the other two ($0.171\to0.119$ and $0.190\to0.146$), while the number of decisions per task also decreases. Launched long-range entries remain at $0.10$--$0.26$ per task.
-
-\subsection{Closed-Loop Pre-Capture Process}\label{sec:cases}
-
-Two test tasks show the closed loop at the level of the physical state. In both, ECC and SAC--MPC are the final models of their own training runs, so that their intents differ from the first decision on.
-
-
-\begin{figure}[!tb]
+\begin{figure}[t]
 \centering
 \includegraphics{figures/fig_res_caseB.pdf}
-\caption{Task~B: critical window (deadline $147.8$~s). Execution modes, range $\rho$, latitude offset $\dlat$, and port--line-of-sight angle $\psi$ of ECC (solid) and SAC--MPC (dashed), each executed by the model of its own training run. The triangle and the thin line mark the correction of ECC at $16$~s; the dashed and dotted vertical lines mark the latest entry arrival $\te$ and the deadline, and the solid line the capture by ECC.}
+\caption{Task~B: critical window (deadline $147.8$~s). Execution modes, range $\rho$, latitude offset $\dlat$, and port--line-of-sight angle $\psi$ of ECC (solid) and SAC--MPC (dashed), each executed by the model of its own training run. Vertical lines: correction of ECC at $16$~s (dash-dotted), latest entry arrival $\te$ (dashed), capture by ECC (solid), and deadline (dotted); the horizontal dotted line is the entry gate.}
 \label{fig:caseB}
 \end{figure}
 
-\textit{1) Task A, complete pre-capture:} Fig.~\ref{fig:case} shows a task that ECC captures without a correction. Both decisions keep the proposed intent, and in stage flight the chaser closes in while the port turns away from the line of sight, so that $\psi$ grows to about $170^{\circ}$. The entry transfer starts at $32$~s at a range of $10.8$~m, while the port still faces away: the plan arrives at the mouth point as the port sweeps toward it, and $\psi$ falls within the gate during the transfer. Three re-timings, each delaying the arrival by $4$~s, keep the entry in the same pass. The descent starts at $94$~s inside the approach cone; the four errors then decrease to the capture tolerances, and the target is captured at $143.6$~s with $\Delta v=1.84$~m/s. Throughout the task, the clearance, the corridor margin, and the applicable braking and speed margins stay nonnegative, the view angle stays within $\vartheta_{\mathrm{fov}}$, and the wrench stays within its bounds, reaching them during the entry transfer and at the start of the descent (Fig.~\ref{fig:case}(d)--(f)). SAC--MPC captures the same task at $142.8$~s with $2.03$~m/s, after an entry started at $26$~s.
+\subsection{Simulation Setup}\label{sec:setup}
 
+\textit{1) Scenario:} The target flies on a $500$-km circular orbit with an inclination of $45^{\circ}$, and both spacecraft are propagated with \eqref{eq:kin}--\eqref{eq:fg} by an adaptive Runge--Kutta integrator. The target is a homogeneous box with a grapple rod leading to the port and tumbles freely at a spin rate between $2.1$ and $2.7^{\circ}$/s about an axis that deviates by $10$--$20^{\circ}$ from its body $z$-axis, so that $\Ts\in[133,171]$~s; its initial attitude is uniformly distributed on $\SO$. The chaser parameters follow \cite{yang2025taes}. The chaser starts in a uniformly random direction at a range of $12$--$16$~m, with a relative speed of at most $0.05$~m/s, a boresight within $15^{\circ}$ of the port, and per-axis angular rates of at most $0.005$~rad/s. Each task draws its deadline from $\mathcal{U}(140,200)$~s, so that the latest entry arrival $\te$ lies between $95$ and $155$~s and is comparable to one spin period. Table~\ref{tab:params} lists the main parameters.
 
-\textit{2) Task B, critical window:} The task starts with a latitude offset of about $-50^{\circ}$, and its deadline of $147.8$~s leaves $\te=102.8$~s (Fig.~\ref{fig:caseB}). Both methods close in and regulate the latitude offset at similar rates. At $16$~s, the proposal $[0.67,0.10]^{\T}$ of ECC reaches no event within $\Tp$, and the only critical candidate, $[1,1]^{\T}$, has a nominal entry $24$~s later; the intent is corrected to it, and the proposals at $32$ and $48$~s are kept. The entry transfer starts at $50$~s at a range of $8.6$~m, after the nominal event because the prediction is nominal, and brings $\psi$ below the gate at about $81$~s. After one re-timing at $78$~s, which delays the arrival by $2$~s with the larger thrust bound, the descent starts at $96$~s with the port nearly aligned, and the target is captured at $133.0$~s with $\Delta v=1.20$~m/s. SAC--MPC executes its intents directly and forms no entry; it reaches the descent region from stage flight at $100$~s, when $\psi$ is still about $27^{\circ}$, and the descent follows the rotating port until the deadline, ending $0.33$~m from the capture point.
+\textit{2) Compared methods:} SAC--MPC executes the proposed intent directly and differs from ECC only in the coordination; it is the main baseline. TD3--MPC replaces SAC by TD3 \cite{fujimoto2018td3}, with target-policy smoothing noise $0.2$ clipped at $0.5$, a policy delay of $2$, and Gaussian exploration noise of standard deviation $0.1$. The three learning methods share the execution layer, the observation \eqref{eq:obs}, the action space, the networks, the shaped reward \eqref{eq:shaping}, and the task distribution. MPC applies the near-field MPC of Section~\ref{sec:executor} from the initial instant with its reference at the capture point rotating with the target, without the decision, stage, and entry layers, and thus represents a single-layer constrained controller.
+
+\textit{3) Training and evaluation:} Each learning method is trained from zero with three seeds for $6000$ decisions. The test set consists of $192$ initial conditions that do not occur in training, drawn from the same distribution. The final model of each training run is evaluated on all of them without exploration noise, giving $576$ test tasks per learning method; MPC is evaluated once on the $192$ initial conditions and paired with each training run. Comparisons are paired on the initial conditions, and the $95\%$ confidence intervals of paired differences are obtained by a bootstrap that resamples the initial conditions within each training run ($10\,000$ resamples). The metrics are the capture rate and the causes of failure, the completion time and the velocity increment of captured tasks, and the return $G$ of the unshaped reward \eqref{eq:reward}; differences of capture rates are given in percentage points (pp).
+
+\subsection{Training Process}\label{sec:learning-curves}
+
+Fig.~\ref{fig:learning} shows the capture rate of the behavior policies during training. ECC captures more tasks from the first windows on, because coordination acts on the proposals of the initial policy, and its three runs stay closer together than those of the baselines. SAC--MPC improves more over training and spreads more across runs, and TD3--MPC remains below both. In ECC, corrections occur at $12$--$28\%$ of the decisions and decrease in two of the three runs over training, and launched long-range entries occur $0.10$--$0.26$ times per task.
+
+\begin{figure*}[t]
+\centering
+\includegraphics{figures/fig_res_outcome.pdf}
+\caption{Results on the test set. (a) Outcome shares of the learning methods over $576$ tasks and of MPC over $192$ tasks, with the capture rate as a number and the capture rates of the three training runs as dots. (b) Completion time and (c) velocity increment over the tasks that each method captures, with the number of tasks at the bottom; boxes show the quartiles and the median, whiskers extend to $1.5$ times the interquartile range, and points lie beyond.}
+\label{fig:outcome}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics{figures/fig_res_cond.pdf}
+\caption{Capture rate of ECC and SAC--MPC across task conditions. (a) Deadline bins of the test set. (b) Spin rate: a slower spin of $1.5$--$2.1^{\circ}$/s outside the training range and the three thirds of the training range. (c) Spin-axis offset: the training range $10$--$20^{\circ}$ and a stronger nutation with $20$--$40^{\circ}$. Gray background: conditions outside the training distribution, evaluated with the final models on the same $192$ initial conditions.}
+\label{fig:cond}
+\end{figure*}
+
+\subsection{Closed-Loop Pre-Capture Process}\label{sec:cases}
+
+Two test tasks show the closed loop at the level of the physical state, selected by rules fixed in advance: Task~A is a task that ECC captures without any correction and SAC--MPC also captures, and Task~B is a task in which ECC corrects an intent and captures whereas SAC--MPC times out. ECC and SAC--MPC are the final models of their own training runs.
+
+\textit{1) Task A, complete pre-capture:} Both decisions of ECC keep the proposed intent (Fig.~\ref{fig:caseA}). In stage flight, the chaser closes in while the port turns away from the line of sight, and $\psi$ grows to about $170^{\circ}$ (Fig.~\ref{fig:caseA-con}(a)). The entry transfer starts at $32$~s at a range of $10.8$~m while the port still faces away; the plan arrives at the mouth point as the port sweeps toward it, so that the chaser travels around the target in $\FT$ and $\psi$ falls below the gate during the transfer. Three re-timings, each delaying the arrival by $4$~s, keep the entry in the same pass. The terminal descent starts at $94$~s inside the approach cone, the four errors decrease into the capture tolerances, and the capture follows at $143.6$~s after the tolerances have held for $1$~s, with $\Delta v=1.84$~m/s. Over the task, the collision clearance stays above $0.50$~m and the corridor margin above $0.48$~m, the view angle stays below $26^{\circ}$, and the radial braking margin remains positive outside the mouth region, as do the axial braking and relative-speed margins inside it. The force and the torque saturate briefly when the reference changes, at the start of the task and of the entry transfer, at the re-timings, and at the start of the descent, and stay below them otherwise (Fig.~\ref{fig:caseA-con}(b)). SAC--MPC captures the same task at $142.8$~s with $2.03$~m/s, after an entry started at $26$~s.
+
+\textit{2) Task B, critical window:} The task starts with a latitude offset of about $-50^{\circ}$, and its deadline of $147.8$~s leaves $\te=102.8$~s (Fig.~\ref{fig:caseB}). Both methods close in and regulate the latitude offset at similar rates. At $16$~s, the proposal $[0.67,0.10]^{\T}$ of ECC reaches no event within $\Tp$, and the only critical candidate, $[1,1]^{\T}$, predicts an entry $24$~s later; the intent is corrected to it, and the proposals at $32$ and $48$~s are kept. The entry transfer starts at $50$~s at a range of $8.6$~m, after the nominal event because the prediction is nominal, and $\psi$ falls below the gate at about $81$~s. After one re-timing at $78$~s, which delays the arrival by $2$~s with the larger thrust bound, the descent starts at $96$~s with the port nearly aligned, and the target is captured at $133.0$~s with $\Delta v=1.20$~m/s, at a distance of $0.19$~m from the capture point. SAC--MPC executes its intents directly and forms no entry: $\psi$ falls below the gate only at about $95$~s, the chaser reaches the descent region from stage flight at $100$~s with $\psi$ still near $27^{\circ}$, and the descent follows the rotating port until the deadline, ending $0.33$~m from the capture point.
 
 \subsection{Comparative Performance}\label{sec:main}
 
+Fig.~\ref{fig:outcome}(a) shows the outcomes on the test set. ECC captures $492$ of $576$ tasks ($85.4\%$), against $73.8\%$ for SAC--MPC, $63.9\%$ for TD3--MPC, and $44.3\%$ for MPC, and the failures of the learning methods are almost all timeouts. Paired with SAC--MPC on the same execution chain, ECC raises the capture rate by $11.6$~pp $[8.3,15.1]$, capturing $90$ tasks that SAC--MPC misses against $23$ in the other direction, and it is ahead in each of the three training runs; the mean return rises by $24.0$ $[17.0,31.1]$. Against TD3--MPC, the gain is $21.5$~pp $[17.7,25.3]$.
 
-Table~\ref{tab:main} summarizes the test set. ECC captures $492$ of $576$ tasks ($85.4\%$), against $73.8\%$ for SAC--MPC, $63.9\%$ for TD3--MPC, and $44.3\%$ for MPC. The failures of the learning methods are almost all timeouts. Paired with SAC--MPC on the same execution chain, ECC raises the capture rate by $11.6$~pp in total and in each training run ($+7$, $+38$, and $+22$ captures), captures $90$ tasks that SAC--MPC misses against $23$ in the other direction, and raises the return by $24.0$. On the $402$ tasks captured by both, the mean completion time of ECC is $1.6$~s shorter ($[0.1,3.1]$~s; median difference $+0.3$~s) and the velocity increment differs by $+0.006$~m/s ($[-0.010,0.023]$): ECC captures more tasks in time at a comparable time and propellant cost. Against TD3--MPC the gain is $21.5$~pp. MPC alone violates a constraint or exhausts its propellant in $59$ of its $192$ tasks; on the $203$ paired tasks captured by both, ECC is $28.0$~s faster ($[23.3,32.6]$) and uses $0.44$~m/s less ($[0.38,0.50]$), which reflects the stage and entry structure as a whole.
+The completion times and velocity increments of the three learning methods lie close together (Fig.~\ref{fig:outcome}(b) and (c)). On the $402$ tasks that ECC and SAC--MPC both capture, the mean completion time of ECC differs by $-1.6$~s $[-3.1,-0.1]$ and the mean velocity increment by $+0.006$~m/s $[-0.010,0.023]$. The gain of ECC therefore consists of more tasks captured in time at a comparable cost per capture. MPC alone fails through constraint violations and propellant exhaustion as well as timeouts; on the $203$ tasks captured by both, ECC is $28.0$~s faster $[23.3,32.6]$ and uses $0.44$~m/s $[0.38,0.50]$ less, which reflects the stage and entry structure as a whole. Each coordination takes a wall-clock time of $1.50$~s in the median, $3.75$~s at the $95$th percentile, and at most $10.36$~s over the $2042$ test decisions, measured on a desktop computer under parallel evaluation load, all below the decision period of $16$~s.
 
-\begin{table}
-\caption{Terminal Errors at Capture}
-\label{tab:terminal}
-\tablefont
-\setlength{\tabcolsep}{3pt}
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccc@{}}
-\hline
-Method & $e_{p}$ (m) & $e_{v}$ (m/s) & $e_{\mathrm{att}}$ (deg) & $e_{\omega}$ (rad/s)\\
-\hline
-Tolerance & $0.25$ & $0.05$ & $10$ & $0.02$\\
-ECC & \tbd & \tbd & \tbd & \tbd\\
-SAC--MPC & \tbd & \tbd & \tbd & \tbd\\
-\hline
-\end{tabular*}
-\vspace{2pt}
-
-\raggedright\footnotesize Median and $95$th percentile at the capture instant over the tasks captured by both methods. \todo{fill from the terminal summary}
-\end{table}
-
-Table~\ref{tab:terminal} reports the errors with respect to the capture pose at the capture instant. \todo{one sentence on the terminal accuracy once the summary is available.} Each coordination takes $1.50$~s of wall-clock time in the median, $3.75$~s at the $95$th percentile, and at most $10.36$~s over $2042$ decisions, measured under parallel evaluation load on \todo{test computer}, below the decision period of $16$~s.
-
-\subsection{Effectiveness of RWG and Coordination}\label{sec:mechanisms}
+\subsection{Effectiveness of RWG and Entry Re-Timing}\label{sec:mechanisms}
 
 \begin{table}
 \caption{Mechanism Checks}
 \label{tab:rwg}
 \tablefont
 \setlength{\tabcolsep}{2pt}
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{7.4pc}ccc@{}}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{9.6pc}cc@{}}
 \hline
-Comparison & Captures & Difference (pp) & Only\\
+Check & Captures & Difference (pp)\\
+ & with/without & [$95\%$ CI]\\
 \hline
-\multicolumn{4}{@{}l}{\textit{Fixed intent $[1,0]^{\T}$, $192$ tasks}}\\
-Rotation-synchronized guidance & 103/64 & $+20.3$ $[14.6,26.0]$ & 39/0\\
-\multicolumn{4}{@{}l}{\textit{Evaluation-time switch, ECC models, $576$ tasks}}\\
-Entry re-timing & 492/480 & $+2.1$ $[0.3,4.0]$ & 21/9\\
-\multicolumn{4}{@{}l}{\textit{Separately trained policies, $576$ tasks}}\\
-Coordination (ECC vs SAC--MPC) & 492/425 & $+11.6$ $[8.3,15.1]$ & 90/23\\
-Critical-window correction (Appendix~\ref{app:nocorr}) & 492/505 & $-2.3$ $[-4.2,-0.3]$ & 10/23\\
+Rotation-synchronized guidance, fixed intent $[1,0]^{\T}$, $192$ tasks & 103/64 & $+20.3$ $[14.6,26.0]$\\
+Entry re-timing, ECC models, $576$ tasks & 492/480 & $+2.1$ $[0.3,4.0]$\\
 \hline
 \end{tabular*}
-\vspace{2pt}
-
-\raggedright\footnotesize Captures and tasks captured by one side only are given as with/without the mechanism; differences with $95\%$ confidence intervals.
 \end{table}
 
-Table~\ref{tab:rwg} groups the checks by protocol. The rotation-synchronized guidance is checked with a fixed, non-learned intent, flown once with RWG and once with a stage goal that only closes along the line of sight, without latitude regulation and along-sweep motion, under the same entry logic; the check thus covers the guidance as a whole. With the same intent, the guidance raises the captures from $64$ to $103$ of $192$, and no task is captured only without it. Entry re-timing is switched off at evaluation in the final ECC models, which then plan only to the original arrival instant; it adds $2.1$~pp, a small effect that comes mostly from one training run ($+11$ captures). The last two rows compare separately trained policies. Coordination with both kinds of opportunities raises the capture rate over direct execution; a variant that keeps and launches but never corrects captures $13$ tasks more than ECC, and it improves on SAC--MPC by $13.9$~pp $[10.4,17.2]$. The gain is therefore carried by coordinating the decisions with the opportunities the execution layer can realize, and not by the correction branch on its own.
-
-At the $2042$ test decisions of ECC ($745$, $645$, and $652$ in the three runs), coordination keeps the proposal at $33$--$58\%$ of the decisions, corrects it at $12$--$27\%$, launches the long-range entry at about $6\%$, and passes the proposal through at the remaining $24$--$35\%$, where neither the proposal nor a critical candidate reaches an event. The run with the most corrections also keeps the fewest proposals; across runs, coordination confirms or passes through most decisions and intervenes in about one fifth to one third of them.
+Table~\ref{tab:rwg} lists two checks of the execution layer. The rotation-synchronized guidance is checked with a fixed, non-learned intent, flown once with RWG and once with a stage goal that only closes along the line of sight, without latitude regulation and along-sweep motion, under the same entry logic. With the same intent, the guidance raises the captures from $64$ to $103$ of $192$, and no task is captured only without it; the latitude regulation that brings the line of sight onto the sweep cone (Lemma~\ref{lem:window}) is the core of this effect. Entry re-timing is switched off at evaluation in the final ECC models, which then plan only to the original arrival instant; it has a small, positive effect of $2.1$~pp. Coordination intervenes, by correcting an intent or launching the long-range entry, at $18$--$33\%$ of the test decisions in the three training runs; the gain of Section~\ref{sec:main} is that of the closed loop formed by coordination and learning on top of this execution layer.
 
 \subsection{Performance Across Task Conditions}\label{sec:generalization}
 
-\begin{figure}[t]
-\centering
-\includegraphics{figures/fig_res_strata.pdf}
-\caption{Capture rate by deadline within the training distribution; the learning methods over their $576$ test tasks and MPC over $192$.}
-\label{fig:strata}
-\end{figure}
+\textit{1) Within the training distribution:} The gain of ECC over SAC--MPC is $13.3$, $15.9$, and $13.4$~pp in the three tighter deadline bins and $3.1$~pp for deadlines of $185$--$200$~s, where both methods capture more than $93\%$ (Fig.~\ref{fig:cond}(a)). Tighter deadlines leave fewer passes before $\te$, which is where coordination acts. Across the thirds of the spin-rate range, the capture rates of both methods change by less than $3$~pp (Fig.~\ref{fig:cond}(b)).
 
-\textit{1) Within the training distribution:} Fig.~\ref{fig:strata} divides the test tasks by deadline. The gain of ECC over SAC--MPC is $13.3$, $15.9$, and $13.4$~pp in the three tighter quarters of the deadline range and $3.1$~pp for deadlines of $185$--$200$~s, where both methods capture more than $93\%$; tighter deadlines leave fewer passes before $\te$, which is where coordination acts. Across the thirds of the spin-rate range, the capture rates are $84.4\%$, $87.0\%$, and $84.9\%$ for ECC and $72.4\%$, $74.0\%$, and $75.0\%$ for SAC--MPC.
-
-\begin{table}
-\caption{Evaluation Outside the Training Distribution}
-\label{tab:gen}
-\tablefont
-\setlength{\tabcolsep}{1pt}
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{6.6pc}cccc@{}}
-\hline
-Condition & ECC & SAC--MPC & Difference (pp) & Only\\
- & & & [$95\%$ CI] & ECC/SAC\\
-\hline
-Nominal & 492 & 425 & $+11.6$ $[8.3,15.1]$ & 90/23\\
-Spin $\mathcal{U}(1.5,2.1)$ $^{\circ}$/s & \tbd & \tbd & \tbd & \tbd\\
-Spin $\mathcal{U}(2.7,3.3)$ $^{\circ}$/s & \tbd & \tbd & \tbd & \tbd\\
-Deadline $\mathcal{U}(120,140)$~s & \tbd & \tbd & \tbd & \tbd\\
-Axis offset $\mathcal{U}(20,40)^{\circ}$ & \tbd & \tbd & \tbd & \tbd\\
-\hline
-\end{tabular*}
-\vspace{2pt}
-
-\raggedright\footnotesize Captures out of $576$ tasks; one condition changed at a time, on the same $192$ initial conditions and with the final models of the three training runs. \todo{add failure causes}
-\end{table}
-
-\textit{2) Outside the training distribution:} The final models of ECC and SAC--MPC are evaluated without retraining on the same $192$ initial conditions, with one condition at a time moved outside its training range (Table~\ref{tab:gen}): a slower spin of $\mathcal{U}(1.5,2.1)^{\circ}$/s and a faster spin of $\mathcal{U}(2.7,3.3)^{\circ}$/s, which change the spin period, the pass duration, and the speed of the mouth point; tighter deadlines of $\mathcal{U}(120,140)$~s, which leave fewer passes before $\te$; and a spin-axis offset of $\mathcal{U}(20,40)^{\circ}$ from the body $z$-axis, which strengthens the nutation and the departure of the truth motion from the constant-rate prediction \eqref{eq:pred}. \todo{results and interpretation once the evaluation is available}
+\textit{2) Outside the training distribution:} The final models of ECC and SAC--MPC are evaluated without retraining on the same $192$ initial conditions, with one parameter distribution changed at a time. With a slower spin of $1.5$--$2.1^{\circ}$/s, which lengthens the spin period, the pass, and the time between passes, ECC captures $85.6\%$ of the tasks and SAC--MPC $63.2\%$, a paired difference of $22.4$~pp $[18.6,26.2]$; ECC keeps its nominal capture rate, whereas SAC--MPC loses $10.6$~pp. With a spin-axis offset of $20$--$40^{\circ}$, the stronger nutation increases the departure of the truth motion from the constant-rate prediction \eqref{eq:pred} used by coordination and planning; ECC captures $86.5\%$ and SAC--MPC $72.0\%$, a difference of $14.4$~pp $[10.8,18.1]$. In both conditions, nearly all failures are timeouts, and on the tasks captured by both methods the mean differences in completion time and velocity increment have confidence intervals that contain zero.

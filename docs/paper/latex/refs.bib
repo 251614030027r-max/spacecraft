@@ -1,6 +1,5 @@
 % Bibliography of the ECC--RWG article (IEEE style via IEEEtaes.bst).
-% Entries follow the first page of each PDF in References/. Fields marked
-% TODO must be verified before submission.
+% Entries follow the first page of each PDF in References/ and the publisher records.
 
 @article{yang2025taes,
   author  = {Yang, Heng and Yang, Xuebo and Hu, Meiling and Dong, Hanlin},
@@ -24,7 +23,7 @@
   doi     = {10.1109/TAES.2024.3419763}
 }
 
-% TODO: issue number
+% Volume 62 is paginated continuously; no issue number in the publisher record.
 @article{ren2026taes,
   author  = {Ren, He and Zhong, Rui and Gui, Haichao},
   title   = {Learning-Based Model Predictive Control for Cooperative Spacecraft Swarm Reconfiguration},
@@ -165,16 +164,18 @@
   doi     = {10.1016/j.arcontrol.2026.101045}
 }
 
-% TODO: volume, number, pages (early access)
 @article{reiter2025ac4mpc,
   author  = {Reiter, Rudolf and Ghezzi, Andrea and Baumg{\"a}rtner, Katrin and Hoffmann, Jasper and McAllister, Robert D. and Diehl, Moritz},
   title   = {{AC4MPC}: Actor-Critic Reinforcement Learning for Guiding Model Predictive Control},
   journal = {IEEE Transactions on Control Systems Technology},
-  year    = {2025},
+  volume  = {34},
+  number  = {1},
+  pages   = {395--410},
+  year    = {2026},
   doi     = {10.1109/TCST.2025.3620521}
 }
 
-% TODO: pages
+% Pages not yet listed in a publisher record (also arXiv:2504.02710).
 @inproceedings{ghezzi2026ecc,
   author    = {Ghezzi, Andrea and Reiter, Rudolf and Baumg{\"a}rtner, Katrin and Bemporad, Alberto and Diehl, Moritz},
   title     = {Rollout Then Optimize: A One-Step {Newton} Refinement of Learned Policies for Nonlinear Model Predictive Control},
@@ -203,12 +204,15 @@
   doi     = {10.1016/j.automatica.2024.111696}
 }
 
-% TODO: journal, volume, pages, DOI (PDF is arXiv:2310.16646v2)
 @article{wu2024mpcvalue,
   author  = {Wu, Qizhen and Liu, Kexin and Chen, Lei},
   title   = {Model predictive control-based value estimation for efficient reinforcement learning},
-  journal = {arXiv preprint arXiv:2310.16646},
-  year    = {2024}
+  journal = {IEEE Intelligent Systems},
+  volume  = {39},
+  number  = {3},
+  pages   = {63--72},
+  year    = {2024},
+  doi     = {10.1109/MIS.2024.3386204}
 }
 
 @article{zeng2026neucom,
@@ -241,8 +245,7 @@
   doi     = {10.1016/j.autcon.2025.106130}
 }
 
-% Standard algorithmic references (not in References/; verify before submission)
-% TODO: verify entry
+% Standard algorithmic references (not in References/; PMLR 80 and ICML 1999 records).
 @inproceedings{haarnoja2018sac,
   author    = {Haarnoja, Tuomas and Zhou, Aurick and Abbeel, Pieter and Levine, Sergey},
   title     = {Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor},
@@ -253,7 +256,6 @@
   year      = {2018}
 }
 
-% TODO: verify entry
 @inproceedings{fujimoto2018td3,
   author    = {Fujimoto, Scott and van Hoof, Herke and Meger, David},
   title     = {Addressing Function Approximation Error in Actor-Critic Methods},
@@ -264,7 +266,6 @@
   year      = {2018}
 }
 
-% TODO: verify entry
 @inproceedings{ng1999shaping,
   author    = {Ng, Andrew Y. and Harada, Daishi and Russell, Stuart},
   title     = {Policy Invariance Under Reward Transformations: Theory and Application to Reward Shaping},

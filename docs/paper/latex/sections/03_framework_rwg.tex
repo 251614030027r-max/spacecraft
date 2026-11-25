@@ -1,43 +1,6 @@
 \section{HIERARCHICAL FRAMEWORK AND ROTATION-SYNCHRONIZED WINDOW GUIDANCE}\label{sec:framework}
 
-This section addresses the first difficulty of Section~\ref{sec:mission}. It introduces the hierarchical framework and its execution modes, develops the rotation-synchronized window guidance (RWG) that turns a two-dimensional intent into motion synchronized with the rotating port, and describes the dynamic entry and the constrained controllers that complete the execution layer.
-
-\subsection{Hierarchical Architecture and Execution Modes}\label{sec:integration}
-
-The framework divides the task between two layers according to the two time scales of Problem~1 (Fig.~\ref{fig:framework}). A constrained optimizer handles the constraints of Table~\ref{tab:constraints} over a horizon of seconds \cite{reiter2026arc,ren2026taes}, whereas the value of a decision depends on whether a pass tens of seconds ahead is used or missed; a learned policy can represent this long-horizon trade-off but, when it commands thrust end to end \cite{yang2025taes}, offers limited means to respect hard constraints \cite{reiter2026arc}. Therefore, once per stage of nominal duration $h$, a learned decision layer issues a stage intent $\ba=[a_{\mathrm{p}},a_{\mathrm{z}}]^{\T}\in\Aset=[-1,1]^{2}$, whose components set the closing pace and the timing of the encounter with the port. An execution layer with fixed parameters turns the intent into stage goals that follow the sweep of the port (RWG), decides and plans the entry, and executes the motion with planners and MPC under the constraints. In the taxonomy of \cite{reiter2026arc}, the decision layer parameterizes an optimization-based executor that is part of the environment during learning.
-
-The approach proceeds in three phases. In stage flight, the chaser closes in under the intents of the decision layer while remaining outside the operation sphere. When a pass can be used, an entry transfer brings the chaser to the mouth point
-\begin{equation}\label{eq:mouth}
-\brhom(t)=\rhom\,\bR_{\mathrm{T}}(t)\,\bnp,\qquad \rhos<\rhom<\rhos+\ell_{\mathrm{m}},
-\end{equation}
-which lies on the port axis at the distance $\rhom$ from the target center, inside the mouth region and outside the operation sphere, and rotates with the target; plans use its prediction $\hat{\brho}_{\mathrm{m}}(t+\tau)=\rhom\hat{\bR}_{\mathrm{T}}(t+\tau)\bnp$. The terminal descent then follows the port axis to the capture point. Three design choices shape the framework.
-
-\textit{1) Event-driven macro steps:} A decision is requested at the end of a stage, or earlier when the tracking deviation exceeds a tolerance and the execution layer switches to hold. Once an entry transfer or the terminal descent has begun, no decision is taken until termination, or until the entry is lost or the descent region is left, which switches the execution layer to hold. The interval between two decisions, called a macro step, therefore ends at the end of a stage, at a switch to hold, or at termination, and it has a well-defined outcome: the reward accumulated over it, the successor state, and a termination flag.
-
-\textit{2) Execution modes:} The execution layer operates in the four modes of Table~\ref{tab:modes}, and decisions are taken only in the stage-flight mode $\modeS$ and the hold mode $\modeH$. In the far field, translation is tracked by a feedback law; the near-field model predictive controller (MPC) acts within the near-field range and throughout the entry transfer $\modeE$ and the terminal descent $\modeD$, where the port-relative constraints become active.
-
-\textit{3) Multirate operation:} Control and constraint evaluation run every $\Delta t$, mode logic and entry checks every $\Tm$, and decisions every stage $h$. The stage is short compared with a nominal pass, so that decisions can still shape the encounter before it, and long enough for the velocity change attainable within a stage, which grows with $h$, to reshape the encounter. The mode prediction of Section~\ref{sec:screening} spans three stages, $\Tp=3h=48$~s, which covers one pass of the port ($26$--$33$~s) and is about one third of a spin period.
-
-\begin{table}
-\caption{Execution Modes}
-\label{tab:modes}
-\tablefont
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{4.0pc}>{\raggedright\arraybackslash}p{7.0pc}>{\raggedright\arraybackslash}p{7.0pc}@{}}
-\hline
-Mode & Entered when & Translation reference\\
-\hline
-Stage flight $\modeS$ & Stage plan of the new intent is feasible & Stage plan\\
-Hold $\modeH$ & Stage plan infeasible, tracking deviation above tolerance, entry lost, or descent region left & Inertial position at hold onset\\
-Entry transfer $\modeE$ & Entry condition \eqref{eq:entry} holds & Entry plan\\
-Terminal descent $\modeD$ & Inside $\Km$, inside the operation sphere, or inside $\Kset$ within the descent range & Lead point on the port axis\\
-\hline
-\end{tabular*}
-\vspace{2pt}
-
-\raggedright\footnotesize The decision layer acts only in $\modeS$ and $\modeH$.
-\end{table}
-
-The decision state $x\in\Xset$ comprises the joint state $X$, the time $t$, the propellant used $\Delta v$, the task parameters, and the internal state of the execution layer (mode, hold reference, and record of the previous stage). Executing an intent $\ba$ from $x$ until the next decision induces the macro-step kernel $\PE(x',r\,|\,x,\ba)$ of the execution layer, where $r$ is the reward of the macro step (Section~\ref{sec:mdp}). The execution layer of this article is guided by RWG (Sections~\ref{sec:geometry} and~\ref{sec:entry}) and completed by constrained controllers (Section~\ref{sec:executor}); Fig.~\ref{fig:framework} shows the resulting framework together with the coordination of Section~\ref{sec:ecc}.
+This section addresses the first difficulty of Section~\ref{sec:mission}. It introduces the hierarchical framework, develops RWG, which turns a two-dimensional intent into motion synchronized with the rotating port, and describes the dynamic entry and the constrained controllers of the execution layer.
 
 \begin{figure*}[t]
 \centering
@@ -61,9 +24,46 @@ The decision state $x\in\Xset$ comprises the joint state $X$, the time $t$, the 
 \label{fig:rwg}
 \end{figure*}
 
+\subsection{Hierarchical Architecture and Execution Modes}\label{sec:integration}
+
+The framework divides the task between two layers according to the two time scales of Problem~1 (Fig.~\ref{fig:framework}): the constraints of Table~\ref{tab:constraints} act over seconds, whereas the value of a decision depends on whether a pass tens of seconds ahead is used or missed. Once per stage of nominal duration $h$, a learned decision layer issues a stage intent $\ba=[a_{\mathrm{p}},a_{\mathrm{z}}]^{\T}\in\Aset=[-1,1]^{2}$, whose components set the closing pace and the timing of the encounter with the port. An execution layer with fixed parameters turns the intent into stage goals that follow the sweep of the port (RWG), decides and plans the entry, and executes the motion with planners and MPC under the constraints. In the taxonomy of \cite{reiter2026arc}, the decision layer parameterizes an optimization-based executor that is part of the environment during learning.
+
+The approach proceeds in three phases. In stage flight, the chaser closes in under the intents of the decision layer while remaining outside the operation sphere. When a pass can be used, an entry transfer brings the chaser to the mouth point
+\begin{equation}\label{eq:mouth}
+\brhom(t)=\rhom\,\bR_{\mathrm{T}}(t)\,\bnp,\qquad \rhos<\rhom<\rhos+\ell_{\mathrm{m}},
+\end{equation}
+which lies on the port axis at the distance $\rhom$ from the target center, inside the mouth region and outside the operation sphere, and rotates with the target; plans use its prediction $\hat{\brho}_{\mathrm{m}}(t+\tau)=\rhom\hat{\bR}_{\mathrm{T}}(t+\tau)\bnp$. The terminal descent then follows the port axis to the capture point. Three design choices shape the framework.
+
+\textit{1) Event-driven macro steps:} A decision is requested at the end of a stage, or earlier when the tracking deviation exceeds a tolerance and the execution layer switches to hold. Once an entry transfer or the terminal descent has begun, no decision is taken until termination, or until the entry is lost or the descent region is left, which switches the execution layer to hold. The interval between two decisions, called a macro step, therefore ends at the end of a stage, at a switch to hold, or at termination, and it has a well-defined outcome: the reward accumulated over it, the successor state, and a termination flag.
+
+\textit{2) Execution modes:} The execution layer operates in the four modes of Table~\ref{tab:modes}, and decisions are taken only in the stage-flight mode $\modeS$ and the hold mode $\modeH$. In the far field, translation is tracked by a feedback law; the near-field model predictive controller (MPC) acts within the near-field range and throughout the entry transfer $\modeE$ and the terminal descent $\modeD$, where the port-relative constraints become active.
+
+\textit{3) Multirate operation:} Control and constraint evaluation run every $\Delta t$, mode logic and entry checks every $\Tm$, and decisions every stage $h$. The stage is short compared with a nominal pass, so that decisions can still shape the encounter before it, and long enough for the velocity change attainable within a stage, which grows with $h$, to reshape the encounter. The mode prediction of Section~\ref{sec:screening} spans three stages, $\Tp=3h=48$~s, which covers one pass of the port ($26$--$33$~s) and is about one third of a spin period.
+
+\begin{table}
+\caption{Execution Modes}
+\label{tab:modes}
+\tablefont
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{4.0pc}>{\raggedright\arraybackslash}p{7.0pc}>{\raggedright\arraybackslash}p{7.0pc}@{}}
+\hline
+Mode & Entered when & Translation reference\\
+\hline
+Stage flight $\modeS$ & Stage plan of the new intent is feasible & Stage plan\\
+Hold $\modeH$ & Stage plan infeasible, tracking deviation above tolerance, entry lost, or descent region left & Inertial position at hold onset\\
+Entry transfer $\modeE$ & Entry condition \eqref{eq:entry} holds, or long-range entry launched by the coordination & Entry plan\\
+Terminal descent $\modeD$ & Inside $\Km$, inside the operation sphere, or inside $\Kset$ within the descent range & Lead point on the port axis\\
+\hline
+\end{tabular*}
+\vspace{2pt}
+
+\raggedright\footnotesize The decision layer acts only in $\modeS$ and $\modeH$.
+\end{table}
+
+The decision state $x\in\Xset$ comprises the joint state $X$, the time $t$, the propellant used $\Delta v$, the task parameters, and the internal state of the execution layer (mode, hold reference, and record of the previous stage). Executing an object $\bb$ from $x$ until the next decision induces the macro-step kernel $\PE(x',r\,|\,x,\bb)$ of the execution layer, where $r$ is the reward of the macro step (Section~\ref{sec:mdp}); the executed object is either an intent $\bb\in\Aset$ or the launch command of a long-range entry issued by the coordination of Section~\ref{sec:screening}. The execution layer of this article is guided by RWG (Sections~\ref{sec:geometry} and~\ref{sec:entry}) and completed by constrained controllers (Section~\ref{sec:executor}); Fig.~\ref{fig:framework} shows the resulting framework together with the coordination of Section~\ref{sec:ecc}.
+
 \subsection{Sweep-Cone Geometry and Rotation-Synchronized Intent}\label{sec:geometry}
 
-RWG addresses the first difficulty of Section~\ref{sec:mission}: the latitude of the line of sight makes a window usable, the phase of the port decides when it occurs, and the closing speed sets the pace of the arrival. Under the prediction \eqref{eq:pred}, the port direction $\bn$ rotates uniformly about $\bs$ and sweeps a cone of half-angle $\beta=\angle(\bn,\bs)$, referred to as the sweep cone. At the relative position $\brho$, a local orthonormal basis is formed by the line-of-sight direction $\er=\brho/\rho$, the unit projection $\epol$ of $\bs$ onto the plane normal to $\er$, and $\eaz=\er\times\epol$, which points toward the oncoming port (Fig.~\ref{fig:rwg}(a)); the basis requires $\sin\lambda>0$, and a fixed reference direction replaces $\epol$ when the line of sight is parallel to the spin axis. The geometry is described by the line-of-sight polar angle $\lambda=\angle(\er,\bs)$, the latitude offset $\dlat=\lambda-\beta$, and the phase $\varphi\in[0,2\pi)$ that the port still has to sweep about $\bs$ before it reaches the meridian plane of the line of sight. Let $\psi=\angle(\bn,\er)$ be the current port--line-of-sight angle. For the line of sight held fixed, the predicted angle after a time $\tau$ follows from the spherical law of cosines,
+Under the prediction \eqref{eq:pred}, the port direction $\bn$ rotates uniformly about $\bs$ and sweeps a cone of half-angle $\beta=\angle(\bn,\bs)$, referred to as the sweep cone. At the relative position $\brho$, a local orthonormal basis is formed by the line-of-sight direction $\er=\brho/\rho$, the unit projection $\epol$ of $\bs$ onto the plane normal to $\er$, and $\eaz=\er\times\epol$, which points toward the oncoming port (Fig.~\ref{fig:rwg}(a)); the basis requires $\sin\lambda>0$, and a fixed reference direction replaces $\epol$ when the line of sight is parallel to the spin axis. The geometry is described by the line-of-sight polar angle $\lambda=\angle(\er,\bs)$, the latitude offset $\dlat=\lambda-\beta$, and the phase $\varphi\in[0,2\pi)$ that the port still has to sweep about $\bs$ before it reaches the meridian plane of the line of sight. Let $\psi=\angle(\bn,\er)$ be the current port--line-of-sight angle. For the line of sight held fixed, the predicted angle after a time $\tau$ follows from the spherical law of cosines,
 \begin{equation}\label{eq:theta}
 \cos\hat\psi(\tau)=\cos\lambda\cos\beta+\sin\lambda\sin\beta\cos(\varphi-\Omega\tau),
 \end{equation}
@@ -92,16 +92,16 @@ set by a fixed regulation law with gain $k_{\lambda}$ and saturation level $\bar
 \begin{proposition}[Nominal window regulation]\label{prop:rwg}
 Under the prediction \eqref{eq:pred}, let $\sin\lambda>0$ and resolve the relative velocity as $\bv=v_{\mathrm{r}}\er+v_{\mathrm{pol}}\epol+v_{\mathrm{az}}\eaz$.
 \begin{enumerate}
-\item The range, the latitude offset, and the phase evolve as
+\item[(i)] The range, the latitude offset, and the phase evolve as
 \begin{equation}\label{eq:localkin}
 \dot\rho=v_{\mathrm{r}},\quad \dot{\dlat}=-\frac{v_{\mathrm{pol}}}{\rho},\quad \dot\varphi=-\Omega-\frac{v_{\mathrm{az}}}{\rho\sin\lambda}.
 \end{equation}
-\item If $v_{\mathrm{pol}}=v_{\mathrm{lat}}$ follows \eqref{eq:vlat}, then $|\dlat|$ decreases monotonically, enters the set $|\dlat|\le\bar v_{\mathrm{lat}}/(k_{\lambda}\bar\rho)$ in finite time, and decays exponentially with rate $k_{\lambda}$ thereafter.
-\item If $\rho$ and $\lambda$ are constant and $v_{\mathrm{az}}=v_{\mathrm{sw}}$ is constant with $\kappa=v_{\mathrm{sw}}/(\Omega\rho\sin\lambda)>-1$, then the phase decreases at the rate $\Omega(1+\kappa)$, and the next pass occurs after $\varphi/(\Omega(1+\kappa))$ and lasts $2\phw/(\Omega(1+\kappa))$.
+\item[(ii)] If $v_{\mathrm{pol}}=v_{\mathrm{lat}}$ follows \eqref{eq:vlat}, then $|\dlat|$ decreases monotonically, enters the set $|\dlat|\le\bar v_{\mathrm{lat}}/(k_{\lambda}\bar\rho)$ in finite time, and decays exponentially with rate $k_{\lambda}$ thereafter.
+\item[(iii)] If $\rho$ and $\lambda$ are constant and $v_{\mathrm{az}}=v_{\mathrm{sw}}$ is constant with $\kappa=v_{\mathrm{sw}}/(\Omega\rho\sin\lambda)>-1$, then the phase decreases at the rate $\Omega(1+\kappa)$, and the next pass occurs after $\varphi/(\Omega(1+\kappa))$ and lasts $2\phw/(\Omega(1+\kappa))$.
 \end{enumerate}
 \end{proposition}
 
-The proofs are given in Appendix~\ref{app:proofs}; item~(ii) uses the range bound $\rho\le\bar\rho$ of Table~\ref{tab:constraints}. Proposition~\ref{prop:rwg} describes the nominal velocity field that the stage goals follow; the realized motion results from the saturation, adjustment, planning, and tracking below. Proposition~\ref{prop:rwg} assigns one role to each component: $v_{\mathrm{cl}}$ sets the rate of change of the range, $v_{\mathrm{lat}}$ brings the line of sight onto the sweep cone and thereby opens the window of Lemma~\ref{lem:window}, and $v_{\mathrm{sw}}$ places the window in time. Meeting the oncoming port ($\kappa>0$) advances and shortens the pass, accompanying it ($\kappa<0$) delays and lengthens it, and waiting ($\kappa=0$) leaves the natural sweep (Fig.~\ref{fig:rwg}(b)). These are values of one continuous action rather than predefined maneuvers; which of them is preferable depends on the remaining time and propellant, which is the state-dependent decision delegated to learning.
+The proofs are given in Appendix~\ref{app:proofs}; item~(ii) uses the range bound $\rho\le\bar\rho$ of Table~\ref{tab:constraints}. Proposition~\ref{prop:rwg} describes the nominal velocity field that the stage goals follow, and the realized motion results from the saturation, adjustment, planning, and tracking below. It assigns one role to each component: $v_{\mathrm{cl}}$ sets the rate of change of the range, $v_{\mathrm{lat}}$ brings the line of sight onto the sweep cone and thereby opens the window of Lemma~\ref{lem:window}, and $v_{\mathrm{sw}}$ places the window in time. Meeting the oncoming port ($\kappa>0$) advances and shortens the pass, accompanying it ($\kappa<0$) delays and lengthens it, and waiting ($\kappa=0$) leaves the natural sweep (Fig.~\ref{fig:rwg}(b)). These are values of one continuous action rather than predefined maneuvers; which of them is preferable depends on the remaining time and propellant, which is the state-dependent decision delegated to learning.
 
 The stage goal is formed from the current state $(\brho,\bv)$ and $\bv^{\star}$ as
 \begin{equation}\label{eq:goal}
@@ -110,32 +110,32 @@ The stage goal is formed from the current state $(\brho,\bv)$ and $\bv^{\star}$ 
 \brho_{\mathrm{g}}&=\brho+\tfrac{h}{2}(\bv+\bv_{\mathrm{g}}),
 \end{aligned}
 \end{equation}
-where $\bar v_{\mathrm{st}}=0.7\bar f_{\mathrm{pl}}h/\mC$ is the velocity change attainable within one stage at $70\%$ of the planning thrust bound $\bar f_{\mathrm{pl}}$ of Section~\ref{sec:entry}. The adjustment $\mathcal{P}$ reduces only the inward radial component of its argument, in two passes, until
+where the single-stage velocity-change bound $\bar v_{\mathrm{st}}=0.7\bar f_{\mathrm{pl}}h/\mC$ is the velocity change of one stage at $70\%$ of the stage thrust bound $\bar f_{\mathrm{pl}}$ of Section~\ref{sec:entry}. The adjustment $\mathcal{P}$ reduces only the inward radial component of its argument, in two passes, to promote the conditions
 \begin{equation}\label{eq:project}
 \begin{aligned}
 &\norm{\brho_{\mathrm{g}}}\ge\rhom+\ell_{\mathrm{m}},\\
 &-\frac{\brho_{\mathrm{g}}^{\T}\bv_{\mathrm{g}}}{\norm{\brho_{\mathrm{g}}}}\le\vb\bigl(\norm{\brho_{\mathrm{g}}}-\rhos\bigr)-v_{\mathrm{mg},\min}
 \end{aligned}
 \end{equation}
-hold, so that the goal of every stage lies outside the mouth region, with a clearance of $\rhom-\rhos$, and keeps a radial braking margin of at least $v_{\mathrm{mg},\min}$. The pair $(\brho_{\mathrm{g}},\bv_{\mathrm{g}})$ is the soft terminal target of the stage plan, and the operation sphere is entered through an entry transfer or the terminal descent.
+which place the goal outside the mouth region and keep a radial braking margin of at least $v_{\mathrm{mg},\min}$. The pair $(\brho_{\mathrm{g}},\bv_{\mathrm{g}})$ is a soft terminal target of the stage plan; whether the stage is feasible is decided by the planner below, and the operation sphere is entered only through an entry transfer or the terminal descent.
 
 \subsection{Dynamic Entry and Entry Re-Timing}\label{sec:entry}
 
 A usable pass must still be converted into an entry and preserved while the entry is flown. Both the stage plan and the entry plan are instances of the following subproblem on the double integrator \eqref{eq:di}.
 
-\noindent\textit{Problem~2 (Planning subproblem):} Given the state $(\brho_{0},\bv_{0})$ at time $t$, a horizon $T$ divided into $N$ equal intervals, and a thrust bound $\bar f$,
+\noindent\textit{Problem~2 (Planning subproblem):} Given the state $(\brho_{0},\bv_{0})$ at time $t$, a horizon $T$ divided into $N$ equal intervals, and a bound $\bar F$ on the Euclidean norm of the planned thrust,
 \begin{equation}\label{eq:plan}
 \begin{aligned}
 \min_{\bff_{\mathrm{I},0},\dots,\bff_{\mathrm{I},N-1}}\ \ & L_{\mathrm{f}}(\brho_{N},\bv_{N})+w\sum_{n=0}^{N-1}\frac{\norm{\bff_{\mathrm{I},n}}T}{N\mC}\\
 \text{s.t.}\ \ & \eqref{eq:di}\text{ with }\bff_{\mathrm{I}}\equiv\bff_{\mathrm{I},n}\text{ on interval }n,\\
-& \norm{\bff_{\mathrm{I},n}}\le\bar f,\ \ \rho\ge\rhom,\ \ \vmg\ge0,
+& \norm{\bff_{\mathrm{I},n}}\le\bar F,\ \ \rho\ge\rhom,\ \ \vmg\ge0,
 \end{aligned}
 \end{equation}
-where the path constraints, together with an upper range bound below $\bar\rho$, are imposed at the nodes and at three interior points of every interval, and a small penalty on ranges above $20$~m is added to the cost. The stage plan uses $T=h$, the planning bound $\bar f=\bar f_{\mathrm{pl}}$, and a weighted quadratic distance of $(\brho_{N},\bv_{N})$ to the stage goal \eqref{eq:goal} as the terminal cost $L_{\mathrm{f}}$; it is accepted after the range and the envelope have been checked every $\Delta t$ along the plan, and it is re-solved with enlarged margins otherwise. The entry plan uses an arrival time $T=\tau$, the entry bound $\bar f=\bar f_{0}$, $L_{\mathrm{f}}=0$, $w=1$, and the terminal condition
+where the path constraints, together with an upper range bound below $\bar\rho$, are imposed at the nodes and at three interior points of every interval, and a small soft penalty on ranges above $20$~m is added to the cost. The stage plan uses $T=h$, the stage bound $\bar F=\bar f_{\mathrm{pl}}$, and a weighted quadratic distance of $(\brho_{N},\bv_{N})$ to the stage goal \eqref{eq:goal} as the terminal cost $L_{\mathrm{f}}$, so that its terminal state is a soft target; it is accepted after the range and the envelope have been checked every $\Delta t$ along the plan, and it is re-solved with enlarged margins otherwise. The entry plan uses an arrival time $T=\tau$, the entry bound $\bar F=\bar f_{0}$, $L_{\mathrm{f}}=0$, $w=1$, and the hard terminal condition
 \begin{equation}\label{eq:entryterm}
 \brho_{N}=\hat{\brho}_{\mathrm{m}}(t+\tau),\qquad \bv_{N}=\dot{\hat{\brho}}_{\mathrm{m}}(t+\tau)-v_{\mathrm{in}}\,\hat{\bn}(t+\tau),
 \end{equation}
-with $\hat{\bn}=\hat{\bR}_{\mathrm{T}}\bnp$, which delivers the chaser to the predicted mouth point moving with it and closing at a small speed $v_{\mathrm{in}}$ along the port axis. The keep-out sphere $\rho\ge\rhom$ is nonconvex; following \cite{lian2026asr}, it is linearized at the previous iterate, and the problem is solved as a sequence of second-order cone programs. The radial direction is fixed at the unit direction of the previous iterate, so that the range, the approach speed, and every chord of the braking envelope are linear in the decision variables. Both bounds $\bar f_{\mathrm{pl}}$ and $\bar f_{0}$ lie below $\fmax$ and leave a margin for tracking.
+with $\hat{\bn}=\hat{\bR}_{\mathrm{T}}\bnp$, which delivers the chaser to the predicted mouth point moving with it and closing at a small speed $v_{\mathrm{in}}$ along the port axis. The keep-out sphere $\rho\ge\rhom$ is nonconvex; following \cite{lian2026asr}, it is linearized at the previous iterate, and the problem is solved as a sequence of second-order cone programs. The radial direction is fixed at the unit direction of the previous iterate, so that the range, the approach speed, and every chord of the braking envelope are linear in the decision variables. Both bounds $\bar f_{\mathrm{pl}}$ and $\bar f_{0}$ lie below the per-axis bound $\fmax$ and leave a margin for tracking.
 
 While the execution layer is in $\modeS$ or $\modeH$, the entry condition is checked every $\Tm$ once $\rho\le\rho_{\mathrm{E}}$ and $\vmg\ge v_{\mathrm{mg},\min}$. The arrival time is the earliest
 \begin{equation}\label{eq:entry}
@@ -146,7 +146,7 @@ While the execution layer is in $\modeS$ or $\modeH$, the entry condition is che
 \end{equation}
 where $\Tset$ is a finite set of candidate arrival times. If \eqref{eq:entry} has a solution, the entry transfer starts toward $\hat{\brho}_{\mathrm{m}}(t+\tau_{\mathrm{e}})$. The gate acts on the predicted angle at the arrival, not at the start of the transfer, so that an entry can begin while the port still faces away; the thresholds $\rho_{\mathrm{E}}$ and $v_{\mathrm{mg},\min}$ only limit the number of planner calls, and feasibility is decided by Problem~2.
 
-Because the truth motion of the target departs from the prediction \eqref{eq:pred} and tracking is imperfect, the entry plan is retained during the transfer only while the tracking deviation stays within a tolerance; otherwise it is re-solved toward the original arrival instant. If this fails, entry re-timing tries, in this order, the arrival instants delayed by a few seconds with the bound $\bar f_{0}$ and then the original and the delayed instants with a larger thrust bound, all no later than $\te$ (Fig.~\ref{fig:rwg}(c)). The first feasible candidate is adopted; if none is feasible, the entry is lost and the mode switches to $\modeH$. For a given state, the candidates contain the original arrival instant and a larger bound only enlarges the feasible set of \eqref{eq:plan}, so re-timing retains every entry that the re-plan to the original instant would find; when that re-plan fails, it replaces abandoning the pass, which costs about one spin period, by a re-plan within the same pass.
+Because the truth motion of the target departs from the prediction \eqref{eq:pred} and tracking is imperfect, the entry plan is retained during the transfer only while the tracking deviation stays within a tolerance; otherwise it is re-solved toward the original arrival instant. If this fails, entry re-timing attempts to recover a feasible entry near the original window before the pass is abandoned. It tries, in this order, the arrival instants delayed by a few seconds with the bound $\bar f_{0}$ and then the original and the delayed instants with a larger thrust bound, all no later than $\te$ (Fig.~\ref{fig:rwg}(c)). The first feasible candidate is adopted; if none is feasible, the entry is lost and the mode switches to $\modeH$. For a given state, the candidates contain the original arrival instant and a larger bound only enlarges the feasible set of \eqref{eq:plan}, so re-timing retains every entry that the re-plan to the original instant would find; when that re-plan fails, it replaces abandoning the pass, which costs about one spin period, by a re-plan within the same pass.
 
 \subsection{Constrained Execution Layer}\label{sec:executor}
 
@@ -162,4 +162,4 @@ The near-field MPC computes the full control wrench $\vect{u}=[\bG^{\T},\bff^{\T
 & \vect{0}\le\vect{\varepsilon}\le\bar\varepsilon\vect{1},
 \end{aligned}
 \end{equation}
-where $\tilde{\vect{q}}_{n}=\vect{q}_{n}-\vect{q}_{n}^{\mathrm{ref}}$, $\vect{W}$ normalizes the state errors by physical scales, $(\vect{A},\vect{B},\vect{d}_{0})$ is the discretized linearization of the relative dynamics at the current state, and $\bar{\vect{u}}$ stacks the wrench bounds $\Gmax$ and $\fmax$. The reference $\vect{q}_{n}^{\mathrm{ref}}$ follows the plan of the current mode and points the boresight at the port, and at the docking attitude in the descent. The margins $\vect{h}_{n}$ linearize the constraints of Table~\ref{tab:constraints} about the predicted trajectory, with the approach cone approximated by an eight-faced polyhedron and tightened by a small margin; the bounded slack $\vect{\varepsilon}$ softens them, and constraint satisfaction is judged on the true trajectory. The planning level of the execution layer thus predicts, on \eqref{eq:pred} and \eqref{eq:di}, which mode events an intent leads to, and the controllers realize the plans on the true dynamics. Section~\ref{sec:ecc} uses the former to coordinate the decisions taken over the horizon of a pass.
+where $\tilde{\vect{q}}_{n}=\vect{q}_{n}-\vect{q}_{n}^{\mathrm{ref}}$, $\vect{W}$ normalizes the state errors by physical scales, $(\vect{A},\vect{B},\vect{d}_{0})$ is the discretized linearization of the relative dynamics at the current state, and $\bar{\vect{u}}$ stacks the wrench bounds $\Gmax$ and $\fmax$. The position part of the reference $\vect{q}_{n}^{\mathrm{ref}}$ follows the plan of the current mode; its attitude part points the boresight at the port during stage flight and entry and tracks the docking attitude $\bR_{\mathrm{cap}}$ in the descent. The margins $\vect{h}_{n}$ linearize the constraints of Table~\ref{tab:constraints} about the predicted trajectory, with the approach cone approximated by an eight-faced polyhedron and tightened by a small margin; the slack vector $\vect{\varepsilon}$, weighted by $w_{\varepsilon}$ and bounded by $\bar\varepsilon$, softens them, and constraint satisfaction is judged on the true trajectory. The planning level of the execution layer thus predicts, on \eqref{eq:pred} and \eqref{eq:di}, which mode events an intent leads to, and the controllers realize the plans on the true dynamics. Section~\ref{sec:ecc} uses the former to coordinate the decisions taken over the horizon of a pass.

@@ -40,7 +40,7 @@
 \newcommand{\modeband}[3]{\fill[#3,opacity=0.13] ({axis cs:#1,1}|-{rel axis cs:0,0}) rectangle ({axis cs:#2,1}|-{rel axis cs:0,1});}
 % \vtime{t}{style}: vertical event line over the full height of a time-history axis
 \newcommand{\vtime}[2]{\draw[#2] ({axis cs:#1,1}|-{rel axis cs:0,0}) -- ({axis cs:#1,1}|-{rel axis cs:0,1});}
-% common style of the stacked time histories of the representative cases
-\pgfplotsset{casestack/.style={resstyle,scale only axis,width=4.15cm,height=1.22cm,xmin=0,xmax=180,xtick={0,40,80,120,160},grid=none,
-  ylabel style={yshift=-3pt},ytick pos=left,xtick pos=bottom,yticklabel style={/pgf/number format/fixed}}}
-\newcommand{\caseAev}{\input{data/caseA_modes}\vtime{143.6}{black}\vtime{176.2}{black,densely dotted}}
+% common style of the time histories of the representative cases (scale-only axes, 7--8 pt text)
+\pgfplotsset{casestyle/.style={resstyle,scale only axis,grid=none,ytick pos=left,xtick pos=bottom,
+  ylabel style={yshift=-2pt},yticklabel style={/pgf/number format/fixed},xlabel style={yshift=2pt}}}
+\newcommand{\caseAev}{\input{data/caseA_modes}\vtime{143.6}{black,thin}}
