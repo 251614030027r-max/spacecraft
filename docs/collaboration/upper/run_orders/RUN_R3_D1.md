@@ -48,6 +48,8 @@ ECC_NO_CORE 与 SAC_MPC 只跑无开关的一条。评估逐回合确定；中�
 
 ## 3. 读出与提交（汇总到一台机器）
 
+读出前检出科学 `304bb6df`（评估仍在 `4ee3fc47`，不要在评估运行中切换；读出只多一列 `timeout_in_cone`）。
+
 ```
 python -B -m experiments.final diag --root <ROOT_D> [--root <ROOT_D2> ...] --root <ROOT_F> [--root <ROOT_F2> ...] --output evidence\R3_DIAG
 ```
