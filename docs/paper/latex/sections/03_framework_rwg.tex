@@ -28,7 +28,7 @@ Mode & Entered when & Translation reference\\
 \hline
 Stage flight $\modeS$ & Stage plan of the new intent is feasible & Stage plan\\
 Hold $\modeH$ & Stage plan infeasible, tracking deviation above tolerance, entry lost, or descent region left & Inertial position at hold onset\\
-Entry transfer $\modeE$ & Entry condition \eqref{eq:entry} holds & Entry plan\\
+Entry transfer $\modeE$ & Entry condition \eqref{eq:entry} holds, or long-range entry launched by the coordination & Entry plan\\
 Terminal descent $\modeD$ & Inside $\Km$, inside the operation sphere, or inside $\Kset$ within the descent range & Lead point on the port axis\\
 \hline
 \end{tabular*}
@@ -37,7 +37,7 @@ Terminal descent $\modeD$ & Inside $\Km$, inside the operation sphere, or inside
 \raggedright\footnotesize The decision layer acts only in $\modeS$ and $\modeH$.
 \end{table}
 
-The decision state $x\in\Xset$ comprises the joint state $X$, the time $t$, the propellant used $\Delta v$, the task parameters, and the internal state of the execution layer (mode, hold reference, and record of the previous stage). Executing an intent $\ba$ from $x$ until the next decision induces the macro-step kernel $\PE(x',r\,|\,x,\ba)$ of the execution layer, where $r$ is the reward of the macro step (Section~\ref{sec:mdp}). The execution layer of this article is guided by RWG (Sections~\ref{sec:geometry} and~\ref{sec:entry}) and completed by constrained controllers (Section~\ref{sec:executor}); Fig.~\ref{fig:framework} shows the resulting framework together with the coordination of Section~\ref{sec:ecc}.
+The decision state $x\in\Xset$ comprises the joint state $X$, the time $t$, the propellant used $\Delta v$, the task parameters, and the internal state of the execution layer (mode, hold reference, and record of the previous stage). Executing an object $\bb$ from $x$ until the next decision induces the macro-step kernel $\PE(x',r\,|\,x,\bb)$ of the execution layer, where $r$ is the reward of the macro step (Section~\ref{sec:mdp}); the executed object is either an intent $\bb\in\Aset$ or the launch command of a long-range entry issued by the coordination of Section~\ref{sec:screening}. The execution layer of this article is guided by RWG (Sections~\ref{sec:geometry} and~\ref{sec:entry}) and completed by constrained controllers (Section~\ref{sec:executor}); Fig.~\ref{fig:framework} shows the resulting framework together with the coordination of Section~\ref{sec:ecc}.
 
 \begin{figure*}[t]
 \centering
@@ -110,32 +110,32 @@ The stage goal is formed from the current state $(\brho,\bv)$ and $\bv^{\star}$ 
 \brho_{\mathrm{g}}&=\brho+\tfrac{h}{2}(\bv+\bv_{\mathrm{g}}),
 \end{aligned}
 \end{equation}
-where $\bar v_{\mathrm{st}}=0.7\bar f_{\mathrm{pl}}h/\mC$ is the velocity change attainable within one stage at $70\%$ of the planning thrust bound $\bar f_{\mathrm{pl}}$ of Section~\ref{sec:entry}. The adjustment $\mathcal{P}$ reduces only the inward radial component of its argument, in two passes, until
+where the single-stage velocity-change bound $\bar v_{\mathrm{st}}=0.7\bar f_{\mathrm{pl}}h/\mC$ is the velocity change of one stage at $70\%$ of the stage thrust bound $\bar f_{\mathrm{pl}}$ of Section~\ref{sec:entry}. The adjustment $\mathcal{P}$ reduces only the inward radial component of its argument, in two passes, to promote the conditions
 \begin{equation}\label{eq:project}
 \begin{aligned}
 &\norm{\brho_{\mathrm{g}}}\ge\rhom+\ell_{\mathrm{m}},\\
 &-\frac{\brho_{\mathrm{g}}^{\T}\bv_{\mathrm{g}}}{\norm{\brho_{\mathrm{g}}}}\le\vb\bigl(\norm{\brho_{\mathrm{g}}}-\rhos\bigr)-v_{\mathrm{mg},\min}
 \end{aligned}
 \end{equation}
-hold, so that the goal of every stage lies outside the mouth region, with a clearance of $\rhom-\rhos$, and keeps a radial braking margin of at least $v_{\mathrm{mg},\min}$. The pair $(\brho_{\mathrm{g}},\bv_{\mathrm{g}})$ is the soft terminal target of the stage plan, and the operation sphere is entered through an entry transfer or the terminal descent.
+which place the goal outside the mouth region and keep a radial braking margin of at least $v_{\mathrm{mg},\min}$. The pair $(\brho_{\mathrm{g}},\bv_{\mathrm{g}})$ is a soft terminal target of the stage plan; whether the stage is feasible is decided by the planner below, and the operation sphere is entered only through an entry transfer or the terminal descent.
 
 \subsection{Dynamic Entry and Entry Re-Timing}\label{sec:entry}
 
 A usable pass must still be converted into an entry and preserved while the entry is flown. Both the stage plan and the entry plan are instances of the following subproblem on the double integrator \eqref{eq:di}.
 
-\noindent\textit{Problem~2 (Planning subproblem):} Given the state $(\brho_{0},\bv_{0})$ at time $t$, a horizon $T$ divided into $N$ equal intervals, and a thrust bound $\bar f$,
+\noindent\textit{Problem~2 (Planning subproblem):} Given the state $(\brho_{0},\bv_{0})$ at time $t$, a horizon $T$ divided into $N$ equal intervals, and a bound $\bar F$ on the Euclidean norm of the planned thrust,
 \begin{equation}\label{eq:plan}
 \begin{aligned}
 \min_{\bff_{\mathrm{I},0},\dots,\bff_{\mathrm{I},N-1}}\ \ & L_{\mathrm{f}}(\brho_{N},\bv_{N})+w\sum_{n=0}^{N-1}\frac{\norm{\bff_{\mathrm{I},n}}T}{N\mC}\\
 \text{s.t.}\ \ & \eqref{eq:di}\text{ with }\bff_{\mathrm{I}}\equiv\bff_{\mathrm{I},n}\text{ on interval }n,\\
-& \norm{\bff_{\mathrm{I},n}}\le\bar f,\ \ \rho\ge\rhom,\ \ \vmg\ge0,
+& \norm{\bff_{\mathrm{I},n}}\le\bar F,\ \ \rho\ge\rhom,\ \ \vmg\ge0,
 \end{aligned}
 \end{equation}
-where the path constraints, together with an upper range bound below $\bar\rho$, are imposed at the nodes and at three interior points of every interval, and a small penalty on ranges above $20$~m is added to the cost. The stage plan uses $T=h$, the planning bound $\bar f=\bar f_{\mathrm{pl}}$, and a weighted quadratic distance of $(\brho_{N},\bv_{N})$ to the stage goal \eqref{eq:goal} as the terminal cost $L_{\mathrm{f}}$; it is accepted after the range and the envelope have been checked every $\Delta t$ along the plan, and it is re-solved with enlarged margins otherwise. The entry plan uses an arrival time $T=\tau$, the entry bound $\bar f=\bar f_{0}$, $L_{\mathrm{f}}=0$, $w=1$, and the terminal condition
+where the path constraints, together with an upper range bound below $\bar\rho$, are imposed at the nodes and at three interior points of every interval, and a small soft penalty on ranges above $20$~m is added to the cost. The stage plan uses $T=h$, the stage bound $\bar F=\bar f_{\mathrm{pl}}$, and a weighted quadratic distance of $(\brho_{N},\bv_{N})$ to the stage goal \eqref{eq:goal} as the terminal cost $L_{\mathrm{f}}$, so that its terminal state is a soft target; it is accepted after the range and the envelope have been checked every $\Delta t$ along the plan, and it is re-solved with enlarged margins otherwise. The entry plan uses an arrival time $T=\tau$, the entry bound $\bar F=\bar f_{0}$, $L_{\mathrm{f}}=0$, $w=1$, and the hard terminal condition
 \begin{equation}\label{eq:entryterm}
 \brho_{N}=\hat{\brho}_{\mathrm{m}}(t+\tau),\qquad \bv_{N}=\dot{\hat{\brho}}_{\mathrm{m}}(t+\tau)-v_{\mathrm{in}}\,\hat{\bn}(t+\tau),
 \end{equation}
-with $\hat{\bn}=\hat{\bR}_{\mathrm{T}}\bnp$, which delivers the chaser to the predicted mouth point moving with it and closing at a small speed $v_{\mathrm{in}}$ along the port axis. The keep-out sphere $\rho\ge\rhom$ is nonconvex; following \cite{lian2026asr}, it is linearized at the previous iterate, and the problem is solved as a sequence of second-order cone programs. The radial direction is fixed at the unit direction of the previous iterate, so that the range, the approach speed, and every chord of the braking envelope are linear in the decision variables. Both bounds $\bar f_{\mathrm{pl}}$ and $\bar f_{0}$ lie below $\fmax$ and leave a margin for tracking.
+with $\hat{\bn}=\hat{\bR}_{\mathrm{T}}\bnp$, which delivers the chaser to the predicted mouth point moving with it and closing at a small speed $v_{\mathrm{in}}$ along the port axis. The keep-out sphere $\rho\ge\rhom$ is nonconvex; following \cite{lian2026asr}, it is linearized at the previous iterate, and the problem is solved as a sequence of second-order cone programs. The radial direction is fixed at the unit direction of the previous iterate, so that the range, the approach speed, and every chord of the braking envelope are linear in the decision variables. Both bounds $\bar f_{\mathrm{pl}}$ and $\bar f_{0}$ lie below the per-axis bound $\fmax$ and leave a margin for tracking.
 
 While the execution layer is in $\modeS$ or $\modeH$, the entry condition is checked every $\Tm$ once $\rho\le\rho_{\mathrm{E}}$ and $\vmg\ge v_{\mathrm{mg},\min}$. The arrival time is the earliest
 \begin{equation}\label{eq:entry}
@@ -146,7 +146,7 @@ While the execution layer is in $\modeS$ or $\modeH$, the entry condition is che
 \end{equation}
 where $\Tset$ is a finite set of candidate arrival times. If \eqref{eq:entry} has a solution, the entry transfer starts toward $\hat{\brho}_{\mathrm{m}}(t+\tau_{\mathrm{e}})$. The gate acts on the predicted angle at the arrival, not at the start of the transfer, so that an entry can begin while the port still faces away; the thresholds $\rho_{\mathrm{E}}$ and $v_{\mathrm{mg},\min}$ only limit the number of planner calls, and feasibility is decided by Problem~2.
 
-Because the truth motion of the target departs from the prediction \eqref{eq:pred} and tracking is imperfect, the entry plan is retained during the transfer only while the tracking deviation stays within a tolerance; otherwise it is re-solved toward the original arrival instant. If this fails, entry re-timing tries, in this order, the arrival instants delayed by a few seconds with the bound $\bar f_{0}$ and then the original and the delayed instants with a larger thrust bound, all no later than $\te$ (Fig.~\ref{fig:rwg}(c)). The first feasible candidate is adopted; if none is feasible, the entry is lost and the mode switches to $\modeH$. For a given state, the candidates contain the original arrival instant and a larger bound only enlarges the feasible set of \eqref{eq:plan}, so re-timing retains every entry that the re-plan to the original instant would find; when that re-plan fails, it replaces abandoning the pass, which costs about one spin period, by a re-plan within the same pass.
+Because the truth motion of the target departs from the prediction \eqref{eq:pred} and tracking is imperfect, the entry plan is retained during the transfer only while the tracking deviation stays within a tolerance; otherwise it is re-solved toward the original arrival instant. If this fails, entry re-timing attempts to recover a feasible entry near the original window before the pass is abandoned. It tries, in this order, the arrival instants delayed by a few seconds with the bound $\bar f_{0}$ and then the original and the delayed instants with a larger thrust bound, all no later than $\te$ (Fig.~\ref{fig:rwg}(c)). The first feasible candidate is adopted; if none is feasible, the entry is lost and the mode switches to $\modeH$. For a given state, the candidates contain the original arrival instant and a larger bound only enlarges the feasible set of \eqref{eq:plan}, so re-timing retains every entry that the re-plan to the original instant would find; when that re-plan fails, it replaces abandoning the pass, which costs about one spin period, by a re-plan within the same pass.
 
 \subsection{Constrained Execution Layer}\label{sec:executor}
 
@@ -162,4 +162,4 @@ The near-field MPC computes the full control wrench $\vect{u}=[\bG^{\T},\bff^{\T
 & \vect{0}\le\vect{\varepsilon}\le\bar\varepsilon\vect{1},
 \end{aligned}
 \end{equation}
-where $\tilde{\vect{q}}_{n}=\vect{q}_{n}-\vect{q}_{n}^{\mathrm{ref}}$, $\vect{W}$ normalizes the state errors by physical scales, $(\vect{A},\vect{B},\vect{d}_{0})$ is the discretized linearization of the relative dynamics at the current state, and $\bar{\vect{u}}$ stacks the wrench bounds $\Gmax$ and $\fmax$. The reference $\vect{q}_{n}^{\mathrm{ref}}$ follows the plan of the current mode and points the boresight at the port, and at the docking attitude in the descent. The margins $\vect{h}_{n}$ linearize the constraints of Table~\ref{tab:constraints} about the predicted trajectory, with the approach cone approximated by an eight-faced polyhedron and tightened by a small margin; the bounded slack $\vect{\varepsilon}$ softens them, and constraint satisfaction is judged on the true trajectory. The planning level of the execution layer thus predicts, on \eqref{eq:pred} and \eqref{eq:di}, which mode events an intent leads to, and the controllers realize the plans on the true dynamics. Section~\ref{sec:ecc} uses the former to coordinate the decisions taken over the horizon of a pass.
+where $\tilde{\vect{q}}_{n}=\vect{q}_{n}-\vect{q}_{n}^{\mathrm{ref}}$, $\vect{W}$ normalizes the state errors by physical scales, $(\vect{A},\vect{B},\vect{d}_{0})$ is the discretized linearization of the relative dynamics at the current state, and $\bar{\vect{u}}$ stacks the wrench bounds $\Gmax$ and $\fmax$. The position part of the reference $\vect{q}_{n}^{\mathrm{ref}}$ follows the plan of the current mode; its attitude part points the boresight at the port during stage flight and entry and tracks the docking attitude $\bR_{\mathrm{cap}}$ in the descent. The margins $\vect{h}_{n}$ linearize the constraints of Table~\ref{tab:constraints} about the predicted trajectory, with the approach cone approximated by an eight-faced polyhedron and tightened by a small margin; the slack vector $\vect{\varepsilon}$, weighted by $w_{\varepsilon}$ and bounded by $\bar\varepsilon$, softens them, and constraint satisfaction is judged on the true trajectory. The planning level of the execution layer thus predicts, on \eqref{eq:pred} and \eqref{eq:di}, which mode events an intent leads to, and the controllers realize the plans on the true dynamics. Section~\ref{sec:ecc} uses the former to coordinate the decisions taken over the horizon of a pass.

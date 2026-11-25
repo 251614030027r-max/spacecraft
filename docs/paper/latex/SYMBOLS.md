@@ -25,24 +25,25 @@ bar = upper bound; tilde = transformed; Δ = increment only; upright subscripts 
 | ρ_s, ℓ_m, K_m | operation-sphere radius, mouth band, mouth region | II-B |
 | v_b(d), v_f, v_mg | braking envelope of distance d, envelope floor speed, radial braking margin | II-B |
 | S, d_clr, ϑ_fov, v̄_m, ρ̄ | safe set, clearance, field-of-view half-angle, speed bound in K_m, range bound | II-B |
+| R_cap, e_p, e_v, e_att, e_ω | docking attitude in F_T; position, velocity, attitude, angular-velocity capture errors (eq. errors) | II-B |
 | S_cap, t_c, T_hold | capture set, capture time (∞ if not captured), holding time | II-B |
 | T_d, B̄, c_t, c_f | deadline, budget, time and propellant weights | II-C |
 | t̄_e, T_r | latest admissible entry time, terminal reserve | II-C |
-| τ_p, η | time to next pass center, opportunity margin | II-C |
+| τ_p = φ/Ω, η | time to next pass center (fixed line of sight), nominal opportunity margin | II-C |
 | h, a=[a_p,a_z], A | stage duration, stage intent, action box | III-A |
 | T_ml, T_pr | mode-logic period, mode-prediction horizon | III-A |
 | ρ_m, ρ_m(t) (bold) | mouth radius (also planning keep-out radius), mouth point | III-A |
 | S, H, E, D (upright) | execution modes | III-A |
 | x, 𝒳 | decision state, its space | III-A |
-| P_E, r | macro-step kernel, macro-step reward | III-A |
+| P_E, b, r | macro-step kernel, executed object (intent or launch command), macro-step reward | III-A |
 | β, λ, δ, φ | sweep-cone half-angle, line-of-sight polar angle, latitude offset, phase | III-B |
 | e_r, e_pol, e_az | spin-adapted basis | III-B |
 | ψ, ψ̂(τ), ψ̄, φ_w | current and predicted port–line-of-sight angle, entry gate, window half-width | III-B |
 | v*, v_cl, v_lat, v_sw, v_0, v_a | target velocity and its components, intent speed offset/scale | III-B |
 | k_λ, v̄_lat | latitude gain, saturation | III-B |
 | v_r, v_pol, v_az, κ | velocity components, phase-rate ratio | III-B |
-| v_g, ρ_g, 𝒫, v̄_st, v_mg,min | stage goal, safety projection, stage authority, margin threshold | III-B |
-| T, N, Δt_pl, f̄_pl, n, f_I | planning horizon, intervals, interval length, planning bound, interval/step index, inertial-axes force | II-A, III-C |
+| v_g, ρ_g, 𝒫, v̄_st, v_mg,min | stage goal, two-pass radial adjustment, single-stage velocity-change bound, margin threshold | III-B |
+| T, N, F̄, f̄_pl, n, f_I | planning horizon, intervals, 2-norm planning bound (generic), stage bound, interval index, inertial-axes force | II-A, III-C |
 | L_f, w | terminal cost, propellant weight in Problem 2 | III-C |
 | v_in, n̂ | entry closing speed, predicted port direction | III-C |
 | 𝒯, τ_e, ρ_E | arrival times, entry arrival time, entry range | III-C |
@@ -58,6 +59,5 @@ bar = upper bound; tilde = transformed; Δ = increment only; upright subscripts 
 | 𝒯_L, τ_L, launch(τ_L), 𝒳_lp | long-range arrival times, long-range arrival time, launch command, last-usable-pass states | IV-B |
 | P_C, 𝓑^π, Q^π_C, Υ | coordinated kernel, soft Bellman operator, its fixed point; Υ feedback law in Problem 1 (II-C) | IV-C |
 | α, Q_tg, 𝓛, ℬ, U | SAC temperature, critic target, losses, replay buffer, soft value | IV-C |
-| e_p, e_v, e_att, e_ω | position, velocity, attitude, angular-velocity errors w.r.t. the capture pose | V-C |
-| m_cor, m_ax, m_v, ϑ_v | corridor, axial-braking, relative-speed margins; boresight–port view angle (Fig. 7) | V-C |
+| ϑ_v | boresight–port view angle (Fig. 8) | V-C |
 | k_1, k_2, φ_r, c_w | auxiliary unit vectors, line-of-sight azimuth, cosine argument (proofs) | App |

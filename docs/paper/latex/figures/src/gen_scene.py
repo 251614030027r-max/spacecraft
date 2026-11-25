@@ -75,7 +75,7 @@ gen = np.cos(np.radians(35))*np.array([-1.0, 0, 0]) + np.sin(np.radians(35))*np.
 arc = [port + 4.2*(np.cos(np.radians(s))*np.array([-1.0, 0, 0]) + np.sin(np.radians(s))*np.array([0, 0, -1.0])) for s in np.linspace(0, 35, 20)]
 w(r"\draw[blue!70!black,densely dashed] " + f(P(port)) + " -- " + f(P(port + 5.4*gen)) + ";")
 w(r"\draw[blue!70!black] " + " -- ".join(f(P(p)) for p in arc) + ";")
-ax_, ay_ = P(port + 4.75*(np.cos(np.radians(21))*np.array([-1.0, 0, 0]) + np.sin(np.radians(20))*np.array([0, 0, -1.0])))
+ax_, ay_ = P(port + 3.55*(np.cos(np.radians(21))*np.array([-1.0, 0, 0]) + np.sin(np.radians(20))*np.array([0, 0, -1.0])))
 w(rf"\node[blue!70!black,inner sep=1pt] at ({ax_:.3f},{ay_:.3f}) {{$\vartheta_{{\mathrm{{c}}}}$}};")
 # port axis and points
 w(r"\draw[->,thick,blue!70!black] " + f(P(port)) + " -- " + f(P(port + np.array([-2.9, 0, 0]))) + r" node[anchor=south east,inner sep=1pt] {$\bnp$};")
@@ -114,7 +114,9 @@ lab(port, r"$\bpport$", "north", 0.12, -0.20)
 lab(cap, r"$\bpcap$", "south", 0.0, 0.10, "red!75!black,")
 lab(mouth, r"$\brhom$", "south", 0.05, 0.08, "blue!70!black,")
 lab(cbase + np.array([0, 0, 4.9]), r"approach cone $\Kset$", "south", 0.0, 0.0, "blue!70!black,")
-mx, my = P(m1[60]); lx, ly = mx + 0.75, my - 1.05
+_q1 = np.array(P(m1[20])); _q0 = min((np.array(P(p)) for p in m0), key=lambda q: np.linalg.norm(q - _q1))
+mx, my = (_q0 + _q1) / 2; lx, ly = mx + 1.25, my - 1.85
+w(rf"\fill[blue!70!black] ({mx:.3f},{my:.3f}) circle (0.9pt);")
 w(rf"\draw[blue!70!black,thin] ({mx:.3f},{my:.3f}) -- ({lx-0.05:.3f},{ly+0.08:.3f});")
 w(rf"\node[blue!70!black,anchor=north west,inner sep=1pt,align=left] at ({lx-0.1:.3f},{ly+0.12:.3f}) {{mouth region $\Km$\\(band width $\ell_{{\mathrm{{m}}}}$)}};")
 lab(np.array([0, 0, 0]), r"operation sphere\\(radius $\rhos$)", "south west", 1.45, 1.95, "gray!80!black,")
