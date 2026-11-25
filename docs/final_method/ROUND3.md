@@ -109,3 +109,5 @@ v3 规则：`coord_rule='launch_first'`、`launch_lead_s=32`（直接入口优�
 | `r3b_hs_aligned_slips` | 高自旋，对准优先 + 重定时延到 16 s |
 
 ECC 与 SAC_MPC 各 4 组 × 3 种子 × 96 = 2304 回合。不设判据；有效（高自旋下明显减少入口丢失、且正式转速下不降）则进入开发轮 B，与 v3 一起训练检验。
+
+**中性核对（第 2 节代码，沙箱）：** 默认参数下与 D1 评估提交 `4ee3fc47` 在 3 个带协调的回合上逐位相同（含 2 次直接入口、4 次修正）；`ECC_V3B` 训练冒烟通过，清单记录 `coord_rule`、`launch_lead_s`、`intervention_cost`；全量 pytest 187 passed。
