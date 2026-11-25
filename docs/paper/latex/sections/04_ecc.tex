@@ -1,6 +1,6 @@
 \section{EXECUTION-FEEDBACK CLOSED-LOOP COORDINATION}\label{sec:ecc}
 
-This section addresses the second difficulty of Section~\ref{sec:mission}. Whether an intent is converted into an entry is resolved by the planning, gates, and tracking of the execution layer, whereas the policy decides once per stage whether a pass of $26$--$33$~s can still be met. ECC lets the execution layer predict, at every decision, the opportunities it can realize, selects the executed object from the proposal and these opportunities by one rule, and trains the policy on the resulting closed loop.
+This section addresses the second difficulty of Section~\ref{sec:mission}. It formulates the decision process of the policy, defines the coordination map from the opportunities predicted by the execution layer, and shows how SAC learns in the coordinated closed loop.
 
 \subsection{Macro-Step Decision Process}\label{sec:mdp}
 
@@ -28,7 +28,7 @@ During training only, the reward is shaped with a potential \cite{ng1999shaping}
 \Phi(x)&=-\min\bigl\{\bar\Phi,\ c_{\mathrm{t}}T_{\mathrm{go}}(x)\bigr\},
 \end{aligned}
 \end{equation}
-with $\Phi=0$ at termination. The reachability time $T_{\mathrm{go}}$ is the earliest nominal arrival at the mouth point that the two levers of RWG can reach. Let $\tau_{\mathrm{m}}(x)$ be the nominal time needed to close to the entry range $\rho_{\mathrm{E}}$ at the largest stage speed admitted by the braking envelope, while the latitude law \eqref{eq:vlat} brings $|\dlat|$ within $\psig$, plus the shortest entry arrival time. Then
+with $\Phi=0$ at termination. The nominal time-to-go $T_{\mathrm{go}}$ is the earliest nominal arrival at the mouth point that the two levers of RWG can reach. Let $\tau_{\mathrm{m}}(x)$ be the nominal time needed to close to the entry range $\rho_{\mathrm{E}}$ at the largest stage speed admitted by the braking envelope, while the latitude law \eqref{eq:vlat} brings $|\dlat|$ within $\psig$, plus the shortest entry arrival time. Then
 \begin{equation}\label{eq:tgo}
 \begin{aligned}
 T_{\mathrm{go}}(x)=\min\Bigl\{&\tau\ge\tau_{\mathrm{m}}(x):\ t+\tau\le\te,\\
@@ -81,7 +81,7 @@ It is evaluated only at the last usable pass,
 \begin{equation}\label{eq:lastpass}
 \Xlp=\bigl\{x\in\Xset:\ \taup\le h,\ \ t+\taup+\Ts>\te\bigr\},
 \end{equation}
-when the port passes within the current stage and the following pass falls after $\te$; the arrival bound in \eqref{eq:longentry} keeps the entry itself before $\te$. The launch command $\launch(\tauL)$ starts the entry transfer toward $\hat{\brho}_{\mathrm{m}}(t+\tauL)$, which then proceeds as any entry transfer.
+when the predicted pass falls within the current stage and the following one after $\te$; the arrival bound in \eqref{eq:longentry} keeps the entry itself before $\te$. The launch command $\launch(\tauL)$ starts the entry transfer toward $\hat{\brho}_{\mathrm{m}}(t+\tauL)$, which then proceeds as any entry transfer.
 
 \textit{3) Coordination rule:} The executed object is
 \begin{equation}\label{eq:correction}

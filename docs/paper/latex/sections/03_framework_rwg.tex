@@ -97,7 +97,7 @@ Under the prediction \eqref{eq:pred}, let $\sin\lambda>0$ and resolve the relati
 \dot\rho=v_{\mathrm{r}},\quad \dot{\dlat}=-\frac{v_{\mathrm{pol}}}{\rho},\quad \dot\varphi=-\Omega-\frac{v_{\mathrm{az}}}{\rho\sin\lambda}.
 \end{equation}
 \item[(ii)] If $v_{\mathrm{pol}}=v_{\mathrm{lat}}$ follows \eqref{eq:vlat}, then $|\dlat|$ decreases monotonically, enters the set $|\dlat|\le\bar v_{\mathrm{lat}}/(k_{\lambda}\bar\rho)$ in finite time, and decays exponentially with rate $k_{\lambda}$ thereafter.
-\item[(iii)] If $\rho$ and $\lambda$ are constant and $v_{\mathrm{az}}=v_{\mathrm{sw}}$ is constant with $\kappa=v_{\mathrm{sw}}/(\Omega\rho\sin\lambda)>-1$, then the phase decreases at the rate $\Omega(1+\kappa)$, and the next pass occurs after $\varphi/(\Omega(1+\kappa))$ and lasts $2\phw/(\Omega(1+\kappa))$.
+\item[(iii)] If $\rho$ and $\lambda$ are constant and $v_{\mathrm{az}}=v_{\mathrm{sw}}$ is constant with $\kappa=v_{\mathrm{sw}}/(\Omega\rho\sin\lambda)>-1$, then the phase decreases at the rate $\Omega(1+\kappa)$, and the next pass occurs after $\varphi/(\Omega(1+\kappa))$; if, in addition, $|\dlat|\le\psig$, the window of Lemma~\ref{lem:window} lasts $2\phw/(\Omega(1+\kappa))$.
 \end{enumerate}
 \end{proposition}
 
@@ -144,7 +144,7 @@ While the execution layer is in $\modeS$ or $\modeH$, the entry condition is che
 &\text{\eqref{eq:plan}--\eqref{eq:entryterm} feasible with }\bar f_{0}\bigr\},
 \end{aligned}
 \end{equation}
-where $\Tset$ is a finite set of candidate arrival times. If \eqref{eq:entry} has a solution, the entry transfer starts toward $\hat{\brho}_{\mathrm{m}}(t+\tau_{\mathrm{e}})$. The gate acts on the predicted angle at the arrival, not at the start of the transfer, so that an entry can begin while the port still faces away; the thresholds $\rho_{\mathrm{E}}$ and $v_{\mathrm{mg},\min}$ only limit the number of planner calls, and feasibility is decided by Problem~2.
+where $\Tset$ is a finite set of candidate arrival times. If \eqref{eq:entry} has a solution, the entry transfer starts toward $\hat{\brho}_{\mathrm{m}}(t+\tau_{\mathrm{e}})$. The gate acts on the predicted angle at the arrival, not at the start of the transfer, so that an entry can begin while the port still faces away; the thresholds $\rho_{\mathrm{E}}$ and $v_{\mathrm{mg},\min}$ delimit the region in which entries are attempted and thereby reduce planner calls, while feasibility is decided by Problem~2.
 
 Because the truth motion of the target departs from the prediction \eqref{eq:pred} and tracking is imperfect, the entry plan is retained during the transfer only while the tracking deviation stays within a tolerance; otherwise it is re-solved toward the original arrival instant. If this fails, entry re-timing attempts to recover a feasible entry near the original window before the pass is abandoned. It tries, in this order, the arrival instants delayed by a few seconds with the bound $\bar f_{0}$ and then the original and the delayed instants with a larger thrust bound, all no later than $\te$ (Fig.~\ref{fig:rwg}(c)). The first feasible candidate is adopted; if none is feasible, the entry is lost and the mode switches to $\modeH$. For a given state, the candidates contain the original arrival instant and a larger bound only enlarges the feasible set of \eqref{eq:plan}, so re-timing retains every entry that the re-plan to the original instant would find; when that re-plan fails, it replaces abandoning the pass, which costs about one spin period, by a re-plan within the same pass.
 

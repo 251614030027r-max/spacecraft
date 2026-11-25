@@ -24,11 +24,11 @@
   \node[draw=actcol,rounded corners=3pt,inner sep=4pt,fit=(M)(L)(R)(cl)] (crdbox) {};
 
   % ---------------- execution layer (RWG and controllers)
-  \node[exe] (r1) at (11.7,1.8) {RWG stage goal\\and stage plan};
+  \node[exe] (r1) at (11.7,2.0) {RWG stage goal\\and stage plan};
   \node[exe] (r2) at (11.7,0.5) {Entry plan\\and re-timing};
   \node[exe] (r3) at (11.7,-0.8) {Tracking law and\\near-field MPC};
-  \draw[->] (r1) -- node[lbl,left,align=right] {entry\\condition} (r2); \draw[->] (r2) -- (r3);
-  \node[lbl,gray!40!black] (rl) at (11.7,2.55) {execution layer (Section III)};
+  \draw[->] (r1) -- node[lbl,left,align=right,xshift=-3pt,font=\scriptsize] {entry\\condition} (r2); \draw[->] (r2) -- (r3);
+  \node[lbl,gray!40!black] (rl) at (11.7,2.75) {execution layer (Section III)};
   \node[draw,gray!70!black,rounded corners=3pt,inner sep=4pt,fit=(r1)(r3)(rl)] (exebox) {};
 
   \node[blk,fill=gray!14,text width=1.6cm,minimum height=1.1cm] (dyn) at (14.95,0.5) {6-DOF\\dynamics\\on $\SE$};

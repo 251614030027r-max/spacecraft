@@ -7,12 +7,12 @@
   o/.style={draw=actcol,rounded corners=2pt,align=center,inner sep=2pt,minimum width=1.55cm,minimum height=0.8cm,fill=actfill},
   lbl/.style={font=\scriptsize,inner sep=1pt}]
   \node[q] (q1) at (0,0) {Own event?\\$\ehat(x,\ba)=1$};
-  \node[q] (q2) at (0,-1.22) {Critical set?\\$\Ga(x)\neq\emptyset$};
-  \node[q] (q3) at (0,-2.44) {Last usable pass,\\$\tauL(x)$ exists?};
+  \node[q] (q2) at (0,-1.42) {Critical set?\\$\Ga(x)\neq\emptyset$};
+  \node[q] (q3) at (0,-2.84) {Last usable pass,\\$\tauL(x)$ exists?};
   \node[o,draw=black,fill=white] (o1) at (2.55,0) {\textbf{keep}\\$\ba$};
-  \node[o] (o2) at (2.55,-1.22) {\textbf{correct}\\to $\ba^{\star}$};
-  \node[o] (o3) at (2.55,-2.44) {\textbf{launch}\\entry at $\tauL$};
-  \node[o,draw=black,fill=white,minimum height=0.6cm] (o4) at (0,-3.55) {\textbf{pass through} $\ba$};
+  \node[o] (o2) at (2.55,-1.42) {\textbf{correct}\\to $\ba^{\star}$};
+  \node[o] (o3) at (2.55,-2.84) {\textbf{launch}\\entry at $\tauL$};
+  \node[o,draw=black,fill=white,minimum height=0.6cm] (o4) at (0,-4.05) {\textbf{pass through} $\ba$};
   \draw[->,thick] (q1) -- node[lbl,above] {yes} (o1);
   \draw[->,thick] (q2) -- node[lbl,above] {yes} (o2);
   \draw[->,thick] (q3) -- node[lbl,above] {yes} (o3);
