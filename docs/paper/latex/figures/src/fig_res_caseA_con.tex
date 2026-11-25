@@ -1,0 +1,32 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\usepgfplotslibrary{groupplots}
+\begin{document}
+% Task A: constraint quantities. Range, port--line-of-sight angle from the 2-s rows; clearance, corridor margin,
+% view angle (50 deg - field-of-view margin) and speed margins every control period (0.1 s); margins drawn only
+% where their constraint applies.
+\begin{tikzpicture}[font=\footnotesize]
+\begin{groupplot}[group style={group size=1 by 3,vertical sep=0.22cm,xticklabels at=edge bottom},
+  casestyle,width=5.0cm,height=1.5cm,xmin=0,xmax=150,xtick={0,25,50,75,100,125,150},unbounded coords=jump,
+  legend style={at={(1.02,0.5)},anchor=west,legend columns=1,font=\scriptsize,row sep=-1pt},legend cell align=left]
+\nextgroupplot[ymin=0,ymax=17,ytick={0,5,10,15},ylabel={Distance (m)}]
+\caseAev
+\addplot[black,thick] table[x=t,y=range]{data/caseA_rows.dat}; \addlegendentry{$\rho$}
+\addplot[cTD3,thick] table[x=t,y=clr]{data/caseA_fine.dat}; \addlegendentry{$d_{\mathrm{clr}}$}
+\addplot[cEntry!80!black,thick,densely dashed] table[x=t,y=corr]{data/caseA_fine.dat}; \addlegendentry{corridor}
+\draw[gray,thin] (axis cs:0,0) -- (axis cs:150,0);
+\nextgroupplot[ymin=0,ymax=190,ytick={0,35,90,180},ylabel={Angle (deg)}]
+\caseAev
+\draw[cTD3,densely dashed,thin] (axis cs:0,50) -- (axis cs:150,50) node[pos=0.985,anchor=south east,inner sep=1pt,font=\scriptsize,text=cTD3] {$\vartheta_{\mathrm{fov}}$};
+\draw[black,densely dotted,thin] (axis cs:0,35) -- (axis cs:150,35) node[pos=0.25,anchor=south,inner sep=1pt,font=\scriptsize] {$\psig$};
+\addplot[black,thick] table[x=t,y=psi]{data/caseA_rows.dat}; \addlegendentry{$\psi$}
+\addplot[cTD3,thick] table[x=t,y=fov]{data/caseA_fine.dat}; \addlegendentry{$\vartheta_{\mathrm{v}}$}
+\nextgroupplot[ymin=-0.02,ymax=0.45,ytick={0,0.2,0.4},ylabel={Margin (m/s)},xlabel={Time (s)}]
+\caseAev
+\draw[gray,thin] (axis cs:0,0) -- (axis cs:150,0);
+\addplot[black,thick] table[x=t,y=rad]{data/caseA_fine.dat}; \addlegendentry{radial}
+\addplot[cTD3,thick] table[x=t,y=ax]{data/caseA_fine.dat}; \addlegendentry{axial}
+\addplot[cEntry!80!black,thick,densely dashed] table[x=t,y=tot]{data/caseA_fine.dat}; \addlegendentry{speed}
+\end{groupplot}
+\end{tikzpicture}
+\end{document}

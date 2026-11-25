@@ -1,0 +1,54 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\usepgfplotslibrary{statistics}
+\begin{document}
+% Test results (MAIN_TABLE.csv, EPISODES_WIDE.csv). (a) Outcome shares, learning methods over 576 tasks with the
+% capture rates of the three training runs (dots), MPC over 192 tasks. (b), (c) Completion time and velocity
+% increment over the tasks each method captures: median, quartiles, whiskers at 1.5 IQR, points beyond.
+\pgfplotsset{boxstyle0/.style={solid,draw=cECC,fill=cECC!25,mark=none},boxstyle1/.style={solid,draw=cSAC,fill=cSAC!20,mark=none},
+  boxstyle2/.style={solid,draw=cTD3,fill=cTD3!20,mark=none},boxstyle3/.style={solid,draw=cMPC,fill=cMPC!25,mark=none},
+  boxpanel/.style={resstyle,scale only axis,width=4.2cm,height=3.6cm,xmin=-0.6,xmax=3.6,xtick={0,1,2,3},
+  xticklabels={ECC,SAC--\\MPC,TD3--\\MPC,MPC},xticklabel style={font=\scriptsize,align=center},grid=none,ymajorgrids,
+  boxplot/box extend=0.5,boxplot/draw direction=y,ytick pos=left,xtick pos=bottom,ylabel style={yshift=-2pt}}}
+\begin{tikzpicture}[font=\footnotesize]
+% ---------------- (a) outcomes
+\begin{axis}[boxpanel,name=a,ybar stacked,bar width=0.5,ymin=0,ymax=112,ytick={0,20,40,60,80,100},ylabel={Share of tasks (\%)},
+  legend style={at={(0.5,1.02)},anchor=south,legend columns=4,column sep=2pt,font=\scriptsize},
+  legend image code/.code={\fill[#1] (0cm,-0.08cm) rectangle (0.2cm,0.1cm);},
+  nodes near coords style={font=\scriptsize}]
+\addplot[fill=oCap,draw=oCap!70!black] table[x=x,y=cap]{data/r2_outcomes.dat}; \addlegendentry{capture}
+\addplot[fill=oTime,draw=gray] table[x=x,y=to]{data/r2_outcomes.dat}; \addlegendentry{timeout}
+\addplot[fill=oUns,draw=oUns!70!black] table[x=x,y=unsafe]{data/r2_outcomes.dat}; \addlegendentry{unsafe}
+\addplot[fill=oFuel,draw=oFuel!70!black] table[x=x,y=fuel]{data/r2_outcomes.dat}; \addlegendentry{fuel}
+\end{axis}
+\begin{axis}[boxpanel,at={(a.south west)},anchor=south west,ymin=0,ymax=112,axis lines=none,xtick=\empty,ytick=\empty]
+\addplot[only marks,mark=*,mark size=1.1pt,black,mark options={fill=white}] table[x=x,y=rate]{data/r2_seedrate.dat};
+\node[font=\scriptsize,anchor=south,inner sep=1pt] at (axis cs:0,100.5) {1 unsafe};
+\node[font=\scriptsize,anchor=south,inner sep=1pt] at (axis cs:2,100.5) {2 unsafe};
+\node[font=\scriptsize,white] at (axis cs:0,42) {85.4};
+\node[font=\scriptsize,white] at (axis cs:1,36.9) {73.8};
+\node[font=\scriptsize,white] at (axis cs:2,31.9) {63.9};
+\node[font=\scriptsize,white] at (axis cs:3,22.1) {44.3};
+\end{axis}
+\node[font=\footnotesize] at ($(a.south)+(0,-0.98cm)$) {(a)};
+% ---------------- (b) completion time
+\begin{axis}[boxpanel,name=b,at={($(a.south east)+(1.45cm,0)$)},anchor=south west,ymin=52,ymax=210,ytick={75,100,125,150,175,200},ylabel={Completion time (s)}]
+\input{data/r2_box_time}
+\node[font=\scriptsize,anchor=south,inner sep=1pt] at (axis cs:0,53) {492};
+\node[font=\scriptsize,anchor=south,inner sep=1pt] at (axis cs:1,53) {425};
+\node[font=\scriptsize,anchor=south,inner sep=1pt] at (axis cs:2,53) {368};
+\node[font=\scriptsize,anchor=south,inner sep=1pt] at (axis cs:3,53) {85};
+\end{axis}
+\node[font=\footnotesize] at ($(b.south)+(0,-0.98cm)$) {(b)};
+% ---------------- (c) velocity increment
+\begin{axis}[boxpanel,name=c,at={($(b.south east)+(1.35cm,0)$)},anchor=south west,ymin=0.3,ymax=3.2,ytick={0.5,1,1.5,2,2.5,3},ylabel={$\Delta v$ (m/s)},
+  yticklabel style={/pgf/number format/fixed,/pgf/number format/precision=1}]
+\input{data/r2_box_dv}
+\node[font=\scriptsize,anchor=south,inner sep=1pt] at (axis cs:0,0.31) {492};
+\node[font=\scriptsize,anchor=south,inner sep=1pt] at (axis cs:1,0.31) {425};
+\node[font=\scriptsize,anchor=south,inner sep=1pt] at (axis cs:2,0.31) {368};
+\node[font=\scriptsize,anchor=south,inner sep=1pt] at (axis cs:3,0.31) {85};
+\end{axis}
+\node[font=\footnotesize] at ($(c.south)+(0,-0.98cm)$) {(c)};
+\end{tikzpicture}
+\end{document}

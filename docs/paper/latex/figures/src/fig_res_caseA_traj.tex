@@ -1,0 +1,33 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Task A: chaser trajectory in the target body frame F_T (2-s rows), colored by execution mode, with the operation
+% sphere, the approach cone, the port axis, and the target body.
+\begin{tikzpicture}[font=\footnotesize]
+\begin{axis}[resstyle,view={-35}{38},width=8.15cm,height=7.4cm,unit vector ratio=1 1 1,
+  xmin=-12,xmax=12,ymin=-10,ymax=14,zmin=-7,zmax=5,
+  xlabel={$x_{\mathrm{T}}$ (m)},ylabel={$y_{\mathrm{T}}$ (m)},zlabel={$z_{\mathrm{T}}$ (m)},
+  xtick={-10,0,10},ytick={-10,0,10},ztick={-5,0,5},
+  xlabel style={sloped,yshift=4pt},ylabel style={sloped,yshift=4pt},zlabel style={yshift=-6pt},
+  grid=major,grid style={gray!8},clip=false,z buffer=none,
+  legend style={at={(0.5,1.0)},anchor=south,legend columns=3,column sep=5pt,font=\scriptsize},
+  legend image code/.code={\draw[#1,line width=1.1pt] (0cm,0cm) -- (0.4cm,0cm);}]
+\addlegendimage{mStage}\addlegendentry{stage flight}
+\addlegendimage{mEntry}\addlegendentry{entry transfer}
+\addlegendimage{mDesc}\addlegendentry{descent}
+% operation sphere and approach cone (translucent single patches; geometry from make_r2_data.py)
+\input{data/caseA_geom}
+% port axis
+\addplot3[black,densely dashed,thin] coordinates {(-1.5,0,0) (-12,0,0)};
+% target body (box) and grapple rod
+\addplot3[black,fill=gray!45,thin] coordinates {(-0.62,-0.51,0.37) (0.62,-0.51,0.37) (0.62,0.51,0.37) (-0.62,0.51,0.37) (-0.62,-0.51,0.37)};
+\addplot3[black,fill=gray!25,thin] coordinates {(-0.62,-0.51,-0.37) (-0.62,0.51,-0.37) (-0.62,0.51,0.37) (-0.62,-0.51,0.37) (-0.62,-0.51,-0.37)};
+\addplot3[black,fill=gray!35,thin] coordinates {(-0.62,-0.51,-0.37) (0.62,-0.51,-0.37) (0.62,-0.51,0.37) (-0.62,-0.51,0.37) (-0.62,-0.51,-0.37)};
+\addplot3[black,thick] coordinates {(-0.62,0,0) (-1.5,0,0)};
+% trajectory by execution mode and event points
+\input{data/caseA_traj}
+\input{data/caseA_marks}
+\node[anchor=south east,inner sep=1pt,font=\scriptsize] at (axis cs:-11,0,0.4) {port axis};
+\end{axis}
+\end{tikzpicture}
+\end{document}

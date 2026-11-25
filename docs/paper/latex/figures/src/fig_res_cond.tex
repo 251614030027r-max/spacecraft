@@ -1,0 +1,37 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Capture rate of ECC and SAC--MPC by task condition (576 tasks per condition and method unless stated):
+% (a) deadline bins of the formal test set (STRATIFIED.csv); (b) spin rate, low-spin condition outside the training
+% range (GEN_TABLE.csv) and spin-rate thirds of the formal test set; (c) spin-axis offset, formal 10-20 deg and the
+% stronger-nutation condition 20-40 deg (GEN_TABLE.csv). Gray background: outside the training distribution.
+\pgfplotsset{condpanel/.style={resstyle,scale only axis,height=3.3cm,ybar=0.5pt,bar width=9pt,ymin=0,ymax=124,
+  ytick={0,20,40,60,80,100},grid=none,ymajorgrids,ytick pos=left,xtick pos=bottom,xtick=data,
+  xticklabel style={font=\scriptsize},enlarge x limits={abs=0.55},
+  nodes near coords,nodes near coords style={font=\scriptsize,rotate=90,anchor=west,inner sep=1pt,
+  /pgf/number format/fixed,/pgf/number format/precision=1,/pgf/number format/fixed zerofill}}}
+\begin{tikzpicture}[font=\footnotesize]
+\begin{axis}[condpanel,name=a,width=5.0cm,xticklabels={140--155,155--170,170--185,185--200},xlabel={Deadline (s)},
+  ylabel={Capture rate (\%)},ylabel style={yshift=-2pt},
+  legend style={at={(0,1.03)},anchor=south west,legend columns=2,column sep=6pt,font=\scriptsize},
+  legend image code/.code={\fill[#1] (0cm,-0.08cm) rectangle (0.22cm,0.1cm);}]
+\addplot[fill=cECC,draw=cECC!70!black] table[x=x,y=ecc]{data/r2_cond_deadline.dat}; \addlegendentry{ECC}
+\addplot[fill=cSAC!55,draw=cSAC] table[x=x,y=sac]{data/r2_cond_deadline.dat}; \addlegendentry{SAC--MPC}
+\end{axis}
+\node[font=\footnotesize] at ($(a.south)+(0,-1.2cm)$) {(a)};
+\begin{axis}[condpanel,name=b,at={($(a.south east)+(0.35cm,0)$)},anchor=south west,width=5.0cm,
+  xticklabels={1.5--2.1,2.1--2.3,2.3--2.5,2.5--2.7},xlabel={Spin rate (deg/s)},yticklabels={}]
+\fill[gray!14] (axis cs:-0.55,0) rectangle (axis cs:0.5,124);
+\addplot[fill=cECC,draw=cECC!70!black] table[x=x,y=ecc]{data/r2_cond_spin.dat};
+\addplot[fill=cSAC!55,draw=cSAC] table[x=x,y=sac]{data/r2_cond_spin.dat};
+\end{axis}
+\node[font=\footnotesize] at ($(b.south)+(0,-1.2cm)$) {(b)};
+\begin{axis}[condpanel,name=c,at={($(b.south east)+(0.35cm,0)$)},anchor=south west,width=2.6cm,
+  xticklabels={10--20,20--40},xlabel={Spin-axis offset (deg)},yticklabels={}]
+\fill[gray!14] (axis cs:0.5,0) rectangle (axis cs:1.55,124);
+\addplot[fill=cECC,draw=cECC!70!black] table[x=x,y=ecc]{data/r2_cond_axis.dat};
+\addplot[fill=cSAC!55,draw=cSAC] table[x=x,y=sac]{data/r2_cond_axis.dat};
+\end{axis}
+\node[font=\footnotesize] at ($(c.south)+(0,-1.2cm)$) {(c)};
+\end{tikzpicture}
+\end{document}
