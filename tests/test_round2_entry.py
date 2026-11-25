@@ -40,9 +40,10 @@ def test_stage_blocks_and_seeds_avoid_the_first_draft():
     blocks = [set(final.block(st['eval_openings'])) for st in own.values()]
     for i, b in enumerate(blocks):
         assert not b & old and all(not b & c for c in blocks[i + 1:])
-    for st in p['stages'].values():
-        if 'models_from' in st:
-            assert st['eval_openings'] == own[st['models_from']]['eval_openings']
+    for st in p['stages'].values():                 # an evaluation-only stage: its source's block, or a block of its own
+        if 'models_from' in st and st['eval_openings'] != own[st['models_from']]['eval_openings']:
+            b = set(final.block(st['eval_openings']))
+            assert not b & old and all(not b & c for c in blocks)
     for st in p['stages'].values():
         assert not set(st['seeds']) & {20, 21, 22}
 

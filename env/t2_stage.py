@@ -268,12 +268,15 @@ class WindowGStar(ConditionalGStar):
         self.plan_wall_s.append(perf_counter() - started)
 
 
-def make_window_gstar(env, elastic: bool = True, **kwargs: Any) -> WindowGStar:
+def make_window_gstar(env, elastic: bool = True, replan_deviation_m: float | None = None, window_slips_s: tuple | None = None,
+                      **kwargs: Any) -> WindowGStar:
     from env.t1_gstar import RendezvousPlanner
     base = make_conditional_gstar(env, **kwargs)
     reserve = RendezvousPlanner(env.config.task, env.chaser_parameters.mass, WINDOW_RESERVE_FRACTION * env.config.max_force_per_axis_n)
+    extra = {**({"replan_deviation_m": float(replan_deviation_m)} if replan_deviation_m is not None else {}),
+             **({"window_slips_s": tuple(window_slips_s)} if window_slips_s is not None else {})}
     return WindowGStar(kappa=base.kappa, planner=base.planner, recovery_planner=None, entry_speed_m_s=base.entry_speed_m_s,
-                       deadline_margin_s=base.deadline_margin_s, reserve_planner=reserve, elastic=bool(elastic))
+                       deadline_margin_s=base.deadline_margin_s, reserve_planner=reserve, elastic=bool(elastic), **extra)
 
 
 # ---------------------------------------------------------------------- information boundary
@@ -445,8 +448,20 @@ class T2StageEnv(gym.Env):
                  shaping: bool = True, geometry: bool = True, window: bool = True, coordination: bool = False,
                  correction: bool = True, long_entry: bool = True, potential: str = "opportunity",
                  extended_lattice: bool = False, deadline_s: tuple | None = None,
-                 tumble_rate_deg_s: tuple | None = None, tumble_offset_deg: tuple | None = None) -> None:
+                 tumble_rate_deg_s: tuple | None = None, tumble_offset_deg: tuple | None = None,
+                 coord_rule: str = "nearest", launch_lead_s: float = STAGE_S, entry_force_fraction: float | None = None,
+                 entry_replan_deviation_m: float | None = None, retime_slips: tuple | None = None) -> None:
         self.geometry = bool(geometry)
+        #: round-3 diagnostic D1 (``docs/final_method/ROUND3.md`` section 1); the defaults are the round-2 method
+        if coord_rule not in ("nearest", "launch_first"):
+            raise ValueError(f"unknown coordination rule {coord_rule!r}")
+        self.coord_rule = coord_rule
+        self.launch_lead_s = float(launch_lead_s)
+        #: entry execution parameters, shared by the execution and the opportunity prediction (empty: round-2 values)
+        self.entry_kwargs = {k: v for k, v in (("plan_force_fraction", entry_force_fraction),
+                                               ("replan_deviation_m", entry_replan_deviation_m),
+                                               ("window_slips_s", None if retime_slips is None else tuple(float(x) for x in retime_slips)))
+                             if v is not None}
         self.window = bool(window)
         #: ECC coordination (``_coordinate``): the same map in training and execution
         self.coordination = bool(coordination)
@@ -530,7 +545,8 @@ class T2StageEnv(gym.Env):
         self.info_env = InfoEnv(self.env)
         self.generator = T1PGenerator(planner=LocalStagePlanner(self.env.config.task, self.env.chaser_parameters.mass,
                                                                 PLAN_FORCE_N, horizon_s=STAGE_S, nodes=STAGE_NODES),
-                                      bridge=make_window_gstar(self.info_env, elastic=self.window, deadline_margin_s=BRIDGE_DEADLINE_MARGIN_S),
+                                      bridge=make_window_gstar(self.info_env, elastic=self.window, deadline_margin_s=BRIDGE_DEADLINE_MARGIN_S,
+                                                               **self.entry_kwargs),
                                       mass=self.env.chaser_parameters.mass, replan_deviation_m=STAGE_DEVIATION_HOLD_M)
         self._bridge = None
         self.prober = None                     # the opportunity evaluation's planner instances are built per episode
@@ -743,6 +759,9 @@ class T2StageEnv(gym.Env):
 
         if own["event"]:
             return done(a)
+        if self.coord_rule == "launch_first" and self.long_entry and self._launch_direct():   # D1: direct entry before correction
+            rec["kind"] = "launch"
+            return done(a)
         if opp is not None:
             crit = [(i, b, d) for i, (b, d) in enumerate(zip(PROBE_GRID, opp["rows"])) if d["critical"]]
             if crit:
@@ -750,15 +769,9 @@ class T2StageEnv(gym.Env):
                 self.stats["corrections"] = self.stats.get("corrections", 0) + 1
                 rec.update(kind="correct", a_exec=[float(x) for x in best[1]], alt_t=float(best[2]["t"]), alt_kind=best[2]["kind"])
                 return done(np.asarray(best[1], np.float64))
-        if self.long_entry:
-            q, _ = relative_inertial(self.env)
-            period, latest = self._pass_clock()
-            ttp = float(frame_now(self.env, q)["time_to_pass_s"])
-            if ttp <= STAGE_S and float(self.env.time_s) + ttp + period > latest and self.start_direct_gstar():
-                self.stats["long_entries"] = self.stats.get("long_entries", 0) + 1
-                self._bridge = {"t": self.env.time_s, "tau": float(self.generator.bridge.plan["tau_s"])}
-                rec["kind"] = "launch"
-                return done(a)
+        if self.long_entry and self.coord_rule == "nearest" and self._launch_direct():
+            rec["kind"] = "launch"
+            return done(a)
         if self.extended_lattice and opp is not None:
             fine = self._fine_opportunities(opp)
             if fine:
@@ -770,6 +783,18 @@ class T2StageEnv(gym.Env):
                 return done(np.asarray(best[1], np.float64))
         rec["kind"] = "none"
         return done(a)
+
+    def _launch_direct(self) -> bool:
+        """Start the direct entry at the last usable pass (the port passes within ``launch_lead_s`` and no further pass
+        follows before L) when the entry planner finds an arrival; True when the entry has been started."""
+        q, _ = relative_inertial(self.env)
+        period, latest = self._pass_clock()
+        ttp = float(frame_now(self.env, q)["time_to_pass_s"])
+        if ttp <= self.launch_lead_s and float(self.env.time_s) + ttp + period > latest and self.start_direct_gstar():
+            self.stats["long_entries"] = self.stats.get("long_entries", 0) + 1
+            self._bridge = {"t": self.env.time_s, "tau": float(self.generator.bridge.plan["tau_s"])}
+            return True
+        return False
 
     def _fine_opportunities(self, opp: dict) -> list:
         """Critical opportunities among the 16 intents of the 5x5 lattice outside the 3x3 one (same criticality and

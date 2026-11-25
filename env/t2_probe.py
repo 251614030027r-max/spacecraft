@@ -64,7 +64,8 @@ class ExecutorProbe:
         e = env.env
         self.task, self.mass = e.config.task, float(e.chaser_parameters.mass)
         self.stage_planner = LocalStagePlanner(self.task, self.mass, PLAN_FORCE_N, horizon_s=STAGE_S, nodes=STAGE_NODES)
-        bridge = make_window_gstar(env.info_env, elastic=env.window, deadline_margin_s=BRIDGE_DEADLINE_MARGIN_S)
+        bridge = make_window_gstar(env.info_env, elastic=env.window, deadline_margin_s=BRIDGE_DEADLINE_MARGIN_S,
+                                   **getattr(env, 'entry_kwargs', {}))
         self.entry_planner, self.entry_speed = bridge.planner, bridge.entry_speed_m_s
         self.descent_radius_m = float(bridge.descent_radius_m)
         self.inertia = np.asarray(env.info_env.target_parameters.inertia, dtype=np.float64)   # the executor's estimate

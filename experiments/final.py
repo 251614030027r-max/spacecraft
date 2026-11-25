@@ -7,6 +7,7 @@ budget, opening block and evaluation switch comes from ``docs/final_method/METHO
     python -B -m experiments.final screen   --stage STAGE --policy pure --output ROOT [--openings A-B] [--workers W]
     python -B -m experiments.final traj     --entry NAME=RUN_DIR|NAME=pure --openings A,B --output DIR [--switch NAME] [--fine]
     python -B -m experiments.final assets   --root ROOT [--root ROOT2 ...] --output evidence/R2_ASSETS
+    python -B -m experiments.final diag     --root ROOT [--root ROOT2 ...] --output evidence/R3_DIAG
     python -B -m experiments.final resolve  --stage STAGE --root ROOT [--root ROOT2] --output REGISTRY_RESOLVED.json
     python -B -m experiments.final check    --stage STAGE --root ROOT [--root ROOT2] [--output CHECK.json]
     python -B -m experiments.final preflight --root ROOT [--no-tests]
@@ -561,6 +562,14 @@ def cmd_assets(a):
         raise SystemExit(1)
 
 
+def cmd_diag(a):
+    from experiments.r3_diag_readout import write_all
+    res = write_all(a.root, Path(a.output))
+    print(json.dumps(res, indent=1, ensure_ascii=False, default=str))
+    if res['verdict'] != 'complete':
+        raise SystemExit(1)
+
+
 def cmd_pack(a):
     print(json.dumps(pack(a.stage, a.root, Path(a.output)), indent=1, ensure_ascii=False))
 
@@ -587,9 +596,11 @@ def main():
     q.add_argument('--root', action='append', required=True, help='result root; repeat for several machines (local, cloud copy)')
     w = s.add_parser('assets'); w.add_argument('--output', required=True)
     w.add_argument('--root', action='append', required=True, help='result root with the formal and generalization results')
+    g = s.add_parser('diag'); g.add_argument('--output', required=True)
+    g.add_argument('--root', action='append', required=True, help='result root with the D1 results (ROUND3.md section 1)')
     a = p.parse_args()
     {'train': cmd_train, 'eval': cmd_eval, 'screen': cmd_screen, 'traj': cmd_traj, 'resolve': cmd_resolve, 'check': cmd_check,
-     'preflight': cmd_preflight, 'pack': cmd_pack, 'assets': cmd_assets}[a.cmd](a)
+     'preflight': cmd_preflight, 'pack': cmd_pack, 'assets': cmd_assets, 'diag': cmd_diag}[a.cmd](a)
 
 
 if __name__ == '__main__':

@@ -147,6 +147,112 @@
     ]
    },
    "role": "generalization, evaluation only (FORMAL.md section 10): the formal final models on the formal test openings"
+  },
+  "r3_launch_first": {
+   "display": "ECC, direct entry before correction",
+   "applies_to": [
+    "ECC"
+   ],
+   "env": {
+    "coord_rule": "launch_first"
+   },
+   "role": "round-3 diagnostic D1 (ROUND3.md section 1), evaluation only on the round-2 formal models"
+  },
+  "r3_no_correction": {
+   "display": "ECC policy with the correction off",
+   "applies_to": [
+    "ECC"
+   ],
+   "env": {
+    "correction": false
+   },
+   "role": "round-3 diagnostic D1 (ROUND3.md section 1), evaluation only on the round-2 formal models"
+  },
+  "r3_correction_on": {
+   "display": "no-core policy with the correction on",
+   "applies_to": [
+    "ECC_NO_CORE"
+   ],
+   "env": {
+    "correction": true
+   },
+   "role": "round-3 diagnostic D1 (ROUND3.md section 1), evaluation only on the round-2 formal models"
+  },
+  "r3_launch_lead32": {
+   "display": "direct entry when the pass is within 32 s",
+   "applies_to": [
+    "ECC",
+    "ECC_NO_CORE"
+   ],
+   "env": {
+    "launch_lead_s": 32.0
+   },
+   "role": "round-3 diagnostic D1 (ROUND3.md section 1), evaluation only on the round-2 formal models"
+  },
+  "r3_hs": {
+   "display": "high spin U(2.7, 3.3) deg/s",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "tumble_rate_deg_s": [
+     2.7,
+     3.3
+    ]
+   },
+   "role": "round-3 diagnostic D1 (ROUND3.md section 1), evaluation only on the round-2 formal models"
+  },
+  "r3_hs_slips": {
+   "display": "high spin, re-timing slips up to 16 s",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "tumble_rate_deg_s": [
+     2.7,
+     3.3
+    ],
+    "retime_slips": [
+     2.0,
+     4.0,
+     8.0,
+     12.0,
+     16.0
+    ]
+   },
+   "role": "round-3 diagnostic D1 (ROUND3.md section 1), evaluation only on the round-2 formal models"
+  },
+  "r3_hs_force07": {
+   "display": "high spin, entry plan force bound 70 %",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "tumble_rate_deg_s": [
+     2.7,
+     3.3
+    ],
+    "entry_force_fraction": 0.7
+   },
+   "role": "round-3 diagnostic D1 (ROUND3.md section 1), evaluation only on the round-2 formal models"
+  },
+  "r3_hs_replan05": {
+   "display": "high spin, entry re-plan at 0.5 m deviation",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "tumble_rate_deg_s": [
+     2.7,
+     3.3
+    ],
+    "entry_replan_deviation_m": 0.5
+   },
+   "role": "round-3 diagnostic D1 (ROUND3.md section 1), evaluation only on the round-2 formal models"
   }
  },
  "fixed": {
@@ -257,6 +363,33 @@
      "gen_nutation"
     ],
     "authorised_by": "docs/final_method/FORMAL.md section 10 (evaluation only; the formal models; no training)"
+   },
+   "diag3": {
+    "steps": 6000,
+    "seeds": [
+     30,
+     31,
+     32
+    ],
+    "eval_openings": "296000-296191",
+    "models_from": "formal",
+    "trained": [
+     "ECC",
+     "ECC_NO_CORE",
+     "SAC_MPC"
+    ],
+    "fixed": [],
+    "eval_switches": [
+     "r3_launch_first",
+     "r3_no_correction",
+     "r3_correction_on",
+     "r3_launch_lead32",
+     "r3_hs",
+     "r3_hs_slips",
+     "r3_hs_force07",
+     "r3_hs_replan05"
+    ],
+    "authorised_by": "docs/final_method/ROUND3.md section 1 (diagnostic, evaluation only; not for the paper)"
    }
   }
  }
