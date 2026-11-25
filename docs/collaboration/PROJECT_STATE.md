@@ -44,6 +44,7 @@
 
 | 状态 | 执行书 |
 |---|---|
+| 等开场指令 | [RUN_R3_D1](upper/run_orders/RUN_R3_D1.md)：第三轮诊断（只评估，不训练；`ROUND3.md` 第 1 节） |
 | 已授权，运行中（2026-11-24） | [RUN_R2_ASSETS](upper/run_orders/RUN_R2_ASSETS.md)：论文补充资产（只评估） |
 | 已交付并核查（`36d443fb` / `3ad2dbd6`） | [RUN_R2_FORMAL](upper/run_orders/RUN_R2_FORMAL.md)：第二轮正式实验 |
 | 已交付（本机 `f211789a`、云端 `1568df1e`；上层判定 `32128666`） | [RUN_R2_FB2](upper/run_orders/RUN_R2_FB2.md)：反馈机制开发轮，P、M 未通过，正式 ECC 保持 `ECC` |
