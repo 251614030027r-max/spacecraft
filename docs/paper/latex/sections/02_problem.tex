@@ -1,6 +1,6 @@
 \section{PROBLEM FORMULATION}\label{sec:problem}
 
-The pre-capture phase starts with the chaser at a range of the order of ten meters from a freely tumbling, noncooperative target and ends when the chaser holds a capture pose in front of the target docking port. This section states the dynamics and the prediction model available to the chaser, the capture geometry and the safety constraints, and the resulting optimization problem, and it closes with the opportunity structure of the problem and the two difficulties addressed in Sections~\ref{sec:framework} and~\ref{sec:ecc}.
+The pre-capture phase starts with the chaser at a range of the order of ten meters from a freely tumbling, noncooperative target and ends when the chaser holds a capture pose in front of the target docking port. This section states the dynamics and the prediction model, the capture geometry and the constraints, and the optimization problem with its opportunity structure.
 
 \subsection{Dynamics and Prediction Model}\label{sec:dynamics}
 
@@ -107,4 +107,4 @@ measures, in spin periods, the time that remains after the next pass (Fig.~\ref{
 \label{fig:timeline}
 \end{figure}
 
-Two difficulties follow from this structure. 1)~Whether a pass is usable depends on how closely the line of sight approaches the sweep of the port, and when it occurs depends on the phase of the port; a missed pass costs about one spin period, which is comparable to the deadline. 2)~Whether a decision to approach the port actually starts the final approach is determined by planning, gating, and tracking over seconds, whereas the decisions that set up the encounter must be taken tens of seconds before the pass, and their consequence, capture or timeout, appears later still; when $\eta<1$, neighboring decisions can lead to capture and to timeout, respectively. Section~\ref{sec:framework} addresses the first difficulty with a hierarchical framework and rotation-synchronized window guidance, and Section~\ref{sec:ecc} addresses the second with execution-feedback closed-loop coordination.
+Two difficulties follow from this structure. 1)~A pass is usable only if the line of sight approaches the sweep of the port closely enough, and its timing depends on the phase of the port; a missed pass costs about one spin period. 2)~Whether a decision starts the final approach is resolved by planning, gating, and tracking within seconds, whereas the decisions that set up the encounter are taken tens of seconds before the pass and their outcome appears later still; for $\eta<1$, neighboring decisions can lead to capture and to timeout. Section~\ref{sec:framework} addresses the first difficulty with a hierarchical framework and RWG, and Section~\ref{sec:ecc} the second with ECC.

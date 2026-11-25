@@ -1,10 +1,32 @@
 \section{HIERARCHICAL FRAMEWORK AND ROTATION-SYNCHRONIZED WINDOW GUIDANCE}\label{sec:framework}
 
-This section addresses the first difficulty of Section~\ref{sec:mission}. It introduces the hierarchical framework and its execution modes, develops the rotation-synchronized window guidance (RWG) that turns a two-dimensional intent into motion synchronized with the rotating port, and describes the dynamic entry and the constrained controllers that complete the execution layer.
+This section addresses the first difficulty of Section~\ref{sec:mission}. It introduces the hierarchical framework, develops RWG, which turns a two-dimensional intent into motion synchronized with the rotating port, and describes the dynamic entry and the constrained controllers of the execution layer.
+
+\begin{figure*}[t]
+\centering
+\includegraphics{figures/fig_framework.pdf}
+\caption{Hierarchical framework with execution-opportunity coordination. The policy proposes an intent $\ba$ from the observation $\bo$; the coordination map $\Cmap$ evaluates the opportunities the execution layer can realize from the state $x$ and keeps, corrects, or replaces the proposal by the executed object $\Cmap(x,\ba)$, which RWG and the constrained controllers execute on the six-degree-of-freedom dynamics. Dashed paths are learning updates; the replay buffer stores the proposal.}
+\label{fig:framework}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\begin{minipage}[b]{0.31\textwidth}\centering
+\includegraphics{figures/fig_rwg_a.pdf}\\[2pt]{\footnotesize (a)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.36\textwidth}\centering
+\includegraphics{figures/fig_rwg_b.pdf}\\[2pt]{\footnotesize (b)}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.33\textwidth}\centering
+\includegraphics{figures/fig_rwg_c.pdf}\\[2pt]{\footnotesize (c)}
+\end{minipage}
+\caption{Rotation-synchronized window guidance. (a) Sweep-cone geometry: the port direction $\bn$ rotates about $\bs$ on a cone of half-angle $\beta$; $\lambda$ is the polar angle of the line of sight, $\varphi$ the remaining phase to the pass, and the dot marks where the line-of-sight meridian meets the sweep cone. (b) Analytic port--line-of-sight angle \eqref{eq:theta} for a nominal geometry at fixed range under the constant phase rates of Proposition~\ref{prop:rwg}(iii), with $\kappa$ positive, zero, and negative, and for an off-cone line of sight with $|\dlat|>\psig$; the shaded band is the entry gate. (c) Entry re-timing: when the re-plan to the original arrival is infeasible ($\times$), delayed arrivals with the entry bound and then the original and delayed arrivals with a larger bound are tried before the pass is abandoned; dots are trial arrivals.}
+\label{fig:rwg}
+\end{figure*}
 
 \subsection{Hierarchical Architecture and Execution Modes}\label{sec:integration}
 
-The framework divides the task between two layers according to the two time scales of Problem~1 (Fig.~\ref{fig:framework}). A constrained optimizer handles the constraints of Table~\ref{tab:constraints} over a horizon of seconds \cite{reiter2026arc,ren2026taes}, whereas the value of a decision depends on whether a pass tens of seconds ahead is used or missed; a learned policy can represent this long-horizon trade-off but, when it commands thrust end to end \cite{yang2025taes}, offers limited means to respect hard constraints \cite{reiter2026arc}. Therefore, once per stage of nominal duration $h$, a learned decision layer issues a stage intent $\ba=[a_{\mathrm{p}},a_{\mathrm{z}}]^{\T}\in\Aset=[-1,1]^{2}$, whose components set the closing pace and the timing of the encounter with the port. An execution layer with fixed parameters turns the intent into stage goals that follow the sweep of the port (RWG), decides and plans the entry, and executes the motion with planners and MPC under the constraints. In the taxonomy of \cite{reiter2026arc}, the decision layer parameterizes an optimization-based executor that is part of the environment during learning.
+The framework divides the task between two layers according to the two time scales of Problem~1 (Fig.~\ref{fig:framework}): the constraints of Table~\ref{tab:constraints} act over seconds, whereas the value of a decision depends on whether a pass tens of seconds ahead is used or missed. Once per stage of nominal duration $h$, a learned decision layer issues a stage intent $\ba=[a_{\mathrm{p}},a_{\mathrm{z}}]^{\T}\in\Aset=[-1,1]^{2}$, whose components set the closing pace and the timing of the encounter with the port. An execution layer with fixed parameters turns the intent into stage goals that follow the sweep of the port (RWG), decides and plans the entry, and executes the motion with planners and MPC under the constraints. In the taxonomy of \cite{reiter2026arc}, the decision layer parameterizes an optimization-based executor that is part of the environment during learning.
 
 The approach proceeds in three phases. In stage flight, the chaser closes in under the intents of the decision layer while remaining outside the operation sphere. When a pass can be used, an entry transfer brings the chaser to the mouth point
 \begin{equation}\label{eq:mouth}
@@ -39,31 +61,9 @@ Terminal descent $\modeD$ & Inside $\Km$, inside the operation sphere, or inside
 
 The decision state $x\in\Xset$ comprises the joint state $X$, the time $t$, the propellant used $\Delta v$, the task parameters, and the internal state of the execution layer (mode, hold reference, and record of the previous stage). Executing an object $\bb$ from $x$ until the next decision induces the macro-step kernel $\PE(x',r\,|\,x,\bb)$ of the execution layer, where $r$ is the reward of the macro step (Section~\ref{sec:mdp}); the executed object is either an intent $\bb\in\Aset$ or the launch command of a long-range entry issued by the coordination of Section~\ref{sec:screening}. The execution layer of this article is guided by RWG (Sections~\ref{sec:geometry} and~\ref{sec:entry}) and completed by constrained controllers (Section~\ref{sec:executor}); Fig.~\ref{fig:framework} shows the resulting framework together with the coordination of Section~\ref{sec:ecc}.
 
-\begin{figure*}[t]
-\centering
-\includegraphics{figures/fig_framework.pdf}
-\caption{Hierarchical framework with execution-opportunity coordination. The policy proposes an intent $\ba$ from the observation $\bo$; the coordination map $\Cmap$ evaluates the opportunities the execution layer can realize from the state $x$ and keeps, corrects, or replaces the proposal by the executed object $\Cmap(x,\ba)$, which RWG and the constrained controllers execute on the six-degree-of-freedom dynamics. Dashed paths are learning updates; the replay buffer stores the proposal.}
-\label{fig:framework}
-\end{figure*}
-
-\begin{figure*}[t]
-\centering
-\begin{minipage}[b]{0.31\textwidth}\centering
-\includegraphics{figures/fig_rwg_a.pdf}\\[2pt]{\footnotesize (a)}
-\end{minipage}\hfill
-\begin{minipage}[b]{0.36\textwidth}\centering
-\includegraphics{figures/fig_rwg_b.pdf}\\[2pt]{\footnotesize (b)}
-\end{minipage}\hfill
-\begin{minipage}[b]{0.33\textwidth}\centering
-\includegraphics{figures/fig_rwg_c.pdf}\\[2pt]{\footnotesize (c)}
-\end{minipage}
-\caption{Rotation-synchronized window guidance. (a) Sweep-cone geometry: the port direction $\bn$ rotates about $\bs$ on a cone of half-angle $\beta$; $\lambda$ is the polar angle of the line of sight, $\varphi$ the remaining phase to the pass, and the dot marks where the line-of-sight meridian meets the sweep cone. (b) Analytic port--line-of-sight angle \eqref{eq:theta} for a nominal geometry at fixed range under the constant phase rates of Proposition~\ref{prop:rwg}(iii), with $\kappa$ positive, zero, and negative, and for an off-cone line of sight with $|\dlat|>\psig$; the shaded band is the entry gate. (c) Entry re-timing: when the re-plan to the original arrival is infeasible ($\times$), delayed arrivals with the entry bound and then the original and delayed arrivals with a larger bound are tried before the pass is abandoned; dots are trial arrivals.}
-\label{fig:rwg}
-\end{figure*}
-
 \subsection{Sweep-Cone Geometry and Rotation-Synchronized Intent}\label{sec:geometry}
 
-RWG addresses the first difficulty of Section~\ref{sec:mission}: the latitude of the line of sight makes a window usable, the phase of the port decides when it occurs, and the closing speed sets the pace of the arrival. Under the prediction \eqref{eq:pred}, the port direction $\bn$ rotates uniformly about $\bs$ and sweeps a cone of half-angle $\beta=\angle(\bn,\bs)$, referred to as the sweep cone. At the relative position $\brho$, a local orthonormal basis is formed by the line-of-sight direction $\er=\brho/\rho$, the unit projection $\epol$ of $\bs$ onto the plane normal to $\er$, and $\eaz=\er\times\epol$, which points toward the oncoming port (Fig.~\ref{fig:rwg}(a)); the basis requires $\sin\lambda>0$, and a fixed reference direction replaces $\epol$ when the line of sight is parallel to the spin axis. The geometry is described by the line-of-sight polar angle $\lambda=\angle(\er,\bs)$, the latitude offset $\dlat=\lambda-\beta$, and the phase $\varphi\in[0,2\pi)$ that the port still has to sweep about $\bs$ before it reaches the meridian plane of the line of sight. Let $\psi=\angle(\bn,\er)$ be the current port--line-of-sight angle. For the line of sight held fixed, the predicted angle after a time $\tau$ follows from the spherical law of cosines,
+Under the prediction \eqref{eq:pred}, the port direction $\bn$ rotates uniformly about $\bs$ and sweeps a cone of half-angle $\beta=\angle(\bn,\bs)$, referred to as the sweep cone. At the relative position $\brho$, a local orthonormal basis is formed by the line-of-sight direction $\er=\brho/\rho$, the unit projection $\epol$ of $\bs$ onto the plane normal to $\er$, and $\eaz=\er\times\epol$, which points toward the oncoming port (Fig.~\ref{fig:rwg}(a)); the basis requires $\sin\lambda>0$, and a fixed reference direction replaces $\epol$ when the line of sight is parallel to the spin axis. The geometry is described by the line-of-sight polar angle $\lambda=\angle(\er,\bs)$, the latitude offset $\dlat=\lambda-\beta$, and the phase $\varphi\in[0,2\pi)$ that the port still has to sweep about $\bs$ before it reaches the meridian plane of the line of sight. Let $\psi=\angle(\bn,\er)$ be the current port--line-of-sight angle. For the line of sight held fixed, the predicted angle after a time $\tau$ follows from the spherical law of cosines,
 \begin{equation}\label{eq:theta}
 \cos\hat\psi(\tau)=\cos\lambda\cos\beta+\sin\lambda\sin\beta\cos(\varphi-\Omega\tau),
 \end{equation}
@@ -92,16 +92,16 @@ set by a fixed regulation law with gain $k_{\lambda}$ and saturation level $\bar
 \begin{proposition}[Nominal window regulation]\label{prop:rwg}
 Under the prediction \eqref{eq:pred}, let $\sin\lambda>0$ and resolve the relative velocity as $\bv=v_{\mathrm{r}}\er+v_{\mathrm{pol}}\epol+v_{\mathrm{az}}\eaz$.
 \begin{enumerate}
-\item The range, the latitude offset, and the phase evolve as
+\item[(i)] The range, the latitude offset, and the phase evolve as
 \begin{equation}\label{eq:localkin}
 \dot\rho=v_{\mathrm{r}},\quad \dot{\dlat}=-\frac{v_{\mathrm{pol}}}{\rho},\quad \dot\varphi=-\Omega-\frac{v_{\mathrm{az}}}{\rho\sin\lambda}.
 \end{equation}
-\item If $v_{\mathrm{pol}}=v_{\mathrm{lat}}$ follows \eqref{eq:vlat}, then $|\dlat|$ decreases monotonically, enters the set $|\dlat|\le\bar v_{\mathrm{lat}}/(k_{\lambda}\bar\rho)$ in finite time, and decays exponentially with rate $k_{\lambda}$ thereafter.
-\item If $\rho$ and $\lambda$ are constant and $v_{\mathrm{az}}=v_{\mathrm{sw}}$ is constant with $\kappa=v_{\mathrm{sw}}/(\Omega\rho\sin\lambda)>-1$, then the phase decreases at the rate $\Omega(1+\kappa)$, and the next pass occurs after $\varphi/(\Omega(1+\kappa))$ and lasts $2\phw/(\Omega(1+\kappa))$.
+\item[(ii)] If $v_{\mathrm{pol}}=v_{\mathrm{lat}}$ follows \eqref{eq:vlat}, then $|\dlat|$ decreases monotonically, enters the set $|\dlat|\le\bar v_{\mathrm{lat}}/(k_{\lambda}\bar\rho)$ in finite time, and decays exponentially with rate $k_{\lambda}$ thereafter.
+\item[(iii)] If $\rho$ and $\lambda$ are constant and $v_{\mathrm{az}}=v_{\mathrm{sw}}$ is constant with $\kappa=v_{\mathrm{sw}}/(\Omega\rho\sin\lambda)>-1$, then the phase decreases at the rate $\Omega(1+\kappa)$, and the next pass occurs after $\varphi/(\Omega(1+\kappa))$ and lasts $2\phw/(\Omega(1+\kappa))$.
 \end{enumerate}
 \end{proposition}
 
-The proofs are given in Appendix~\ref{app:proofs}; item~(ii) uses the range bound $\rho\le\bar\rho$ of Table~\ref{tab:constraints}. Proposition~\ref{prop:rwg} describes the nominal velocity field that the stage goals follow; the realized motion results from the saturation, adjustment, planning, and tracking below. Proposition~\ref{prop:rwg} assigns one role to each component: $v_{\mathrm{cl}}$ sets the rate of change of the range, $v_{\mathrm{lat}}$ brings the line of sight onto the sweep cone and thereby opens the window of Lemma~\ref{lem:window}, and $v_{\mathrm{sw}}$ places the window in time. Meeting the oncoming port ($\kappa>0$) advances and shortens the pass, accompanying it ($\kappa<0$) delays and lengthens it, and waiting ($\kappa=0$) leaves the natural sweep (Fig.~\ref{fig:rwg}(b)). These are values of one continuous action rather than predefined maneuvers; which of them is preferable depends on the remaining time and propellant, which is the state-dependent decision delegated to learning.
+The proofs are given in Appendix~\ref{app:proofs}; item~(ii) uses the range bound $\rho\le\bar\rho$ of Table~\ref{tab:constraints}. Proposition~\ref{prop:rwg} describes the nominal velocity field that the stage goals follow, and the realized motion results from the saturation, adjustment, planning, and tracking below. It assigns one role to each component: $v_{\mathrm{cl}}$ sets the rate of change of the range, $v_{\mathrm{lat}}$ brings the line of sight onto the sweep cone and thereby opens the window of Lemma~\ref{lem:window}, and $v_{\mathrm{sw}}$ places the window in time. Meeting the oncoming port ($\kappa>0$) advances and shortens the pass, accompanying it ($\kappa<0$) delays and lengthens it, and waiting ($\kappa=0$) leaves the natural sweep (Fig.~\ref{fig:rwg}(b)). These are values of one continuous action rather than predefined maneuvers; which of them is preferable depends on the remaining time and propellant, which is the state-dependent decision delegated to learning.
 
 The stage goal is formed from the current state $(\brho,\bv)$ and $\bv^{\star}$ as
 \begin{equation}\label{eq:goal}

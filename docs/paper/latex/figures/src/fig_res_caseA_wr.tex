@@ -6,7 +6,7 @@
 \begin{tikzpicture}[font=\footnotesize]
 \begin{groupplot}[group style={group size=1 by 2,vertical sep=0.22cm,xticklabels at=edge bottom},
   casestyle,width=5.0cm,height=2.42cm,xmin=0,xmax=150,xtick={0,25,50,75,100,125,150},
-  legend style={at={(1.02,0.5)},anchor=west,legend columns=1,font=\scriptsize,row sep=-1pt},legend cell align=left]
+  legend style={at={(1.02,0.5)},anchor=west,legend columns=1,font=\scriptsize,row sep=-1pt},legend cell align=left,legend image post style={line width=1.2pt}]
 \nextgroupplot[ymin=-2.4,ymax=2.4,ytick={-2,0,2},ylabel={Force (N)}]
 \caseAev
 \draw[gray,densely dashed,thin] (axis cs:0,2) -- (axis cs:150,2) (axis cs:0,-2) -- (axis cs:150,-2);

@@ -41,7 +41,8 @@
   \node[lbl,actcol,anchor=south] at ($(crdbox.east |- R.east)!0.5!(br)$) {$\Cmap(x,\ba)$};
   \draw[arr] (exebox.east |- dyn) -- node[lbl,above] {wrench} (dyn);
   \coordinate (top) at ($(dyn.north)+(0,1.85)$);
-  \draw[arr] (dyn.north) -- (top) -| node[lbl,above,pos=0.62] {observation $\bo$} (pi.north);
+  \draw[arr] (dyn.north) -- (top) -| (pi.north);
+  \node[lbl,anchor=north west] at ($(pi.north |- top)+(0.06,-0.04)$) {observation $\bo$};
   \draw[arr] (crdbox.north |- top) -- node[lbl,right,pos=0.45] {state $x$} (crdbox.north);
 
   % ---------------- learning (dashed)
