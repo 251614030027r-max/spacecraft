@@ -32,7 +32,7 @@ def table(R, rows) -> list:
     out = []
     for arm in sorted({k[0] for k in rows}):
         for s in sorted({k[1] for k in rows if k[0] == arm}):
-            n = dict(capture=0, timeout_no_entry=0, timeout_after_entry=0, unsafe=0, other=0, entries_lost=0,
+            n = dict(capture=0, timeout_no_entry=0, timeout_after_entry=0, timeout_in_cone=0, unsafe=0, other=0, entries_lost=0,
                      retimings=0, corrections=0, long_entries=0, episodes=0)
             label = _label(arm, s)
             for o in block(stage_of(STAGE)['eval_openings']):
@@ -41,6 +41,8 @@ def table(R, rows) -> list:
                 key = ('capture' if ev == 'success' else 'unsafe' if ev == 'unsafe' else
                        ('timeout_after_entry' if _reached_entry(raw) else 'timeout_no_entry') if ev == 'timeout' else 'other')
                 n[key] += 1; n['episodes'] += 1
+                # at the deadline already inside the approach cone (terminal record): the descent did not finish in time
+                n['timeout_in_cone'] += int(ev == 'timeout' and bool((raw.get('terminal') or {}).get('in_cone')))
                 n['entries_lost'] += int(raw.get('entries_lost', 0) or 0)
                 n['retimings'] += len(raw.get('window_recoveries') or [])
                 n['corrections'] += int(raw.get('corrections', 0)); n['long_entries'] += int(raw.get('long_entries', 0))

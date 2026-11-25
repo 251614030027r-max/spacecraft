@@ -84,7 +84,7 @@ def _fake_diag(root):
                 n = 4 if label.endswith('launch_first') else (3 if cfg != 'SAC_MPC' else 2)
                 for k, o in enumerate(ops):
                     r = _result('timeout' if k % n == 0 else 'success', k)
-                    r.update(entries_lost=k % 2, window_recoveries=[{}] * (k % 3))
+                    r.update(entries_lost=k % 2, window_recoveries=[{}] * (k % 3), terminal={'in_cone': k % 4 == 0})
                     (d / f'{label}_{o}.json').write_text(json.dumps(r))
 
 
@@ -96,6 +96,7 @@ def test_diag_readout(tmp_path):
     pairs = {(p['a'], p['b'], p['metric']): p for p in r['paired']}
     assert ('ECC+r3_launch_first', 'ECC', 'capture') in pairs and ('ECC+r3_hs_slips', 'ECC+r3_hs', 'capture') in pairs
     t = {(x['arm'], x['seed']): x for x in r['table']}
+    assert t[('ECC', '30')]['timeout_in_cone'] == sum(1 for k in range(96) if k % 3 == 0 and k % 4 == 0)
     assert t[('ECC', '30')]['episodes'] == 96 and t[('ECC', '30')]['entries_lost'] == 48
     next((tmp_path / 'R' / 'C' / 'ECC_s31_r3_hs').glob('*.json')).unlink()
     assert DR.write_all([tmp_path / 'R'], tmp_path / 'out2')['verdict'] == 'incomplete'
