@@ -54,7 +54,7 @@ def stage_of(name: str) -> dict:
 
 #: executor switches a manifest records, with the value runs from before a switch existed implicitly had
 ENV_KEYS = {'geometry': None, 'window': None, 'coordination': None, 'correction': None, 'long_entry': None, 'potential': None,
-            'extended_lattice': False}
+            'extended_lattice': False, 'coord_rule': 'nearest', 'launch_lead_s': 16.0, 'intervention_cost': 0.0}
 
 
 def env_kwargs(config: dict) -> dict:
@@ -91,7 +91,7 @@ def _forbidden_eval(stage: str) -> set:
     bad = set(block(p['reserved']['never_reuse']['openings']))
     own = p['stages'].get(stage, {}).get('models_from')
     for k, v in p['stages'].items():
-        if k != stage and k != own and v.get('models_from') != stage:
+        if k != stage and k != own and v.get('models_from') != stage and not (own and v.get('models_from') == own):
             bad |= set(block(v['eval_openings']))
     return bad
 
@@ -564,7 +564,7 @@ def cmd_assets(a):
 
 def cmd_diag(a):
     from experiments.r3_diag_readout import write_all
-    res = write_all(a.root, Path(a.output))
+    res = write_all(a.root, Path(a.output), a.stage)
     print(json.dumps(res, indent=1, ensure_ascii=False, default=str))
     if res['verdict'] != 'complete':
         raise SystemExit(1)
@@ -596,7 +596,7 @@ def main():
     q.add_argument('--root', action='append', required=True, help='result root; repeat for several machines (local, cloud copy)')
     w = s.add_parser('assets'); w.add_argument('--output', required=True)
     w.add_argument('--root', action='append', required=True, help='result root with the formal and generalization results')
-    g = s.add_parser('diag'); g.add_argument('--output', required=True)
+    g = s.add_parser('diag'); g.add_argument('--output', required=True); g.add_argument('--stage', default='diag3')
     g.add_argument('--root', action='append', required=True, help='result root with the D1 results (ROUND3.md section 1)')
     a = p.parse_args()
     {'train': cmd_train, 'eval': cmd_eval, 'screen': cmd_screen, 'traj': cmd_traj, 'resolve': cmd_resolve, 'check': cmd_check,

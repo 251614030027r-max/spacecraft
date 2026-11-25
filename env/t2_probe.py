@@ -63,6 +63,7 @@ class ExecutorProbe:
         from env.t2_stage import (BRIDGE_DEADLINE_MARGIN_S, PLAN_FORCE_N, STAGE_NODES, STAGE_S, make_window_gstar)
         e = env.env
         self.task, self.mass = e.config.task, float(e.chaser_parameters.mass)
+        self.entry_order = getattr(env, 'entry_order', 'earliest')      # the executor's entry rule order
         self.stage_planner = LocalStagePlanner(self.task, self.mass, PLAN_FORCE_N, horizon_s=STAGE_S, nodes=STAGE_NODES)
         bridge = make_window_gstar(env.info_env, elastic=env.window, deadline_margin_s=BRIDGE_DEADLINE_MARGIN_S,
                                    **getattr(env, 'entry_kwargs', {}))
@@ -85,7 +86,10 @@ class ExecutorProbe:
             return None
         horizon = float(t_left_s) - BRIDGE_DEADLINE_MARGIN_S
         solves = 0
-        for tau in BRIDGE_TAUS_S:
+        taus = BRIDGE_TAUS_S
+        if self.entry_order == "aligned":
+            taus = sorted(BRIDGE_TAUS_S, key=lambda t: (angle_deg(rotation @ so3_exp(t * omega) @ self.task.approach_axis, q), t))
+        for tau in taus:
             if angle_deg(rotation @ so3_exp(tau * omega) @ self.task.approach_axis, q) > BRIDGE_ANGLE_DEG:
                 continue
             if tau > horizon + 1e-6:                     # ConditionalGStar.decide: beyond the deadline, not planned

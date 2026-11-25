@@ -16,6 +16,10 @@ from experiments.formal_r2_readout import load, paired, write_csv
 from experiments.r2_assets_readout import _reached_entry
 
 STAGE = 'diag3'
+#: D2 (ROUND3.md section 2): the entry-rule order and re-timing at high spin, against the same models' references
+COMPARISONS_D2 = [(f'{m}+r3b_aligned', m) for m in ('ECC', 'SAC_MPC')] + \
+                 [(f'{m}+r3b_hs_{v}', f'{m}+r3b_hs') for m in ('ECC', 'SAC_MPC') for v in ('aligned', 'aligned_slips')] + \
+                 [('ECC+r3b_hs', 'SAC_MPC+r3b_hs'), ('ECC+r3b_hs_aligned', 'SAC_MPC+r3b_hs_aligned'), ('ECC+r3b_aligned', 'SAC_MPC+r3b_aligned')]
 #: (a, b): a switch against the same models without it, and the method comparisons of the decision
 COMPARISONS = [('ECC+r3_launch_first', 'ECC'), ('ECC+r3_no_correction', 'ECC'), ('ECC+r3_launch_lead32', 'ECC'),
                ('ECC', 'ECC_NO_CORE'), ('ECC+r3_launch_first', 'ECC_NO_CORE'), ('ECC+r3_no_correction', 'ECC_NO_CORE'),
@@ -28,14 +32,14 @@ def _label(arm: str, seed: str) -> str:
     return f'{m}_s{seed}' + (f'_{sw}' if sw else '')
 
 
-def table(R, rows) -> list:
+def table(R, rows, stage: str = STAGE) -> list:
     out = []
     for arm in sorted({k[0] for k in rows}):
         for s in sorted({k[1] for k in rows if k[0] == arm}):
             n = dict(capture=0, timeout_no_entry=0, timeout_after_entry=0, timeout_in_cone=0, unsafe=0, other=0, entries_lost=0,
                      retimings=0, corrections=0, long_entries=0, episodes=0)
             label = _label(arm, s)
-            for o in block(stage_of(STAGE)['eval_openings']):
+            for o in block(stage_of(stage)['eval_openings']):
                 raw = json.loads(R.find('C', label, f'{label}_{o}.json').read_text(encoding='utf-8'))
                 ev = raw['event']
                 key = ('capture' if ev == 'success' else 'unsafe' if ev == 'unsafe' else
@@ -50,9 +54,9 @@ def table(R, rows) -> list:
     return out
 
 
-def comparisons(rows) -> list:
+def comparisons(rows, comps=None) -> list:
     out = []
-    for a, b in COMPARISONS:
+    for a, b in (comps or COMPARISONS):
         for metric in ('capture', 'time_s', 'delta_v'):
             r = paired(rows, a, b, metric)
             if r is not None:
@@ -61,15 +65,15 @@ def comparisons(rows) -> list:
     return out
 
 
-def write_all(roots, out: Path) -> dict:
+def write_all(roots, out: Path, stage: str = STAGE) -> dict:
     R = Roots(roots)
-    rows, missing, _, _ = load(R.roots, STAGE)
+    rows, missing, _, _ = load(R.roots, stage)
     out.mkdir(parents=True, exist_ok=True)
-    readout = {'stage': STAGE, 'registry_sha256': sha256(REGISTRY), 'missing_or_error': missing}
+    readout = {'stage': stage, 'registry_sha256': sha256(REGISTRY), 'missing_or_error': missing}
     if missing:
         (out / 'READOUT.json').write_text(json.dumps(readout, indent=1, ensure_ascii=False), encoding='utf-8')
         return {'verdict': 'incomplete', 'missing': len(missing), 'first': missing[:10]}
-    tab, comp = table(R, rows), comparisons(rows)
+    tab, comp = table(R, rows, stage), comparisons(rows, COMPARISONS_D2 if stage == 'diag3b' else None)
     write_csv(out / 'DIAG_TABLE.csv', tab); write_csv(out / 'DIAG_PAIRED.csv', comp)
     readout.update(table=tab, paired=comp)
     (out / 'READOUT.json').write_text(json.dumps(readout, indent=1, ensure_ascii=False, default=str), encoding='utf-8')

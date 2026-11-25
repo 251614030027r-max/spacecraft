@@ -100,3 +100,50 @@ def test_diag_readout(tmp_path):
     assert t[('ECC', '30')]['episodes'] == 96 and t[('ECC', '30')]['entries_lost'] == 48
     next((tmp_path / 'R' / 'C' / 'ECC_s31_r3_hs').glob('*.json')).unlink()
     assert DR.write_all([tmp_path / 'R'], tmp_path / 'out2')['verdict'] == 'incomplete'
+
+
+def test_intervention_cost_lowers_only_the_shaped_reward_of_a_corrected_decision():
+    from env.t2_stage import T2StageEnv
+    out = []
+    for cost in (0.0, 2.0):
+        env = T2StageEnv(openings=[296003], shaping=True, coordination=True, intervention_cost=cost)
+        env.reset(options={'opening': 296003})
+        env._coordinate = lambda a: (a, {'kind': 'correct'})
+        _, shaped, _, _, info = env.step(np.array([0.6, 0.2]))
+        out.append((shaped, info['true_reward']))
+    (s0, r0), (s1, r1) = out
+    assert r0 == r1 and s0 - s1 == pytest.approx(2.0)
+
+
+def test_entry_order_option():
+    from env.t2_stage import T2StageEnv
+    assert T2StageEnv(entry_order='aligned').entry_order == 'aligned'
+    with pytest.raises(ValueError):
+        T2StageEnv(entry_order='latest')
+
+
+def test_dev3_configurations_and_old_manifests():
+    reg = final.registry(); st = final.stage_of('dev3')
+    assert st['seeds'] == [40, 41, 42] and not set(st['seeds']) & {20, 21, 22, 30, 31, 32}
+    kw = {c: final.env_kwargs(reg['trained'][c]) for c in st['trained']}
+    assert kw['ECC_V3A']['coord_rule'] == 'launch_first' and kw['ECC_V3B']['intervention_cost'] == 2.0
+    assert kw['ECC_NC3']['correction'] is False and kw['SAC_MPC']['coord_rule'] == 'nearest'
+    m = {'algo': 'sac', 'geometry': True, 'window': True, 'coordination': True, 'correction': True, 'long_entry': True,
+         'potential': 'opportunity'}                      # a round-2 ECC manifest
+    final.verify_manifest(m, 'ECC')
+    assert not set(final.block(final.stage_of('diag3b')['eval_openings'])) & final._forbidden_eval('diag3b')
+
+
+def test_d2_readout(tmp_path):
+    reg = final.registry(); ops = final.block(final.stage_of('diag3b')['eval_openings'])
+    root = tmp_path / 'R'
+    for cfg in ('ECC', 'SAC_MPC'):
+        for seed in (30, 31, 32):
+            for label in [f'{cfg}_s{seed}'] + [f'{cfg}_s{seed}_{sw}' for sw in final.stage_of('diag3b')['eval_switches']]:
+                d = root / 'C' / label; d.mkdir(parents=True)
+                for k, o in enumerate(ops):
+                    (d / f'{label}_{o}.json').write_text(json.dumps(_result('timeout' if k % 3 == 0 else 'success', k)))
+    res = DR.write_all([root], tmp_path / 'out', 'diag3b')
+    assert res['verdict'] == 'complete'
+    pairs = {(p['a'], p['b']) for p in json.loads((tmp_path / 'out' / 'READOUT.json').read_text())['paired']}
+    assert ('ECC+r3b_hs_aligned', 'ECC+r3b_hs') in pairs and ('ECC+r3b_aligned', 'SAC_MPC+r3b_aligned') in pairs

@@ -450,12 +450,22 @@ class T2StageEnv(gym.Env):
                  extended_lattice: bool = False, deadline_s: tuple | None = None,
                  tumble_rate_deg_s: tuple | None = None, tumble_offset_deg: tuple | None = None,
                  coord_rule: str = "nearest", launch_lead_s: float = STAGE_S, entry_force_fraction: float | None = None,
-                 entry_replan_deviation_m: float | None = None, retime_slips: tuple | None = None) -> None:
+                 entry_replan_deviation_m: float | None = None, retime_slips: tuple | None = None,
+                 intervention_cost: float = 0.0, entry_order: str = "earliest") -> None:
         self.geometry = bool(geometry)
         #: round-3 diagnostic D1 (``docs/final_method/ROUND3.md`` section 1); the defaults are the round-2 method
         if coord_rule not in ("nearest", "launch_first"):
             raise ValueError(f"unknown coordination rule {coord_rule!r}")
         self.coord_rule = coord_rule
+        #: round-3 training feedback (``ROUND3.md`` section 2): the shaped reward of a corrected decision is lowered by
+        #: this cost, so that the policy learns to propose intents the executor can honour; training only (true return
+        #: unchanged)
+        self.intervention_cost = float(intervention_cost)
+        #: entry rule order over the arrival times within the gate: 'earliest' (round 2) or 'aligned' (smallest
+        #: forecast port angle first, i.e. nearest the pass centre; ``ROUND3.md`` section 2, D2)
+        if entry_order not in ("earliest", "aligned"):
+            raise ValueError(f"unknown entry order {entry_order!r}")
+        self.entry_order = entry_order
         self.launch_lead_s = float(launch_lead_s)
         #: entry execution parameters, shared by the execution and the opportunity prediction (empty: round-2 values)
         self.entry_kwargs = {k: v for k, v in (("plan_force_fraction", entry_force_fraction),
@@ -578,7 +588,10 @@ class T2StageEnv(gym.Env):
             return False
         q, _ = relative_inertial(self.env)
         g = self.generator
-        for tau in BRIDGE_TAUS_S:
+        taus = BRIDGE_TAUS_S
+        if self.entry_order == "aligned":
+            taus = sorted(BRIDGE_TAUS_S, key=lambda t: (angle_deg(port_forecast(self.env, t), q), t))
+        for tau in taus:
             if angle_deg(port_forecast(self.env, tau), q) > BRIDGE_ANGLE_DEG:
                 continue
             self.stats["bridge_attempts"] += 1
@@ -894,6 +907,8 @@ class T2StageEnv(gym.Env):
         if self.shaping:
             phi1 = 0.0 if terminated else self._phi()
             shaped = reward + GAMMA_STAGE * phi1 - phi0
+            if self.intervention_cost and coord is not None and coord.get("kind") == "correct":
+                shaped -= self.intervention_cost
         if g.mode in ("bridge", "descent"):
             self.stats["macro"] = g.mode
         info = {"event": event, "true_reward": reward, "stage_s": e.time_s - t0, "held": held, "mode": g.mode,

@@ -68,6 +68,54 @@
    "role": "proposed method with the fine opportunity lattice (FORMAL.md section 8); fills the ECC slot of the formal stage if the short check passes",
    "color": "#8e44ad",
    "extended_lattice": true
+  },
+  "ECC_V3A": {
+   "display": "ECC v3 (rule)",
+   "algo": "sac",
+   "coordination": true,
+   "correction": true,
+   "long_entry": true,
+   "potential": "opportunity",
+   "geometry": true,
+   "window": true,
+   "role": "round-3 dev (ROUND3.md section 2): direct entry before correction, last usable pass within 32 s",
+   "color": "#d35400",
+   "extended_lattice": false,
+   "coord_rule": "launch_first",
+   "launch_lead_s": 32.0,
+   "intervention_cost": 0.0
+  },
+  "ECC_V3B": {
+   "display": "ECC v3 (rule + intervention cost)",
+   "algo": "sac",
+   "coordination": true,
+   "correction": true,
+   "long_entry": true,
+   "potential": "opportunity",
+   "geometry": true,
+   "window": true,
+   "role": "round-3 dev: v3 rule and a training cost of 2.0 per correction",
+   "color": "#e67e22",
+   "extended_lattice": false,
+   "coord_rule": "launch_first",
+   "launch_lead_s": 32.0,
+   "intervention_cost": 2.0
+  },
+  "ECC_NC3": {
+   "display": "ECC v3 w/o critical-window correction",
+   "algo": "sac",
+   "coordination": true,
+   "correction": false,
+   "long_entry": true,
+   "potential": "opportunity",
+   "geometry": true,
+   "window": true,
+   "role": "round-3 dev: keep and direct entry (32 s lead), no correction",
+   "color": "#7f8c8d",
+   "extended_lattice": false,
+   "coord_rule": "nearest",
+   "launch_lead_s": 32.0,
+   "intervention_cost": 0.0
   }
  },
  "eval_switches": {
@@ -238,6 +286,68 @@
     "entry_replan_deviation_m": 0.5
    },
    "role": "round-3 diagnostic D1 (ROUND3.md section 1), evaluation only on the round-2 formal models"
+  },
+  "r3b_hs": {
+   "display": "high spin U(2.7, 3.3) deg/s",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "tumble_rate_deg_s": [
+     2.7,
+     3.3
+    ]
+   },
+   "role": "round-3 diagnostic D2 (ROUND3.md section 2), evaluation only on the round-2 formal models"
+  },
+  "r3b_aligned": {
+   "display": "entry rule: best-aligned arrival first",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "entry_order": "aligned"
+   },
+   "role": "round-3 diagnostic D2 (ROUND3.md section 2), evaluation only on the round-2 formal models"
+  },
+  "r3b_hs_aligned": {
+   "display": "high spin, best-aligned arrival first",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "tumble_rate_deg_s": [
+     2.7,
+     3.3
+    ],
+    "entry_order": "aligned"
+   },
+   "role": "round-3 diagnostic D2 (ROUND3.md section 2), evaluation only on the round-2 formal models"
+  },
+  "r3b_hs_aligned_slips": {
+   "display": "high spin, best-aligned arrival, re-timing up to 16 s",
+   "applies_to": [
+    "ECC",
+    "SAC_MPC"
+   ],
+   "env": {
+    "tumble_rate_deg_s": [
+     2.7,
+     3.3
+    ],
+    "entry_order": "aligned",
+    "retime_slips": [
+     2.0,
+     4.0,
+     8.0,
+     12.0,
+     16.0
+    ]
+   },
+   "role": "round-3 diagnostic D2 (ROUND3.md section 2), evaluation only on the round-2 formal models"
   }
  },
  "fixed": {
@@ -374,6 +484,46 @@
      "r3_hs_replan05"
     ],
     "authorised_by": "docs/final_method/ROUND3.md section 1 (diagnostic, evaluation only; not for the paper)"
+   },
+   "diag3b": {
+    "steps": 6000,
+    "seeds": [
+     30,
+     31,
+     32
+    ],
+    "eval_openings": "296000-296095",
+    "models_from": "formal",
+    "trained": [
+     "ECC",
+     "SAC_MPC"
+    ],
+    "fixed": [],
+    "eval_switches": [
+     "r3b_hs",
+     "r3b_aligned",
+     "r3b_hs_aligned",
+     "r3b_hs_aligned_slips"
+    ],
+    "authorised_by": "docs/final_method/ROUND3.md section 2 (diagnostic D2, evaluation only; shares D1 openings and its no-switch results)"
+   },
+   "dev3": {
+    "steps": 3000,
+    "seeds": [
+     40,
+     41,
+     42
+    ],
+    "eval_openings": "296200-296391",
+    "trained": [
+     "ECC_V3A",
+     "ECC_V3B",
+     "ECC_NC3",
+     "SAC_MPC"
+    ],
+    "fixed": [],
+    "eval_switches": [],
+    "authorised_by": "docs/final_method/ROUND3.md section 2 (development round A; adoption rule there)"
    }
   }
  }
