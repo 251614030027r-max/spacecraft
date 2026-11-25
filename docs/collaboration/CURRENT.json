@@ -1,47 +1,41 @@
 {
-  "topic": "R2_FORMAL",
-  "status": "正式训练、评估、案例重放与打包完成，等待上层复核。",
-  "execution_state": "formal_results_delivered",
-  "scientific_commit": "416015201f31cee6af7a4de6735d1a33a6e34ed9",
+  "topic": "R2_ASSETS",
+  "status": "补充评估与官方读出完成，科学证据已推送并回读，等待上层复核。",
+  "execution_state": "assets_results_delivered",
+  "scientific_commit": "9cde45f178cfb2177bff89ce9c1f6a1714b14fb6",
+  "readout_scientific_commit": "2d52d0f3b8ad416b4446e7db05deef2ee109ebba",
+  "order_collab_commit": "7163ad5a11ee1d7812cf8ef5cbb4d3fca4429a0e",
+  "run_order": "docs/collaboration/upper/run_orders/RUN_R2_ASSETS.md",
   "formal_evidence_commit": "36d443fbfdcf854cb82a4203322d7707f223482d",
-  "order_collab_commit": "58dd495103d97cc1e1a970d0a13d04d65a4f7564",
-  "run_order": "docs/collaboration/upper/run_orders/RUN_R2_FORMAL.md",
   "training_active": false,
   "evaluation_active": false,
   "current_scope": {
-    "stage": "formal",
+    "stage": "assets",
+    "methods": [
+      "ECC",
+      "SAC_MPC"
+    ],
     "seeds": [
       30,
       31,
       32
     ],
-    "steps": 6000,
-    "local": [
-      "ECC_s30",
-      "ECC_s31",
-      "ECC_s32"
+    "switches": [
+      "gen_spin_low",
+      "gen_spin_high",
+      "gen_deadline_tight",
+      "gen_nutation"
     ],
-    "codex_cloud": [
-      "TD3_MPC_s30",
-      "TD3_MPC_s31"
-    ],
-    "autodl": [
-      "SAC_MPC_s30",
-      "SAC_MPC_s31",
-      "SAC_MPC_s32",
-      "ECC_NO_CORE_s30",
-      "ECC_NO_CORE_s31",
-      "ECC_NO_CORE_s32",
-      "TD3_MPC_s32"
-    ],
-    "model_evaluation_episodes": 2880,
-    "fixed_policy_episodes": 576,
-    "case_trajectories": 4
+    "openings": "301000-301191",
+    "training_authorized": false
   },
-  "local_run_state": "过程文件/R2_FORMAL/RUN_STATE.json",
-  "current_delivery_report": "docs/collaboration/lower/handoffs/r2_formal/RESULT.md",
-  "current_delivery_evidence": "evidence/R2_FORMAL/",
-  "archive_tag": "archive/r2-formal-code",
-  "next_action": "由上层复核结果。新实验等待用户授权。",
-  "updated_at": "2026-11-22T11:46:29.858465+09:00"
+  "completed_episodes": 4608,
+  "fine_replays": 4,
+  "readout_complete": true,
+  "completed_at": "2026-11-25T04:16:23+09:00",
+  "assets_evidence_commit": "11422bb7d160449f7b56ecf2fc2a1b22b24a879b",
+  "assets_evidence_path": "evidence/R2_ASSETS",
+  "handoff": "docs/collaboration/lower/handoffs/r2_assets/RESULT.md",
+  "next_step": "等待上层复核与用户授权。",
+  "updated_at": "2026-11-25T10:02:47.5453063+09:00"
 }
