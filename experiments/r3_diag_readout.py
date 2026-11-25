@@ -18,11 +18,9 @@ from experiments.r2_assets_readout import _reached_entry
 STAGE = 'diag3'
 #: (a, b): a switch against the same models without it, and the method comparisons of the decision
 COMPARISONS = [('ECC+r3_launch_first', 'ECC'), ('ECC+r3_no_correction', 'ECC'), ('ECC+r3_launch_lead32', 'ECC'),
-               ('ECC_NO_CORE+r3_correction_on', 'ECC_NO_CORE'), ('ECC_NO_CORE+r3_launch_lead32', 'ECC_NO_CORE'),
-               ('ECC', 'ECC_NO_CORE'), ('ECC+r3_launch_first', 'ECC_NO_CORE'), ('ECC', 'SAC_MPC'),
-               ('ECC+r3_launch_first', 'SAC_MPC'), ('ECC_NO_CORE', 'SAC_MPC'),
-               *[(f'{m}+r3_hs_{v}', f'{m}+r3_hs') for m in ('ECC', 'SAC_MPC') for v in ('slips', 'force07', 'replan05')],
-               ('ECC+r3_hs', 'SAC_MPC+r3_hs')]
+               ('ECC', 'ECC_NO_CORE'), ('ECC+r3_launch_first', 'ECC_NO_CORE'), ('ECC+r3_no_correction', 'ECC_NO_CORE'),
+               ('ECC', 'SAC_MPC'), ('ECC+r3_launch_first', 'SAC_MPC'), ('ECC_NO_CORE', 'SAC_MPC'),
+               *[(f'ECC+r3_hs_{v}', 'ECC+r3_hs') for v in ('slips', 'force07', 'replan05')]]
 
 
 def _label(arm: str, seed: str) -> str:

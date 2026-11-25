@@ -70,7 +70,7 @@ def test_launch_first_starts_the_direct_entry_before_a_correction():
 
 def test_diag_stage_uses_its_own_unused_block():
     st = final.stage_of('diag3')
-    assert st['models_from'] == 'formal' and final.block(st['eval_openings']) == list(range(296000, 296192))
+    assert st['models_from'] == 'formal' and final.block(st['eval_openings']) == list(range(296000, 296096))
     assert not set(final.block(st['eval_openings'])) & final._forbidden_eval('diag3')
 
 
@@ -94,8 +94,8 @@ def test_diag_readout(tmp_path):
     assert res['verdict'] == 'complete'
     r = json.loads((tmp_path / 'out' / 'READOUT.json').read_text())
     pairs = {(p['a'], p['b'], p['metric']): p for p in r['paired']}
-    assert ('ECC+r3_launch_first', 'ECC', 'capture') in pairs and ('SAC_MPC+r3_hs_slips', 'SAC_MPC+r3_hs', 'capture') in pairs
+    assert ('ECC+r3_launch_first', 'ECC', 'capture') in pairs and ('ECC+r3_hs_slips', 'ECC+r3_hs', 'capture') in pairs
     t = {(x['arm'], x['seed']): x for x in r['table']}
-    assert t[('ECC', '30')]['episodes'] == 192 and t[('ECC', '30')]['entries_lost'] == 96
+    assert t[('ECC', '30')]['episodes'] == 96 and t[('ECC', '30')]['entries_lost'] == 48
     next((tmp_path / 'R' / 'C' / 'ECC_s31_r3_hs').glob('*.json')).unlink()
     assert DR.write_all([tmp_path / 'R'], tmp_path / 'out2')['verdict'] == 'incomplete'

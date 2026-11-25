@@ -168,21 +168,10 @@
    },
    "role": "round-3 diagnostic D1 (ROUND3.md section 1), evaluation only on the round-2 formal models"
   },
-  "r3_correction_on": {
-   "display": "no-core policy with the correction on",
-   "applies_to": [
-    "ECC_NO_CORE"
-   ],
-   "env": {
-    "correction": true
-   },
-   "role": "round-3 diagnostic D1 (ROUND3.md section 1), evaluation only on the round-2 formal models"
-  },
   "r3_launch_lead32": {
    "display": "direct entry when the pass is within 32 s",
    "applies_to": [
-    "ECC",
-    "ECC_NO_CORE"
+    "ECC"
    ],
    "env": {
     "launch_lead_s": 32.0
@@ -192,8 +181,7 @@
   "r3_hs": {
    "display": "high spin U(2.7, 3.3) deg/s",
    "applies_to": [
-    "ECC",
-    "SAC_MPC"
+    "ECC"
    ],
    "env": {
     "tumble_rate_deg_s": [
@@ -206,8 +194,7 @@
   "r3_hs_slips": {
    "display": "high spin, re-timing slips up to 16 s",
    "applies_to": [
-    "ECC",
-    "SAC_MPC"
+    "ECC"
    ],
    "env": {
     "tumble_rate_deg_s": [
@@ -227,8 +214,7 @@
   "r3_hs_force07": {
    "display": "high spin, entry plan force bound 70 %",
    "applies_to": [
-    "ECC",
-    "SAC_MPC"
+    "ECC"
    ],
    "env": {
     "tumble_rate_deg_s": [
@@ -242,8 +228,7 @@
   "r3_hs_replan05": {
    "display": "high spin, entry re-plan at 0.5 m deviation",
    "applies_to": [
-    "ECC",
-    "SAC_MPC"
+    "ECC"
    ],
    "env": {
     "tumble_rate_deg_s": [
@@ -371,7 +356,7 @@
      31,
      32
     ],
-    "eval_openings": "296000-296191",
+    "eval_openings": "296000-296095",
     "models_from": "formal",
     "trained": [
      "ECC",
@@ -382,7 +367,6 @@
     "eval_switches": [
      "r3_launch_first",
      "r3_no_correction",
-     "r3_correction_on",
      "r3_launch_lead32",
      "r3_hs",
      "r3_hs_slips",
