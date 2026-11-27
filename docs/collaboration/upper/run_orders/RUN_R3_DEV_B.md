@@ -42,7 +42,7 @@ python -B -m experiments.final eval --stage diag3c --run <ROOT_A>\B\TRAIN_<CFG>_
 
 ## 4. 读出与提交
 
-1. `python -B -m experiments.final pack --stage dev3 --root <ROOT_A> [--root <云端结果副本>] --output evidence\R3_DEV_B`（开发轮 A 的全部 15 个运行与新 3 个运行都要在场）
+1. `python -B -m experiments.final pack --stage dev3 --root <ROOT_A> [--root <云端结果副本>] --output evidence\R3_DEV_B`（开发轮 A 的 12 个运行与新的 3 个运行都要在场）
 2. `python -B -m experiments.final diag --stage diag3c --root <ROOT_C> --root <ROOT_A> --output evidence\R3_DIAG3`（`<ROOT_A>` 提供无开关的结果）
 3. `git add -f evidence/R3_DEV_B evidence/R3_DIAG3`，提交并推送科学分支；协作分支 `docs/collaboration/lower/handoffs/r3_dev_b/RESULT.md` 写一两行。
 
