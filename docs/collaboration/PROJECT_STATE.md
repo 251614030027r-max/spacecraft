@@ -44,7 +44,8 @@
 
 | 状态 | 执行书 |
 |---|---|
-| 等开场指令 | [RUN_R3_DEV_A](upper/run_orders/RUN_R3_DEV_A.md)：第三轮开发轮 A（v3 候选训练，3000 步 × 3 种子）+ 诊断 D2（`ROUND3.md` 第 2 节） |
+| 等开场指令 | [RUN_R3_DEV_B](upper/run_orders/RUN_R3_DEV_B.md)：第三轮开发轮 B（方法 v4：窗口整合；`ROUND3.md` 第 3 节；本机） |
+| 已交付（科学 `f549c73f`；判定 `ROUND3.md` 2.4：采用 V3B） | [RUN_R3_DEV_A](upper/run_orders/RUN_R3_DEV_A.md)：第三轮开发轮 A（v3 候选训练，3000 步 × 3 种子）+ 诊断 D2（`ROUND3.md` 第 2 节） |
 | 已交付（科学 `86e71869`） | [RUN_R3_D1](upper/run_orders/RUN_R3_D1.md)：第三轮诊断（只评估，不训练；`ROUND3.md` 第 1 节） |
 | 已授权，运行中（2026-11-24） | [RUN_R2_ASSETS](upper/run_orders/RUN_R2_ASSETS.md)：论文补充资产（只评估） |
 | 已交付并核查（`36d443fb` / `3ad2dbd6`） | [RUN_R2_FORMAL](upper/run_orders/RUN_R2_FORMAL.md)：第二轮正式实验 |
