@@ -1,0 +1,47 @@
+{
+ "algo": "sac",
+ "seed": 40,
+ "steps": 3000,
+ "workers": 2,
+ "git_head": "89b1e78402a3b0360207a97d6fd499ac78421158",
+ "smoke": false,
+ "collection": "asynchronous",
+ "geometry": true,
+ "window": true,
+ "coordination": false,
+ "correction": false,
+ "long_entry": false,
+ "potential": "opportunity",
+ "extended_lattice": false,
+ "coord_rule": "nearest",
+ "launch_lead_s": 16.0,
+ "intervention_cost": 0.0,
+ "mission": {
+  "deadline_s": [
+   140.0,
+   200.0
+  ],
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "obs_dim": 17,
+ "env_version": "t2-stage-2.0.0",
+ "learner_version": "t2-learner-9.2",
+ "algorithm": "SAC",
+ "net_arch": [
+  256,
+  256
+ ],
+ "learning_rate": 0.0003,
+ "buffer_size": 100000,
+ "batch_size": 256,
+ "learning_starts": 200,
+ "gamma": 0.992027944069944,
+ "tau": 0.005,
+ "gradient_steps_per_transition": 2,
+ "ent_coef": 0.05,
+ "final_config": "SAC_MPC",
+ "final_stage": "dev3",
+ "final_registry_sha256": "8acb92d49e8e79d6ec4a312f233c83e072bf25a54a4b80de7dd099f59545beb5"
+}
