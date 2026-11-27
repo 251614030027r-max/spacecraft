@@ -214,6 +214,7 @@ def t2_env_config() -> T1EnvConfig:
 #: pass-window commitment (RWG): the entry is a commitment to the port's pass, not to an instant
 WINDOW_SLIPS_S = (2.0, 4.0, 8.0)     # arrival re-timing inside the same pass (<= ~20 deg of port sweep)
 WINDOW_RESERVE_FRACTION = 0.95       # authority reserve: the last re-plan may use 95 % of the force bound
+WINDOW_SLIP_STEP_S, WINDOW_SLIP_CAP_S = 2.0, 30.0    # window-bounded re-timing: 2 s steps inside the rest of the window
 
 
 @dataclass
@@ -230,6 +231,9 @@ class WindowGStar(ConditionalGStar):
 
     reserve_planner: Any = None
     window_slips_s: tuple = WINDOW_SLIPS_S
+    #: window-bounded re-timing (``ROUND3.md`` section 3.2): the slips are the contiguous 2 s steps for which the forecast
+    #: port stays inside the entry gate at the shifted arrival (the rest of the pass window), at most WINDOW_SLIP_CAP_S
+    window_bounded: bool = False
     elastic: bool = True
     recoveries: int = 0
     recovery_log: list = field(default_factory=list)   # (time, slip, reserve used, port sweep of the slip): same-pass evidence
@@ -246,9 +250,10 @@ class WindowGStar(ConditionalGStar):
         q0 = chaser.position - target.position
         v0 = chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
         horizon = float(env.config.max_time_s) - self.deadline_margin_s - float(env.time_s)
-        trials = [(self.planner, s) for s in self.window_slips_s]
+        slips = self._window_slips(env, tau_s, q0) if self.window_bounded else self.window_slips_s
+        trials = [(self.planner, s) for s in slips]
         if self.reserve_planner is not None:
-            trials += [(self.reserve_planner, s) for s in (0.0, *self.window_slips_s)]
+            trials += [(self.reserve_planner, s) for s in (0.0, *slips)]
         for planner, slip in trials:
             tau = float(tau_s) + slip
             if tau <= 0.0 or tau > horizon + self.deadline_tolerance_s:
@@ -268,13 +273,29 @@ class WindowGStar(ConditionalGStar):
         self.plan_wall_s.append(perf_counter() - started)
 
 
+def _window_slips_of(env, tau_s: float, q0: np.ndarray) -> tuple:
+    """Contiguous slips (2 s steps, at most WINDOW_SLIP_CAP_S) whose shifted arrival keeps the forecast port inside the
+    entry gate (port-line-of-sight angle <= BRIDGE_ANGLE_DEG): the remaining part of the pass window."""
+    out = []
+    s = WINDOW_SLIP_STEP_S
+    while s <= WINDOW_SLIP_CAP_S + 1e-9:
+        if angle_deg(port_forecast(env, float(tau_s) + s), q0) > BRIDGE_ANGLE_DEG:
+            break
+        out.append(s); s += WINDOW_SLIP_STEP_S
+    return tuple(out)
+
+
+WindowGStar._window_slips = staticmethod(_window_slips_of)
+
+
 def make_window_gstar(env, elastic: bool = True, replan_deviation_m: float | None = None, window_slips_s: tuple | None = None,
-                      **kwargs: Any) -> WindowGStar:
+                      window_bounded: bool = False, **kwargs: Any) -> WindowGStar:
     from env.t1_gstar import RendezvousPlanner
     base = make_conditional_gstar(env, **kwargs)
     reserve = RendezvousPlanner(env.config.task, env.chaser_parameters.mass, WINDOW_RESERVE_FRACTION * env.config.max_force_per_axis_n)
     extra = {**({"replan_deviation_m": float(replan_deviation_m)} if replan_deviation_m is not None else {}),
-             **({"window_slips_s": tuple(window_slips_s)} if window_slips_s is not None else {})}
+             **({"window_slips_s": tuple(window_slips_s)} if window_slips_s is not None else {}),
+             **({"window_bounded": True} if window_bounded else {})}
     return WindowGStar(kappa=base.kappa, planner=base.planner, recovery_planner=None, entry_speed_m_s=base.entry_speed_m_s,
                        deadline_margin_s=base.deadline_margin_s, reserve_planner=reserve, elastic=bool(elastic), **extra)
 
@@ -451,10 +472,10 @@ class T2StageEnv(gym.Env):
                  tumble_rate_deg_s: tuple | None = None, tumble_offset_deg: tuple | None = None,
                  coord_rule: str = "nearest", launch_lead_s: float = STAGE_S, entry_force_fraction: float | None = None,
                  entry_replan_deviation_m: float | None = None, retime_slips: tuple | None = None,
-                 intervention_cost: float = 0.0, entry_order: str = "earliest") -> None:
+                 intervention_cost: float = 0.0, entry_order: str = "earliest", retime: str = "fixed") -> None:
         self.geometry = bool(geometry)
         #: round-3 diagnostic D1 (``docs/final_method/ROUND3.md`` section 1); the defaults are the round-2 method
-        if coord_rule not in ("nearest", "launch_first"):
+        if coord_rule not in ("nearest", "launch_first", "window"):
             raise ValueError(f"unknown coordination rule {coord_rule!r}")
         self.coord_rule = coord_rule
         #: round-3 training feedback (``ROUND3.md`` section 2): the shaped reward of a corrected decision is lowered by
@@ -470,8 +491,12 @@ class T2StageEnv(gym.Env):
         #: entry execution parameters, shared by the execution and the opportunity prediction (empty: round-2 values)
         self.entry_kwargs = {k: v for k, v in (("plan_force_fraction", entry_force_fraction),
                                                ("replan_deviation_m", entry_replan_deviation_m),
-                                               ("window_slips_s", None if retime_slips is None else tuple(float(x) for x in retime_slips)))
+                                               ("window_slips_s", None if retime_slips is None else tuple(float(x) for x in retime_slips)),
+                                               ("window_bounded", True if retime == "window" else None))
                              if v is not None}
+        if retime not in ("fixed", "window"):
+            raise ValueError(f"unknown re-timing {retime!r}")
+        self.retime = retime
         self.window = bool(window)
         #: ECC coordination (``_coordinate``): the same map in training and execution
         self.coordination = bool(coordination)
@@ -772,6 +797,22 @@ class T2StageEnv(gym.Env):
 
         if own["event"]:
             return done(a)
+        if self.coord_rule == "window":                # ROUND3.md 3.1: one last-window condition for every opportunity
+            if self._last_window():
+                if self.long_entry and self._launch_direct(check_window=False):
+                    rec["kind"] = "launch"
+                    return done(a)
+                if opp is not None:
+                    budget, used = float(self.mission["budget_m_s"]), float(self.env._delta_v)
+                    ok = [(i, b, d) for i, (b, d) in enumerate(zip(PROBE_GRID, opp["rows"]))
+                          if d["event"] and used + d["dv"] + d.get("dv_entry", 0.0) <= budget]
+                    if ok:
+                        best = min(ok, key=lambda c: (float(np.linalg.norm(np.asarray(c[1]) - a)), float(c[2]["t"]), c[0]))
+                        self.stats["corrections"] = self.stats.get("corrections", 0) + 1
+                        rec.update(kind="correct", a_exec=[float(x) for x in best[1]], alt_t=float(best[2]["t"]), alt_kind=best[2]["kind"])
+                        return done(np.asarray(best[1], np.float64))
+            rec["kind"] = "none"
+            return done(a)
         if self.coord_rule == "launch_first" and self.long_entry and self._launch_direct():   # D1: direct entry before correction
             rec["kind"] = "launch"
             return done(a)
@@ -797,13 +838,23 @@ class T2StageEnv(gym.Env):
         rec["kind"] = "none"
         return done(a)
 
-    def _launch_direct(self) -> bool:
-        """Start the direct entry at the last usable pass (the port passes within ``launch_lead_s`` and no further pass
-        follows before L) when the entry planner finds an arrival; True when the entry has been started."""
+    def _last_window(self) -> bool:
+        """ROUND3.md 3.1: the next pass falls within the prediction horizon and no further pass follows before L."""
+        from env.t2_probe import PROBE_STAGES
         q, _ = relative_inertial(self.env)
         period, latest = self._pass_clock()
         ttp = float(frame_now(self.env, q)["time_to_pass_s"])
-        if ttp <= self.launch_lead_s and float(self.env.time_s) + ttp + period > latest and self.start_direct_gstar():
+        return ttp <= PROBE_STAGES * STAGE_S + 1e-9 and float(self.env.time_s) + ttp + period > latest
+
+    def _launch_direct(self, check_window: bool = True) -> bool:
+        """Start the direct entry at the last usable pass (the port passes within ``launch_lead_s`` and no further pass
+        follows before L) when the entry planner finds an arrival; True when the entry has been started.
+        ``check_window=False``: the caller has established the last window (``coord_rule='window'``)."""
+        q, _ = relative_inertial(self.env)
+        period, latest = self._pass_clock()
+        ttp = float(frame_now(self.env, q)["time_to_pass_s"])
+        if (not check_window or (ttp <= self.launch_lead_s and float(self.env.time_s) + ttp + period > latest)) \
+                and self.start_direct_gstar():
             self.stats["long_entries"] = self.stats.get("long_entries", 0) + 1
             self._bridge = {"t": self.env.time_s, "tau": float(self.generator.bridge.plan["tau_s"])}
             return True
@@ -867,6 +918,8 @@ class T2StageEnv(gym.Env):
             if coord["kind"] == "launch":
                 out = self._macro_to_end()
                 out[-1].update(coord=coord)
+                if self.shaping and self.intervention_cost and self.coord_rule == "window":   # a launch replaces the proposal
+                    out = (out[0], out[1] - self.intervention_cost, *out[2:])
                 return out
         q, v = relative_inertial(e)
         frame = frame_now(e, q)
@@ -907,7 +960,8 @@ class T2StageEnv(gym.Env):
         if self.shaping:
             phi1 = 0.0 if terminated else self._phi()
             shaped = reward + GAMMA_STAGE * phi1 - phi0
-            if self.intervention_cost and coord is not None and coord.get("kind") == "correct":
+            replaced = ("correct", "launch") if self.coord_rule == "window" else ("correct",)
+            if self.intervention_cost and coord is not None and coord.get("kind") in replaced:
                 shaped -= self.intervention_cost
         if g.mode in ("bridge", "descent"):
             self.stats["macro"] = g.mode

@@ -15,7 +15,7 @@ def test_registered_configurations_match_the_spec():
     assert t['ECC_NO_CORE']['correction'] is False and t['ECC_NO_CORE']['long_entry'] is True
     assert not t['SAC_MPC']['coordination'] and t['TD3_MPC']['algo'] == 'td3' and not t['TD3_MPC']['coordination']
     r2 = {'ECC', 'ECC_NO_CORE', 'SAC_MPC', 'TD3_MPC', 'ECC_FINE'}             # round 2; round-3 dev configurations: ROUND3.md
-    assert set(t) == r2 | {'ECC_V3A', 'ECC_V3B', 'ECC_NC3'} and {c['potential'] for c in t.values()} == {'opportunity'}
+    assert set(t) == r2 | {'ECC_V3A', 'ECC_V3B', 'ECC_NC3', 'ECC_V4'} and {c['potential'] for c in t.values()} == {'opportunity'}
     assert t['ECC_FINE']['extended_lattice'] is True and all(final.env_kwargs(t['ECC_FINE'])[k] == final.env_kwargs(t['ECC'])[k]
                                                                for k in ('coordination', 'correction', 'long_entry', 'potential', 'window'))
     assert not any(c['extended_lattice'] for k, c in t.items() if k != 'ECC_FINE')

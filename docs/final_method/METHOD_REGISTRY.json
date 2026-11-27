@@ -116,6 +116,23 @@
    "coord_rule": "nearest",
    "launch_lead_s": 32.0,
    "intervention_cost": 0.0
+  },
+  "ECC_V4": {
+   "display": "ECC v4 (window-integrated)",
+   "algo": "sac",
+   "coordination": true,
+   "correction": true,
+   "long_entry": true,
+   "potential": "opportunity",
+   "geometry": true,
+   "window": true,
+   "role": "round-3 dev B (ROUND3.md section 3): one last-window rule, intervention feedback on every replacement, window-bounded re-timing",
+   "color": "#c0392b",
+   "extended_lattice": false,
+   "coord_rule": "window",
+   "launch_lead_s": 48.0,
+   "intervention_cost": 2.0,
+   "retime": "window"
   }
  },
  "eval_switches": {
@@ -348,6 +365,42 @@
     ]
    },
    "role": "round-3 diagnostic D2 (ROUND3.md section 2), evaluation only on the round-2 formal models"
+  },
+  "dev_window": {
+   "display": "window-bounded re-timing",
+   "applies_to": [
+    "ECC_V3B",
+    "SAC_MPC"
+   ],
+   "env": {
+    "retime": "window"
+   },
+   "role": "round-3 dev B check (ROUND3.md section 3.3), evaluation only on the dev3 models"
+  },
+  "dev_fixed": {
+   "display": "fixed re-timing slips {2, 4, 8} s",
+   "applies_to": [
+    "ECC_V4"
+   ],
+   "env": {
+    "retime": "fixed"
+   },
+   "role": "round-3 dev B check (ROUND3.md section 3.3), evaluation only on the dev3 models"
+  },
+  "dev_hs": {
+   "display": "high spin U(2.7, 3.3) deg/s",
+   "applies_to": [
+    "ECC_V4",
+    "ECC_V3B",
+    "SAC_MPC"
+   ],
+   "env": {
+    "tumble_rate_deg_s": [
+     2.7,
+     3.3
+    ]
+   },
+   "role": "round-3 dev B check (ROUND3.md section 3.3), evaluation only on the dev3 models"
   }
  },
  "fixed": {
@@ -519,11 +572,35 @@
      "ECC_V3A",
      "ECC_V3B",
      "ECC_NC3",
-     "SAC_MPC"
+     "SAC_MPC",
+     "ECC_V4"
     ],
     "fixed": [],
     "eval_switches": [],
-    "authorised_by": "docs/final_method/ROUND3.md section 2 (development round A; adoption rule there)"
+    "authorised_by": "docs/final_method/ROUND3.md sections 2 (round A) and 3 (round B: ECC_V4)"
+   },
+   "diag3c": {
+    "steps": 3000,
+    "seeds": [
+     40,
+     41,
+     42
+    ],
+    "eval_openings": "296200-296391",
+    "models_from": "dev3",
+    "trained": [
+     "ECC_V4",
+     "ECC_V3B",
+     "SAC_MPC",
+     "ECC_NC3"
+    ],
+    "fixed": [],
+    "eval_switches": [
+     "dev_window",
+     "dev_fixed",
+     "dev_hs"
+    ],
+    "authorised_by": "docs/final_method/ROUND3.md section 3.3 (evaluation only; no-switch results from dev3)"
    }
   }
  }

@@ -54,7 +54,7 @@ def stage_of(name: str) -> dict:
 
 #: executor switches a manifest records, with the value runs from before a switch existed implicitly had
 ENV_KEYS = {'geometry': None, 'window': None, 'coordination': None, 'correction': None, 'long_entry': None, 'potential': None,
-            'extended_lattice': False, 'coord_rule': 'nearest', 'launch_lead_s': 16.0, 'intervention_cost': 0.0}
+            'extended_lattice': False, 'coord_rule': 'nearest', 'launch_lead_s': 16.0, 'intervention_cost': 0.0, 'retime': 'fixed'}
 
 
 def env_kwargs(config: dict) -> dict:

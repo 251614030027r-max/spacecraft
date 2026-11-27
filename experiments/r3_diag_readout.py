@@ -27,6 +27,14 @@ COMPARISONS = [('ECC+r3_launch_first', 'ECC'), ('ECC+r3_no_correction', 'ECC'), 
                *[(f'ECC+r3_hs_{v}', 'ECC+r3_hs') for v in ('slips', 'force07', 'replan05')]]
 
 
+#: dev round B (ROUND3.md section 3.3)
+COMPARISONS_D3 = [('ECC_V4', 'ECC_V3B'), ('ECC_V4', 'SAC_MPC'), ('ECC_V4', 'ECC_NC3'), ('ECC_V3B', 'SAC_MPC'),
+                  ('ECC_V4', 'ECC_V4+dev_fixed'), ('ECC_V3B+dev_window', 'ECC_V3B'), ('SAC_MPC+dev_window', 'SAC_MPC'),
+                  ('ECC_V3B+dev_window', 'SAC_MPC+dev_window'),
+                  ('ECC_V4+dev_hs', 'SAC_MPC+dev_hs'), ('ECC_V3B+dev_hs', 'SAC_MPC+dev_hs'), ('ECC_V4+dev_hs', 'ECC_V3B+dev_hs')]
+STAGE_COMPARISONS = {'diag3b': COMPARISONS_D2, 'diag3c': COMPARISONS_D3}
+
+
 def _label(arm: str, seed: str) -> str:
     m, _, sw = arm.partition('+')
     return f'{m}_s{seed}' + (f'_{sw}' if sw else '')
@@ -73,7 +81,7 @@ def write_all(roots, out: Path, stage: str = STAGE) -> dict:
     if missing:
         (out / 'READOUT.json').write_text(json.dumps(readout, indent=1, ensure_ascii=False), encoding='utf-8')
         return {'verdict': 'incomplete', 'missing': len(missing), 'first': missing[:10]}
-    tab, comp = table(R, rows, stage), comparisons(rows, COMPARISONS_D2 if stage == 'diag3b' else None)
+    tab, comp = table(R, rows, stage), comparisons(rows, STAGE_COMPARISONS.get(stage))
     write_csv(out / 'DIAG_TABLE.csv', tab); write_csv(out / 'DIAG_PAIRED.csv', comp)
     readout.update(table=tab, paired=comp)
     (out / 'READOUT.json').write_text(json.dumps(readout, indent=1, ensure_ascii=False, default=str), encoding='utf-8')

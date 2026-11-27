@@ -147,3 +147,64 @@ def test_d2_readout(tmp_path):
     assert res['verdict'] == 'complete'
     pairs = {(p['a'], p['b']) for p in json.loads((tmp_path / 'out' / 'READOUT.json').read_text())['paired']}
     assert ('ECC+r3b_hs_aligned', 'ECC+r3b_hs') in pairs and ('ECC+r3b_aligned', 'SAC_MPC+r3b_aligned') in pairs
+
+
+def test_window_rule_and_feedback():
+    from env.t2_probe import PROBE_GRID
+    from env.t2_stage import T2StageEnv
+
+    class Probe:
+        def probe_intent(self, a, *args):
+            return {'event': 0, 't': 48.0, 'kind': None, 'dv': 0.1}
+
+    def run(last_window, launch_ok):
+        env = T2StageEnv(openings=[296203], shaping=False, coordination=True, coord_rule='window')
+        env.reset(options={'opening': 296203})
+        env.prober = Probe()
+        rows = [{'event': int(i == 2), 'kind': 'entry' if i == 2 else None, 't': 20.0, 'dv': 0.1, 'critical': False}
+                for i in range(len(PROBE_GRID))]
+        env._opportunity_eval = lambda rows=rows: {'args': (), 'rows': rows}
+        env._last_window = lambda: last_window
+        env._launch_direct = lambda check_window=True: launch_ok
+        a, rec = env._coordinate(np.array([0.9, 0.9]))
+        return rec['kind'], a
+    assert run(True, True)[0] == 'launch'
+    kind, a = run(True, False)
+    assert kind == 'correct' and np.array_equal(a, np.asarray(PROBE_GRID[2], float))   # not critical-flagged: state-level window
+    assert run(False, True)[0] == 'none'
+    from env.t2_stage import T2StageEnv as E
+    out = []
+    for cost in (0.0, 2.0):
+        env = E(openings=[296203], shaping=True, coordination=True, coord_rule='window', intervention_cost=cost)
+        env.reset(options={'opening': 296203})
+        env._coordinate = lambda a: (a, {'kind': 'launch'})
+        out.append(env.step(np.array([0.6, 0.2]))[1])
+    assert out[0] - out[1] == pytest.approx(2.0)                                       # a launch is a replacement too
+
+
+def test_window_bounded_slips():
+    from env.t2_stage import BRIDGE_ANGLE_DEG, T2StageEnv, WINDOW_SLIP_CAP_S, angle_deg, port_forecast
+    env = T2StageEnv(openings=[296203], shaping=False, retime='window')
+    env.reset(options={'opening': 296203})
+    assert env.generator.bridge.window_bounded is True
+    assert T2StageEnv(openings=[296203], shaping=False).entry_kwargs == {}
+    from env.t1_p_stage import relative_inertial
+    q, _ = relative_inertial(env.env)
+    for tau in (0.0, 10.0, 30.0, 60.0):
+        sl = env.generator.bridge._window_slips(env.info_env, tau, q)
+        assert all(angle_deg(port_forecast(env.info_env, tau + s), q) <= BRIDGE_ANGLE_DEG for s in sl)
+        assert all(b - a == pytest.approx(2.0) for a, b in zip(sl, sl[1:])) and (not sl or sl[0] == 2.0)
+        assert not sl or sl[-1] <= WINDOW_SLIP_CAP_S
+        if sl and sl[-1] < WINDOW_SLIP_CAP_S:
+            assert angle_deg(port_forecast(env.info_env, tau + sl[-1] + 2.0), q) > BRIDGE_ANGLE_DEG
+    with pytest.raises(ValueError):
+        T2StageEnv(retime='adaptive')
+
+
+def test_v4_registry_and_diag3c():
+    reg = final.registry(); kw = final.env_kwargs(reg['trained']['ECC_V4'])
+    assert kw['coord_rule'] == 'window' and kw['retime'] == 'window' and kw['intervention_cost'] == 2.0
+    assert final.env_kwargs(reg['trained']['SAC_MPC'])['retime'] == 'fixed'
+    st = final.stage_of('diag3c')
+    assert st['models_from'] == 'dev3' and st['eval_openings'] == final.stage_of('dev3')['eval_openings']
+    assert not set(final.block(st['eval_openings'])) & final._forbidden_eval('diag3c')
