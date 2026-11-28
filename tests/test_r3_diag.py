@@ -208,3 +208,20 @@ def test_v4_registry_and_diag3c():
     st = final.stage_of('diag3c')
     assert st['models_from'] == 'dev3' and st['eval_openings'] == final.stage_of('dev3')['eval_openings']
     assert not set(final.block(st['eval_openings'])) & final._forbidden_eval('diag3c')
+
+
+def test_dev3_runs_may_come_from_the_two_registered_commits(tmp_path):
+    reg = final.registry(); st = final.stage_of('dev3')
+    for cfg, head in (('ECC_V3B', '89b1e784aaaa'), ('ECC_V4', '5432ecceaaaa')):
+        run = tmp_path / 'B' / f'TRAIN_{cfg}_s40'; run.mkdir(parents=True)
+        m = {'algo': 'sac', **final.env_kwargs(reg['trained'][cfg]), 'seed': 40, 'steps': st['steps'], 'git_head': head,
+             'final_config': cfg, 'final_stage': 'dev3'}
+        (run / 'manifest.json').write_text(json.dumps(m)); (run / 'final.zip').write_bytes(cfg.encode())
+    res = final.resolve('dev3', tmp_path)
+    assert res['science_sha'] == '5432ecceaaaa, 89b1e784aaaa' and len(res['runs']) == 2
+    bad = tmp_path / 'B' / 'TRAIN_SAC_MPC_s40'; bad.mkdir()
+    m = {'algo': 'sac', **final.env_kwargs(reg['trained']['SAC_MPC']), 'seed': 40, 'steps': st['steps'], 'git_head': 'deadbeef',
+         'final_config': 'SAC_MPC', 'final_stage': 'dev3'}
+    (bad / 'manifest.json').write_text(json.dumps(m)); (bad / 'final.zip').write_bytes(b'x')
+    with pytest.raises(SystemExit):
+        final.resolve('dev3', tmp_path)

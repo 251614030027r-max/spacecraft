@@ -356,11 +356,12 @@ def resolve(stage: str, root) -> dict:
         runs[d.name] = {'config': cfg, 'display': reg['trained'][cfg]['display'], 'seed': int(m['seed']), 'git_head': m['git_head'],
                         'steps': int(m['steps']), 'location': R.rel(d), 'model_sha256': digest, 'model_hash_source': source,
                         'finished': (d / 'finished.json').exists()}
-    if len(shas) > 1:
+    allowed = st.get('science_commits')         # a stage trained in sessions at commits shown neutral to each other
+    if len(shas) > 1 and not (allowed and all(any(h.startswith(p) for p in allowed) for h in shas)):
         raise SystemExit(f'runs from different science SHAs: {sorted(shas)}')
     if len(budgets) > 1 or (budgets and budgets != {int(st['steps'])}):
         raise SystemExit(f'budgets {sorted(budgets)} differ from the stage budget {st["steps"]}')
-    return {'stage': stage, 'registry_sha256': hashlib.sha256(REGISTRY.read_bytes()).hexdigest(), 'science_sha': next(iter(shas), None),
+    return {'stage': stage, 'registry_sha256': hashlib.sha256(REGISTRY.read_bytes()).hexdigest(), 'science_sha': (next(iter(shas), None) if len(shas) <= 1 else ', '.join(sorted(shas))),
             'steps': next(iter(budgets), None), 'eval_openings': st['eval_openings'], 'runs': runs,
             'configs': {k: reg['trained'][k] for k in sorted({r['config'] for r in runs.values()})}}
 
