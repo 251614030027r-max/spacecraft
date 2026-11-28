@@ -356,8 +356,9 @@ def resolve(stage: str, root) -> dict:
         runs[d.name] = {'config': cfg, 'display': reg['trained'][cfg]['display'], 'seed': int(m['seed']), 'git_head': m['git_head'],
                         'steps': int(m['steps']), 'location': R.rel(d), 'model_sha256': digest, 'model_hash_source': source,
                         'finished': (d / 'finished.json').exists()}
-    allowed = st.get('science_commits')         # a stage trained in sessions at commits shown neutral to each other
-    if len(shas) > 1 and not (allowed and all(any(h.startswith(p) for p in allowed) for h in shas)):
+    allowed = st.get('science_commits')         # a stage trained in sessions at commits shown neutral to each other;
+    extra = {h for h in shas if not any(h.startswith(p) for p in (allowed or []))}   # plus at most one new session
+    if len(shas) > 1 and not (allowed and len(extra) <= 1):
         raise SystemExit(f'runs from different science SHAs: {sorted(shas)}')
     if len(budgets) > 1 or (budgets and budgets != {int(st['steps'])}):
         raise SystemExit(f'budgets {sorted(budgets)} differ from the stage budget {st["steps"]}')

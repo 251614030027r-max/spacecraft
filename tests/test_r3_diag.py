@@ -223,5 +223,17 @@ def test_dev3_runs_may_come_from_the_two_registered_commits(tmp_path):
     m = {'algo': 'sac', **final.env_kwargs(reg['trained']['SAC_MPC']), 'seed': 40, 'steps': st['steps'], 'git_head': 'deadbeef',
          'final_config': 'SAC_MPC', 'final_stage': 'dev3'}
     (bad / 'manifest.json').write_text(json.dumps(m)); (bad / 'final.zip').write_bytes(b'x')
-    with pytest.raises(SystemExit):
+    assert len(final.resolve('dev3', tmp_path)['runs']) == 3          # one further session is accepted
+    worse = tmp_path / 'B' / 'TRAIN_ECC_NC3_s40'; worse.mkdir()
+    m.update(final_config='ECC_NC3', **final.env_kwargs(reg['trained']['ECC_NC3']), git_head='cafebabe')
+    (worse / 'manifest.json').write_text(json.dumps(m)); (worse / 'final.zip').write_bytes(b'y')
+    with pytest.raises(SystemExit):                                   # a second unregistered one is not
         final.resolve('dev3', tmp_path)
+
+
+def test_v4f_is_v4_with_the_round2_retiming():
+    reg = final.registry()
+    a, b = final.env_kwargs(reg['trained']['ECC_V4F']), final.env_kwargs(reg['trained']['ECC_V4'])
+    assert {k for k in a if a[k] != b[k]} == {'retime'} and a['retime'] == 'fixed'
+    st = final.stage_of('diag3d')
+    assert st['models_from'] == 'dev3' and 'ECC_V4F' in reg['eval_switches']['dev_hs']['applies_to']

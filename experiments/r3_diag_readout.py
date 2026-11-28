@@ -32,7 +32,10 @@ COMPARISONS_D3 = [('ECC_V4', 'ECC_V3B'), ('ECC_V4', 'SAC_MPC'), ('ECC_V4', 'ECC_
                   ('ECC_V4', 'ECC_V4+dev_fixed'), ('ECC_V3B+dev_window', 'ECC_V3B'), ('SAC_MPC+dev_window', 'SAC_MPC'),
                   ('ECC_V3B+dev_window', 'SAC_MPC+dev_window'),
                   ('ECC_V4+dev_hs', 'SAC_MPC+dev_hs'), ('ECC_V3B+dev_hs', 'SAC_MPC+dev_hs'), ('ECC_V4+dev_hs', 'ECC_V3B+dev_hs')]
-STAGE_COMPARISONS = {'diag3b': COMPARISONS_D2, 'diag3c': COMPARISONS_D3}
+#: dev round C (ROUND3.md section 4)
+COMPARISONS_D4 = [('ECC_V4F', 'ECC_V3B'), ('ECC_V4F', 'SAC_MPC'), ('ECC_V4F+dev_hs', 'ECC_V3B+dev_hs'),
+                  ('ECC_V4F+dev_hs', 'SAC_MPC+dev_hs'), ('ECC_V3B+dev_hs', 'SAC_MPC+dev_hs')]
+STAGE_COMPARISONS = {'diag3b': COMPARISONS_D2, 'diag3c': COMPARISONS_D3, 'diag3d': COMPARISONS_D4}
 
 
 def _label(arm: str, seed: str) -> str:

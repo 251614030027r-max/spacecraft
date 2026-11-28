@@ -133,6 +133,23 @@
    "launch_lead_s": 48.0,
    "intervention_cost": 2.0,
    "retime": "window"
+  },
+  "ECC_V4F": {
+   "display": "ECC v4F (unified rule, fixed re-timing)",
+   "algo": "sac",
+   "coordination": true,
+   "correction": true,
+   "long_entry": true,
+   "potential": "opportunity",
+   "geometry": true,
+   "window": true,
+   "role": "round-3 dev C (ROUND3.md section 4): the v4 unified last-window rule and intervention feedback with the round-2 re-timing",
+   "color": "#a04000",
+   "extended_lattice": false,
+   "coord_rule": "window",
+   "launch_lead_s": 48.0,
+   "intervention_cost": 2.0,
+   "retime": "fixed"
   }
  },
  "eval_switches": {
@@ -392,7 +409,8 @@
    "applies_to": [
     "ECC_V4",
     "ECC_V3B",
-    "SAC_MPC"
+    "SAC_MPC",
+    "ECC_V4F"
    ],
    "env": {
     "tumble_rate_deg_s": [
@@ -573,11 +591,12 @@
      "ECC_V3B",
      "ECC_NC3",
      "SAC_MPC",
-     "ECC_V4"
+     "ECC_V4",
+     "ECC_V4F"
     ],
     "fixed": [],
     "eval_switches": [],
-    "authorised_by": "docs/final_method/ROUND3.md sections 2 (round A) and 3 (round B: ECC_V4)",
+    "authorised_by": "docs/final_method/ROUND3.md sections 2 (A), 3 (B: ECC_V4), 4 (C: ECC_V4F)",
     "science_commits": [
      "89b1e784",
      "5432ecce"
@@ -606,6 +625,26 @@
      "dev_hs"
     ],
     "authorised_by": "docs/final_method/ROUND3.md section 3.3 (evaluation only; no-switch results from dev3)"
+   },
+   "diag3d": {
+    "steps": 3000,
+    "seeds": [
+     40,
+     41,
+     42
+    ],
+    "eval_openings": "296200-296391",
+    "models_from": "dev3",
+    "trained": [
+     "ECC_V4F",
+     "ECC_V3B",
+     "SAC_MPC"
+    ],
+    "fixed": [],
+    "eval_switches": [
+     "dev_hs"
+    ],
+    "authorised_by": "docs/final_method/ROUND3.md section 4 (dev C check; V3B / SAC_MPC results reused from dev3 / diag3c)"
    }
   }
  }
