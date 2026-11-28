@@ -1,0 +1,53 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Sweep-cone geometry (single column), oblique projection
+\begin{tikzpicture}[>=Stealth,font=\footnotesize,
+  x={(1cm,0cm)},y={(-0.42cm,-0.30cm)},z={(0cm,1cm)},scale=0.80]
+  \def\L{2.3}          % length of unit directions
+  \def\bet{62}         % cone half-angle beta
+  \def\lam{74}         % line-of-sight polar angle lambda
+  \def\psip{200}       % azimuth of the port direction
+  \def\psil{300}       % azimuth of the line of sight
+  \def\D{3.6}          % chaser distance along the line of sight
+  \pgfmathsetmacro{\R}{\L*sin(\bet)}
+  \pgfmathsetmacro{\H}{\L*cos(\bet)}
+  % spin axis
+  \draw[->,thick,orange!80!black] (0,0,0) -- (0,0,3.0) node[anchor=south] {$\bs$};
+  % sweep cone: base circle and two generators
+  \draw[blue!60,thin] plot[domain=0:360,samples=90,smooth] ({\R*cos(\x)},{\R*sin(\x)},{\H});
+  \node[blue!70!black,anchor=west] at ({1.02*\R*cos(5)},{1.02*\R*sin(5)},{\H}) {sweep cone};
+  % rotation direction of the port
+  \draw[->,blue!70!black] plot[domain=228:262,samples=20] ({1.08*\R*cos(\x)},{1.08*\R*sin(\x)},{\H});
+  % port direction
+  \draw[->,very thick,blue!70!black] (0,0,0) -- ({\R*cos(\psip)},{\R*sin(\psip)},{\H}) node[anchor=east] {$\bn$};
+  % beta arc
+  \draw[blue!70!black] plot[domain=0:\bet,samples=20] ({0.75*sin(\x)*cos(\psip)},{0.75*sin(\x)*sin(\psip)},{0.75*cos(\x)});
+  \node[blue!70!black] at ({0.95*sin(\bet/2)*cos(\psip)},{0.95*sin(\bet/2)*sin(\psip)},{0.95*cos(\bet/2)}) {$\beta$};
+  % phase arc on the cone circle from the port to the LOS meridian
+  \draw[very thick,red!70!black] plot[domain=\psip:\psil,samples=40] ({\R*cos(\x)},{\R*sin(\x)},{\H});
+  \node[red!70!black,anchor=south] at ({\R*cos(262)},{\R*sin(262)},{\H+0.04}) {$\varphi$};
+  % meridian of the line of sight (dotted)
+  \draw[densely dotted] plot[domain=0:\lam,samples=30] ({\L*sin(\x)*cos(\psil)},{\L*sin(\x)*sin(\psil)},{\L*cos(\x)});
+  \fill ({\L*sin(\bet)*cos(\psil)},{\L*sin(\bet)*sin(\psil)},{\L*cos(\bet)}) circle (1.3pt);
+  % line of sight to the chaser
+  \pgfmathsetmacro{\cx}{\D*sin(\lam)*cos(\psil)}
+  \pgfmathsetmacro{\cy}{\D*sin(\lam)*sin(\psil)}
+  \pgfmathsetmacro{\cz}{\D*cos(\lam)}
+  \draw[thick] (0,0,0) -- (\cx,\cy,\cz);
+  \draw[orange!80!black] plot[domain=0:\lam,samples=20] ({0.55*sin(\x)*cos(\psil)},{0.55*sin(\x)*sin(\psil)},{0.55*cos(\x)});
+  \node[orange!80!black] at ({0.8*sin(\lam/2)*cos(\psil)},{0.8*sin(\lam/2)*sin(\psil)},{0.8*cos(\lam/2)}) {$\lambda$};
+  % local basis at the chaser
+  \pgfmathsetmacro{\erx}{sin(\lam)*cos(\psil)}  \pgfmathsetmacro{\ery}{sin(\lam)*sin(\psil)}  \pgfmathsetmacro{\erz}{cos(\lam)}
+  \pgfmathsetmacro{\epx}{-cos(\lam)*cos(\psil)} \pgfmathsetmacro{\epy}{-cos(\lam)*sin(\psil)} \pgfmathsetmacro{\epz}{sin(\lam)}
+  \pgfmathsetmacro{\eax}{sin(\psil)}            \pgfmathsetmacro{\eay}{-cos(\psil)}
+  \filldraw[fill=gray!20] (\cx,\cy,\cz) circle (2.2pt);
+  \node[anchor=north] at (\cx,\cy,\cz-0.12) {chaser};
+  \draw[->,thick] (\cx,\cy,\cz) -- ++(0.9*\erx,0.9*\ery,0.9*\erz) node[anchor=west] {$\er$};
+  \draw[->,thick] (\cx,\cy,\cz) -- ++(0.9*\epx,0.9*\epy,0.9*\epz) node[anchor=south] {$\epol$};
+  \draw[->,thick] (\cx,\cy,\cz) -- ++(0.9*\eax,0.9*\eay,0) node[anchor=south east] {$\eaz$};
+  % target
+  \filldraw[fill=gray!40] (0,0,0) circle (2.5pt);
+  \node[anchor=north east] at (0,0,0) {target};
+\end{tikzpicture}
+\end{document}

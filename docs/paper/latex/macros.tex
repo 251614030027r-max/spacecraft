@@ -1,0 +1,110 @@
+% ---------------------------------------------------------------------------
+% Notation macros: single source for every symbol used in the paper.
+% Convention: bold = vector/matrix; hat = predicted quantity; bar = upper bound;
+% tilde = transformed quantity; Delta = increment only; upright subscripts = names.
+% ---------------------------------------------------------------------------
+
+% Placeholder for content that waits for the formal results or author input.
+\newcommand{\todo}[1]{{\color{red}[\textbf{TODO:} #1]}}
+\newcommand{\tbd}{{\color{red}\textbf{?}}}                % table cell awaiting data
+
+% Generic
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\SE}{\mathrm{SE}(3)}
+\newcommand{\SO}{\mathrm{SO}(3)}
+\newcommand{\T}{\top}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\sat}{\operatorname{sat}}
+\newcommand{\diag}{\operatorname{diag}}
+\newcommand{\argmin}{\operatorname*{arg\,min}}
+\newcommand{\argmax}{\operatorname*{arg\,max}}
+\newcommand{\dd}{\mathrm{d}}
+
+% Frames
+\newcommand{\FI}{\mathcal{F}_{\mathrm{I}}}
+\newcommand{\FT}{\mathcal{F}_{\mathrm{T}}}
+\newcommand{\FC}{\mathcal{F}_{\mathrm{C}}}
+
+% Rigid-body quantities
+\newcommand{\bR}{\vect{R}}
+\newcommand{\bp}{\vect{p}}
+\newcommand{\bJ}{\vect{J}}
+\newcommand{\bM}{\vect{M}}
+\newcommand{\bI}{\vect{I}}
+\newcommand{\bw}{\vect{\omega}}
+\newcommand{\bnu}{\vect{\nu}}
+\newcommand{\bxi}{\vect{\xi}}
+\newcommand{\bg}{\vect{g}}
+\newcommand{\bff}{\vect{f}}
+\newcommand{\bG}{\vect{\Gamma}}
+\newcommand{\mC}{m_{\mathrm{C}}}
+\newcommand{\fmax}{\bar f}
+\newcommand{\Gmax}{\bar \Gamma}
+
+% Relative motion and port geometry
+\newcommand{\brho}{\vect{\rho}}
+\newcommand{\brhoT}{\vect{\rho}_{\mathrm{T}}}
+\newcommand{\bv}{\vect{v}}
+\newcommand{\bn}{\vect{n}}
+\newcommand{\bnp}{\vect{n}_{\mathrm{p}}}
+\newcommand{\bpport}{\vect{p}_{\mathrm{port}}}
+\newcommand{\bpcap}{\vect{p}_{\mathrm{cap}}}
+\newcommand{\bs}{\vect{s}}
+\newcommand{\er}{\vect{e}_{\mathrm{r}}}
+\newcommand{\epol}{\vect{e}_{\mathrm{pol}}}
+\newcommand{\eaz}{\vect{e}_{\mathrm{az}}}
+\newcommand{\dlat}{\delta}                      % latitude offset
+\newcommand{\phw}{\varphi_{\mathrm{w}}}         % phase half-width of a window
+\newcommand{\psig}{\bar\psi}                    % entry gate on the port--line-of-sight angle
+\newcommand{\Kset}{\mathcal{K}}                 % approach cone
+\newcommand{\Km}{\mathcal{K}_{\mathrm{m}}}      % mouth region
+\newcommand{\Sset}{\mathcal{S}}                 % safe set
+\newcommand{\Xcap}{\mathcal{S}_{\mathrm{cap}}}  % capture set
+\newcommand{\vmg}{v_{\mathrm{mg}}}              % radial braking margin
+\newcommand{\vb}{v_{\mathrm{b}}}                % braking envelope
+\newcommand{\rhos}{\rho_{\mathrm{s}}}           % operation-sphere radius
+\newcommand{\rhom}{\rho_{\mathrm{m}}}           % mouth radius / planning keep-out radius
+\newcommand{\brhom}{\vect{\rho}_{\mathrm{m}}}   % mouth point
+
+% Time and mission
+\newcommand{\Ts}{T_{\mathrm{sp}}}               % spin period
+\newcommand{\Td}{T_{\mathrm{d}}}                % deadline
+\newcommand{\Tr}{T_{\mathrm{r}}}                % terminal reserve
+\newcommand{\te}{\bar t_{\mathrm{e}}}           % latest admissible entry time
+\newcommand{\tc}{t_{\mathrm{c}}}                % capture time
+\newcommand{\taup}{\tau_{\mathrm{p}}}           % time to the next pass
+\newcommand{\Bmax}{\bar B}                      % velocity-increment budget
+\newcommand{\Tp}{T_{\mathrm{pr}}}                % mode-prediction horizon
+\newcommand{\Tm}{T_{\mathrm{ml}}}               % mode-logic period
+\newcommand{\Tset}{\mathcal{T}}                 % candidate arrival times
+\newcommand{\TsetL}{\mathcal{T}_{\mathrm{L}}}   % long-range arrival times
+\newcommand{\tauL}{\tau_{\mathrm{L}}}           % long-range arrival time
+\newcommand{\launch}{\mathrm{launch}}                    % launch of the long-range entry
+\newcommand{\Xlp}{\mathcal{X}_{\mathrm{lp}}}    % states at the last usable pass
+
+% Decision and execution
+\newcommand{\ba}{\vect{a}}
+\newcommand{\bb}{\vect{b}}
+\newcommand{\bo}{\vect{o}}
+\newcommand{\Aset}{\mathcal{A}}                 % action box
+\newcommand{\Xset}{\mathcal{X}}                 % decision-state space
+\newcommand{\Gset}{\mathcal{G}}                 % candidate set
+\newcommand{\Ga}{\mathcal{G}_{\mathrm{c}}}      % critical candidate set
+\newcommand{\Cmap}{\mathcal{C}}                 % coordination map
+\newcommand{\Mpred}{\mathcal{M}}                % mode prediction
+\newcommand{\PE}{P_{\mathcal{E}}}               % execution-layer macro-step kernel
+\newcommand{\PC}{P_{\mathcal{C}}}               % coordinated kernel
+\newcommand{\ehat}{\hat{e}}
+\newcommand{\tauhat}{\hat{\tau}}
+\newcommand{\dvhat}{\widehat{\Delta v}}
+\newcommand{\rtil}{\tilde{r}}
+\newcommand{\modeS}{\mathrm{S}}
+\newcommand{\modeH}{\mathrm{H}}
+\newcommand{\modeE}{\mathrm{E}}
+\newcommand{\modeD}{\mathrm{D}}
+
+% Method names
+\newcommand{\ECC}{ECC}
+\newcommand{\RWG}{RWG}

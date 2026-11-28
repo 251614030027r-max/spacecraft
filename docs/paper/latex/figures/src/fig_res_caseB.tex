@@ -1,0 +1,40 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\usepgfplotslibrary{groupplots}
+\begin{document}
+% Task B: execution modes, range, latitude offset, and port--line-of-sight angle of ECC (solid) and SAC--MPC (dashed),
+% from the 2-s rows; end distances to the capture point from the 0.1-s traces.
+\begin{tikzpicture}[font=\footnotesize]
+\input{data/caseB_modes}
+\newcommand{\caseBev}{\vtime{16}{cECC,densely dashdotted,thin}\vtime{\caseBTe}{gray!70!black,densely dashed,thin}%
+  \vtime{133.0}{black,thin}\vtime{\caseBTd}{black,densely dotted,thin}}
+\begin{groupplot}[group style={group size=1 by 4,vertical sep=0.2cm,xticklabels at=edge bottom},
+  casestyle,width=6.3cm,height=1.75cm,xmin=0,xmax=150,xtick={0,25,50,75,100,125,150}]
+\nextgroupplot[height=0.62cm,ymin=0,ymax=2,ytick={0.5,1.5},yticklabels={SAC--MPC,ECC},axis line style={draw=none},
+  major tick length=0pt,yticklabel style={font=\scriptsize},
+  legend style={at={(0.5,1.15)},anchor=south,legend columns=3,column sep=6pt,font=\scriptsize},
+  legend image code/.code={\fill[#1] (0cm,-0.08cm) rectangle (0.25cm,0.1cm);}]
+\addlegendimage{mStage!75}\addlegendentry{stage flight}
+\addlegendimage{mEntry!75}\addlegendentry{entry transfer}
+\addlegendimage{mDesc!75}\addlegendentry{descent}
+\caseBbars
+\caseBev
+\nextgroupplot[ymin=0,ymax=16,ytick={0,5,10,15},ylabel={$\rho$ (m)}]
+\caseBev
+\addplot[cECC,thick] table[x=t,y=range]{data/caseB_ts_ecc.dat};
+\addplot[cSAC,thick,dashed] table[x=t,y=range]{data/caseB_ts_sac.dat};
+\node[anchor=north east,inner sep=1.5pt,font=\scriptsize,align=right,fill=white,fill opacity=0.9,text opacity=1] at (axis cs:146.5,15.5) {end distance to $\bpcap$:\\ECC $\caseBendE$~m (capture)\\SAC--MPC $\caseBendS$~m (timeout)};
+\nextgroupplot[ymin=-60,ymax=10,ytick={-50,-25,0},ylabel={$\dlat$ (deg)}]
+\caseBev
+\draw[gray,thin] (axis cs:0,0) -- (axis cs:150,0);
+\addplot[cECC,thick] table[x=t,y=lat]{data/caseB_ts_ecc.dat};
+\addplot[cSAC,thick,dashed] table[x=t,y=lat]{data/caseB_ts_sac.dat};
+\nextgroupplot[ymin=0,ymax=180,ytick={0,35,90,180},ylabel={$\psi$ (deg)},xlabel={Time (s)},
+  legend style={at={(0.99,0.97)},anchor=north east,legend columns=1,font=\scriptsize,fill=white,fill opacity=0.85,text opacity=1,draw=none}]
+\caseBev
+\draw[black,densely dotted,thin] (axis cs:0,35) -- (axis cs:150,35);
+\addplot[cECC,thick] table[x=t,y=psi]{data/caseB_ts_ecc.dat}; \addlegendentry{ECC}
+\addplot[cSAC,thick,dashed] table[x=t,y=psi]{data/caseB_ts_sac.dat}; \addlegendentry{SAC--MPC}
+\end{groupplot}
+\end{tikzpicture}
+\end{document}

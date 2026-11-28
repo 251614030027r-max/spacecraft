@@ -1,0 +1,177 @@
+{
+ "opening": 294406,
+ "event": "success",
+ "return": 74.1539160652552,
+ "time_s": 133.1,
+ "delta_v": 1.2536083934744784,
+ "stages": 4,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 2,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 166.9,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 50.58044242858887,
+ "decisions": [
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 12.000693110640759,
+   "planned_dv": 0.16880660387510618,
+   "executed_dv": 0.16855244165085065,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "none",
+    "critical": false,
+    "n_admissible": 0,
+    "act": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.7154472660004103
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 32.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 9.287220502705702,
+   "planned_dv": 0.043924393910090655,
+   "executed_dv": 0.043951558357299,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 16.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "successor",
+    "critical": true,
+    "n_admissible": 2,
+    "act": true,
+    "tau_min": 42.0,
+    "own_event": 0,
+    "own_kind": null,
+    "own_t": 48.0,
+    "own_admissible": false,
+    "successor_by": [
+     1.0,
+     0.0
+    ],
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 0.8400032219997229
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 48.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 6.999790344813288,
+   "planned_dv": 0.029471813540979448,
+   "executed_dv": 0.0393573211645967,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 32.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 4,
+    "act": true,
+    "tau_min": 34.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 38.0,
+    "own_admissible": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 1.6162097160013218
+   }
+  },
+  {
+   "a": [
+    1.0,
+    0.0
+   ],
+   "t": 133.1,
+   "mode": "descent",
+   "held": false,
+   "range_m": 3.1167360417521244,
+   "planned_dv": 0.10589990950345735,
+   "executed_dv": 1.001747072301732,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 48.0,
+    "a": [
+     1.0,
+     0.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 6,
+    "act": true,
+    "tau_min": 10.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 10.0,
+    "own_admissible": true,
+    "a_exec": [
+     1.0,
+     0.0
+    ],
+    "wall_s": 2.031409408999025
+   }
+  }
+ ],
+ "coordination": "gov",
+ "cert_interventions": 0,
+ "gov_replacements": 0,
+ "gov_decisions": 4,
+ "gov_wall_s": 5.20306961300048,
+ "policy": "c_10_0_gov",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 80.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 10.252450147477616
+  }
+ ]
+}

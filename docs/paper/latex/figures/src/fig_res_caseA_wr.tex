@@ -1,0 +1,24 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\usepgfplotslibrary{groupplots}
+\begin{document}
+% Task A: body-frame force and torque of the chaser, held over each control period (0.1 s), with the per-axis bounds.
+\begin{tikzpicture}[font=\footnotesize]
+\begin{groupplot}[group style={group size=1 by 2,vertical sep=0.22cm,xticklabels at=edge bottom},
+  casestyle,width=5.0cm,height=2.42cm,xmin=0,xmax=150,xtick={0,25,50,75,100,125,150},
+  legend style={at={(1.02,0.5)},anchor=west,legend columns=1,font=\scriptsize,row sep=-1pt},legend cell align=left,legend image post style={line width=1.2pt}]
+\nextgroupplot[ymin=-2.4,ymax=2.4,ytick={-2,0,2},ylabel={Force (N)}]
+\caseAev
+\draw[gray,densely dashed,thin] (axis cs:0,2) -- (axis cs:150,2) (axis cs:0,-2) -- (axis cs:150,-2);
+\addplot[const plot,black,line width=0.45pt] table[x=t,y=fx]{data/caseA_fine.dat}; \addlegendentry{$x_{\mathrm{C}}$}
+\addplot[const plot,cTD3,line width=0.45pt] table[x=t,y=fy]{data/caseA_fine.dat}; \addlegendentry{$y_{\mathrm{C}}$}
+\addplot[const plot,cEntry!85!black,line width=0.45pt] table[x=t,y=fz]{data/caseA_fine.dat}; \addlegendentry{$z_{\mathrm{C}}$}
+\nextgroupplot[ymin=-0.72,ymax=0.72,ytick={-0.6,0,0.6},ylabel={Torque (N$\cdot$m)},xlabel={Time (s)}]
+\caseAev
+\draw[gray,densely dashed,thin] (axis cs:0,0.6) -- (axis cs:150,0.6) (axis cs:0,-0.6) -- (axis cs:150,-0.6);
+\addplot[const plot,black,line width=0.45pt] table[x=t,y=tx]{data/caseA_fine.dat};
+\addplot[const plot,cTD3,line width=0.45pt] table[x=t,y=ty]{data/caseA_fine.dat};
+\addplot[const plot,cEntry!85!black,line width=0.45pt] table[x=t,y=tz]{data/caseA_fine.dat};
+\end{groupplot}
+\end{tikzpicture}
+\end{document}

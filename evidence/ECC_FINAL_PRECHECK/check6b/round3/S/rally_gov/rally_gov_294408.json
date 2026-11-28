@@ -1,0 +1,126 @@
+{
+ "opening": 294408,
+ "event": "success",
+ "return": 70.78971667655281,
+ "time_s": 134.8,
+ "delta_v": 1.5730283323447154,
+ "stages": 2,
+ "holds": 0,
+ "rejected": 0,
+ "bridge_attempts": 1,
+ "macro": "descent",
+ "mission": {
+  "deadline_s": 143.7,
+  "urgent": true,
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "wall_s": 54.101603984832764,
+ "decisions": [
+  {
+   "a": [
+    0.9537563020592718,
+    1.0
+   ],
+   "t": 16.0,
+   "mode": "stage",
+   "held": false,
+   "range_m": 13.71620927710154,
+   "planned_dv": 0.16880660379282886,
+   "executed_dv": 0.16866291525816324,
+   "model": "off",
+   "event": null,
+   "gov": {
+    "t": 0.0,
+    "a": [
+     0.9537563020592718,
+     1.0
+    ],
+    "status": "own",
+    "critical": true,
+    "n_admissible": 3,
+    "act": true,
+    "commit_before": null,
+    "tau_min": 28.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 30.0,
+    "own_admissible": true,
+    "commit_after": 30.0,
+    "a_exec": [
+     0.9537563020592718,
+     1.0
+    ],
+    "wall_s": 1.001484161000917
+   }
+  },
+  {
+   "a": [
+    0.7909891405604106,
+    1.0
+   ],
+   "t": 134.8,
+   "mode": "descent",
+   "held": false,
+   "range_m": 2.9955069484968195,
+   "planned_dv": 0.12570808211903814,
+   "executed_dv": 1.4043654170865523,
+   "model": "off",
+   "event": "success",
+   "gov": {
+    "t": 16.0,
+    "a": [
+     0.7909891405604106,
+     1.0
+    ],
+    "status": "replace",
+    "critical": true,
+    "n_admissible": 5,
+    "act": true,
+    "commit_before": 30.0,
+    "tau_min": 14.0,
+    "own_event": 1,
+    "own_kind": "entry",
+    "own_t": 16.0,
+    "own_admissible": true,
+    "recommitted": false,
+    "alt": [
+     0.9537563020592718,
+     1.0
+    ],
+    "alt_t": 14.0,
+    "alt_kind": "entry",
+    "alt_incumbent": true,
+    "commit_after": 30.0,
+    "a_exec": [
+     0.9537563020592718,
+     1.0
+    ],
+    "wall_s": 0.6583475440002076
+   }
+  }
+ ],
+ "coordination": "gov",
+ "cert_interventions": 0,
+ "gov_replacements": 1,
+ "gov_decisions": 2,
+ "gov_wall_s": 1.6598317050011246,
+ "policy": "rally_gov",
+ "window": true,
+ "entries_lost": 0,
+ "window_recoveries": [
+  {
+   "t": 48.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.027358789617455
+  },
+  {
+   "t": 64.0,
+   "slip_s": 4.0,
+   "reserve": false,
+   "phase_deg": 9.031418711217329
+  }
+ ]
+}

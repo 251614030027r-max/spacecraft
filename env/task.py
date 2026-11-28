@@ -10,6 +10,7 @@ from numpy.typing import ArrayLike, NDArray
 
 from dynamics.lie import inverse_transform, make_transform, se3_log, so3_log
 from dynamics.relative import RelativeState
+from dynamics.types import SpacecraftState
 
 
 FloatArray = NDArray[np.float64]
@@ -106,6 +107,133 @@ class Phase2TaskConfig:
                 + self.closing_speed_slope_per_s * max(float(axial_remaining_m), 0.0),
             )
         )
+
+    def completion_required_steps(self, dt_s: float) -> int:
+        if dt_s <= 0.0:
+            raise ValueError("dt_s must be positive")
+        return int(np.ceil(self.completion_hold_s / dt_s - 1.0e-12))
+
+
+@dataclass(frozen=True)
+class PrecaptureTaskConfig:
+    """Two-region planning task with no prescribed approach trajectory."""
+
+    port_position_target_m: tuple[float, float, float] = (-1.5, 0.0, 0.0)
+    desired_position_target_m: tuple[float, float, float] = (-3.0, 0.0, 0.0)
+    approach_axis_target: tuple[float, float, float] = (-1.0, 0.0, 0.0)
+    camera_boresight_chaser: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    keepout_radius_m: float = 2.0
+    entry_port_axial_distance_m: float = 4.5
+    entry_disc_radius_m: float = float(4.5 * np.tan(np.deg2rad(35.0)))
+    outer_inertial_speed_limit_m_s: float = 2.00
+    outer_radial_brake_accel_m_s2: float = 0.020
+    #: Physically-honest entry-phase gate (Path 2). A legal entry/capture
+    #: requires the tumbling port's outward normal to point within
+    #: ``arccos(entry_phase_gate_cos)`` of the fixed inertial staging direction
+    #: -- the fixture must face the approach for the end effector to seat.
+    #: ``-1.0`` disables the gate (any phase admissible) and reproduces the
+    #: frozen precapture task bitwise; a value in (-1, 1) opens a favourable
+    #: window once per tumble, making "when to enter" a real long-horizon
+    #: decision. The staging direction is set per episode by the environment.
+    entry_phase_gate_cos: float = -1.0
+    #: Outer approach corridor (opportunity task). Before a legal terminal latch
+    #: the chaser must stay within this half-angle of the episode-frozen inertial
+    #: staging direction ``s0`` (the approach direction it carried in at reset),
+    #: measured from the target centre. ``None`` disables it and reproduces the
+    #: frozen precapture task bitwise. It does not co-rotate, so the body-fixed
+    #: capture geometry sweeps in and out of it once per tumble -- a real
+    #: "when to close" decision produced by geometry, not by a phase threshold.
+    #: It is a safety-margin constraint (counted, non-terminating), active
+    #: pre-entry and inactive after the terminal region latches. ``s0`` is
+    #: episode state, supplied by the environment, never stored on this config.
+    outer_approach_half_angle_rad: float | None = None
+    corridor_half_angle_rad: float = float(np.deg2rad(35.0))
+    fov_half_angle_rad: float = float(np.deg2rad(50.0))
+    terminal_total_speed_limit_m_s: float = 0.35
+    closing_speed_min_m_s: float = 0.08
+    closing_speed_slope_per_s: float = 0.04
+    closing_speed_max_m_s: float = 0.30
+    completion_position_m: float = 0.25
+    completion_attitude_rad: float = float(np.deg2rad(10.0))
+    completion_speed_m_s: float = 0.05
+    completion_angular_velocity_rad_s: float = 0.02
+    completion_hold_s: float = 1.0
+    constraint_tolerance: float = 1.0e-9
+
+    def __post_init__(self) -> None:
+        for name in (
+            "port_position_target_m",
+            "desired_position_target_m",
+            "approach_axis_target",
+            "camera_boresight_chaser",
+        ):
+            object.__setattr__(self, name, tuple(float(x) for x in getattr(self, name)))
+        if not np.isclose(np.linalg.norm(self.approach_axis), 1.0, atol=1.0e-12):
+            raise ValueError("approach axis must be unit length")
+        if not np.isclose(np.linalg.norm(self.camera_boresight), 1.0, atol=1.0e-12):
+            raise ValueError("camera boresight must be unit length")
+        positive = (
+            self.keepout_radius_m,
+            self.entry_port_axial_distance_m,
+            self.entry_disc_radius_m,
+            self.outer_inertial_speed_limit_m_s,
+            self.outer_radial_brake_accel_m_s2,
+            self.corridor_half_angle_rad,
+            self.fov_half_angle_rad,
+            self.terminal_total_speed_limit_m_s,
+            self.closing_speed_min_m_s,
+            self.closing_speed_slope_per_s,
+            self.closing_speed_max_m_s,
+            self.completion_position_m,
+            self.completion_attitude_rad,
+            self.completion_speed_m_s,
+            self.completion_angular_velocity_rad_s,
+            self.completion_hold_s,
+            self.constraint_tolerance,
+        )
+        if min(positive) <= 0.0:
+            raise ValueError("precapture task scales and tolerances must be positive")
+        if max(self.corridor_half_angle_rad, self.fov_half_angle_rad) >= np.pi / 2:
+            raise ValueError("corridor and FOV half angles must be below 90 degrees")
+        if self.closing_speed_min_m_s > self.closing_speed_max_m_s:
+            raise ValueError("closing speed minimum cannot exceed maximum")
+        if self.outer_approach_half_angle_rad is not None and not (
+            0.0 < self.outer_approach_half_angle_rad < np.pi
+        ):
+            raise ValueError("outer approach half angle must lie in (0, pi)")
+
+    @property
+    def port_position(self) -> FloatArray:
+        return _vector3(self.port_position_target_m, "port_position_target_m")
+
+    @property
+    def desired_position(self) -> FloatArray:
+        return _vector3(self.desired_position_target_m, "desired_position_target_m")
+
+    @property
+    def approach_axis(self) -> FloatArray:
+        return _vector3(self.approach_axis_target, "approach_axis_target")
+
+    @property
+    def camera_boresight(self) -> FloatArray:
+        return _vector3(self.camera_boresight_chaser, "camera_boresight_chaser")
+
+    @property
+    def desired_transform(self) -> FloatArray:
+        return make_transform(np.eye(3), self.desired_position)
+
+    def closing_speed_limit(self, axial_remaining_m: float) -> float:
+        return float(
+            min(
+                self.closing_speed_max_m_s,
+                self.closing_speed_min_m_s
+                + self.closing_speed_slope_per_s * max(float(axial_remaining_m), 0.0),
+            )
+        )
+
+    def outer_radial_closing_speed_limit(self, range_m: float) -> float:
+        clearance = max(float(range_m) - self.keepout_radius_m, 0.0)
+        return float(np.sqrt(2.0 * self.outer_radial_brake_accel_m_s2 * clearance))
 
     def completion_required_steps(self, dt_s: float) -> int:
         if dt_s <= 0.0:
@@ -322,6 +450,113 @@ class TaskMetrics:
     constraints_satisfied: bool
 
 
+@dataclass(frozen=True)
+class PrecaptureMetrics:
+    position_target_m: FloatArray
+    position_rate_target_m_s: FloatArray
+    inertial_relative_velocity_m_s: FloatArray
+    desired_error_coordinates: FloatArray
+    target_center_distance_m: float
+    axial_remaining_m: float
+    port_axial_distance_m: float
+    corridor_radial_distance_m: float
+    keepout_margin_m: float
+    fov_angle_rad: float
+    fov_margin_rad: float
+    inertial_relative_speed_m_s: float
+    outer_inertial_speed_margin_m_s: float
+    outer_radial_closing_speed_m_s: float
+    outer_radial_closing_speed_limit_m_s: float
+    outer_radial_margin_m_s: float
+    outer_approach_angle_rad: float
+    outer_approach_margin_rad: float
+    target_frame_speed_m_s: float
+    target_frame_speed_limit_m_s: float
+    target_frame_speed_margin_m_s: float
+    terminal_region_active: bool
+    transition_speed_active: bool
+    corridor_axial_margin_m: float
+    corridor_lateral_margin_m: float
+    terminal_total_speed_margin_m_s: float
+    closing_speed_m_s: float
+    closing_speed_limit_m_s: float
+    closing_speed_margin_m_s: float
+    position_error_m: float
+    attitude_error_rad: float
+    angular_velocity_error_rad_s: float
+    instantaneous_completion: bool
+    active_constraints_satisfied: bool
+    all_truth_safety_satisfied: bool
+
+
+@dataclass(frozen=True)
+class TerminalEntryEvaluation:
+    """Truth-geometry result for one outside-to-inside entry-plane crossing."""
+
+    crossed: bool
+    legal: bool
+    interpolation_fraction: float | None
+    radial_distance_m: float | None
+    target_frame_speed_m_s: float | None
+    closing_speed_m_s: float | None
+    closing_speed_limit_m_s: float | None
+
+
+def evaluate_terminal_entry_crossing(
+    previous: PrecaptureMetrics,
+    current: PrecaptureMetrics,
+    config: PrecaptureTaskConfig,
+) -> TerminalEntryEvaluation:
+    """Evaluate a rotating target-frame entry-disc crossing from two RK45 states.
+
+    A crossing occurs only when the port-referenced axial coordinate moves from
+    outside the entry plane to its inside. Illegal crossings are diagnostic
+    events, not safety violations; the caller keeps the outer-region rules live.
+    """
+
+    plane = config.entry_port_axial_distance_m
+    previous_offset = previous.port_axial_distance_m - plane
+    current_offset = current.port_axial_distance_m - plane
+    crossed = bool(previous_offset > 0.0 and current_offset <= 0.0)
+    if not crossed:
+        return TerminalEntryEvaluation(False, False, None, None, None, None, None)
+    denominator = previous_offset - current_offset
+    fraction = float(np.clip(previous_offset / denominator, 0.0, 1.0))
+
+    def interpolate(before: float, after: float) -> float:
+        return float(before + fraction * (after - before))
+
+    radial_distance = interpolate(
+        previous.corridor_radial_distance_m,
+        current.corridor_radial_distance_m,
+    )
+    target_frame_speed = interpolate(
+        previous.target_frame_speed_m_s,
+        current.target_frame_speed_m_s,
+    )
+    closing_speed = interpolate(previous.closing_speed_m_s, current.closing_speed_m_s)
+    entry_position = config.port_position + plane * config.approach_axis
+    axial_remaining = float(
+        config.approach_axis @ (entry_position - config.desired_position)
+    )
+    closing_speed_limit = config.closing_speed_limit(axial_remaining)
+    tolerance = config.constraint_tolerance
+    legal = bool(
+        radial_distance < config.entry_disc_radius_m + tolerance
+        and target_frame_speed <= config.terminal_total_speed_limit_m_s + tolerance
+        and closing_speed <= closing_speed_limit + tolerance
+    )
+    return TerminalEntryEvaluation(
+        True,
+        legal,
+        fraction,
+        radial_distance,
+        target_frame_speed,
+        closing_speed,
+        closing_speed_limit,
+    )
+
+
 def orthogonal_plane_basis(unit_axis: FloatArray) -> tuple[FloatArray, FloatArray]:
     """Return a deterministic right-handed basis orthogonal to a unit axis."""
 
@@ -421,3 +656,223 @@ def compute_task_metrics(
         instantaneous_completion=instantaneous_completion,
         constraints_satisfied=constraints_satisfied,
     )
+
+
+def compute_precapture_metrics(
+    target: SpacecraftState,
+    chaser: SpacecraftState,
+    relative: RelativeState,
+    config: PrecaptureTaskConfig = PrecaptureTaskConfig(),
+    *,
+    terminal_region_active: bool = False,
+    staging_direction_inertial: ArrayLike | None = None,
+) -> PrecaptureMetrics:
+    """Single truth source for the two-region precapture task.
+
+    Region A limits inertial COM-relative total speed and inward radial speed
+    through a dynamically self-consistent braking envelope. Target-frame speed
+    is unconstrained until a legal outside-to-inside entry-disc crossing latches
+    the terminal region.
+    """
+
+    rotation = relative.rotation
+    position = relative.position
+    position_rate = rotation @ relative.velocity
+    inertial_relative_velocity = (
+        chaser.rotation @ chaser.velocity - target.rotation @ target.velocity
+    )
+    desired_error = inverse_transform(config.desired_transform) @ relative.transform
+    desired_coordinates = se3_log(desired_error, project=True)
+
+    target_center_distance = float(np.linalg.norm(position))
+    axis = config.approach_axis
+    port_displacement = position - config.port_position
+    port_axial_distance = float(axis @ port_displacement)
+    lateral = port_displacement - port_axial_distance * axis
+    corridor_radial_distance = float(np.linalg.norm(lateral))
+    corridor_axial_margin = port_axial_distance
+    corridor_lateral_margin = float(
+        port_axial_distance * np.tan(config.corridor_half_angle_rad)
+        - corridor_radial_distance
+    )
+    keepout_margin = target_center_distance - config.keepout_radius_m
+
+    line_of_sight_target = config.port_position - position
+    line_of_sight_chaser = rotation.T @ line_of_sight_target
+    los_norm = float(np.linalg.norm(line_of_sight_chaser))
+    if los_norm <= np.finfo(np.float64).eps:
+        fov_angle = float(np.pi)
+    else:
+        unit_los = line_of_sight_chaser / los_norm
+        cosine = float(np.clip(config.camera_boresight @ unit_los, -1.0, 1.0))
+        sine = float(np.linalg.norm(np.cross(config.camera_boresight, unit_los)))
+        fov_angle = float(np.arctan2(sine, cosine))
+    fov_margin = float(config.fov_half_angle_rad - fov_angle)
+
+    inertial_relative_speed = float(np.linalg.norm(inertial_relative_velocity))
+    outer_inertial_speed_margin = float(
+        config.outer_inertial_speed_limit_m_s - inertial_relative_speed
+    )
+    if target_center_distance <= np.finfo(np.float64).eps:
+        outer_radial_closing_speed = float("inf")
+    else:
+        radial_direction_inertial = (
+            target.rotation @ position / target_center_distance
+        )
+        outer_radial_closing_speed = float(
+            -radial_direction_inertial @ inertial_relative_velocity
+        )
+    outer_radial_closing_speed_limit = (
+        config.outer_radial_closing_speed_limit(target_center_distance)
+    )
+    outer_radial_margin = float(
+        outer_radial_closing_speed_limit - outer_radial_closing_speed
+    )
+    # Outer approach corridor: the chaser's inertial displacement direction must
+    # stay within ``outer_approach_half_angle_rad`` of the episode-frozen
+    # staging direction ``s0`` (inertial). ``s0`` does not co-rotate, so the
+    # body-fixed capture geometry sweeps in and out of it -- the opportunity.
+    # Inactive (angle 0, +inf margin) unless the corridor is configured, a
+    # staging direction is supplied, and the terminal region has not latched.
+    outer_approach_active = bool(
+        config.outer_approach_half_angle_rad is not None
+        and staging_direction_inertial is not None
+        and not terminal_region_active
+    )
+    if outer_approach_active:
+        displacement_inertial = target.rotation @ position
+        displacement_norm = float(np.linalg.norm(displacement_inertial))
+        staging = np.asarray(staging_direction_inertial, dtype=np.float64).reshape(3)
+        staging_norm = float(np.linalg.norm(staging))
+        if displacement_norm <= np.finfo(np.float64).eps or staging_norm <= np.finfo(
+            np.float64
+        ).eps:
+            outer_approach_angle = 0.0
+        else:
+            cosine = float(
+                np.clip(
+                    (displacement_inertial / displacement_norm)
+                    @ (staging / staging_norm),
+                    -1.0,
+                    1.0,
+                )
+            )
+            outer_approach_angle = float(np.arccos(cosine))
+        outer_approach_margin = float(
+            config.outer_approach_half_angle_rad - outer_approach_angle
+        )
+    else:
+        outer_approach_angle = 0.0
+        # Large finite "inactive" margin: gates positive without an inf that
+        # could break JSON serialisation or min/normalisation downstream.
+        outer_approach_margin = 1.0e3
+    target_frame_speed = float(np.linalg.norm(position_rate))
+    # Compatibility-only diagnostic fields: the withdrawn 14--8 m transition
+    # is never active. The terminal row owns the 0.35 m/s limit after latch.
+    transition_speed_active = False
+    target_frame_speed_limit = config.terminal_total_speed_limit_m_s
+    target_frame_speed_margin = float(target_frame_speed_limit - target_frame_speed)
+    terminal_total_speed_margin = float(
+        config.terminal_total_speed_limit_m_s - target_frame_speed
+    )
+
+    axial_remaining = float(axis @ (position - config.desired_position))
+    closing_speed = float(-axis @ position_rate)
+    closing_speed_limit = config.closing_speed_limit(axial_remaining)
+    closing_speed_margin = float(closing_speed_limit - closing_speed)
+    position_error = float(np.linalg.norm(position - config.desired_position))
+    attitude_error = float(np.linalg.norm(so3_log(desired_error[:3, :3], project=True)))
+    angular_velocity_error = float(np.linalg.norm(relative.omega))
+    instantaneous_completion = bool(
+        position_error <= config.completion_position_m
+        and attitude_error <= config.completion_attitude_rad
+        and target_frame_speed <= config.completion_speed_m_s
+        and angular_velocity_error <= config.completion_angular_velocity_rad_s
+    )
+
+    tolerance = config.constraint_tolerance
+    common_safe = bool(
+        keepout_margin >= -tolerance and fov_margin >= -tolerance
+    )
+    if terminal_region_active:
+        regional_safe = bool(
+            corridor_axial_margin >= -tolerance
+            and corridor_lateral_margin >= -tolerance
+            and terminal_total_speed_margin >= -tolerance
+            and closing_speed_margin >= -tolerance
+        )
+    else:
+        regional_safe = bool(
+            outer_inertial_speed_margin >= -tolerance
+            and outer_radial_margin >= -tolerance
+            and outer_approach_margin >= -tolerance
+        )
+    active_constraints_satisfied = bool(common_safe and regional_safe)
+    return PrecaptureMetrics(
+        position_target_m=position.copy(),
+        position_rate_target_m_s=position_rate.copy(),
+        inertial_relative_velocity_m_s=inertial_relative_velocity.copy(),
+        desired_error_coordinates=desired_coordinates,
+        target_center_distance_m=target_center_distance,
+        axial_remaining_m=axial_remaining,
+        port_axial_distance_m=port_axial_distance,
+        corridor_radial_distance_m=corridor_radial_distance,
+        keepout_margin_m=keepout_margin,
+        fov_angle_rad=fov_angle,
+        fov_margin_rad=fov_margin,
+        inertial_relative_speed_m_s=inertial_relative_speed,
+        outer_inertial_speed_margin_m_s=outer_inertial_speed_margin,
+        outer_radial_closing_speed_m_s=outer_radial_closing_speed,
+        outer_radial_closing_speed_limit_m_s=outer_radial_closing_speed_limit,
+        outer_radial_margin_m_s=outer_radial_margin,
+        outer_approach_angle_rad=outer_approach_angle,
+        outer_approach_margin_rad=outer_approach_margin,
+        target_frame_speed_m_s=target_frame_speed,
+        target_frame_speed_limit_m_s=target_frame_speed_limit,
+        target_frame_speed_margin_m_s=target_frame_speed_margin,
+        terminal_region_active=bool(terminal_region_active),
+        transition_speed_active=transition_speed_active,
+        corridor_axial_margin_m=corridor_axial_margin,
+        corridor_lateral_margin_m=corridor_lateral_margin,
+        terminal_total_speed_margin_m_s=terminal_total_speed_margin,
+        closing_speed_m_s=closing_speed,
+        closing_speed_limit_m_s=closing_speed_limit,
+        closing_speed_margin_m_s=closing_speed_margin,
+        position_error_m=position_error,
+        attitude_error_rad=attitude_error,
+        angular_velocity_error_rad_s=angular_velocity_error,
+        instantaneous_completion=instantaneous_completion,
+        active_constraints_satisfied=active_constraints_satisfied,
+        all_truth_safety_satisfied=active_constraints_satisfied,
+    )
+
+
+def precapture_entry_phase_favourability(
+    target: SpacecraftState,
+    staging_direction_inertial: ArrayLike,
+    config: PrecaptureTaskConfig = PrecaptureTaskConfig(),
+) -> float:
+    """Alignment in [-1, 1] of the sweeping capture corridor with a fixed
+    inertial staging direction.
+
+    The capture corridor extends along ``approach_axis`` in the target *body*
+    frame, so the port's outward normal ``R_target @ approach_axis`` sweeps
+    through inertial space as the target tumbles. Projecting the chaser's
+    offset into inertial would be rotation-invariant (it collapses to the
+    target-frame alignment -- the pinned "no window to wait for" case), so the
+    phase window only exists against a direction that does **not** co-rotate:
+    the outer staging direction, held fixed in inertial/LVLH for the episode.
+
+    +1 means the port normal currently points along the staging direction -- a
+    cheap, legal entry is available; -1 means the port faces away. This is the
+    phase the staging policy times its entry to, and it coincides with the
+    camera's view of the target's feature face. It is a diagnostic/decision
+    quantity; truth safety is still judged by ``compute_precapture_metrics``.
+    """
+
+    normal_inertial = np.asarray(target.rotation, dtype=np.float64) @ config.approach_axis
+    staging = np.asarray(staging_direction_inertial, dtype=np.float64).reshape(3)
+    staging_norm = float(np.linalg.norm(staging))
+    if staging_norm <= np.finfo(np.float64).eps:
+        raise ValueError("staging direction must be non-zero")
+    return float(np.clip(normal_inertial @ (staging / staging_norm), -1.0, 1.0))

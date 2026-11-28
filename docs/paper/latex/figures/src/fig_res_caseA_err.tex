@@ -1,0 +1,29 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\usepgfplotslibrary{groupplots}
+\begin{document}
+% Task A: capture errors (eq. errors) with respect to the moving capture pose, every control period (0.1 s);
+% dashed lines are the capture tolerances, shading the execution mode, the vertical line the capture.
+\begin{tikzpicture}[font=\footnotesize]
+\begin{groupplot}[group style={group size=2 by 2,horizontal sep=1.25cm,vertical sep=0.75cm},
+  casestyle,width=3.42cm,height=2.25cm,xmin=0,xmax=150,xtick={0,50,100,150},ymode=log,unbounded coords=jump,
+  xlabel={Time (s)}]
+\nextgroupplot[ymin=0.1,ymax=30,ytick={0.1,1,10},yticklabels={$0.1$,$1$,$10$},ylabel={$e_{p}$ (m)}]
+\caseAev
+\draw[black,densely dashed,thin] (axis cs:0,0.25) -- (axis cs:150,0.25);
+\addplot[black,thick] table[x=t,y=perr]{data/caseA_fine.dat};
+\nextgroupplot[ymin=0.005,ymax=1.5,ytick={0.01,0.1,1},yticklabels={$0.01$,$0.1$,$1$},ylabel={$e_{v}$ (m/s)}]
+\caseAev
+\draw[black,densely dashed,thin] (axis cs:0,0.05) -- (axis cs:150,0.05);
+\addplot[black,thick] table[x=t,y=spd]{data/caseA_fine.dat};
+\nextgroupplot[ymin=1,ymax=300,ytick={1,10,100},yticklabels={$1$,$10$,$100$},ylabel={$e_{\mathrm{att}}$ (deg)}]
+\caseAev
+\draw[black,densely dashed,thin] (axis cs:0,10) -- (axis cs:150,10);
+\addplot[black,thick] table[x=t,y=att]{data/caseA_fine.dat};
+\nextgroupplot[ymin=0.0003,ymax=0.3,ytick={0.001,0.01,0.1},yticklabels={$10^{-3}$,$0.01$,$0.1$},ylabel={$e_{\omega}$ (rad/s)}]
+\caseAev
+\draw[black,densely dashed,thin] (axis cs:0,0.02) -- (axis cs:150,0.02);
+\addplot[black,thick] table[x=t,y=w]{data/caseA_fine.dat};
+\end{groupplot}
+\end{tikzpicture}
+\end{document}

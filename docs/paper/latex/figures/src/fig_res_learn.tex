@@ -1,0 +1,20 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Training capture rate over windows of 100 training tasks (TRAINING_CURVES.csv), on the common support of the three
+% seeds; lines are the mean, bands the range over three seeds. Behavior policies, including exploration.
+\begin{tikzpicture}[font=\footnotesize]
+\begin{axis}[resstyle,scale only axis,width=6.55cm,height=4.4cm,xmin=900,xmax=5750,
+  xtick={1000,2000,3000,4000,5000},xticklabels={1000,2000,3000,4000,5000},
+  ymin=20,ymax=100,ytick={20,40,60,80,100},ylabel={Capture rate (\%)},xlabel={Decisions},
+  ylabel style={yshift=-2pt},legend cell align=left,
+  legend style={at={(0.5,1.02)},anchor=south,legend columns=3,column sep=8pt,font=\footnotesize}]
+\band{td3}{cTD3}{caplo}{caphi}
+\band{sac}{cSAC}{caplo}{caphi}
+\band{ecc}{cECC}{caplo}{caphi}
+\addplot[cECC,very thick] table[x=x,y=cap]{data/r2_train_ecc.dat}; \addlegendentry{ECC}
+\addplot[cSAC,thick,dashed] table[x=x,y=cap]{data/r2_train_sac.dat}; \addlegendentry{SAC--MPC}
+\addplot[cTD3,thick,dashdotted] table[x=x,y=cap]{data/r2_train_td3.dat}; \addlegendentry{TD3--MPC}
+\end{axis}
+\end{tikzpicture}
+\end{document}

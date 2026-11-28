@@ -1,0 +1,29 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Analytic port--line-of-sight angle (8) under constant phase rates Omega(1+kappa) (Proposition 1(iii));
+% beta = 85 deg, lambda = 90 deg, initial phase 110 deg; time normalized by the spin period.
+\begin{tikzpicture}[font=\footnotesize]
+\begin{axis}[
+  width=5.4cm, height=4.15cm,
+  xmin=0, xmax=0.65, ymin=0, ymax=205,
+  xtick={0,0.2,0.4,0.6}, ytick={0,35,90,180}, yticklabels={$0$,$\psig$,$90$,$180$},
+  xlabel={$\tau/\Ts$}, ylabel={$\hat\psi(\tau)$ (deg)},
+  xlabel style={yshift=3pt}, ylabel style={yshift=-4pt},
+  tick label style={font=\scriptsize},
+  legend style={font=\scriptsize,at={(0.5,1.02)},anchor=south,draw=none,fill=none,legend columns=2,column sep=4pt,row sep=-2pt,inner sep=1pt},
+  legend cell align=left,
+  grid=major, grid style={gray!15}]
+\fill[green!12] (axis cs:0,0) rectangle (axis cs:0.65,35);
+\addplot[gray!70!black,dashed,forget plot] coordinates {(0,35) (0.65,35)};
+\addplot[blue!75!black,thick,domain=0:0.65,samples=301] {acos(cos(90)*cos(85)+sin(90)*sin(85)*cos(110-360*1.35*x))};
+\addlegendentry{meet, $\kappa>0$}
+\addplot[black,thick,dashed,domain=0:0.65,samples=301] {acos(cos(90)*cos(85)+sin(90)*sin(85)*cos(110-360*x))};
+\addlegendentry{wait, $\kappa=0$}
+\addplot[orange!85!black,thick,dashdotted,domain=0:0.65,samples=301] {acos(cos(90)*cos(85)+sin(90)*sin(85)*cos(110-360*0.65*x))};
+\addlegendentry{accompany, $\kappa<0$}
+\addplot[gray,densely dotted,thick,domain=0:0.65,samples=301] {acos(cos(130)*cos(85)+sin(130)*sin(85)*cos(110-360*x))};
+\addlegendentry{no window, $|\dlat|>\psig$}
+\end{axis}
+\end{tikzpicture}
+\end{document}

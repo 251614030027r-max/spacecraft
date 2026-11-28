@@ -1,0 +1,25 @@
+\documentclass[border=1pt]{standalone}
+\input{preamble}
+\begin{document}
+% Entry re-timing around the original arrival instant versus abandoning the pass (symbolic).
+\begin{tikzpicture}[>=Stealth,font=\footnotesize,x=0.079cm,y=1cm]
+  \fill[green!12] (0,-0.75) rectangle (43,0.95);
+  \fill[green!12] (52,-0.75) rectangle (65,0.95);
+  \node[font=\scriptsize,text=green!35!black,anchor=north west,inner sep=2pt] at (0,0.95) {current pass};
+  \node[font=\scriptsize,text=green!35!black,anchor=north,align=center,inner sep=2pt] at (58.5,0.95) {next\\pass};
+  \draw[thick] (-2,0) -- (45.5,0);
+  \draw[->,thick] (48.5,0) -- (66,0) node[anchor=west,inner sep=1pt] {$t$};
+  \draw (44.5,-0.13) -- (46.1,0.13) (47.9,-0.13) -- (49.5,0.13);
+  \draw[densely dashed,red!70!black] (18,-0.75) -- (18,0.95);
+  \node[anchor=south,red!70!black,inner sep=1pt,font=\scriptsize] at (18,0.95) {original arrival};
+  \foreach \s in {2,4,8}{\fill[blue!70!black] (18+\s,0.45) circle (1.5pt);}
+  \node[blue!70!black,font=\large,inner sep=0pt] at (18,0.45) {$\times$};
+  \foreach \s in {0,2,4,8}{\fill[orange!85!black] (18+\s,-0.45) circle (1.5pt);}
+  \node[font=\scriptsize,blue!70!black,anchor=east,inner sep=1pt] at (16.0,0.45) {entry bound};
+  \node[font=\scriptsize,orange!85!black,anchor=east,inner sep=1pt] at (16.0,-0.45) {larger bound};
+  \draw[->,thin,gray!70!black] (27,0.38) to[out=-30,in=30] (28.5,-0.38);
+  \node[font=\scriptsize,anchor=west,align=left,inner sep=1pt] at (31.5,0.58) {none\\feasible};
+  \draw[|<->|,thin] (18,-0.98) -- (26,-0.98) node[right,font=\scriptsize,inner sep=2pt] {delays};
+  \draw[->,thick,densely dashed,gray!70!black] (24,1.4) to[out=20,in=160] node[above,font=\scriptsize,text=black,inner sep=1pt] {abandon the pass: $\approx\Ts$} (58,1.4);
+\end{tikzpicture}
+\end{document}

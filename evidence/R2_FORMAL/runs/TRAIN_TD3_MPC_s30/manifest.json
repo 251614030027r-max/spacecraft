@@ -1,0 +1,47 @@
+{
+ "algo": "td3",
+ "seed": 30,
+ "steps": 6000,
+ "workers": 2,
+ "git_head": "416015201f31cee6af7a4de6735d1a33a6e34ed9",
+ "smoke": false,
+ "collection": "asynchronous",
+ "geometry": true,
+ "window": true,
+ "coordination": false,
+ "correction": false,
+ "long_entry": false,
+ "potential": "opportunity",
+ "extended_lattice": false,
+ "mission": {
+  "deadline_s": [
+   140.0,
+   200.0
+  ],
+  "budget_m_s": 3.0,
+  "time_cost_per_s": 0.1,
+  "fuel_cost_per_m_s": 10.0
+ },
+ "obs_dim": 17,
+ "env_version": "t2-stage-2.0.0",
+ "learner_version": "t2-learner-9.2",
+ "algorithm": "TD3",
+ "net_arch": [
+  256,
+  256
+ ],
+ "learning_rate": 0.0003,
+ "buffer_size": 100000,
+ "batch_size": 256,
+ "learning_starts": 200,
+ "gamma": 0.992027944069944,
+ "tau": 0.005,
+ "gradient_steps_per_transition": 2,
+ "policy_delay": 2,
+ "target_policy_noise": 0.2,
+ "target_noise_clip": 0.5,
+ "exploration_sigma": 0.1,
+ "final_config": "TD3_MPC",
+ "final_stage": "formal",
+ "final_registry_sha256": "6bc14315aac6f2fdfe2782e9232b92955d7f69ac866d2a1409781fdf769b4932"
+}

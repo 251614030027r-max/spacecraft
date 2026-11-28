@@ -1,0 +1,36 @@
+{
+  "valid": true,
+  "checks": [
+    [
+      "版本与配置可查",
+      true,
+      "REGISTRY_RESOLVED.json、ENV_LOCK.txt、检查点 SHA256"
+    ],
+    [
+      "测试与全流程 dryrun",
+      true,
+      "pytest.log、DRY/CHECK.json、DRY/MANIFESTS.txt、执行回执"
+    ],
+    [
+      "十条训练完成",
+      true,
+      "十份 B/TRAIN_*/finished.json"
+    ],
+    [
+      "20 组评估各 48 个开局",
+      true,
+      "CHECK.json、C/**、S/** 逐组开局身份"
+    ],
+    [
+      "执行器统计可核验",
+      true,
+      "训练 exec_stats，模型评估 decisions.mode，C/S 入口丢失与窗口恢复"
+    ],
+    [
+      "图表可重建",
+      true,
+      "figures.log、五组原生图表、TABLES.json"
+    ]
+  ],
+  "driver_exit": 0
+}

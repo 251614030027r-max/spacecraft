@@ -1,0 +1,49 @@
+\appendices
+
+\section{PROOFS}\label{app:proofs}
+
+\textit{Proof of Lemma~\ref{lem:window}:} Let $\vect{k}_{1}$ be the unit vector orthogonal to $\bs$ in the meridian plane of the line of sight and $\vect{k}_{2}=\bs\times\vect{k}_{1}$, so that $\er=\cos\lambda\,\bs+\sin\lambda\,\vect{k}_{1}$. Under \eqref{eq:pred}, the port direction after a time $\tau$ is $\hat{\bn}(\tau)=\cos\beta\,\bs+\sin\beta\,(\cos(\Omega\tau-\varphi)\,\vect{k}_{1}+\sin(\Omega\tau-\varphi)\,\vect{k}_{2})$, and $\cos\hat\psi(\tau)=\hat{\bn}(\tau)^{\T}\er$ gives \eqref{eq:theta}. Let $c_{\mathrm{w}}=(\cos\psig-\cos\lambda\cos\beta)/(\sin\lambda\sin\beta)$. Since $\sin\lambda\sin\beta>0$ and the cosine decreases on $[0,\pi]$, $\hat\psi(\tau)\le\psig$ is equivalent to $\cos(\varphi-\Omega\tau)\ge c_{\mathrm{w}}$. Because $\cos\lambda\cos\beta+\sin\lambda\sin\beta=\cos\dlat$ and $|\dlat|,\psig\in[0,\pi]$, $c_{\mathrm{w}}>1$ is equivalent to $|\dlat|>\psig$, in which case no $\tau$ satisfies the inequality. If $c_{\mathrm{w}}\le-1$, it holds for every $\tau$, consistent with $\phw=\pi$. Otherwise, with the phase difference taken modulo $2\pi$ in $[-\pi,\pi]$, it holds if and only if $|\varphi-\Omega\tau|\le\arccos c_{\mathrm{w}}=\phw$, an interval of length $2\phw/\Omega$ centered at $\tau=\varphi/\Omega$, where $\cos\hat\psi=\cos\dlat$, and repeated with the period $\Ts$. \hfill$\square$
+
+\textit{Window duration and latitude offset:} Since $\partial c_{\mathrm{w}}/\partial\lambda=(\cos\beta-\cos\psig\cos\lambda)/(\sin^{2}\lambda\sin\beta)$, for fixed $\beta$ the half-width $\phw$ is largest at $\cos\lambda=\cos\beta/\cos\psig$, which differs from $\lambda=\beta$. With the port axis along the body $x$-axis and the nominal spin-axis offsets of $10$--$20^{\circ}$ (Section~\ref{sec:setup}), $\beta\in[70^{\circ},110^{\circ}]$; over this range and with $\psig=35^{\circ}$, the maximizer lies within $5^{\circ}$ of $\lambda=\beta$, and $\phw$ at $\dlat=0$ is within $0.3^{\circ}$ of its maximum, so that $\dlat=0$ nearly maximizes the window duration for the nominal tumbling.
+
+\textit{Proof of Proposition~\ref{prop:rwg}:} (i)~The relation $\dot\rho=\er^{\T}\bv=v_{\mathrm{r}}$ is immediate, and $\dot{\vect{e}}_{\mathrm{r}}=(\bv-v_{\mathrm{r}}\er)/\rho$. Since $\bs=\cos\lambda\,\er+\sin\lambda\,\epol$, differentiating $\cos\lambda=\bs^{\T}\er$ with $\bs$ fixed gives $-\sin\lambda\,\dot\lambda=\bs^{\T}\dot{\vect{e}}_{\mathrm{r}}=\sin\lambda\,v_{\mathrm{pol}}/\rho$, i.e., $\dot\lambda=-v_{\mathrm{pol}}/\rho$, and $\dot{\dlat}=\dot\lambda$ because $\beta$ is constant under \eqref{eq:pred}. Let $\varphi_{\mathrm{r}}$ be the azimuth of $\er$ about $\bs$, so that $\partial\er/\partial\varphi_{\mathrm{r}}=\bs\times\er$ with $\norm{\bs\times\er}=\sin\lambda$ and $\eaz=-\bs\times\er/\sin\lambda$. Projecting $\dot{\vect{e}}_{\mathrm{r}}$ onto $\bs\times\er$ yields $\sin^{2}\lambda\,\dot\varphi_{\mathrm{r}}=-\sin\lambda\,v_{\mathrm{az}}/\rho$. The phase is the azimuth of the line of sight relative to that of the port, which advances at the rate $\Omega$; this gives the third relation of \eqref{eq:localkin}.
+
+(ii)~With $v_{\mathrm{pol}}=\mathrm{sgn}(\dlat)\min\{k_{\lambda}\rho|\dlat|,\bar v_{\mathrm{lat}}\}$, item~(i) gives $\dd|\dlat|/\dd t=-\min\{k_{\lambda}|\dlat|,\bar v_{\mathrm{lat}}/\rho\}<0$ for $\dlat\neq0$. Let $\bar\dlat=\bar v_{\mathrm{lat}}/(k_{\lambda}\bar\rho)$. Since $\rho\le\bar\rho$, while $|\dlat|>\bar\dlat$, $\dd|\dlat|/\dd t\le-\bar v_{\mathrm{lat}}/\bar\rho$, so $|\dlat|$ reaches $\bar\dlat$ within $(|\dlat(0)|-\bar\dlat)\bar\rho/\bar v_{\mathrm{lat}}$. Once $|\dlat|\le\bar\dlat$, $k_{\lambda}\rho|\dlat|\le\bar v_{\mathrm{lat}}$, the law is unsaturated, and $\dot{\dlat}=-k_{\lambda}\dlat$; since $|\dlat|$ keeps decreasing, the set is not left.
+
+(iii)~With $\rho$, $\lambda$, and $v_{\mathrm{az}}=v_{\mathrm{sw}}$ constant, item~(i) gives $\dot\varphi=-\Omega(1+\kappa)$. Because $\lambda$ and $\beta$ are constant, the predicted port--line-of-sight angle obeys \eqref{eq:theta} with $\Omega\tau$ replaced by $\Omega(1+\kappa)\tau$, and Lemma~\ref{lem:window} applies with the rate $\Omega(1+\kappa)>0$. \hfill$\square$
+
+\section{ECC WITHOUT CRITICAL-WINDOW CORRECTION}\label{app:nocorr}
+
+A variant of ECC that keeps a proposal reaching an event by itself and launches the long-range entry at the last usable pass, but never corrects an intent, was trained from zero with three seeds and evaluated on the same test tasks. It captures $505$ of $576$ tasks ($87.7\%$) against $492$ ($85.4\%$) for ECC, a paired difference of $-2.3$~pp $[-4.2,-0.3]$ for ECC, with the two groups of policies trained separately. Both forms of coordination improve clearly on SAC--MPC without coordination ($425$ captures).
+
+\section{ADDITIONAL PARAMETERS}\label{app:params}
+
+Table~\ref{tab:params2} lists the parameters of the execution layer and of training that complement Table~\ref{tab:params}.
+
+\begin{table}[h]
+\caption{Execution-Layer and Training Parameters}
+\label{tab:params2}
+\tablefont
+\setlength{\tabcolsep}{3pt}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}>{\raggedright\arraybackslash}p{9.5pc}>{\raggedright\arraybackslash}p{9.9pc}@{}}
+\hline
+Parameter & Value\\
+\hline
+Target size; rod radius & $1.24\times1.02\times0.74$ m; $0.05$ m\\
+$\bpport$; $\bpcap$; $\bnp$ (in $\FT$) & $[-1.5,0,0]^{\T}$ m; $[-3,0,0]^{\T}$ m; $[-1,0,0]^{\T}$\\
+Chaser inertia & $\approx\diag(20.3,19.9,23.7)$ kg$\cdot$m$^{2}$\\
+Mouth point $\rhom$; inward speed; $v_{\mathrm{mg},\min}$ & $6.3$ m; $0.02$ m/s; $0.02$ m/s\\
+Hold deviation; near-field range; descent range & $3$ m; $7.5$ m; $7$ m\\
+Entry re-plan deviation; re-timing delays & $1$ m; $\{2,4,8\}$ s\\
+Planning intervals $N$: stage; entry & $16$; $30$\\
+Stage-plan weights (position, velocity; $w$) & $10$, $200$; $0.1$\\
+Range penalty above $20$ m; SCP iterations & $0.01$; $4$\\
+Far-field tracking; pointing gains & $\omega_{n}=0.2$ rad/s, critically damped; $0.36$ s$^{-2}$, $1.2$ s$^{-1}$\\
+MPC state scales in $\vect{W}$ & $75^{\circ}$, $20$ m, $0.05$ rad/s, $1.1$ m/s\\
+$w_{\mathrm{u}}$; $w_{N}$; $w_{\varepsilon}$; $\bar\varepsilon$ & $0.01$; $1000$; $10^{4}$; $2$\\
+Cone faces; tightening & $8$; $0.02$\\
+Learning rate; batch; buffer & $3\times10^{-4}$; $256$; $10^{5}$\\
+Warm-up; updates per transition; target rate & $200$ decisions; $2$; $0.005$\\
+\hline
+\end{tabular*}
+\end{table}

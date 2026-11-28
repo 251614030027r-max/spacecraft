@@ -1,0 +1,121 @@
+{
+ "policies": {
+  "b_10": {
+   "n": 48,
+   "capture_rate": 0.4375,
+   "unsafe": 0,
+   "mean_return": -38.431185771574114
+  },
+  "c_10_-5": {
+   "n": 48,
+   "capture_rate": 0.6041666666666666,
+   "unsafe": 0,
+   "mean_return": -5.933555270437165
+  },
+  "c_10_0": {
+   "n": 48,
+   "capture_rate": 0.7291666666666666,
+   "unsafe": 0,
+   "mean_return": 19.237556163140727
+  },
+  "c_6_5": {
+   "n": 48,
+   "capture_rate": 0.6875,
+   "unsafe": 0,
+   "mean_return": 10.742127858798428
+  },
+  "gstar": {
+   "n": 48,
+   "capture_rate": 0.9166666666666666,
+   "unsafe": 0,
+   "mean_return": 57.09013742289991
+  },
+  "rally": {
+   "n": 48,
+   "capture_rate": 0.6875,
+   "unsafe": 0,
+   "mean_return": 12.215328779541684
+  }
+ },
+ "gstar": 0.9166666666666666,
+ "best_fixed": 0.7291666666666666,
+ "best_fixed_policy": "c_10_0",
+ "oracle_fixed": 0.875,
+ "fixed_policies_screened": [
+  "b_10",
+  "c_10_-5",
+  "c_10_0",
+  "c_6_5",
+  "rally"
+ ],
+ "shortest_gstar": [
+  {
+   "opening": 294403,
+   "deadline_s": 140.5,
+   "event": "success"
+  },
+  {
+   "opening": 294407,
+   "deadline_s": 141.2,
+   "event": "success"
+  },
+  {
+   "opening": 294433,
+   "deadline_s": 143.0,
+   "event": "success"
+  },
+  {
+   "opening": 294422,
+   "deadline_s": 143.6,
+   "event": "timeout"
+  },
+  {
+   "opening": 294408,
+   "deadline_s": 143.7,
+   "event": "success"
+  },
+  {
+   "opening": 294445,
+   "deadline_s": 144.8,
+   "event": "success"
+  }
+ ],
+ "only_gstar": [
+  294407,
+  294418,
+  294427,
+  294445
+ ],
+ "by_bin": {
+  "<160": {
+   "b_10": 0.375,
+   "c_10_-5": 0.625,
+   "c_10_0": 0.6875,
+   "c_6_5": 0.5,
+   "gstar": 0.75,
+   "rally": 0.4375
+  },
+  "160-180": {
+   "b_10": 0.47368421052631576,
+   "c_10_-5": 0.47368421052631576,
+   "c_10_0": 0.6842105263157895,
+   "c_6_5": 0.7894736842105263,
+   "gstar": 1.0,
+   "rally": 0.8421052631578947
+  },
+  ">=180": {
+   "b_10": 0.46153846153846156,
+   "c_10_-5": 0.7692307692307693,
+   "c_10_0": 0.8461538461538461,
+   "c_6_5": 0.7692307692307693,
+   "gstar": 1.0,
+   "rally": 0.7692307692307693
+  }
+ },
+ "gates": {
+  "L1": true,
+  "L2": true,
+  "L3": true
+ },
+ "verdict": "pass"
+}
